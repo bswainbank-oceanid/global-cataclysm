@@ -1,0 +1,41 @@
+{
+  "_comment": "Faction reference data. 'focus' is the design doc's stated doctrine priority for that faction's unit composition.",
+  "factions": {
+    "NAA": {
+      "name": "North Atlantic Alliance",
+      "color": "#1E4C7C",
+      "major_countries": ["United States", "Canada", "Britain", "Hawaii", "Saudi Arabia"],
+      "focus": ["Air", "Navy", "Mechanized Infantry"]
+    },
+    "UE": {
+      "name": "United Europe",
+      "color": "#A5822F",
+      "major_countries": ["Germany", "France", "Italy", "Benelux", "South Africa"],
+      "focus": ["Mechanized Infantry", "Air"]
+    },
+    "UER": {
+      "name": "Union of Eurasian Republics",
+      "color": "#8C2A2A",
+      "major_countries": ["Russia", "Ukraine", "Eastern Europe", "Central Asia", "Western China", "Cuba", "Norway"],
+      "focus": ["Infantry", "Armor"]
+    },
+    "GPC": {
+      "name": "Greater Pacific Commonwealth",
+      "color": "#5B3466",
+      "major_countries": ["Japan", "Manchuria", "Eastern China", "Pacific Islands", "Chile"],
+      "focus": ["Navy", "Air"]
+    },
+    "PAF": {
+      "name": "Pan-African Federation",
+      "color": "#3F6B35",
+      "major_countries": ["Africa", "Nigeria", "Middle East", "Turkey", "India"],
+      "focus": ["Infantry"]
+    },
+    "AAC": {
+      "name": "Andean-Atlantic Confederation",
+      "color": "#C1621F",
+      "major_countries": ["Spain", "South America", "Brazil", "Mexico"],
+      "focus": ["Navy", "Infantry", "Bombers"]
+    }
+  }
+}

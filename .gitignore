@@ -1,0 +1,7 @@
+# Regenerable from data/ + tools/ -- see docs/PIPELINE.md
+derived/
+exports/
+
+__pycache__/
+*.pyc
+.DS_Store

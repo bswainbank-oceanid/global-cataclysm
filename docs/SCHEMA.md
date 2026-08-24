@@ -1,0 +1,139 @@
+# Data schema
+
+All canonical game data lives under `data/` as JSON. Everything under
+`derived/` and `exports/` is regenerated from `data/` by the scripts in
+`tools/` — never hand-edit those two directories.
+
+## data/territories.json
+
+```
+{
+  "reference_image_width_px": 3500,
+  "reference_image_height_px": 2000,
+  "note": "...",
+  "spaces": [
+    {
+      "id": int,                    // unique across land AND sea
+      "type": "land" | "sea",
+      "name": string,
+      "x": int, "y": int,           // center point, in reference-image pixels
+      "area_px": int, "bbox_w": int, "bbox_h": int,
+      "faction": string | null,     // land only; one of the 6 faction codes, or null if unassigned
+      "value": int,                 // land only; IPC value, 0-5
+      "distant": bool,              // land only; true if 0 same-faction land neighbors
+      "strategic_center": bool      // land only
+    },
+    ...
+  ]
+}
+```
+
+146 spaces total: 87 land, 59 sea. Faction reference data (name, color,
+major countries, doctrine focus) lives separately in `data/factions.json`,
+keyed by the same faction codes used here.
+
+## data/adjacency.json
+
+The Delaunay-triangulation adjacency graph, exported from the original
+`graph.pkl` by `tools/export_adjacency.py` (a one-time migration — the
+pickle is not part of this repo).
+
+```
+{
+  "reference_image_width_px": 3500,
+  "node_count": 142, "edge_count": 387,
+  "nodes": { "<id>": {"type": "land"|"sea", "name": string}, ... },
+  "edges": [[a, b], ...],                    // sorted, deduped, order-independent
+  "neighbors_ordered": { "<id>": [neighbor ids...], ... }  // ORIGINAL graph order -- see below
+}
+```
+
+**Important quirk, preserved deliberately:** `neighbors_ordered` keeps
+each node's neighbor list in the exact order the original Delaunay build
+produced it in — a geometric accident, not a principled sort. Several
+already-validated derived values (e.g. a coastal territory's *default*
+sea zone) were computed as "first sea-type neighbor in this order," and
+that specific choice is baked into `data/scenarios/starting_setup_200ipc.json`.
+Re-deriving the default sea zone any other way (e.g. nearest-by-distance)
+changes ~34 of 75 coastal territories' defaults and would silently break
+the already-validated, collision-free naval deployment scheme. Use
+`edges` instead whenever order doesn't matter.
+
+Two land territories were added to the map *after* this graph was built:
+Iran (id 145) and Himalayan Bengal (id 146). They are not graph nodes.
+See `data/rules.json` → `map.adjacency_fallback` for how their neighbors
+are approximated, and the docstring in `tools/compute_foreign_neighbors.py`
+for a known asymmetry in that fallback (a fallback territory finds its
+graph-based neighbors by distance, but graph-based territories don't get
+the fallback territory added back to *their* neighbor lists). This was a
+property of the original ad hoc calculation and has been faithfully
+reproduced rather than silently fixed.
+
+## data/units.json
+
+Full stat blocks for the 8 purchasable units plus Transport (not
+purchasable). See the file itself — every field is self-explanatory
+(`cost`/`sc_cost` in IPC, `attack_die` as "D6".."D12", etc).
+
+## data/factions.json
+
+Faction reference: full name, hex color (with leading `#`), major
+countries, and `focus` — the design doc's doctrine priority list driving
+that faction's starting unit composition.
+
+## data/rules.json
+
+Every constant and formula previously hardcoded (inconsistently) across
+ad hoc scripts: setup rules (budget, stacking cap formula, naval/carrier/
+infantry/leftover-budget rules), combat rules, the promotion mechanic, and
+map/adjacency notes. This is the single source of truth for game-balance
+constants — a future game engine should read this file rather than
+re-deriving these numbers.
+
+## data/scenarios/starting_setup_200ipc.json
+
+The 200-IPC starting-setup scenario: which units each faction buys at
+each territory, which 3 units per faction get promoted, the carrier/
+escort assignments, and any naval sea-zone assignments that override the
+default (used to resolve collisions where two factions would otherwise
+share a sea zone).
+
+```
+{
+  "budget_ipc": 200,
+  "purchases": {
+    "<FAC>": [
+      {"territory_id": int, "units": [{"unit": string, "qty": int}, ...]},
+      ...
+    ]
+  },
+  "promotions": {
+    "<FAC>": [{"territory_id": int, "unit": string}, ...]   // exactly 3 per faction
+  },
+  "carrier_escorts": {
+    "<FAC>": [{"carrier_tid": int, "aircraft_tid": int, "unit": string, "qty": int}, ...]
+  },
+  "naval_deploy_overrides": {
+    "<FAC>": { "<territory_id>": { "<unit>": "<sea zone name>" }, ... }
+  }
+}
+```
+
+## derived/adjacency_foreign.json (regenerated)
+
+For every land territory: its land-neighbor ids (`adj`), and the subset
+belonging to a different faction (`foreign`). Built by
+`tools/compute_foreign_neighbors.py`.
+
+## derived/faction_territory_profile.json (regenerated)
+
+For each faction, its owned land territories with the fields the
+setup-design tools need: stacking cap, coastal flag, default sea zone,
+and whether it has a foreign neighbor. Built by
+`tools/compute_faction_profile.py`.
+
+## exports/
+
+`GC1972_Territories.xlsx` (the human-facing editing/reference workbook)
+and `map.png` (the rendered faction map). Both are pure build products —
+see `docs/PIPELINE.md`.
