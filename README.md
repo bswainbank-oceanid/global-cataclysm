@@ -36,9 +36,9 @@ verify a change didn't regress game balance.
 ## Editing game data
 
 - Territory ownership, values, and Strategic Centers: `data/territories.json`
-  (or, for a quick pass, `exports/GC1972_Territories.xlsx`'s 'All
-  Territories' tab, then re-export back into JSON — not yet automated,
-  see `docs/PIPELINE.md`).
+  directly, or edit `exports/GC1972_Territories.xlsx`'s 'All Territories'
+  tab and run `python3 tools/sync_territories_from_xlsx.py` to pull the
+  edits back into JSON (see `docs/PIPELINE.md`).
 - Unit stats and costs: `data/units.json`.
 - Rule constants (stacking cap formula, promotion effect, combat rules,
   etc): `data/rules.json`.
