@@ -91,11 +91,18 @@ NAVAL_SPREAD_TARGET = 3
 
 
 def generate_scenario(*, budget, use_sc, min_types, promotions_count,
-                       garrison_all_territories, out_path, comment):
+                       garrison_all_territories, out_path, comment,
+                       cap_bonus=2, excluded_naval_zone_ids=frozenset()):
     """Build and write one scenario JSON. See module docstring for the
     algorithm. use_sc=False ignores every territory's strategic_center
-    flag: cap becomes flat value+2 (no +2 SC bonus stacked on top) and
-    every cost uses the unit's plain 'cost' (never 'sc_cost')."""
+    flag: cap becomes flat value+cap_bonus (no +2 SC bonus stacked on top)
+    and every cost uses the unit's plain 'cost' (never 'sc_cost'). A
+    territory whose cap comes out to 0 (cap_bonus=0 and value=0) is never
+    given any unit -- including the foreign-border mandatory land unit,
+    which simply doesn't apply where nothing fits.
+    excluded_naval_zone_ids: sea zone ids that must never host a naval
+    deployment, default or override (e.g. a zone the map designer wants
+    kept empty for flavor/geography reasons)."""
     global PURCHASABLE
     territories = json.load(open('data/territories.json'))['spaces']
     units_data = json.load(open('data/units.json'))['units']
@@ -109,7 +116,7 @@ def generate_scenario(*, budget, use_sc, min_types, promotions_count,
         return info['sc_cost'] if (use_sc and is_sc) else info['cost']
 
     def cap_of(row):
-        return row['cap'] if use_sc else row['value'] + 2
+        return row['cap'] if use_sc else row['value'] + cap_bonus
 
     all_sea_spaces = sorted((s for s in territories if s['type'] == 'sea'), key=lambda s: s['id'])
 
@@ -150,7 +157,9 @@ def generate_scenario(*, budget, use_sc, min_types, promotions_count,
         weight_of[fac] = w
 
     # ---- naval territory spread, zone-collision-free ----
-    claimed_zone_ids = set()
+    # Pre-claiming excluded_naval_zone_ids keeps them out of both the
+    # direct-pick and override-fallback paths below without extra logic.
+    claimed_zone_ids = set(excluded_naval_zone_ids)
     naval_territories = {}  # fac -> [{'id','name','sc','cap','zone','override'}, ...]
     for fac in sorted(FACTION_ORDER, key=lambda f: len([r for r in profile[f] if r['coastal']])):
         candidates = [r for r in profile[fac] if r['coastal']]

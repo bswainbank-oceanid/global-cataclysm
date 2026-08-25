@@ -94,7 +94,7 @@ def promoted_hp(hp):
     return hp + 1
 
 
-def build_setup_tab(wb, sheet_name, scenario_path, use_sc, min_types):
+def build_setup_tab(wb, sheet_name, scenario_path, use_sc, min_types, cap_bonus=2):
     """Add/replace `sheet_name` on the already-open workbook `wb`, built
     from the scenario at `scenario_path`. use_sc mirrors
     tools/generate_scenario.py's flag: False means the stacking cap is a
@@ -129,8 +129,13 @@ def build_setup_tab(wb, sheet_name, scenario_path, use_sc, min_types):
                      '(the SC production bonus)')
         sc_desc = (' Strategic Centers give a cheaper unit cost and a +2 stacking-cap bonus, per '
                     '‘All Territories’.')
+    elif cap_bonus == 0:
+        cap_desc = ('A territory may start with up to its value in units, no bonus at all -- a 0-value territory '
+                    'therefore gets none (including no mandatory foreign-border land unit, which does not apply '
+                    'where nothing fits) -- this ruleset ignores Strategic Centers entirely')
+        sc_desc = ' Strategic Centers are not used in this scenario: no cost discount, no cap bonus.'
     else:
-        cap_desc = 'A territory may start with up to its (value + 2) units -- this ruleset ignores Strategic Centers entirely'
+        cap_desc = f'A territory may start with up to its (value + {cap_bonus}) units -- this ruleset ignores Strategic Centers entirely'
         sc_desc = ' Strategic Centers are not used in this scenario: no cost discount, no cap bonus.'
     promo_desc = (f'Each faction also promotes {scenario_promo_count(PROMOTIONS)} units at setup — a promoted unit '
                   'permanently steps up one attack-die size (max D12), gains +1 defense (max 10), and gains +1 HP. '
@@ -369,7 +374,12 @@ def build_setup_tab(wb, sheet_name, scenario_path, use_sc, min_types):
         # ---- per-territory stacking-cap check (live) ----
         ws.cell(row=r, column=1, value=f'Stacking Cap Check — {fac}').font = H2_FONT
         r += 1
-        cap_label = 'Cap (value+3, +2 more if SC)' if use_sc else 'Cap (value+2)'
+        if use_sc:
+            cap_label = 'Cap (value+3, +2 more if SC)'
+        elif cap_bonus == 0:
+            cap_label = 'Cap (= value, no bonus)'
+        else:
+            cap_label = f'Cap (value+{cap_bonus})'
         cap_cols = ['Territory ID', 'Territory', 'Value', 'SC?', cap_label, 'Units Purchased Here', 'Status']
         for i, col in enumerate(cap_cols):
             c = ws.cell(row=r, column=i + 1, value=col)
@@ -388,7 +398,12 @@ def build_setup_tab(wb, sheet_name, scenario_path, use_sc, min_types):
                                              f"MATCH($A{r},'All Territories'!$A:$A,0)),0)"))
             ws.cell(row=r, column=4, value=(f"=IFERROR(IF(INDEX('All Territories'!$E:$E,"
                                              f"MATCH($A{r},'All Territories'!$A:$A,0))=\"Yes\",\"Yes\",\"\"),\"\")"))
-            cap_formula = f'=$C{r}+3+IF($D{r}="Yes",2,0)' if use_sc else f'=$C{r}+2'
+            if use_sc:
+                cap_formula = f'=$C{r}+3+IF($D{r}="Yes",2,0)'
+            elif cap_bonus == 0:
+                cap_formula = f'=$C{r}'
+            else:
+                cap_formula = f'=$C{r}+{cap_bonus}'
             ws.cell(row=r, column=5, value=cap_formula)
             ws.cell(row=r, column=6, value=(f'=SUMIFS($F${first_body}:$F${last_body},$A${first_body}:$A${last_body},$A{r})'))
             ws.cell(row=r, column=7, value=f'=IF($F{r}>$E{r},"OVER CAP","OK")')
@@ -491,6 +506,6 @@ def scenario_promo_count(promotions_dict):
 if __name__ == '__main__':
     wb = load_workbook(XLSX_PATH, data_only=False)
     build_setup_tab(wb, 'Initial Setup', 'data/scenarios/starting_setup_200ipc.json', use_sc=True, min_types=6)
-    build_setup_tab(wb, 'Initial Setup (100 IPC)', 'data/scenarios/starting_setup_100ipc.json', use_sc=False, min_types=5)
+    build_setup_tab(wb, 'Initial Setup (100 IPC)', 'data/scenarios/starting_setup_100ipc.json', use_sc=False, min_types=5, cap_bonus=0)
     wb.save(XLSX_PATH)
     print('saved', XLSX_PATH, 'sheets:', wb.sheetnames)

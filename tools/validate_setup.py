@@ -12,14 +12,16 @@ purchasable unit types (setup.unit_diversity_rule).
 
 Defaults to the canonical 200-IPC/SC scenario. --no-sc validates a
 ruleset that ignores every territory's strategic_center flag entirely:
-cap becomes flat value+2 (instead of value+3, +2 more if SC) and every
-cost uses the unit's plain 'cost' field (never 'sc_cost') -- use it for
-scenarios like data/scenarios/starting_setup_100ipc.json.
+cap becomes flat value+<--cap-bonus> (instead of value+3, +2 more if SC)
+and every cost uses the unit's plain 'cost' field (never 'sc_cost') --
+use it for scenarios like data/scenarios/starting_setup_100ipc.json. A
+territory whose cap comes out to 0 is exempt from the foreign-border
+mandatory-land-unit rule (nothing fits there at all).
 
 Run from the repo root, after derived/faction_territory_profile.json and
 derived/adjacency_foreign.json have been (re)built:
     python3 tools/validate_setup.py
-    python3 tools/validate_setup.py --scenario data/scenarios/starting_setup_100ipc.json --no-sc --min-types 5
+    python3 tools/validate_setup.py --scenario data/scenarios/starting_setup_100ipc.json --no-sc --cap-bonus 0 --min-types 5 --budget-tolerance 1 --exclude-zone 43
 Exits with status 1 if any errors are found, 0 otherwise.
 """
 import argparse
@@ -28,10 +30,13 @@ import sys
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--scenario', default='data/scenarios/starting_setup_200ipc.json')
-parser.add_argument('--no-sc', action='store_true', help='ignore strategic_center: flat value+2 cap, no sc_cost discount')
+parser.add_argument('--no-sc', action='store_true', help='ignore strategic_center: flat value+cap-bonus cap, no sc_cost discount')
+parser.add_argument('--cap-bonus', type=int, default=2, help='with --no-sc, cap = value + this (0 = no bonus at all)')
 parser.add_argument('--min-types', type=int, default=6, help='minimum distinct unit types required per faction')
 parser.add_argument('--budget-tolerance', type=int, default=0,
                      help='allow up to this many IPC unspent (small change) instead of requiring an exact match')
+parser.add_argument('--exclude-zone', type=int, action='append', default=[],
+                     help='sea zone id that must never host a naval deployment (repeatable)')
 args = parser.parse_args()
 
 units_data = json.load(open('data/units.json'))['units']
@@ -90,7 +95,7 @@ for fac, entries in DESIGN.items():
     for tid, units in entries:
         prof = prof_by_fac_id[fac][tid]
         is_sc = prof['sc'] and not args.no_sc
-        cap = (prof['value'] + 2) if args.no_sc else prof['cap']
+        cap = (prof['value'] + args.cap_bonus) if args.no_sc else prof['cap']
         units_here = 0
         for unit, qty in units:
             info = UNIT_COSTS[unit]
@@ -102,6 +107,8 @@ for fac, entries in DESIGN.items():
                     errors.append(f"{fac}: naval {unit} at non-coastal {prof['name']}")
                 override_name = NAVAL_OVERRIDES.get(fac, {}).get(str(tid), {}).get(unit)
                 zone_id = resolve_zone_id(tid, override_name) if override_name else prof['sea_zone']
+                if zone_id in args.exclude_zone:
+                    errors.append(f"{fac}: {unit} deployed to excluded zone {zone_id}. {SPACE_BY_ID[zone_id]['name']}")
                 sea_zone_usage.setdefault(zone_id, set()).add(fac)
             # every unit purchased at this territory counts against its cap --
             # a starting-purchase limit, not an in-game one (setup.stacking_cap_scope)
@@ -113,10 +120,16 @@ for fac, entries in DESIGN.items():
 
 foreign_ids = {int(k) for k, v in adjf['foreign'].items() if v}
 for fac, entries in DESIGN.items():
-    for tid, units in entries:
-        if tid in foreign_ids:
-            if not any(u in LAND and qty > 0 for u, qty in units):
-                errors.append(f'{fac}: {tid} foreign neighbor, no land unit')
+    units_by_tid = dict(entries)
+    for tid, prof in prof_by_fac_id.get(fac, {}).items():
+        if tid not in foreign_ids:
+            continue
+        cap = (prof['value'] + args.cap_bonus) if args.no_sc else prof['cap']
+        if cap == 0:
+            continue  # nothing can fit here at all -- exempt from the rule
+        units = units_by_tid.get(tid, [])
+        if not any(u in LAND and qty > 0 for u, qty in units):
+            errors.append(f'{fac}: {tid} foreign neighbor, no land unit')
 
 for fac, entries in DESIGN.items():
     types_used = {u for _, units in entries for u, qty in units if qty > 0}
