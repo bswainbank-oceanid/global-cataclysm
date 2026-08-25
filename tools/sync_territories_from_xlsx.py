@@ -11,9 +11,9 @@ What it does NOT do:
     the JSON, or a JSON id missing from the sheet, is a validation error,
     not a silent add/delete. New territories need map coordinates and an
     adjacency-graph position that this script has no way to invent.
-  - Recompute anything derived (foreign-neighbor flags, the 'distant' flag,
-    stacking caps, default sea zones). A faction reassignment here can
-    change all of those. Re-run the pipeline after syncing:
+  - Recompute anything derived (foreign-neighbor flags, stacking caps,
+    default sea zones). A faction reassignment here can change all of
+    those. Re-run the pipeline after syncing:
         python3 tools/sync_territories_from_xlsx.py
         python3 tools/build_all.py
   - Reconcile data/scenarios/starting_setup_200ipc.json. If you reassign a

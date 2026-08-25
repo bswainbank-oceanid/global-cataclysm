@@ -8,11 +8,12 @@
     "starting_unit_budget_ipc": 200,
     "promotions_per_faction_at_setup": 3,
     "territory_stacking_cap_formula": "value + 3 + (2 if strategic_center else 0)",
-    "stacking_cap_excludes": "naval units, and any air unit riding an Aircraft Carrier (both deploy to a sea zone rather than the land territory)",
+    "stacking_cap_scope": "a starting-setup purchase limit only (not an in-game limit): every unit purchased at a territory counts against that territory's cap, including naval units and any air unit riding an Aircraft Carrier's escort, even though those deploy to a sea zone rather than the land territory itself",
     "naval_purchase_rule": "naval units may only be purchased at a coastal territory (has >=1 adjacent sea zone) and deploy to that sea zone, not the land territory",
     "no_shared_sea_zones_rule": "no two factions may deploy naval units (or carrier-based aircraft) to the same sea zone in the starting setup",
     "carrier_escort_rule": "every purchased Aircraft Carrier must have at least 1 escorting Fighter or Bomber, which deploys to the carrier's own sea zone instead of a land territory",
-    "mandatory_infantry_rule": "every land territory with a foreign-faction land neighbor must have at least 1 Infantry unit at setup",
+    "mandatory_land_unit_rule": "every land territory with a foreign-faction land neighbor must have at least 1 land unit (Infantry, Mechanized Infantry, or Armor) at setup -- does not need to be specifically Infantry",
+    "unit_diversity_rule": "each faction must purchase at least 6 of the 8 purchasable unit types in its starting setup; data/factions.json's per-faction 'focus' list guides which types are emphasized (by spend/quantity), not which types are excluded",
     "leftover_budget_rule": "spend the full per-faction budget; when there is a small remainder that can't buy a whole new unit, upgrade an existing Infantry to Mechanized Infantry to use it up"
   },
   "combat": {
@@ -36,7 +37,6 @@
     "reference_image_height_px": 2000,
     "adjacency_source": "Delaunay triangulation over territory center points, edges kept under a 420px length threshold",
     "adjacency_fallback": "territories added to the map after the adjacency graph was built (currently Iran id 145, Himalayan Bengal id 146) are not in the graph; their neighbors are approximated by the same 420px center-to-center distance threshold against all other land territories",
-    "distant_flag_definition": "a land territory has zero same-faction land neighbors (via the adjacency graph, with the above fallback)",
     "foreign_neighbor_flag_definition": "a land territory has at least one land neighbor belonging to a different faction"
   }
 }

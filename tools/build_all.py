@@ -19,7 +19,6 @@ import sys
 
 STEPS = [
     ['python3', 'tools/compute_foreign_neighbors.py'],
-    ['python3', 'tools/compute_distant.py'],
     ['python3', 'tools/compute_faction_profile.py'],
     ['python3', 'tools/build_master_xlsx.py'],
     ['python3', 'tools/build_setup_tab.py'],

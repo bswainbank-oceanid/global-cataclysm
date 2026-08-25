@@ -1,6 +1,7 @@
 import json
 import cv2
 import numpy as np
+from scipy import ndimage
 
 json_path = 'data/territories.json'
 out_path = 'exports/map.png'
@@ -21,8 +22,86 @@ SEA_DOT = (0, 140, 255)
 GOLD = (0, 215, 255)
 WHITE = (255, 255, 255)
 NAME_TXT = (255, 255, 80)
+LABEL_BG = (235, 235, 235)
+LABEL_BORDER = (60, 60, 60)
+BLACK = (0, 0, 0)
 
 img = cv2.imread(base_path)
+
+# ---------------------------------------------------------------------
+# Faction-colored land fill: flood-fill each land territory's region
+# (bounded by the base map's drawn black border lines) starting from its
+# center point, then blend in the controlling faction's accent color.
+# This is approximate, not authoritative -- a border line with a gap
+# lets the fill bleed into a neighboring territory. Harmless when the
+# neighbor is the same faction (same color either way); a visible bug
+# when it's a different faction. Known to happen at least once (South
+# Africa/Namibia) as of this writing; expect to hand-touch-up
+# assets/base_map.png's border lines as more get spotted.
+#
+# Island-chain territories are a separate problem: a single seed point
+# only fills the one landmass it sits on, leaving every other island in
+# the chain uncolored (they're separate connected components -- water
+# in between, not a border-line gap). MULTI_SEED_BOX gives those
+# territories a search box instead of a single point: every land
+# component with its centroid inside the box gets included, as long as
+# it isn't already some OTHER territory's own seed component (that
+# guard is what makes it safe to draw these boxes generously without
+# risking swallowing a neighboring country).
+# ---------------------------------------------------------------------
+FILL_ALPHA = 1.0
+b_ch, g_ch, r_ch = img[:, :, 0].astype(int), img[:, :, 1].astype(int), img[:, :, 2].astype(int)
+# Positive tests for sea (teal: green/blue channels well above red) and
+# border (near-black line); land is defined as neither, rather than a
+# positive "must be brownish" test -- some terrain (e.g. desert/flat
+# regions) renders as near-grayscale rather than brown and was being
+# skipped entirely under the old brown-only test.
+sea_color_mask = (g_ch > r_ch + 20) & (b_ch > r_ch + 10)
+border_mask = (r_ch + g_ch + b_ch) < 150
+land_mask = ~sea_color_mask & ~border_mask
+land_labels, num_labels = ndimage.label(land_mask, structure=np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]))
+
+# (x0, y0, x1, y1) search box, in reference-image pixels
+MULTI_SEED_BOX = {
+    81: (140, 940, 360, 1080),     # Cuba -- main island + Isle of Youth
+    144: (340, 1600, 540, 1740),   # Falkland Islands
+    101: (2170, 1150, 2410, 1370),  # Philippines
+    109: (2370, 1140, 2660, 1460),  # New Guinea
+    92: (2490, 1030, 2630, 1250),  # Marshall Islands
+    77: (2820, 900, 3020, 1040),   # Hawaii
+}
+
+land_spaces = [sp for sp in spaces if sp.get('type') == 'land' and sp.get('faction')]
+
+primary_label = {}
+for sp in land_spaces:
+    lab = land_labels[int(sp['y']), int(sp['x'])]
+    if lab != 0:
+        primary_label[sp['id']] = lab
+claimed_labels = set(primary_label.values())
+
+# centroid of every component, computed once, for the box membership test
+label_ids = np.arange(1, num_labels + 1)
+centroids = ndimage.center_of_mass(land_mask, land_labels, label_ids) if num_labels else []
+centroid_of = {lab: (cx, cy) for lab, (cy, cx) in zip(label_ids, centroids)}
+
+for sp in land_spaces:
+    tid = sp['id']
+    own_lab = primary_label.get(tid)
+    if own_lab is None:
+        continue
+    labels_to_fill = {own_lab}
+    box = MULTI_SEED_BOX.get(tid)
+    if box:
+        x0, y0, x1, y1 = box
+        for lab, (cx, cy) in centroid_of.items():
+            if lab == own_lab or lab in claimed_labels:
+                continue
+            if x0 <= cx <= x1 and y0 <= cy <= y1:
+                labels_to_fill.add(lab)
+    region = np.isin(land_labels, list(labels_to_fill))
+    color = np.array(FAC_BGR[sp['faction']], dtype=float)
+    img[region] = (img[region].astype(float) * (1 - FILL_ALPHA) + color * FILL_ALPHA).astype(np.uint8)
 
 def darken(color, factor=0.55):
     return tuple(int(c * factor) for c in color)
@@ -118,6 +197,20 @@ ICON_FN = {
     'GPC': icon_gpc, 'PAF': icon_paf, 'AAC': icon_aac,
 }
 
+def draw_id_name_label(img, cx, cy, sid, name, above=False):
+    """Every space gets this: plain black lettering, 'id. name', no box.
+    Placed above the space's point for sea spaces, below it for land (so
+    it doesn't collide with the land faction box, which sits above)."""
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.5
+    thickness = 1
+    text = f"{sid}. {name}" if name else f"{sid}."
+    (tw, th), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+    text_x = cx - tw // 2
+    text_y = (cy - 8) if above else (cy + 8 + th)
+    cv2.putText(img, text, (text_x, text_y), font, font_scale, BLACK, thickness, lineType=cv2.LINE_AA)
+    return img
+
 for sp in spaces:
     x, y = int(sp['x']), int(sp['y'])
     stype = sp.get('type', 'land')
@@ -127,33 +220,13 @@ for sp in spaces:
     thickness = 1
 
     if stype == 'sea':
-        cv2.circle(img, (x, y), 4, SEA_DOT, -1, lineType=cv2.LINE_AA)
-        id_text = str(sid)
-        font_scale_id = 0.5
-        (tw, th), baseline = cv2.getTextSize(id_text, font, font_scale_id, thickness)
-        pad_x, pad_y = 5, 4
-        box_w = tw + pad_x * 2
-        box_h = th + pad_y * 2
-        x0 = x - box_w // 2
-        y1 = y - 8
-        y0 = y1 - box_h
-        x1 = x0 + box_w
-        box_layer = img.copy()
-        cv2.rectangle(box_layer, (x0, y0), (x1, y1), (0, 0, 0), -1)
-        img = cv2.addWeighted(box_layer, 0.75, img, 0.25, 0)
-        cv2.rectangle(img, (x0, y0), (x1, y1), WHITE, 1, lineType=cv2.LINE_AA)
-        text_x = x0 + pad_x
-        text_y = y1 - pad_y - baseline // 2
-        cv2.putText(img, id_text, (text_x, text_y), font, font_scale_id, WHITE, thickness, lineType=cv2.LINE_AA)
+        img = draw_id_name_label(img, x, y, sid, name, above=True)
         continue
 
     # --- land space ---
     if 'faction' not in sp:
         # unassigned territory (newly added, faction TBD)
-        neutral = (110, 110, 110)
-        cv2.circle(img, (x, y), 4, neutral, -1, lineType=cv2.LINE_AA)
-        cv2.circle(img, (x, y), 4, (0, 0, 0), 1, lineType=cv2.LINE_AA)
-        id_text = f"{sid}  --"
+        id_text = '--'
         font_scale_id = 0.5
         (tw, th), baseline = cv2.getTextSize(id_text, font, font_scale_id, thickness)
         pad_x, pad_y = 6, 4
@@ -168,47 +241,27 @@ for sp in spaces:
         img = cv2.addWeighted(fill_layer, 0.72, img, 0.28, 0)
         cv2.rectangle(img, (x0, y0), (x1, y1), (200, 200, 200), 1, lineType=cv2.LINE_AA)
         cv2.putText(img, id_text, (x0 + pad_x, y1 - pad_y), font, font_scale_id, WHITE, thickness, lineType=cv2.LINE_AA)
-        if name:
-            font_scale_name = 0.42
-            (ntw, nth), nbaseline = cv2.getTextSize(name, font, font_scale_name, thickness)
-            npad_x, npad_y = 4, 3
-            nbox_w = ntw + npad_x * 2
-            nbox_h = nth + npad_y * 2
-            nx0 = x - nbox_w // 2
-            ny0 = y1
-            nx1 = nx0 + nbox_w
-            ny1 = ny0 + nbox_h
-            box_layer2 = img.copy()
-            cv2.rectangle(box_layer2, (nx0, ny0), (nx1, ny1), (0, 0, 0), -1)
-            img = cv2.addWeighted(box_layer2, 0.65, img, 0.35, 0)
-            cv2.rectangle(img, (nx0, ny0), (nx1, ny1), (200, 200, 200), 1, lineType=cv2.LINE_AA)
-            cv2.putText(img, name, (nx0 + npad_x, ny1 - npad_y - nbaseline // 2), font, font_scale_name, NAME_TXT, thickness, lineType=cv2.LINE_AA)
+        img = draw_id_name_label(img, x, y, sid, name, above=False)
         continue
 
     fac = sp['faction']
     value = sp['value']
     is_sc = sp.get('strategic_center', False)
-    is_distant = sp.get('distant', False)
     accent = FAC_BGR[fac]
 
-    cv2.circle(img, (x, y), 4, accent, -1, lineType=cv2.LINE_AA)
-    cv2.circle(img, (x, y), 4, (0, 0, 0), 1, lineType=cv2.LINE_AA)
-
-    # top box: "[icon] id  FAC value(+2 if SC)"
-    id_text = str(sid)
+    # top box: "[icon] FAC value" (value already includes the +2 SC bonus)
     fac_text = fac
-    val_text = f"{value}+2" if is_sc else str(value)
+    val_text = str(value + 2 if is_sc else value)
     font_scale_id = 0.5
     font_scale_fac = 0.44
-    (tw_id, th_id), base_id = cv2.getTextSize(id_text, font, font_scale_id, thickness)
     (tw_fac, th_fac), base_fac = cv2.getTextSize(fac_text, font, font_scale_fac, thickness)
     (tw_val, th_val), base_val = cv2.getTextSize(val_text, font, font_scale_id, thickness)
 
     icon_d = 26  # icon diameter reserved at the left of the box
     gap = 5
     pad_x, pad_y = 6, 4
-    content_w = icon_d + gap + tw_id + gap + tw_fac + gap + tw_val
-    box_h = max(th_id, th_fac, th_val, icon_d) + pad_y * 2 + 3
+    content_w = icon_d + gap + tw_fac + gap + tw_val
+    box_h = max(th_fac, th_val, icon_d) + pad_y * 2 + 3
     box_w = content_w + pad_x * 2
 
     x0 = x - box_w // 2
@@ -233,9 +286,7 @@ for sp in spaces:
     ICON_FN[fac](img, icon_cx, icon_cy, icon_d // 2, icon_color)
 
     cursor_x = x0 + pad_x + icon_d + gap
-    base_y = y1 - pad_y
-    cv2.putText(img, id_text, (cursor_x, base_y), font, font_scale_id, WHITE, thickness, lineType=cv2.LINE_AA)
-    cursor_x += tw_id + gap
+    base_y = icon_cy + max(th_fac, th_val) // 2
     cv2.putText(img, fac_text, (cursor_x, base_y), font, font_scale_fac, (255, 255, 255), thickness, lineType=cv2.LINE_AA)
     cursor_x += tw_fac + gap
     val_color = GOLD if is_sc else (150, 255, 150)
@@ -244,28 +295,7 @@ for sp in spaces:
     if is_sc:
         draw_star(img, x0 - 2, y0 - 2, 7, 3, GOLD)
 
-    if is_distant:
-        cv2.circle(img, (x, y), 8, accent, 1, lineType=cv2.LINE_AA)
-
-    # name box below
-    if name:
-        font_scale_name = 0.42
-        (ntw, nth), nbaseline = cv2.getTextSize(name, font, font_scale_name, thickness)
-        npad_x, npad_y = 4, 3
-        nbox_w = ntw + npad_x * 2
-        nbox_h = nth + npad_y * 2
-        nx0 = x - nbox_w // 2
-        ny0 = y1
-        nx1 = nx0 + nbox_w
-        ny1 = ny0 + nbox_h
-
-        box_layer2 = img.copy()
-        cv2.rectangle(box_layer2, (nx0, ny0), (nx1, ny1), (0, 0, 0), -1)
-        img = cv2.addWeighted(box_layer2, 0.65, img, 0.35, 0)
-        cv2.rectangle(img, (nx0, ny0), (nx1, ny1), accent, 1, lineType=cv2.LINE_AA)
-        ntext_x = nx0 + npad_x
-        ntext_y = ny1 - npad_y - nbaseline // 2
-        cv2.putText(img, name, (ntext_x, ntext_y), font, font_scale_name, NAME_TXT, thickness, lineType=cv2.LINE_AA)
+    img = draw_id_name_label(img, x, y, sid, name, above=False)
 
 cv2.imwrite(out_path, img)
 print('done', out_path, img.shape)

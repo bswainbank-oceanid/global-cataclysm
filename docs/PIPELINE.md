@@ -11,29 +11,23 @@ which runs, in order:
 
 1. `tools/compute_foreign_neighbors.py` — `data/territories.json` +
    `data/adjacency.json` → `derived/adjacency_foreign.json`
-2. `tools/compute_distant.py` — needs (1); recomputes the `distant` flag
-   stored on each land territory in `data/territories.json` in place (zero
-   same-faction land neighbors — see `data/rules.json`
-   `map.distant_flag_definition`). Written back into `data/territories.json`
-   itself rather than a `derived/` file because `tools/render_map.py` reads
-   it per-space.
-3. `tools/compute_faction_profile.py` — needs (1) →
+2. `tools/compute_faction_profile.py` — needs (1) →
    `derived/faction_territory_profile.json`
-4. `tools/build_master_xlsx.py` — `data/territories.json` +
+3. `tools/build_master_xlsx.py` — `data/territories.json` +
    `data/factions.json` → `exports/GC1972_Territories.xlsx` ('All
    Territories' tab + 6 faction subtabs + Unassigned)
-5. `tools/build_setup_tab.py` — needs (3) and (4); adds/replaces the
+4. `tools/build_setup_tab.py` — needs (2) and (3); adds/replaces the
    'Initial Setup' tab on the same workbook from
    `data/scenarios/starting_setup_200ipc.json` + `data/units.json`
-6. `/mnt/skills/public/xlsx/scripts/recalc.py exports/GC1972_Territories.xlsx`
+5. `/mnt/skills/public/xlsx/scripts/recalc.py exports/GC1972_Territories.xlsx`
    — recalculates all live formulas via LibreOffice so the workbook opens
    with correct cached values (openpyxl never evaluates formulas itself)
-7. `tools/validate_setup.py` — needs (3); checks the scenario against
-   every rule in `data/rules.json` (exact budget spend, stacking cap,
-   mandatory infantry at foreign borders, coastal-only naval purchase,
-   every carrier has an escort, no two factions share a sea zone). Exits
-   non-zero on any violation.
-8. `tools/render_map.py` — `data/territories.json` + `data/factions.json`
+6. `tools/validate_setup.py` — needs (2); checks the scenario against
+   every rule in `data/rules.json` (exact budget spend, starting-purchase
+   stacking cap, land unit at every foreign border, coastal-only naval
+   purchase, every carrier has an escort, no two factions share a sea
+   zone, >=6 unit types per faction). Exits non-zero on any violation.
+7. `tools/render_map.py` — `data/territories.json` + `data/factions.json`
    + `assets/base_map.png` → `exports/map.png`
 
 ## One-time / manual steps (not part of build_all.py)
@@ -74,13 +68,36 @@ scenario edit, not a fire-and-forget spreadsheet tweak.
 Scenario design (which units go where, promotions, carrier escorts, naval
 zone overrides) is still a manual/assisted process, not automated — it
 depends on faction doctrine, budget-exact trimming, and cross-faction
-sea-zone collision avoidance. `data/scenarios/starting_setup_200ipc.json`
-is the output of that process. A new scenario file (e.g. a different
-budget or map state) can be dropped in alongside it; `build_setup_tab.py`
-and `validate_setup.py` both take the scenario path as their one real
-input and would need a one-line change to point at a different file (this
-isn't parameterized via CLI arg yet — see the note in
-`tools/build_setup_tab.py` / `tools/validate_setup.py`).
+sea-zone collision avoidance. `tools/generate_scenario.py` automates this:
+`generate_scenario()` is parameterized (budget, whether Strategic Centers
+apply, minimum unit-type diversity, promotion count, whether baseline
+garrison covers every territory or only foreign-bordering ones) so it can
+produce ruleset variants, not just the canonical scenario.
+
+Two scenarios exist today:
+- `data/scenarios/starting_setup_200ipc.json` — the canonical scenario:
+  200 IPC, Strategic Centers apply (cost discount + cap bonus), >=6 unit
+  types, 3 promotions per faction. Built by `tools/generate_scenario.py`.
+- `data/scenarios/starting_setup_100ipc.json` — a smaller, faster-setup
+  alternative: 100 IPC, no Strategic Centers at all (flat value+2 cap, no
+  cost discount), >=5 unit types, 0 promotions. A small (1-2 IPC) leftover
+  is acceptable here rather than forced-exact, since the ruleset has far
+  fewer denominations to hit an exact total with. Built by
+  `tools/generate_scenario_100ipc.py`, a thin wrapper around the same
+  `generate_scenario()` function with these parameters.
+
+`tools/build_setup_tab.py`'s `build_setup_tab()` function is similarly
+parameterized (scenario path, sheet name, use_sc, min_types) and renders
+both: `python3 tools/build_setup_tab.py` builds the 'Initial Setup' tab
+from the 200-IPC scenario and the 'Initial Setup (100 IPC)' tab from the
+100-IPC one, in one workbook. `tools/validate_setup.py` takes the same
+parameters as CLI flags (`--scenario`, `--no-sc`, `--min-types`,
+`--budget-tolerance`) — see its docstring for both scenarios' exact
+invocations.
+
+A further scenario (e.g. a different budget or map state) can be dropped
+in the same way: call `generate_scenario()` with new parameters, add a
+`build_setup_tab()` call for it, and validate with the matching flags.
 
 ## Verifying a change didn't regress game balance
 

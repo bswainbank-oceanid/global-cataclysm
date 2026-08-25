@@ -1,7 +1,7 @@
 {
   "reference_image_width_px": 3500,
   "reference_image_height_px": 2000,
-  "note": "Coordinates are pixel positions in the 3500x2000 map. Land spaces carry a controlling faction (NAA, UE, UER, GPC, PAF, AAC), a starting territory value (0-5 IPC-equivalent, each faction totals 25), a 'distant' flag for exclave territories verified (via the map's adjacency graph) to share no land border with any other same-faction territory, and a 'strategic_center' flag marking each faction's 3 starting Strategic Centers -- chosen so every pair is at least 3 spaces apart by the map's adjacency graph, and exactly one of the 3 sits in a distant/exclave territory.",
+  "note": "Coordinates are pixel positions in the 3500x2000 map. Land spaces carry a controlling faction (NAA, UE, UER, GPC, PAF, AAC), a starting territory value (0-5 IPC-equivalent, each faction totals 25), and a 'strategic_center' flag marking each faction's 3 starting Strategic Centers -- chosen so every pair is at least 3 spaces apart by the map's adjacency graph.",
   "spaces": [
     {
       "id": 1,
@@ -24,7 +24,6 @@
       "bbox_h": 543,
       "faction": "UER",
       "value": 0,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -58,7 +57,6 @@
       "bbox_h": 371,
       "faction": "UER",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -72,7 +70,6 @@
       "bbox_h": 477,
       "faction": "UER",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -86,7 +83,6 @@
       "bbox_h": 330,
       "faction": "UER",
       "value": 2,
-      "distant": false,
       "strategic_center": true
     },
     {
@@ -100,7 +96,6 @@
       "bbox_h": 323,
       "faction": "UER",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -114,7 +109,6 @@
       "bbox_h": 533,
       "faction": "UER",
       "value": 0,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -128,7 +122,6 @@
       "bbox_h": 575,
       "faction": "NAA",
       "value": 1,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -152,7 +145,6 @@
       "bbox_h": 92,
       "faction": "UE",
       "value": 1,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -166,7 +158,6 @@
       "bbox_h": 109,
       "faction": "NAA",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -190,7 +181,6 @@
       "bbox_h": 212,
       "faction": "UE",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -214,7 +204,6 @@
       "bbox_h": 131,
       "faction": "UER",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -228,7 +217,6 @@
       "bbox_h": 397,
       "faction": "UER",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -242,7 +230,6 @@
       "bbox_h": 595,
       "faction": "UER",
       "value": 4,
-      "distant": false,
       "strategic_center": true
     },
     {
@@ -256,7 +243,6 @@
       "bbox_h": 473,
       "faction": "NAA",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -270,7 +256,6 @@
       "bbox_h": 270,
       "faction": "NAA",
       "value": 3,
-      "distant": false,
       "strategic_center": true
     },
     {
@@ -284,7 +269,6 @@
       "bbox_h": 145,
       "faction": "UE",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -298,7 +282,6 @@
       "bbox_h": 123,
       "faction": "UE",
       "value": 3,
-      "distant": false,
       "strategic_center": true
     },
     {
@@ -310,9 +293,8 @@
       "area_px": 35541,
       "bbox_w": 236,
       "bbox_h": 209,
-      "faction": "UER",
+      "faction": "UE",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -356,7 +338,6 @@
       "bbox_h": 214,
       "faction": "UE",
       "value": 3,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -370,7 +351,6 @@
       "bbox_h": 208,
       "faction": "UE",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -382,9 +362,8 @@
       "area_px": 19604,
       "bbox_w": 255,
       "bbox_h": 152,
-      "faction": "UER",
+      "faction": "UE",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -398,7 +377,6 @@
       "bbox_h": 307,
       "faction": "UER",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -412,7 +390,6 @@
       "bbox_h": 133,
       "faction": "GPC",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -426,7 +403,6 @@
       "bbox_h": 368,
       "faction": "GPC",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -440,7 +416,6 @@
       "bbox_h": 102,
       "faction": "GPC",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -474,7 +449,6 @@
       "bbox_h": 213,
       "faction": "AAC",
       "value": 4,
-      "distant": true,
       "strategic_center": true
     },
     {
@@ -488,7 +462,6 @@
       "bbox_h": 62,
       "faction": "UE",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -502,7 +475,6 @@
       "bbox_h": 169,
       "faction": "UE",
       "value": 2,
-      "distant": false,
       "strategic_center": true
     },
     {
@@ -516,7 +488,6 @@
       "bbox_h": 231,
       "faction": "UE",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -528,9 +499,8 @@
       "area_px": 11677,
       "bbox_w": 132,
       "bbox_h": 140,
-      "faction": "UER",
+      "faction": "UE",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -564,7 +534,6 @@
       "bbox_h": 193,
       "faction": "UER",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -588,7 +557,6 @@
       "bbox_h": 223,
       "faction": "NAA",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -602,7 +570,6 @@
       "bbox_h": 201,
       "faction": "NAA",
       "value": 5,
-      "distant": false,
       "strategic_center": true
     },
     {
@@ -616,7 +583,6 @@
       "bbox_h": 65,
       "faction": "PAF",
       "value": 0,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -640,7 +606,6 @@
       "bbox_h": 30,
       "faction": "PAF",
       "value": 0,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -654,7 +619,6 @@
       "bbox_h": 119,
       "faction": "PAF",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -668,7 +632,6 @@
       "bbox_h": 102,
       "faction": "UER",
       "value": 0,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -682,7 +645,6 @@
       "bbox_h": 378,
       "faction": "UER",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -696,7 +658,6 @@
       "bbox_h": 335,
       "faction": "GPC",
       "value": 3,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -710,7 +671,6 @@
       "bbox_h": 365,
       "faction": "GPC",
       "value": 5,
-      "distant": false,
       "strategic_center": true
     },
     {
@@ -724,7 +684,6 @@
       "bbox_h": 261,
       "faction": "NAA",
       "value": 3,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -738,7 +697,6 @@
       "bbox_h": 150,
       "faction": "NAA",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -812,7 +770,6 @@
       "bbox_h": 484,
       "faction": "PAF",
       "value": 4,
-      "distant": false,
       "strategic_center": true
     },
     {
@@ -826,7 +783,6 @@
       "bbox_h": 411,
       "faction": "GPC",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -870,7 +826,6 @@
       "bbox_h": 461,
       "faction": "NAA",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -894,7 +849,6 @@
       "bbox_h": 198,
       "faction": "PAF",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -908,7 +862,6 @@
       "bbox_h": 210,
       "faction": "PAF",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -922,7 +875,6 @@
       "bbox_h": 459,
       "faction": "PAF",
       "value": 3,
-      "distant": true,
       "strategic_center": true
     },
     {
@@ -936,7 +888,6 @@
       "bbox_h": 445,
       "faction": "UE",
       "value": 3,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -970,7 +921,6 @@
       "bbox_h": 0,
       "faction": "NAA",
       "value": 1,
-      "distant": true,
       "strategic_center": true
     },
     {
@@ -984,7 +934,6 @@
       "bbox_h": 247,
       "faction": "AAC",
       "value": 3,
-      "distant": false,
       "strategic_center": true
     },
     {
@@ -1008,21 +957,19 @@
       "bbox_h": 140,
       "faction": "AAC",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
       "id": 81,
       "type": "land",
       "name": "Cuba",
-      "x": 245,
-      "y": 1017,
-      "area_px": 0,
-      "bbox_w": 0,
-      "bbox_h": 0,
+      "x": 258,
+      "y": 1006,
+      "area_px": 2630,
+      "bbox_w": 156,
+      "bbox_h": 68,
       "faction": "UER",
       "value": 2,
-      "distant": false,
       "strategic_center": true
     },
     {
@@ -1036,7 +983,6 @@
       "bbox_h": 194,
       "faction": "PAF",
       "value": 3,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1050,7 +996,6 @@
       "bbox_h": 315,
       "faction": "NAA",
       "value": 3,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -1112,9 +1057,8 @@
       "area_px": 5542,
       "bbox_w": 70,
       "bbox_h": 161,
-      "faction": "UE",
+      "faction": "AAC",
       "value": 0,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -1128,7 +1072,6 @@
       "bbox_h": 382,
       "faction": "PAF",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1142,7 +1085,6 @@
       "bbox_h": 179,
       "faction": "PAF",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1156,7 +1098,6 @@
       "bbox_h": 94,
       "faction": "NAA",
       "value": 1,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -1180,7 +1121,6 @@
       "bbox_h": 165,
       "faction": "AAC",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1194,7 +1134,6 @@
       "bbox_h": 89,
       "faction": "UER",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1218,7 +1157,6 @@
       "bbox_h": 354,
       "faction": "PAF",
       "value": 3,
-      "distant": false,
       "strategic_center": true
     },
     {
@@ -1232,7 +1170,6 @@
       "bbox_h": 273,
       "faction": "GPC",
       "value": 1,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -1266,7 +1203,6 @@
       "bbox_h": 105,
       "faction": "GPC",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1280,7 +1216,6 @@
       "bbox_h": 194,
       "faction": "AAC",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1294,7 +1229,6 @@
       "bbox_h": 245,
       "faction": "AAC",
       "value": 4,
-      "distant": false,
       "strategic_center": true
     },
     {
@@ -1306,9 +1240,8 @@
       "area_px": 44441,
       "bbox_w": 281,
       "bbox_h": 280,
-      "faction": "UE",
+      "faction": "UER",
       "value": 2,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -1322,7 +1255,6 @@
       "bbox_h": 219,
       "faction": "PAF",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1346,7 +1278,6 @@
       "bbox_h": 232,
       "faction": "GPC",
       "value": 2,
-      "distant": false,
       "strategic_center": true
     },
     {
@@ -1370,7 +1301,6 @@
       "bbox_h": 86,
       "faction": "AAC",
       "value": 2,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -1404,7 +1334,6 @@
       "bbox_h": 188,
       "faction": "AAC",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1468,7 +1397,6 @@
       "bbox_h": 297,
       "faction": "AAC",
       "value": 3,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1482,7 +1410,6 @@
       "bbox_h": 93,
       "faction": "PAF",
       "value": 1,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -1506,7 +1433,6 @@
       "bbox_h": 181,
       "faction": "AAC",
       "value": 2,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -1520,7 +1446,6 @@
       "bbox_h": 211,
       "faction": "PAF",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1564,7 +1489,6 @@
       "bbox_h": 342,
       "faction": "GPC",
       "value": 2,
-      "distant": true,
       "strategic_center": true
     },
     {
@@ -1588,7 +1512,6 @@
       "bbox_h": 187,
       "faction": "PAF",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1602,7 +1525,6 @@
       "bbox_h": 237,
       "faction": "UER",
       "value": 1,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -1626,7 +1548,6 @@
       "bbox_h": 412,
       "faction": "GPC",
       "value": 1,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1650,7 +1571,6 @@
       "bbox_h": 247,
       "faction": "PAF",
       "value": 0,
-      "distant": true,
       "strategic_center": false
     },
     {
@@ -1664,7 +1584,6 @@
       "bbox_h": 434,
       "faction": "GPC",
       "value": 2,
-      "distant": false,
       "strategic_center": false
     },
     {
@@ -1708,7 +1627,6 @@
       "bbox_h": 185,
       "faction": "UE",
       "value": 2,
-      "distant": true,
       "strategic_center": true
     },
     {
@@ -1722,18 +1640,17 @@
       "bbox_h": 279,
       "faction": "NAA",
       "value": 1,
-      "distant": true,
       "strategic_center": false
     },
     {
       "id": 140,
       "type": "sea",
       "name": "Southern Ocean",
-      "x": 1321,
-      "y": 1909,
-      "area_px": 73487,
-      "bbox_w": 332,
-      "bbox_h": 604
+      "x": 1323,
+      "y": 1885,
+      "area_px": 48669,
+      "bbox_w": 265,
+      "bbox_h": 331
     },
     {
       "id": 141,
@@ -1764,10 +1681,9 @@
       "area_px": 9119,
       "bbox_w": 95,
       "bbox_h": 174,
-      "faction": "UE",
+      "faction": "UER",
       "value": 1,
-      "strategic_center": false,
-      "distant": false
+      "strategic_center": false
     },
     {
       "id": 144,
@@ -1780,8 +1696,7 @@
       "bbox_h": 41,
       "faction": "PAF",
       "value": 0,
-      "strategic_center": false,
-      "distant": false
+      "strategic_center": false
     },
     {
       "id": 145,
@@ -1792,10 +1707,9 @@
       "area_px": 25427,
       "bbox_w": 266,
       "bbox_h": 223,
-      "faction": "UE",
+      "faction": "UER",
       "value": 1,
-      "strategic_center": false,
-      "distant": true
+      "strategic_center": false
     },
     {
       "id": 146,
@@ -1808,8 +1722,17 @@
       "bbox_h": 224,
       "faction": "AAC",
       "value": 1,
-      "strategic_center": false,
-      "distant": true
+      "strategic_center": false
+    },
+    {
+      "id": 147,
+      "type": "sea",
+      "name": "Mozambique Channel",
+      "x": 1392,
+      "y": 1600,
+      "area_px": 7000,
+      "bbox_w": 70,
+      "bbox_h": 170
     }
   ]
 }
