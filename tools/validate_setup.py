@@ -21,7 +21,7 @@ mandatory-land-unit rule (nothing fits there at all).
 Run from the repo root, after derived/faction_territory_profile.json and
 derived/adjacency_foreign.json have been (re)built:
     python3 tools/validate_setup.py
-    python3 tools/validate_setup.py --scenario data/scenarios/starting_setup_100ipc.json --no-sc --cap-bonus 0 --min-types 5 --budget-tolerance 1 --exclude-zone 43
+    python3 tools/validate_setup.py --scenario data/scenarios/starting_setup_100ipc.json --no-sc --cap-bonus 0 --min-types 5 --budget-tolerance 1
 Exits with status 1 if any errors are found, 0 otherwise.
 """
 import argparse
@@ -35,8 +35,9 @@ parser.add_argument('--cap-bonus', type=int, default=2, help='with --no-sc, cap 
 parser.add_argument('--min-types', type=int, default=6, help='minimum distinct unit types required per faction')
 parser.add_argument('--budget-tolerance', type=int, default=0,
                      help='allow up to this many IPC unspent (small change) instead of requiring an exact match')
-parser.add_argument('--exclude-zone', type=int, action='append', default=[],
-                     help='sea zone id that must never host a naval deployment (repeatable)')
+parser.add_argument('--exclude-zone', type=int, action='append', default=[43],
+                     help='sea zone id that must never host a naval deployment (repeatable). '
+                          'Zone 43 (Caspian Sea) is excluded by default -- a permanent rule, not scenario-specific.')
 args = parser.parse_args()
 
 units_data = json.load(open('data/units.json'))['units']

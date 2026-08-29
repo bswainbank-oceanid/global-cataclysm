@@ -35,10 +35,12 @@ def dist(a, b):
     return math.hypot(a['x'] - b['x'], a['y'] - b['y'])
 
 land = [s for s in territories if s['type'] == 'land']
-factions = sorted({s['faction'] for s in land})
+factions = sorted({s['faction'] for s in land if s['faction']})
 
 profile = {fac: [] for fac in factions}
 for terr in land:
+    if not terr['faction']:
+        continue  # unassigned (e.g. a newly-added territory with no owner yet)
     tid = terr['id']
     value = terr['value']
     sc = terr['strategic_center']

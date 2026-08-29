@@ -89,6 +89,12 @@ FORCE_INCLUDE_TYPES = {'AAC': ['Fighter']}
 
 NAVAL_SPREAD_TARGET = 3
 
+# Permanent, unconditional rule for every scenario this generator produces:
+# Caspian Sea (zone id 43) never hosts a naval deployment, default or
+# override. Landlocked in play terms despite touching several coastal
+# territories on the map -- excluded regardless of what a caller passes.
+ALWAYS_EXCLUDED_NAVAL_ZONE_IDS = {43}
+
 
 def generate_scenario(*, budget, use_sc, min_types, promotions_count,
                        garrison_all_territories, out_path, comment,
@@ -159,7 +165,7 @@ def generate_scenario(*, budget, use_sc, min_types, promotions_count,
     # ---- naval territory spread, zone-collision-free ----
     # Pre-claiming excluded_naval_zone_ids keeps them out of both the
     # direct-pick and override-fallback paths below without extra logic.
-    claimed_zone_ids = set(excluded_naval_zone_ids)
+    claimed_zone_ids = set(excluded_naval_zone_ids) | ALWAYS_EXCLUDED_NAVAL_ZONE_IDS
     naval_territories = {}  # fac -> [{'id','name','sc','cap','zone','override'}, ...]
     for fac in sorted(FACTION_ORDER, key=lambda f: len([r for r in profile[f] if r['coastal']])):
         candidates = [r for r in profile[fac] if r['coastal']]

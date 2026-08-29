@@ -1,5 +1,5 @@
 {
-  "_comment": "Starting-setup scenario: 100 IPC per faction, no Strategic Centers (no cost discount, and the stacking cap is exactly the territory's value with no bonus -- a 0-value territory holds no units at all), no promotions, Caspian Sea (id 43) excluded from naval deployment, territory ownership from data/territories.json. purchases is per-territory unit buys; carrier_escorts/naval_overrides are the fixed setup-time picks layered on top.",
+  "_comment": "Starting-setup scenario: 100 IPC per faction, no Strategic Centers (no cost discount, and the stacking cap is exactly the territory's value with no bonus -- a 0-value territory holds no units at all), no promotions, territory ownership from data/territories.json. purchases is per-territory unit buys; carrier_escorts/naval_overrides are the fixed setup-time picks layered on top.",
   "budget_ipc": 100,
   "purchases": {
     "NAA": [
@@ -29,11 +29,11 @@
             "qty": 1
           },
           {
-            "unit": "Infantry",
+            "unit": "Fighter",
             "qty": 1
           },
           {
-            "unit": "Mechanized Infantry",
+            "unit": "Infantry",
             "qty": 1
           }
         ]
@@ -88,15 +88,6 @@
       },
       {
         "territory_id": 83,
-        "units": [
-          {
-            "unit": "Infantry",
-            "qty": 1
-          }
-        ]
-      },
-      {
-        "territory_id": 92,
         "units": [
           {
             "unit": "Infantry",
@@ -250,15 +241,6 @@
     ],
     "UER": [
       {
-        "territory_id": 5,
-        "units": [
-          {
-            "unit": "Infantry",
-            "qty": 1
-          }
-        ]
-      },
-      {
         "territory_id": 6,
         "units": [
           {
@@ -326,7 +308,16 @@
         ]
       },
       {
-        "territory_id": 53,
+        "territory_id": 32,
+        "units": [
+          {
+            "unit": "Infantry",
+            "qty": 1
+          }
+        ]
+      },
+      {
+        "territory_id": 44,
         "units": [
           {
             "unit": "Infantry",
@@ -399,16 +390,16 @@
     ],
     "GPC": [
       {
-        "territory_id": 32,
+        "territory_id": 33,
         "units": [
           {
             "unit": "Infantry",
-            "qty": 1
+            "qty": 2
           }
         ]
       },
       {
-        "territory_id": 33,
+        "territory_id": 53,
         "units": [
           {
             "unit": "Infantry",
@@ -420,12 +411,12 @@
         "territory_id": 54,
         "units": [
           {
-            "unit": "Fighter",
+            "unit": "Bomber",
             "qty": 1
           },
           {
             "unit": "Infantry",
-            "qty": 1
+            "qty": 2
           }
         ]
       },
@@ -433,7 +424,7 @@
         "territory_id": 55,
         "units": [
           {
-            "unit": "Aircraft Carrier",
+            "unit": "Bomber",
             "qty": 1
           },
           {
@@ -442,7 +433,7 @@
           },
           {
             "unit": "Fighter",
-            "qty": 2
+            "qty": 1
           },
           {
             "unit": "Submarine",
@@ -497,6 +488,15 @@
       },
       {
         "territory_id": 134,
+        "units": [
+          {
+            "unit": "Infantry",
+            "qty": 1
+          }
+        ]
+      },
+      {
+        "territory_id": 148,
         "units": [
           {
             "unit": "Infantry",
@@ -766,14 +766,6 @@
       {
         "carrier_tid": 47,
         "aircraft_tid": 47,
-        "unit": "Fighter",
-        "qty": 1
-      }
-    ],
-    "GPC": [
-      {
-        "carrier_tid": 55,
-        "aircraft_tid": 55,
         "unit": "Fighter",
         "qty": 1
       }

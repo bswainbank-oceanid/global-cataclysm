@@ -29,7 +29,7 @@
     {
       "id": 3,
       "type": "sea",
-      "name": "Arctic Ocean",
+      "name": "Beaufort Sea",
       "x": 440,
       "y": 106,
       "area_px": 113522,
@@ -310,7 +310,7 @@
     {
       "id": 26,
       "type": "sea",
-      "name": "Sea of Okhotsk",
+      "name": "Gulf of Kamchatka",
       "x": 2910,
       "y": 465,
       "area_px": 39288,
@@ -320,7 +320,7 @@
     {
       "id": 27,
       "type": "sea",
-      "name": "Bering Sea",
+      "name": "Chukchi Sea",
       "x": 2994,
       "y": 476,
       "area_px": 7401,
@@ -388,7 +388,7 @@
       "area_px": 24114,
       "bbox_w": 274,
       "bbox_h": 133,
-      "faction": "GPC",
+      "faction": "UER",
       "value": 2,
       "strategic_center": false
     },
@@ -421,7 +421,7 @@
     {
       "id": 35,
       "type": "sea",
-      "name": "Bering Sea",
+      "name": "Gulf of Anadyr",
       "x": 2784,
       "y": 594,
       "area_px": 59971,
@@ -643,7 +643,7 @@
       "area_px": 49815,
       "bbox_w": 267,
       "bbox_h": 378,
-      "faction": "UER",
+      "faction": "GPC",
       "value": 2,
       "strategic_center": false
     },
@@ -658,7 +658,7 @@
       "bbox_h": 335,
       "faction": "GPC",
       "value": 3,
-      "strategic_center": false
+      "strategic_center": true
     },
     {
       "id": 55,
@@ -670,7 +670,7 @@
       "bbox_w": 334,
       "bbox_h": 365,
       "faction": "GPC",
-      "value": 5,
+      "value": 4,
       "strategic_center": true
     },
     {
@@ -702,7 +702,7 @@
     {
       "id": 58,
       "type": "sea",
-      "name": "North Atlantic",
+      "name": "Labrador Sea",
       "x": 304,
       "y": 875,
       "area_px": 38227,
@@ -722,7 +722,7 @@
     {
       "id": 60,
       "type": "sea",
-      "name": "North Atlantic",
+      "name": "Sargasso Sea",
       "x": 656,
       "y": 852,
       "area_px": 64819,
@@ -798,7 +798,7 @@
     {
       "id": 67,
       "type": "sea",
-      "name": "North Pacific",
+      "name": "Northwest Pacific",
       "x": 2633,
       "y": 827,
       "area_px": 47128,
@@ -808,7 +808,7 @@
     {
       "id": 68,
       "type": "sea",
-      "name": "North Pacific",
+      "name": "North-Central Pacific",
       "x": 3089,
       "y": 826,
       "area_px": 43365,
@@ -903,7 +903,7 @@
     {
       "id": 76,
       "type": "sea",
-      "name": "North Pacific",
+      "name": "West Pacific",
       "x": 2754,
       "y": 982,
       "area_px": 44637,
@@ -939,7 +939,7 @@
     {
       "id": 79,
       "type": "sea",
-      "name": "North Pacific",
+      "name": "Northeast Pacific",
       "x": 3461,
       "y": 929,
       "area_px": 8971,
@@ -1021,7 +1021,7 @@
     {
       "id": 86,
       "type": "sea",
-      "name": "Caribbean Sea",
+      "name": "Western Caribbean Sea",
       "x": 55,
       "y": 1192,
       "area_px": 18959,
@@ -1041,7 +1041,7 @@
     {
       "id": 88,
       "type": "sea",
-      "name": "Caribbean Sea",
+      "name": "Eastern Caribbean Sea",
       "x": 482,
       "y": 1180,
       "area_px": 34526,
@@ -1088,22 +1088,9 @@
       "strategic_center": false
     },
     {
-      "id": 92,
-      "type": "land",
-      "name": "Marshal Islands",
-      "x": 2562,
-      "y": 1177,
-      "area_px": 2127,
-      "bbox_w": 55,
-      "bbox_h": 94,
-      "faction": "NAA",
-      "value": 1,
-      "strategic_center": false
-    },
-    {
       "id": 93,
       "type": "sea",
-      "name": "North Pacific",
+      "name": "Southeast Pacific",
       "x": 3321,
       "y": 1192,
       "area_px": 86776,
@@ -1139,7 +1126,7 @@
     {
       "id": 96,
       "type": "sea",
-      "name": "Eastern Pacific",
+      "name": "Gulf of Guinea",
       "x": 639,
       "y": 1263,
       "area_px": 54945,
@@ -1185,7 +1172,7 @@
     {
       "id": 100,
       "type": "sea",
-      "name": "South China Sea",
+      "name": "Gulf of Tonkin",
       "x": 2166,
       "y": 1223,
       "area_px": 27620,
@@ -1278,7 +1265,7 @@
       "bbox_h": 232,
       "faction": "GPC",
       "value": 2,
-      "strategic_center": true
+      "strategic_center": false
     },
     {
       "id": 108,
@@ -1306,7 +1293,7 @@
     {
       "id": 110,
       "type": "sea",
-      "name": "Central Pacific",
+      "name": "West-Central Pacific",
       "x": 2765,
       "y": 1377,
       "area_px": 75126,
@@ -1339,7 +1326,7 @@
     {
       "id": 113,
       "type": "sea",
-      "name": "South Atlantic",
+      "name": "Brazil Basin",
       "x": 759,
       "y": 1492,
       "area_px": 78010,
@@ -1369,7 +1356,7 @@
     {
       "id": 116,
       "type": "sea",
-      "name": "Central Pacific",
+      "name": "East-Central Pacific",
       "x": 3295,
       "y": 1418,
       "area_px": 58451,
@@ -1415,7 +1402,7 @@
     {
       "id": 120,
       "type": "sea",
-      "name": "South Atlantic",
+      "name": "Northern South Atlantic",
       "x": 577,
       "y": 1518,
       "area_px": 39331,
@@ -1451,7 +1438,7 @@
     {
       "id": 123,
       "type": "sea",
-      "name": "Indian Ocean",
+      "name": "South-Western Indian Ocean",
       "x": 1630,
       "y": 1515,
       "area_px": 130692,
@@ -1461,7 +1448,7 @@
     {
       "id": 124,
       "type": "sea",
-      "name": "Indian Ocean",
+      "name": "South-Eastern Indian Ocean",
       "x": 2082,
       "y": 1538,
       "area_px": 43298,
@@ -1530,7 +1517,7 @@
     {
       "id": 130,
       "type": "sea",
-      "name": "Indian Ocean",
+      "name": "Central Indian Ocean",
       "x": 1893,
       "y": 1601,
       "area_px": 136819,
@@ -1553,7 +1540,7 @@
     {
       "id": 132,
       "type": "sea",
-      "name": "South Atlantic",
+      "name": "Argentine Basin",
       "x": 746,
       "y": 1796,
       "area_px": 136291,
@@ -1590,16 +1577,16 @@
       "id": 135,
       "type": "sea",
       "name": "Tasman Sea",
-      "x": 3099,
-      "y": 1758,
-      "area_px": 378747,
-      "bbox_w": 847,
-      "bbox_h": 475
+      "x": 2861,
+      "y": 1756,
+      "area_px": 177777,
+      "bbox_w": 417,
+      "bbox_h": 477
     },
     {
       "id": 136,
       "type": "sea",
-      "name": "Southern Ocean",
+      "name": "Weddell Sea",
       "x": 380,
       "y": 1885,
       "area_px": 119825,
@@ -1655,7 +1642,7 @@
     {
       "id": 141,
       "type": "sea",
-      "name": "Southern Ocean",
+      "name": "Crozet Basin",
       "x": 1612,
       "y": 1928,
       "area_px": 71829,
@@ -1701,7 +1688,7 @@
     {
       "id": 145,
       "type": "land",
-      "name": "Iran",
+      "name": "Persia",
       "x": 1641,
       "y": 868,
       "area_px": 25427,
@@ -1733,6 +1720,29 @@
       "area_px": 7000,
       "bbox_w": 70,
       "bbox_h": 170
+    },
+    {
+      "id": 149,
+      "type": "sea",
+      "name": "Southwest Pacific",
+      "x": 3279,
+      "y": 1757,
+      "area_px": 208886,
+      "bbox_w": 448,
+      "bbox_h": 478
+    },
+    {
+      "id": 148,
+      "type": "land",
+      "name": "Polynesia",
+      "x": 3080,
+      "y": 1328,
+      "area_px": 2261,
+      "bbox_w": 174,
+      "bbox_h": 106,
+      "faction": "GPC",
+      "value": 1,
+      "strategic_center": false
     }
   ]
 }

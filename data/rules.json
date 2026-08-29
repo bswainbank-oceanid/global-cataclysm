@@ -11,6 +11,8 @@
     "stacking_cap_scope": "a starting-setup purchase limit only (not an in-game limit): every unit purchased at a territory counts against that territory's cap, including naval units and any air unit riding an Aircraft Carrier's escort, even though those deploy to a sea zone rather than the land territory itself",
     "naval_purchase_rule": "naval units may only be purchased at a coastal territory (has >=1 adjacent sea zone) and deploy to that sea zone, not the land territory",
     "no_shared_sea_zones_rule": "no two factions may deploy naval units (or carrier-based aircraft) to the same sea zone in the starting setup",
+    "excluded_naval_zones": [43],
+    "excluded_naval_zones_note": "sea zone id 43 (Caspian Sea) never hosts a naval deployment, default or override, in any starting-setup scenario",
     "carrier_escort_rule": "every purchased Aircraft Carrier must have at least 1 escorting Fighter or Bomber, which deploys to the carrier's own sea zone instead of a land territory",
     "mandatory_land_unit_rule": "every land territory with a foreign-faction land neighbor must have at least 1 land unit (Infantry, Mechanized Infantry, or Armor) at setup -- does not need to be specifically Infantry",
     "unit_diversity_rule": "each faction must purchase at least 6 of the 8 purchasable unit types in its starting setup; data/factions.json's per-faction 'focus' list guides which types are emphasized (by spend/quantity), not which types are excluded",

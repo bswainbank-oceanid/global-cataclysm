@@ -1,8 +1,8 @@
 {
   "_comment": "Adjacency graph exported from the original Delaunay-triangulation build (graph.pkl). Nodes are the same ids used in data/territories.json (both land and sea spaces). See data/rules.json map.adjacency_fallback for the 2 territories added after this graph was built, which are not present here and need the distance-threshold fallback instead. neighbors_ordered preserves each node's original neighbor order (an artifact of the Delaunay build, not a principled sort) because downstream defaults (e.g. a coastal territory's default sea zone) were computed as \"first neighbor of this type\" and are already baked into validated scenario data -- edges is the same adjacency as a clean, order-independent set, for anything that does not need that legacy behavior.",
   "reference_image_width_px": 3500,
-  "node_count": 142,
-  "edge_count": 387,
+  "node_count": 141,
+  "edge_count": 382,
   "nodes": {
     "1": {
       "type": "sea",
@@ -367,10 +367,6 @@
     "91": {
       "type": "land",
       "name": "Sudan"
-    },
-    "92": {
-      "type": "land",
-      "name": "Marshal Islands"
     },
     "93": {
       "type": "sea",
@@ -1471,16 +1467,8 @@
       84
     ],
     [
-      75,
-      92
-    ],
-    [
       76,
       77
-    ],
-    [
-      76,
-      92
     ],
     [
       76,
@@ -1565,10 +1553,6 @@
     [
       83,
       106
-    ],
-    [
-      84,
-      92
     ],
     [
       84,
@@ -1665,14 +1649,6 @@
     [
       91,
       105
-    ],
-    [
-      92,
-      109
-    ],
-    [
-      92,
-      110
     ],
     [
       93,
@@ -2679,7 +2655,6 @@
     ],
     "75": [
       76,
-      92,
       67,
       66,
       84
@@ -2689,7 +2664,6 @@
       35,
       67,
       110,
-      92,
       75
     ],
     "77": [
@@ -2755,7 +2729,6 @@
       66,
       65,
       109,
-      92,
       74,
       100,
       75,
@@ -2813,13 +2786,6 @@
       98,
       105,
       97
-    ],
-    "92": [
-      109,
-      84,
-      110,
-      76,
-      75
     ],
     "93": [
       80,
@@ -2947,7 +2913,6 @@
     ],
     "109": [
       84,
-      92,
       108,
       115,
       110,
@@ -2958,7 +2923,6 @@
       115,
       111,
       109,
-      92,
       76
     ],
     "111": [

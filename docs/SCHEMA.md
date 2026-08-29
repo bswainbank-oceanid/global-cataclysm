@@ -27,7 +27,7 @@ All canonical game data lives under `data/` as JSON. Everything under
 }
 ```
 
-146 spaces total: 87 land, 59 sea. Faction reference data (name, color,
+148 spaces total: 87 land, 61 sea. Faction reference data (name, color,
 major countries, doctrine focus) lives separately in `data/factions.json`,
 keyed by the same faction codes used here.
 
@@ -40,7 +40,7 @@ pickle is not part of this repo).
 ```
 {
   "reference_image_width_px": 3500,
-  "node_count": 142, "edge_count": 387,
+  "node_count": 141, "edge_count": 382,
   "nodes": { "<id>": {"type": "land"|"sea", "name": string}, ... },
   "edges": [[a, b], ...],                    // sorted, deduped, order-independent
   "neighbors_ordered": { "<id>": [neighbor ids...], ... }  // ORIGINAL graph order -- see below
@@ -64,11 +64,12 @@ over one 117px away. Any scenario file must be regenerated (or
 hand-checked) after this default changes; it is not simply a rendering
 concern.
 
-Two land territories were added to the map *after* this graph was built:
-Iran (id 145) and Himalayan Bengal (id 146). They are not graph nodes.
-See `data/rules.json` → `map.adjacency_fallback` for how their neighbors
-are approximated, and the docstring in `tools/compute_foreign_neighbors.py`
-for a known asymmetry in that fallback (a fallback territory finds its
+Three land territories were added to the map *after* this graph was built:
+Iran (id 145), Himalayan Bengal (id 146), and Polynesia (id 148). They are
+not graph nodes. See `data/rules.json` → `map.adjacency_fallback` for how
+their neighbors are approximated, and the docstring in
+`tools/compute_foreign_neighbors.py` for a known asymmetry in that fallback
+(a fallback territory finds its
 graph-based neighbors by distance, but graph-based territories don't get
 the fallback territory added back to *their* neighbor lists). This was a
 property of the original ad hoc calculation and has been faithfully

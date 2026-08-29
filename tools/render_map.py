@@ -67,8 +67,8 @@ MULTI_SEED_BOX = {
     144: (340, 1600, 540, 1740),   # Falkland Islands
     101: (2170, 1150, 2410, 1370),  # Philippines
     109: (2370, 1140, 2660, 1460),  # New Guinea
-    92: (2490, 1030, 2630, 1250),  # Marshall Islands
     77: (2820, 900, 3020, 1040),   # Hawaii
+    148: (2930, 1270, 3160, 1420),  # Polynesia (currently unassigned; box kept ready for whenever it gets a faction)
 }
 
 land_spaces = [sp for sp in spaces if sp.get('type') == 'land' and sp.get('faction')]
@@ -224,7 +224,7 @@ for sp in spaces:
         continue
 
     # --- land space ---
-    if 'faction' not in sp:
+    if not sp.get('faction'):
         # unassigned territory (newly added, faction TBD)
         id_text = '--'
         font_scale_id = 0.5
