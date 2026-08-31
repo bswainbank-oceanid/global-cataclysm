@@ -66,10 +66,6 @@
             "qty": 3
           },
           {
-            "unit": "Infantry",
-            "qty": 1
-          },
-          {
             "unit": "Mechanized Infantry",
             "qty": 2
           },
@@ -277,11 +273,11 @@
           },
           {
             "unit": "Infantry",
-            "qty": 1
+            "qty": 2
           },
           {
             "unit": "Mechanized Infantry",
-            "qty": 3
+            "qty": 2
           }
         ]
       },
@@ -375,11 +371,11 @@
           },
           {
             "unit": "Infantry",
-            "qty": 3
+            "qty": 4
           },
           {
             "unit": "Mechanized Infantry",
-            "qty": 2
+            "qty": 1
           },
           {
             "unit": "Cruiser",
@@ -448,11 +444,7 @@
           },
           {
             "unit": "Infantry",
-            "qty": 1
-          },
-          {
-            "unit": "Mechanized Infantry",
-            "qty": 1
+            "qty": 2
           }
         ]
       },
@@ -612,7 +604,7 @@
           },
           {
             "unit": "Infantry",
-            "qty": 5
+            "qty": 4
           }
         ]
       },
@@ -779,10 +771,14 @@
           },
           {
             "unit": "Mechanized Infantry",
-            "qty": 2
+            "qty": 1
           },
           {
             "unit": "Submarine",
+            "qty": 1
+          },
+          {
+            "unit": "Infantry",
             "qty": 1
           }
         ]
@@ -947,7 +943,7 @@
           },
           {
             "unit": "Mechanized Infantry",
-            "qty": 3
+            "qty": 2
           }
         ]
       },

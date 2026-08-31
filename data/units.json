@@ -74,7 +74,7 @@
     },
     "Aircraft Carrier": {
       "category": "Sea",
-      "cost": 12,
+      "cost": 11,
       "sc_cost": 8,
       "attack_die": "D8",
       "damage": 2,
@@ -89,8 +89,8 @@
     },
     "Submarine": {
       "category": "Sea",
-      "cost": 9,
-      "sc_cost": 5,
+      "cost": 8,
+      "sc_cost": 6,
       "attack_die": "D8",
       "damage": 3,
       "defense": 6,
@@ -104,7 +104,7 @@
     },
     "Cruiser": {
       "category": "Sea",
-      "cost": 12,
+      "cost": 11,
       "sc_cost": 8,
       "attack_die": "D10",
       "damage": 3,

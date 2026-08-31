@@ -262,7 +262,7 @@
         "territory_id": 8,
         "units": [
           {
-            "unit": "Infantry",
+            "unit": "Mechanized Infantry",
             "qty": 1
           }
         ]
@@ -445,7 +445,7 @@
         "territory_id": 65,
         "units": [
           {
-            "unit": "Infantry",
+            "unit": "Mechanized Infantry",
             "qty": 1
           }
         ]
@@ -540,7 +540,7 @@
         "territory_id": 71,
         "units": [
           {
-            "unit": "Infantry",
+            "unit": "Mechanized Infantry",
             "qty": 1
           }
         ]
@@ -575,7 +575,7 @@
         "territory_id": 90,
         "units": [
           {
-            "unit": "Infantry",
+            "unit": "Mechanized Infantry",
             "qty": 1
           }
         ]
@@ -666,7 +666,7 @@
         "territory_id": 80,
         "units": [
           {
-            "unit": "Infantry",
+            "unit": "Mechanized Infantry",
             "qty": 1
           }
         ]
