@@ -30,6 +30,7 @@
   "promotion": {
     "xp_for_surviving_a_round": 1,
     "xp_for_dealing_damage": 1,
+    "xp_for_eliminating_a_promoted_unit": 1,
     "xp_required": 5,
     "effect": "permanent combat bonus: attack die steps up one size (max D12), +1 defense (max 10), +1 HP",
     "demotion": "not specified in the current design doc revision"
