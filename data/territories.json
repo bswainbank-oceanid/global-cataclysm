@@ -23,7 +23,7 @@
       "bbox_w": 459,
       "bbox_h": 543,
       "faction": "UER",
-      "value": 0,
+      "value": 1,
       "strategic_center": false
     },
     {
@@ -389,7 +389,7 @@
       "bbox_w": 274,
       "bbox_h": 133,
       "faction": "UER",
-      "value": 2,
+      "value": 1,
       "strategic_center": false
     },
     {
