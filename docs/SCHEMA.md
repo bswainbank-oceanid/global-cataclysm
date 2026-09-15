@@ -33,47 +33,44 @@ keyed by the same faction codes used here.
 
 ## data/adjacency.json
 
-The Delaunay-triangulation adjacency graph, exported from the original
-`graph.pkl` by `tools/export_adjacency.py` (a one-time migration — the
-pickle is not part of this repo).
+The Delaunay-triangulation adjacency graph — fully regenerable from
+`data/territories.json` via `tools/compute_adjacency.py`, kept in `data/`
+rather than `derived/` because it's foundational/canonical enough to want
+reviewed directly (nothing in it is hand-edited, though). The map wraps
+east-west (x=3500 is the same seam as x=0; north-south does not wrap), so
+the triangulation is computed on a cylinder using the standard
+ghost-point technique — every point is triangulated alongside copies of
+the whole point set shifted by ±the map width, and only edges touching a
+real point are kept, at the same 420px threshold used everywhere else.
 
 ```
 {
   "reference_image_width_px": 3500,
-  "node_count": 141, "edge_count": 382,
+  "wraps_east_west": true,
+  "node_count": 148, "edge_count": 408,
   "nodes": { "<id>": {"type": "land"|"sea", "name": string}, ... },
   "edges": [[a, b], ...],                    // sorted, deduped, order-independent
-  "neighbors_ordered": { "<id>": [neighbor ids...], ... }  // ORIGINAL graph order -- see below
+  "neighbors_ordered": { "<id>": [neighbor ids...], ... }  // sorted by id; order carries no meaning
 }
 ```
 
-**Important quirk, preserved deliberately:** `neighbors_ordered` keeps
-each node's neighbor list in the exact order the original Delaunay build
-produced it in — a geometric accident, not a principled sort. Don't rely
-on this order for anything; use `edges`, or (for picking a coastal
-territory's default sea zone) nearest-by-distance among its sea-type
-neighbors — see `tools/compute_faction_profile.py`.
+Every space in `territories.json` is a real graph node — there is no
+fallback category for territories added later; the graph just includes
+them next time `tools/compute_adjacency.py` runs. (Earlier revisions of
+this project treated the graph as a frozen historical artifact migrated
+once from a pre-project pickle, with newly-added territories approximated
+by a distance-threshold fallback instead of a real triangulation. That's
+gone: the graph is now a normal pipeline step like everything else under
+`data/`/`derived/`.)
 
-Earlier revisions of this project picked a coastal territory's *default*
-sea zone as "first sea-type neighbor in this order" instead, and baked
-that specific (geometrically arbitrary) choice into
-`data/scenarios/starting_setup_200ipc.json`. That rule has been replaced
-with nearest-by-distance, which changes ~34 of 75 coastal territories'
-defaults — in the worst case, "first in order" picked a zone 3400px away
-over one 117px away. Any scenario file must be regenerated (or
-hand-checked) after this default changes; it is not simply a rendering
-concern.
-
-Three land territories were added to the map *after* this graph was built:
-Iran (id 145), Himalayan Bengal (id 146), and Polynesia (id 148). They are
-not graph nodes. See `data/rules.json` → `map.adjacency_fallback` for how
-their neighbors are approximated, and the docstring in
-`tools/compute_foreign_neighbors.py` for a known asymmetry in that fallback
-(a fallback territory finds its
-graph-based neighbors by distance, but graph-based territories don't get
-the fallback territory added back to *their* neighbor lists). This was a
-property of the original ad hoc calculation and has been faithfully
-reproduced rather than silently fixed.
+A coastal territory's *default* sea zone is nearest-by-distance among its
+sea-type neighbors, not "first neighbor in some order" — see
+`tools/compute_faction_profile.py`. (An even earlier revision used "first
+sea-type neighbor in the original Delaunay build order," which was a
+geometric accident, not a principled rule, and picked wrong defaults for
+about half of all coastal territories. Any scenario file needs
+regenerating, or at least hand-checking, after a change to this rule —
+it's not simply a rendering concern.)
 
 ## data/units.json
 

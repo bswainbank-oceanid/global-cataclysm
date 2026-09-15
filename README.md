@@ -7,7 +7,8 @@ six factions: NAA, UE, UER, GPC, PAF, AAC) played on a 3500×2000px map of
 This repo is structured so it can also serve as the data backbone for a
 future computer-game implementation: every rule and every piece of game
 state is plain, versioned JSON under `data/`, not baked into ad hoc
-scripts.
+scripts. See `docs/GAME_ARCHITECTURE.md` for the plan on engine, tech
+stack, and build order for that implementation.
 
 ## Layout
 

@@ -38,8 +38,8 @@
   "map": {
     "reference_image_width_px": 3500,
     "reference_image_height_px": 2000,
-    "adjacency_source": "Delaunay triangulation over territory center points, edges kept under a 420px length threshold",
-    "adjacency_fallback": "territories added to the map after the adjacency graph was built (currently Iran id 145, Himalayan Bengal id 146) are not in the graph; their neighbors are approximated by the same 420px center-to-center distance threshold against all other land territories",
+    "wraps_east_west": true,
+    "adjacency_source": "Delaunay triangulation over territory center points (computed on a cylinder: the map wraps east-west, x=3500 is the same seam as x=0, so triangulation uses ghost copies of every point shifted by the map width; north-south does not wrap), edges kept under a 420px length threshold. Fully regenerable -- see tools/compute_adjacency.py. Every space in territories.json is a real graph node; there is no fallback category for territories added later.",
     "foreign_neighbor_flag_definition": "a land territory has at least one land neighbor belonging to a different faction"
   }
 }

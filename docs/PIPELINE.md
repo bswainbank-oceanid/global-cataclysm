@@ -9,34 +9,33 @@ python3 tools/build_all.py
 
 which runs, in order:
 
-1. `tools/compute_foreign_neighbors.py` — `data/territories.json` +
-   `data/adjacency.json` → `derived/adjacency_foreign.json`
-2. `tools/compute_faction_profile.py` — needs (1) →
+1. `tools/compute_adjacency.py` — `data/territories.json` →
+   `data/adjacency.json`; a Delaunay triangulation over every space's
+   center point, computed on a cylinder (the map wraps east-west) via the
+   ghost-point technique, edges kept under a 420px threshold. Fully
+   regenerable — kept in `data/` rather than `derived/` because it's
+   foundational/canonical enough to want reviewed directly, but nothing
+   in it is hand-edited.
+2. `tools/compute_foreign_neighbors.py` — needs (1); `data/territories.json`
+   + `data/adjacency.json` → `derived/adjacency_foreign.json`
+3. `tools/compute_faction_profile.py` — needs (2) →
    `derived/faction_territory_profile.json`
-3. `tools/build_master_xlsx.py` — `data/territories.json` +
+4. `tools/build_master_xlsx.py` — `data/territories.json` +
    `data/factions.json` → `exports/GC1972_Territories.xlsx` ('All
    Territories' tab + 6 faction subtabs + Unassigned)
-4. `tools/build_setup_tab.py` — needs (2) and (3); adds/replaces the
+5. `tools/build_setup_tab.py` — needs (3) and (4); adds/replaces the
    'Initial Setup' tab on the same workbook from
    `data/scenarios/starting_setup_200ipc.json` + `data/units.json`
-5. `/mnt/skills/public/xlsx/scripts/recalc.py exports/GC1972_Territories.xlsx`
+6. `/mnt/skills/public/xlsx/scripts/recalc.py exports/GC1972_Territories.xlsx`
    — recalculates all live formulas via LibreOffice so the workbook opens
    with correct cached values (openpyxl never evaluates formulas itself)
-6. `tools/validate_setup.py` — needs (2); checks the scenario against
+7. `tools/validate_setup.py` — needs (3); checks the scenario against
    every rule in `data/rules.json` (exact budget spend, starting-purchase
    stacking cap, land unit at every foreign border, coastal-only naval
    purchase, every carrier has an escort, no two factions share a sea
    zone, >=6 unit types per faction). Exits non-zero on any violation.
-7. `tools/render_map.py` — `data/territories.json` + `data/factions.json`
+8. `tools/render_map.py` — `data/territories.json` + `data/factions.json`
    + `assets/base_map.png` → `exports/map.png`
-
-## One-time / manual steps (not part of build_all.py)
-
-- `tools/export_adjacency.py <path-to-graph.pkl>` — migrates the original
-  Delaunay-triangulation pickle into `data/adjacency.json`. Only needed
-  again if the underlying adjacency graph itself changes (e.g. a new
-  territory is added and needs to be triangulated in, not just
-  distance-fallback approximated).
 
 ## Editing territory data via the spreadsheet
 

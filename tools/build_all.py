@@ -5,11 +5,9 @@ Run the full regeneration pipeline, in dependency order, producing:
 
 Everything under derived/ and exports/ is fully regenerable from data/ +
 tools/ -- this script is the one place that order is written down.
-
-tools/export_adjacency.py is NOT run here: it's a one-time migration from
-the original graph.pkl pickle (which lives outside this repo) into
-data/adjacency.json, which is now the canonical, checked-in source. Re-run
-it manually only if the underlying adjacency graph itself changes.
+data/adjacency.json is also regenerated here (tools/compute_adjacency.py):
+it's kept in data/ rather than derived/ since it's foundational/canonical
+enough to want reviewed directly, but nothing in it is hand-edited.
 
 Run from the repo root:
     python3 tools/build_all.py
@@ -18,6 +16,7 @@ import subprocess
 import sys
 
 STEPS = [
+    ['python3', 'tools/compute_adjacency.py'],
     ['python3', 'tools/compute_foreign_neighbors.py'],
     ['python3', 'tools/compute_faction_profile.py'],
     ['python3', 'tools/build_master_xlsx.py'],
