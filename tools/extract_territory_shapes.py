@@ -34,14 +34,20 @@ island naturally covers the sea fill underneath it. Any consumer
 (including tools/render_map.py's land-color fill and this file's own
 preview snippets) must respect that draw order.
 """
+import argparse
 import json
 import cv2
 import numpy as np
 from map_geometry import label_land, territory_labels, label_sea, sea_territory_masks, absorb_unclaimed_land
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--base', default='assets/base_map.png', help='source base map image')
+parser.add_argument('--out', default='data/territory_shapes.json', help='output shapes JSON path')
+args = parser.parse_args()
+
 json_path = 'data/territories.json'
-base_path = 'assets/base_map.png'
-out_path = 'data/territory_shapes.json'
+base_path = args.base
+out_path = args.out
 
 # Vertex simplification tolerance (px), passed to cv2.approxPolyDP. Larger
 # = fewer vertices/coarser shape. 2.5px is barely visible at map scale

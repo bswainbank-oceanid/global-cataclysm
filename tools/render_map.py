@@ -1,11 +1,17 @@
+import argparse
 import json
 import cv2
 import numpy as np
 from map_geometry import label_land, territory_labels
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--base', default='assets/base_map.png', help='source base map image')
+parser.add_argument('--out', default='exports/map.png', help='output rendered map path')
+args = parser.parse_args()
+
 json_path = 'data/territories.json'
-out_path = 'exports/map.png'
-base_path = 'assets/base_map.png'
+out_path = args.out
+base_path = args.base
 
 with open(json_path) as f:
     data = json.load(f)
