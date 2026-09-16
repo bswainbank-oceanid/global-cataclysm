@@ -1,5 +1,5 @@
 {
-  "_comment": "Constants and formulas that were previously hardcoded (differently, in several places) across ad hoc scripts. Consolidated here so the whole pipeline and any future game engine reads the same numbers.",
+  "_comment": "Constants and formulas that were previously hardcoded (differently, in several places) across ad hoc scripts. Consolidated here so the whole pipeline and any future game engine reads the same numbers. Expanded to cover the full ruleset (turn order, movement, power modes, alliances, victory) after discovering data/rules.json was only a partial distillation of reference/Global Cataclysm Design Doc.odt -- see docs/GAME_ARCHITECTURE.md for how this maps onto the engine.",
   "setup": {
     "territory_ipc_per_faction": 25,
     "territory_value_range": [0, 5],
@@ -8,7 +8,7 @@
     "starting_unit_budget_ipc": 200,
     "promotions_per_faction_at_setup": 3,
     "territory_stacking_cap_formula": "value + 3 + (2 if strategic_center else 0)",
-    "stacking_cap_scope": "a starting-setup purchase limit only (not an in-game limit): every unit purchased at a territory counts against that territory's cap, including naval units and any air unit riding an Aircraft Carrier's escort, even though those deploy to a sea zone rather than the land territory itself",
+    "stacking_cap_scope": "a starting-setup purchase limit only (not an in-game limit): every unit purchased at a territory counts against that territory's cap, including naval units and any air unit riding an Aircraft Carrier's escort, even though those deploy to a sea zone rather than the land territory itself. See production.per_turn_deploy_cap_formula for the separate, ongoing (post-setup) rule.",
     "naval_purchase_rule": "naval units may only be purchased at a coastal territory (has >=1 adjacent sea zone) and deploy to that sea zone, not the land territory",
     "no_shared_sea_zones_rule": "no two factions may deploy naval units (or carrier-based aircraft) to the same sea zone in the starting setup",
     "excluded_naval_zones": [43],
@@ -18,14 +18,61 @@
     "unit_diversity_rule": "each faction must purchase at least 6 of the 8 purchasable unit types in its starting setup; data/factions.json's per-faction 'focus' list guides which types are emphasized (by spend/quantity), not which types are excluded",
     "leftover_budget_rule": "spend the full per-faction budget; when there is a small remainder that can't buy a whole new unit, upgrade an existing Infantry to Mechanized Infantry to use it up"
   },
+  "turn_order": [
+    "Purchase: spend budget, choose deployment locations. Units are decided now but do not appear on the board yet.",
+    "Combat Move: units move to attack; every combat move must result in an attack.",
+    "Combat Resolution: 1 air-superiority round (if triggered) + up to 3 rounds of main combat. See combat section below.",
+    "Non-Combat Move: units that did not combat-move (air units are exempt from this restriction, see movement section).",
+    "Capture Territory: air units alone cannot capture.",
+    "Deploy + Income: purchased units from phase 1 appear on the board now; collect income (based on territories controlled at this point; contested territories contribute to neither side) for next turn's budget; the global recovery/heal check runs now too, over the whole board (see combat.recovery_rule).",
+    "Alliances: propose/withdraw -- stubbed no-op for v1, see alliances section below."
+  ],
   "combat": {
     "rounds_per_battle": 3,
     "air_superiority_rounds": 1,
+    "air_superiority_trigger": "occurs only if both sides in the battle have at least 1 air unit present AND at least one of the two sides has at least 1 Fighter present; two bomber-only air forces facing each other do not trigger it",
     "hit_rule": "attack die roll >= target's defense is a hit; the max value on the die always hits",
     "damage_rule": "a hit deals damage equal to the attacker's damage rating; max-die hits deal half damage rounded down",
+    "resolution_order": {
+      "land": ["Infantry", "Mechanized Infantry", "Armor", "Fighter", "Bomber"],
+      "sea": ["Submarine", "Fighter", "Bomber", "Cruiser", "Aircraft Carrier"],
+      "note": "within a round, each side resolves its own units grouped by type in this fixed order, then by attack die size ascending within a type (promotions can give same-type units different dice). Same order applies to attacker and defender."
+    },
+    "target_selection": {
+      "eligible_pool_rule": "enemy units in the battle with defense <= the attack roll and HP > 0 (not yet eliminated this round)",
+      "fallback_rule": "if the eligible pool is empty, fall back to the eligible units with the next-lowest defense above the roll",
+      "same_type_weight": 2,
+      "bomber_attacker_weight": 1,
+      "weighting_note": "an attacking unit is twice as likely to target an eligible enemy unit of its own unit type as any other eligible unit, except a Bomber attacker, which uses uniform (1x) weighting across the whole eligible pool. Bombers themselves are ordinary targets for everyone else's attacks -- no special protection, no extra likelihood."
+    },
     "casualty_resolution": "attacker rolls all attacks first (defending casualties noted, not removed), then defender rolls all attacks (both sides' casualties removed together)",
-    "recovery_rule": "damage persists; a unit that has not been in combat since the start of its previous turn returns to full HP at the start of the turn",
-    "contested_territory_rule": "if units remain on both sides after 3 rounds, the territory stays with its original owner, contributes no IPC to either side, and only the owner's Infantry may be mustered there until resolved"
+    "progressive_elimination_note": "within one side's own ordered roll-through (per resolution_order), damage accumulates progressively against the other side -- a unit-type group resolving later in that same side's sequence can find its preferred targets already reduced to 0 HP by an earlier group in the sequence. Actual removal from the board for BOTH sides happens together only after both attacker and defender have finished rolling for the round.",
+    "battle_resolution_pass_order": ["sea", "land"],
+    "battle_resolution_pass_note": "global across the whole map for a turn's combat resolution step -- every declared sea battle resolves to completion first, then every declared land battle; never interleaved per battle pair. This is what allows surviving transports/escorts from an already-resolved naval battle to continue their combat move into the adjacent land battle before it resolves.",
+    "promotion_check_timing": "after_every_round",
+    "promotion_check_note": "promotion is checked after every round of combat, including the air-superiority round -- a mid-battle promotion (die size up, +1 defense) affects that same battle's remaining rounds.",
+    "recovery_rule": "a unit heals to full HP once a full round has elapsed since it last took part in a round of combat, counting the turn it was hurt on as the start of that count. Tracked against a single global, monotonically-increasing turn counter (one tick per faction-turn, not per round): a unit heals once current_global_turn - last_combat_global_turn >= num_powers, checked at the deploy phase of EVERY faction's turn, over the whole board -- not only the acting faction's own units. Example: a unit damaged during faction X's turn heals at the deploy phase of faction X's NEXT turn (exactly one full round later), provided it hasn't been in combat again since.",
+    "contested_territory_rule": "if units remain on both sides after 3 rounds, the territory stays with its original owner, contributes no IPC to either side, and only the owner's Infantry may be mustered there until resolved",
+    "deferred_combat_bonuses": [
+      "Infantry 'Dig In': +1 defense when defending -- not yet implemented",
+      "Amphibious assault first-round combat bonus for transported land units attacking (none for non-amphibious attackers) -- not yet implemented",
+      "Alliance-reclaim first-round combat bonus when retaking territory lost by a former ally -- not yet implemented, depends on alliances"
+    ]
+  },
+  "movement": {
+    "combat_move_destination": "a combat move physically relocates the attacking units into the target territory/sea zone, which is what makes it contested -- there is no separate 'declare attack from next door' step",
+    "no_mid_battle_retreat": "once combat starts resolving there is no retreat: a battle ends in elimination of one side, the defender holding after 3 rounds if the attacker is wiped, or the territory becoming contested after 3 rounds if both sides still have units",
+    "contested_land_combat_move_rule": "a land unit sitting in an already-contested LAND territory may combat-move to another already-contested land space (press the fight elsewhere), or retreat to a friendly space, but may NOT use a combat move to stage a fresh attack from there into a not-yet-contested enemy space -- that must originate from an uncontested friendly space. This is a land-only concept: sea zones are never owned/controlled by a faction the way land is, so a sea unit leaving a sea zone where a battle just happened moves under the ordinary combat-move rules, unrestricted.",
+    "enemy_occupation_stop_rule": "a land or sea combat move that enters an enemy-occupied territory/sea zone must stop there -- it cannot chain through to a further destination in the same move. Transports do not count as an occupying presence for this check (a zone with only enemy Transports in it doesn't block passage). Air units are exempt entirely and may fly over enemy-held territory freely, in either the combat-move or non-combat-move phase.",
+    "noncombat_move_destination": "friendly territory, or a territory already contested (reinforcing your own contested holding), but never a clean (uncontested) enemy territory. Air units are further restricted to friendly territory or a carrier (whose sea zone may itself be contested) -- a contested LAND territory is not a legal landing spot for aircraft.",
+    "noncombat_open_question": "whether a non-combat move may reinforce a territory contested between two OTHER factions (not the mover's own) is unresolved; v1 implements only the single-owner-reinforcing-their-own-contested-territory case.",
+    "combat_or_noncombat_not_both": "land and sea units may combat-move OR non-combat-move in a turn, never both. Air units are the sole exception and may move in both phases, but must end the turn on a friendly carrier or in friendly territory.",
+    "transport_amphibious": "land units entering a sea zone become Transport cargo (one transport per unit, +1 move bonus). Surviving transports can continue a combat move into adjacent land after winning/surviving the naval battle, only possible because sea battles resolve before land battles (see combat.battle_resolution_pass_order). A transported unit's Transport is destroyed with it if sunk. Transported units don't earn XP.",
+    "neutral_exclusion": "NEUTRAL territories are excluded from every legal move/attack target entirely -- not enterable, not attackable"
+  },
+  "production": {
+    "per_turn_deploy_cap_formula": "value + (2 if strategic_center else 0)",
+    "cap_scope": "a pure unit-COUNT limit on newly-deployed units per territory per turn -- not IPC-weighted, and distinct from setup.territory_stacking_cap_formula (which only applies at initial setup). There is no cap at all on total units already present in a territory -- only on how many new ones can land there in a single turn."
   },
   "promotion": {
     "xp_for_surviving_a_round": 1,
@@ -33,13 +80,28 @@
     "xp_for_eliminating_a_promoted_unit": 1,
     "xp_required": 5,
     "effect": "permanent combat bonus: attack die steps up one size (max D12), +1 defense (max 10), +1 HP",
-    "demotion": "not specified in the current design doc revision"
+    "demotion": "not specified in the current design doc revision",
+    "service_record_note": "every unit is tracked as an individual, persistent record (stable unit_id), not an anonymous stack count -- its XP, promotion status, and current damage/HP all persist on that specific unit across turns and battles."
+  },
+  "power_modes": {
+    "modes": ["HUMAN", "BOT", "DEFENSIVE", "NEUTRAL"],
+    "human_bot": "functionally identical to the engine -- both get full turns through the same order-submission API, full budget/production; differ only in who/what submits orders",
+    "defensive": "seeded via the 100-IPC/no-SC scenario ruleset (see data/scenarios/starting_setup_100ipc.json). Never receives a turn: no purchases, no movement, no reinforcement, can't join alliances. Its territory IS capturable and its starting units DO fight back normally as an ordinary defender when attacked.",
+    "neutral": "zero units, zero turns. Its territory is a hard exclusion from every other power's legal move/attack targets -- not a combatant, an impassable region."
+  },
+  "alliances": {
+    "status": "stubbed for v1 -- strict free-for-all, every power acts independently: no join/withdraw, no betrayal/contested-on-betrayal, no allied combat bonus. The data model reserves a place for alliance membership so this doesn't need a schema change later.",
+    "design_doc_reference": "2 or 3 powers can join in alliances depending on game settings. Can withdraw from an alliance OR invite 1 power to join at turn end; invited power immediately accepts or rejects. Can't withdraw while you have units in an allied Strategic Center. Occupied former-ally territories become contested; the former ally gets a combat bonus in the first round of combat to reclaim them. Allies can move through each other's territories without claiming them; their units don't fight each other. When attacking a space contested by other powers, the attacker chooses which non-aligned power they're attacking. Allies defend together."
+  },
+  "victory": {
+    "elimination_rule": "a power is eliminated when it controls <=1 Strategic Center (original or captured); contested SCs still count as controlled. Remove all remaining units from the board on elimination.",
+    "game_end_rule": "the game ends when there are no unallied powers remaining"
   },
   "map": {
     "reference_image_width_px": 3500,
-    "reference_image_height_px": 2000,
+    "reference_image_height_px": 1958,
     "wraps_east_west": true,
-    "adjacency_source": "Delaunay triangulation over territory center points (computed on a cylinder: the map wraps east-west, x=3500 is the same seam as x=0, so triangulation uses ghost copies of every point shifted by the map width; north-south does not wrap), edges kept under a 420px length threshold. Fully regenerable -- see tools/compute_adjacency.py. Every space in territories.json is a real graph node; there is no fallback category for territories added later.",
+    "adjacency_source": "Delaunay triangulation over territory center points (computed on a cylinder: the map wraps east-west, x=3500 is the same seam as x=0, so triangulation uses ghost copies of every point shifted by the map width; north-south does not wrap), edges kept under a 420px length threshold, plus a small hand-confirmed FORCED_EDGES list in tools/compute_adjacency.py for real adjacencies that threshold would otherwise wrongly exclude. Fully regenerable -- see tools/compute_adjacency.py. Every space in territories.json is a real graph node; there is no fallback category for territories added later.",
     "foreign_neighbor_flag_definition": "a land territory has at least one land neighbor belonging to a different faction"
   }
 }

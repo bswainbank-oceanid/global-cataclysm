@@ -122,9 +122,9 @@
       "sc_cost": null,
       "attack_die": null,
       "damage": null,
-      "defense": null,
-      "hp": 6,
-      "combat_move": 1,
+      "defense": 6,
+      "hp": 1,
+      "combat_move": "+1*",
       "non_combat_move": "+1*",
       "purchasable": false,
       "special_abilities": [
