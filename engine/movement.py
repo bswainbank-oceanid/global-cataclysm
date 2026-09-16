@@ -266,12 +266,15 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
     """Air units fly over everyone freely (never blocked, never forced
     to stop by occupation) in both move phases -- the only constraint is
     their own move budget (no water bonus; that's a land-unit/Transport
-    concept) and where they're allowed to end the turn: a combat move
-    still needs to land in a legal spot (friendly territory, or an
-    enemy/contested space to attack), while a non-combat move is
-    restricted to own-or-allied land (contested or not -- landing there
-    doesn't care) or the mover's own carrier specifically (never an
-    ally's, even though allied land is fine)."""
+    concept) and where they're allowed to end the turn:
+    - combat: must be a real attack target -- non-ally-occupied, or
+      already contested (joining the fight). Own/allied territory isn't
+      an attack, and neither is empty foreign territory, since air alone
+      can't capture (per the turn-order rule) -- there's nothing there
+      to actually attack.
+    - noncombat: own-or-allied land (contested or not -- landing there
+      doesn't care), or the mover's own carrier specifically (never an
+      ally's, even though allied land is fine)."""
     unit_defs = data_module.units()
     territories = data_module.territories()
     adjacency = data_module.adjacency()
@@ -309,5 +312,15 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
             # though allied land does.
             return any(u.owner == owner and u.unit_type == 'Aircraft Carrier' for u in dest.units)
         return {tid for tid in reachable if legal_landing(tid)}
+
+    # combat: must result in an attack, same as any other combat move --
+    # a non-ally-occupied territory (a real attack) or one already
+    # contested (joining the fight). Own/allied/empty-foreign territory
+    # is excluded: landing there isn't an attack, and air alone can't
+    # capture (per the turn-order rule), so an undefended foreign
+    # territory isn't a legal air combat-move destination either.
+    def is_attack_target(tid):
+        return _is_contested(tid, game_state) or _enemies_present(tid, owner, game_state)
+    return {tid for tid in reachable if is_attack_target(tid)}
 
     return reachable

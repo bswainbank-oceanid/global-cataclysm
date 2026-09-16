@@ -347,7 +347,11 @@ class TestAllianceAwareMovement(unittest.TestCase):
 
 
 class TestAirMovement(unittest.TestCase):
-    def test_air_flies_over_occupied_territory_freely(self):
+    def test_air_flies_over_occupied_territory_to_reach_a_further_attack_target(self):
+        # 2 is occupied (would stop a ground unit's combat move); 3 is a
+        # separate, further attack target. Confirms both that air isn't
+        # blocked by occupation in transit AND that the actual
+        # destination still has to be a legitimate attack target.
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
             adjacency={1: [2], 2: [1, 3], 3: [2]},
@@ -356,10 +360,27 @@ class TestAirMovement(unittest.TestCase):
             data,
             territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
             faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
-            units_by_territory={2: [enemy_unit(1, 'Armor', 'AAC')]},
+            units_by_territory={2: [enemy_unit(1, 'Armor', 'AAC')], 3: [enemy_unit(2, 'Armor', 'AAC')]},
         )
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', gs, data)
         self.assertIn(3, dest, 'air units are exempt from the enemy-occupation stop rule')
+
+    def test_air_combat_move_cannot_end_on_empty_or_friendly_territory(self):
+        # Air alone can't capture, so an undefended foreign territory
+        # isn't a legal attack target; landing on your own territory via
+        # a combat move isn't an attack either.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2, 3]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={1: 'NAA', 2: 'NAA', 3: 'AAC'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+        )
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', gs, data)
+        self.assertNotIn(2, dest, 'own territory is not an attack target')
+        self.assertNotIn(3, dest, "air can't capture, so empty foreign territory isn't a legal combat-move target")
 
     def test_noncombat_air_landing_on_own_land_allowed_even_if_contested(self):
         data = FakeData(
