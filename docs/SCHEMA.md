@@ -9,7 +9,7 @@ All canonical game data lives under `data/` as JSON. Everything under
 ```
 {
   "reference_image_width_px": 3500,
-  "reference_image_height_px": 2000,
+  "reference_image_height_px": 1958,
   "note": "...",
   "spaces": [
     {
@@ -27,7 +27,7 @@ All canonical game data lives under `data/` as JSON. Everything under
 }
 ```
 
-148 spaces total: 87 land, 61 sea. Faction reference data (name, color,
+149 spaces total: 87 land, 62 sea. Faction reference data (name, color,
 major countries, doctrine focus) lives separately in `data/factions.json`,
 keyed by the same faction codes used here.
 
@@ -42,12 +42,17 @@ the triangulation is computed on a cylinder using the standard
 ghost-point technique — every point is triangulated alongside copies of
 the whole point set shifted by ±the map width, and only edges touching a
 real point are kept, at the same 420px threshold used everywhere else.
+That threshold is a sanity check against spurious long edges, not a hard
+rule — a small hand-confirmed `FORCED_EDGES` list in
+`tools/compute_adjacency.py` adds back real adjacencies it would
+otherwise wrongly exclude (e.g. a large territory whose center point
+sits far from its actual shared border).
 
 ```
 {
   "reference_image_width_px": 3500,
   "wraps_east_west": true,
-  "node_count": 148, "edge_count": 408,
+  "node_count": 149, "edge_count": 414,
   "nodes": { "<id>": {"type": "land"|"sea", "name": string}, ... },
   "edges": [[a, b], ...],                    // sorted, deduped, order-independent
   "neighbors_ordered": { "<id>": [neighbor ids...], ... }  // sorted by id; order carries no meaning

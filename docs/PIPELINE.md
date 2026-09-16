@@ -12,8 +12,11 @@ which runs, in order:
 1. `tools/compute_adjacency.py` — `data/territories.json` →
    `data/adjacency.json`; a Delaunay triangulation over every space's
    center point, computed on a cylinder (the map wraps east-west) via the
-   ghost-point technique, edges kept under a 420px threshold. Fully
-   regenerable — kept in `data/` rather than `derived/` because it's
+   ghost-point technique, edges kept under a 420px threshold (a sanity
+   check against spurious long edges, not a hard rule — a small
+   hand-confirmed `FORCED_EDGES` list in the script adds back real
+   adjacencies it would otherwise wrongly exclude). Fully regenerable —
+   kept in `data/` rather than `derived/` because it's
    foundational/canonical enough to want reviewed directly, but nothing
    in it is hand-edited.
 2. `tools/compute_foreign_neighbors.py` — needs (1); `data/territories.json`

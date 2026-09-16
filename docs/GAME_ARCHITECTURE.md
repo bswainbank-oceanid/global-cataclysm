@@ -116,17 +116,19 @@ Classification logic (shared with `tools/render_map.py`'s land color
 fill, so the preview map and the game's real shapes can't silently drift
 apart) lives in `tools/map_geometry.py`; `tools/extract_territory_shapes.py`
 runs `cv2.findContours` on each territory's region(s) and simplifies with
-`cv2.approxPolyDP` (2.5px tolerance). Output maps 147 of 148 territories
-to a **list** of polygons, not one flat polygon: 6 land island-chain
+`cv2.approxPolyDP` (2.5px tolerance). Output maps all 149 territories to
+a **list** of polygons, not one flat polygon: 6 land island-chain
 territories (Cuba, Falkland Islands, Philippines, New Guinea, Hawaii,
 Polynesia) are multiple disconnected landmasses, and a couple of sea
 zones (Labrador Sea/Gulf of Mexico, Eastern/South-Eastern Indian Ocean)
 share a connected water region with no drawn border line in the source
-art and get split by nearest-seed-point instead. The one omission
-(Mozambique Channel/147) is a real data bug, not an extraction
-limitation — its stored point sits on land, not the channel — flagged by
-the script, not silently patched over. Extraction runs on the flat,
-non-wrapped image — the seam literally cuts through the continental US
+art and get split by nearest-seed-point instead. A sea zone's polygon is
+its outer boundary only — it is NOT punched through where an island it
+fully encloses sits (e.g. Eastern Indian Ocean/114 around Indonesia,
+North Pacific/85 around Hawaii); consumers MUST draw/instantiate land
+territories after (on top of) sea territories so enclosed islands show
+through correctly. Extraction runs on the flat, non-wrapped image — the
+seam literally cuts through the continental US
 (confirmed visually) — so stitching polygons across the wrap at render
 time is entirely a Layer 1 job, not something baked into this data.
 

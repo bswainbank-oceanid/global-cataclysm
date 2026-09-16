@@ -1,8 +1,8 @@
 # Global Cataclysm: 1972
 
 Design and setup tooling for an alternate-history wargame (1972 divergence,
-six factions: NAA, UE, UER, GPC, PAF, AAC) played on a 3500×2000px map of
-146 territories.
+six factions: NAA, UE, UER, GPC, PAF, AAC) played on a 3500×1958px map of
+149 territories.
 
 This repo is structured so it can also serve as the data backbone for a
 future computer-game implementation: every rule and every piece of game
