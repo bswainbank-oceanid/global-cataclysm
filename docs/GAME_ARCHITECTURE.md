@@ -109,23 +109,26 @@ positioning alone on the raw data.
 | `units.json`, `rules.json` | Core config the rules engine reads at startup — not represented as scene nodes. |
 | `scenarios/*.json` | Directly becomes "New Game" initial state — already shaped as exactly the per-territory purchase/promotion/escort data a game-start routine needs. |
 
-**`data/territory_shapes.json` — done.** `territories.json` only has a
-center point and bounding box per territory; the actual outline existed
-only implicitly in `assets/base_map.png`'s art. Land-classification logic
-(shared with `tools/render_map.py`'s color fill, so the preview map and
-the game's real shapes can't silently drift apart) moved into
-`tools/map_geometry.py`; `tools/extract_territory_shapes.py` runs
-`cv2.findContours` on each territory's flood-filled region(s) and
-simplifies with `cv2.approxPolyDP` (2.5px tolerance). Output maps each of
-the 87 land territories to a **list** of polygons, not one flat polygon —
-6 island-chain territories (Cuba, Falkland Islands, Philippines, New
-Guinea, Hawaii, Polynesia) are multiple disconnected landmasses and need
-one polygon per landmass. Sea zones are out of scope: the base map's
-inter-sea-zone border art is too sparse/incomplete to flood-fill
-reliably. Extraction runs on the flat, non-wrapped image — the seam
-literally cuts through the continental US (confirmed visually) — so
-stitching polygons across the wrap at render time is entirely a Layer 1
-job, not something baked into this data.
+**`data/territory_shapes.json` — done, land and sea.** `territories.json`
+only has a center point and bounding box per territory; the actual
+outline existed only implicitly in `assets/base_map.png`'s art.
+Classification logic (shared with `tools/render_map.py`'s land color
+fill, so the preview map and the game's real shapes can't silently drift
+apart) lives in `tools/map_geometry.py`; `tools/extract_territory_shapes.py`
+runs `cv2.findContours` on each territory's region(s) and simplifies with
+`cv2.approxPolyDP` (2.5px tolerance). Output maps 147 of 148 territories
+to a **list** of polygons, not one flat polygon: 6 land island-chain
+territories (Cuba, Falkland Islands, Philippines, New Guinea, Hawaii,
+Polynesia) are multiple disconnected landmasses, and a couple of sea
+zones (Labrador Sea/Gulf of Mexico, Eastern/South-Eastern Indian Ocean)
+share a connected water region with no drawn border line in the source
+art and get split by nearest-seed-point instead. The one omission
+(Mozambique Channel/147) is a real data bug, not an extraction
+limitation — its stored point sits on land, not the channel — flagged by
+the script, not silently patched over. Extraction runs on the flat,
+non-wrapped image — the seam literally cuts through the continental US
+(confirmed visually) — so stitching polygons across the wrap at render
+time is entirely a Layer 1 job, not something baked into this data.
 
 **Authoring workflow stays as-is.** `data/` + the Excel round-trip +
 the Python pipeline remain the design-time source of truth, unchanged.

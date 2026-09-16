@@ -6,6 +6,8 @@ client). Kept in one place deliberately: those two consumers must agree on
 exactly which pixels belong to which territory, or the rendered preview
 map and the game's actual clickable shapes will silently disagree.
 """
+from collections import defaultdict
+
 import numpy as np
 from scipy import ndimage
 
@@ -87,3 +89,76 @@ def territory_labels(spaces, labels, centroid_of):
                     labs.add(lab)
         result[tid] = labs
     return result
+
+
+def classify_sea_mask(img):
+    """The complement of classify_land_mask's sea test, minus border
+    pixels: true for sea-colored (teal) pixels that aren't a drawn
+    border line."""
+    b_ch, g_ch, r_ch = img[:, :, 0].astype(int), img[:, :, 1].astype(int), img[:, :, 2].astype(int)
+    sea_color_mask = (g_ch > r_ch + 20) & (b_ch > r_ch + 10)
+    border_mask = (r_ch + g_ch + b_ch) < 150
+    return sea_color_mask & ~border_mask
+
+
+def label_sea(img):
+    """Returns (labels, num_labels, centroid_of) for the 4-connected
+    components of classify_sea_mask(img). Unlike land, sea-zone border
+    art is sparse enough that some zones share a connected component
+    (no drawn line between them) -- see sea_territory_masks, which is
+    what actually resolves that, not this function."""
+    sea_mask = classify_sea_mask(img)
+    labels, num_labels = ndimage.label(sea_mask, structure=np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]))
+    label_ids = np.arange(1, num_labels + 1)
+    centroids = ndimage.center_of_mass(sea_mask, labels, label_ids) if num_labels else []
+    centroid_of = {lab: (cx, cy) for lab, (cy, cx) in zip(label_ids, centroids)}
+    return labels, num_labels, centroid_of
+
+
+def sea_territory_masks(spaces, labels, centroid_of):
+    """Given the full `spaces` list and a labeled sea mask (from
+    label_sea), returns {territory_id: boolean_mask} -- one full-size
+    boolean array per sea territory. Unlike land, this returns pixel
+    masks directly rather than label-id sets, because the two known
+    border-art gaps (as of this writing: Labrador Sea/Gulf of Mexico,
+    Eastern/South-Eastern Indian Ocean) mean two territories'
+    seed points can land in the SAME connected component -- the
+    opposite problem from land's island chains (one seed, multiple
+    components). Resolved generically: any component claimed by more
+    than one territory's seed point is split pixel-by-pixel by nearest
+    seed point (a local Voronoi split), not hardcoded to those two
+    cases, so it keeps working if the underlying art changes. A
+    territory whose point doesn't land in the sea mask at all (label 0)
+    is silently omitted, same convention as territory_labels -- worth a
+    look (has happened: a territory's stored point sitting on land, not
+    the water body it names), not a crash."""
+    sea_spaces = [sp for sp in spaces if sp.get('type') == 'sea']
+    by_id = {sp['id']: sp for sp in sea_spaces}
+
+    primary_label = {}
+    for sp in sea_spaces:
+        lab = labels[int(sp['y']), int(sp['x'])]
+        if lab != 0:
+            primary_label[sp['id']] = lab
+
+    owners_of_label = defaultdict(list)
+    for tid, lab in primary_label.items():
+        owners_of_label[lab].append(tid)
+
+    masks = {}
+    for lab, owners in owners_of_label.items():
+        blob = labels == lab
+        if len(owners) == 1:
+            masks[owners[0]] = blob
+            continue
+        ys, xs = np.where(blob)
+        pts = np.stack([xs, ys], axis=1).astype(float)
+        centers = np.array([[by_id[o]['x'], by_id[o]['y']] for o in owners], dtype=float)
+        d2 = ((pts[:, None, :] - centers[None, :, :]) ** 2).sum(axis=2)
+        nearest = d2.argmin(axis=1)
+        for i, o in enumerate(owners):
+            m = np.zeros_like(blob)
+            sel = nearest == i
+            m[ys[sel], xs[sel]] = True
+            masks[o] = m
+    return masks

@@ -38,8 +38,8 @@ which runs, in order:
    + `assets/base_map.png` → `exports/map.png`
 9. `tools/extract_territory_shapes.py` — `data/territories.json` +
    `assets/base_map.png` → `data/territory_shapes.json`; vector polygon
-   outlines per land territory (game-client data, not used elsewhere in
-   this repo). Shares land-classification logic with (8) via
+   outlines per land territory and sea zone (game-client data, not used
+   elsewhere in this repo). Shares land-classification logic with (8) via
    `tools/map_geometry.py`. Fully regenerable — kept in `data/` for the
    same reason as (1).
 
