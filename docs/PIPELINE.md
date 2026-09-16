@@ -36,6 +36,12 @@ which runs, in order:
    zone, >=6 unit types per faction). Exits non-zero on any violation.
 8. `tools/render_map.py` — `data/territories.json` + `data/factions.json`
    + `assets/base_map.png` → `exports/map.png`
+9. `tools/extract_territory_shapes.py` — `data/territories.json` +
+   `assets/base_map.png` → `data/territory_shapes.json`; vector polygon
+   outlines per land territory (game-client data, not used elsewhere in
+   this repo). Shares land-classification logic with (8) via
+   `tools/map_geometry.py`. Fully regenerable — kept in `data/` for the
+   same reason as (1).
 
 ## Editing territory data via the spreadsheet
 

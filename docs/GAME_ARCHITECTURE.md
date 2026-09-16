@@ -102,23 +102,30 @@ positioning alone on the raw data.
 
 | File | Runtime role |
 |---|---|
-| `territories.json` | Drives territory node instancing at load time — position, ownership, value, SC flag. **Needs a companion piece that doesn't exist yet** (see below). |
+| `territories.json` | Drives territory node instancing at load time — position, ownership, value, SC flag. |
+| `territory_shapes.json` | Per-territory polygon(s) for `Polygon2D`/`CollisionPolygon2D` — see below. |
 | `adjacency.json` | Not visual. Loaded as a plain graph inside the rules engine for movement/adjacency validation. No nodes represent edges on screen. |
 | `factions.json` | Lookup table (color, name, doctrine) for territory fill-coloring and UI. |
 | `units.json`, `rules.json` | Core config the rules engine reads at startup — not represented as scene nodes. |
 | `scenarios/*.json` | Directly becomes "New Game" initial state — already shaped as exactly the per-territory purchase/promotion/escort data a game-start routine needs. |
 
-**Missing piece, not yet built**: `territories.json` has a center point and
-a bounding box per territory, but no actual outline. The visual shape only
-exists implicitly in `assets/base_map.png`'s art, discovered today by
-flood-filling from the center point at render time (see
-`tools/render_map.py`). That's fine for generating a static PNG; it's not
-enough for a `Polygon2D`/`CollisionPolygon2D` pair to render and hit-test
-a territory shape in an engine. The planned fix reuses the existing
-flood-fill logic: run `cv2.findContours` on each territory's filled
-region, simplify with `cv2.approxPolyDP`, and write the result to a new
-`data/territory_shapes.json` ({territory_id: [[x, y], ...]}) as another
-pipeline step. Not started yet.
+**`data/territory_shapes.json` — done.** `territories.json` only has a
+center point and bounding box per territory; the actual outline existed
+only implicitly in `assets/base_map.png`'s art. Land-classification logic
+(shared with `tools/render_map.py`'s color fill, so the preview map and
+the game's real shapes can't silently drift apart) moved into
+`tools/map_geometry.py`; `tools/extract_territory_shapes.py` runs
+`cv2.findContours` on each territory's flood-filled region(s) and
+simplifies with `cv2.approxPolyDP` (2.5px tolerance). Output maps each of
+the 87 land territories to a **list** of polygons, not one flat polygon —
+6 island-chain territories (Cuba, Falkland Islands, Philippines, New
+Guinea, Hawaii, Polynesia) are multiple disconnected landmasses and need
+one polygon per landmass. Sea zones are out of scope: the base map's
+inter-sea-zone border art is too sparse/incomplete to flood-fill
+reliably. Extraction runs on the flat, non-wrapped image — the seam
+literally cuts through the continental US (confirmed visually) — so
+stitching polygons across the wrap at render time is entirely a Layer 1
+job, not something baked into this data.
 
 **Authoring workflow stays as-is.** `data/` + the Excel round-trip +
 the Python pipeline remain the design-time source of truth, unchanged.
@@ -130,8 +137,7 @@ the same JSON, not a parallel editing path.
 
 1. Rules/combat engine as a standalone, tested module consuming the
    existing JSON data — no rendering yet.
-2. Territory shape extraction (`data/territory_shapes.json`) — the
-   prerequisite for any real map interactivity.
+2. ~~Territory shape extraction~~ — done.
 3. Single-player desktop client: map pan/zoom (including east-west
    wraparound from day one, not bolted on later), territory selection,
    unit deployment UI, simple bot AI.
@@ -144,7 +150,8 @@ the same JSON, not a parallel editing path.
 
 - ✅ Adjacency graph is wrap-aware and fully regenerable
   (`tools/compute_adjacency.py`).
-- ⬜ Territory shape/polygon extraction.
+- ✅ Territory shape/polygon extraction (`tools/extract_territory_shapes.py`
+  → `data/territory_shapes.json`).
 - ⬜ Rules engine (standalone module).
 - ⬜ Godot client / map rendering / wraparound camera.
 - ⬜ Backend / persistence / multiplayer.

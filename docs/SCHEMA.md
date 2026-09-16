@@ -72,6 +72,35 @@ about half of all coastal territories. Any scenario file needs
 regenerating, or at least hand-checking, after a change to this rule —
 it's not simply a rendering concern.)
 
+## data/territory_shapes.json
+
+Vector outlines for land territories, for the eventual Godot client
+(`Polygon2D`/`CollisionPolygon2D`) — not used by anything else in this
+repo yet. Fully regenerable from `assets/base_map.png` via
+`tools/extract_territory_shapes.py` (shares land-classification logic
+with `tools/render_map.py` through `tools/map_geometry.py`). Sea zones are
+not included — the base map's inter-sea-zone border art is too sparse to
+flood-fill reliably. Coordinates are in the flat, non-wrapped reference
+image; stitching across the east-west seam is a rendering concern, not
+baked into this data.
+
+```
+{
+  "reference_image_width_px": 3500,
+  "approx_epsilon_px": 2.5,
+  "territory_count": 87,
+  "shapes": {
+    "<territory_id>": [
+      [[x, y], [x, y], ...],   // one polygon (closed, no repeated last point)
+      ...                       // more than one entry only for island-chain
+                                 // territories (Cuba, Falkland Islands,
+                                 // Philippines, New Guinea, Hawaii, Polynesia)
+    ],
+    ...
+  }
+}
+```
+
 ## data/units.json
 
 Full stat blocks for the 8 purchasable units plus Transport (not

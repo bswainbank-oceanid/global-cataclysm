@@ -1,7 +1,7 @@
 import json
 import cv2
 import numpy as np
-from scipy import ndimage
+from map_geometry import label_land, territory_labels
 
 json_path = 'data/territories.json'
 out_path = 'exports/map.png'
@@ -50,55 +50,16 @@ img = cv2.imread(base_path)
 # risking swallowing a neighboring country).
 # ---------------------------------------------------------------------
 FILL_ALPHA = 1.0
-b_ch, g_ch, r_ch = img[:, :, 0].astype(int), img[:, :, 1].astype(int), img[:, :, 2].astype(int)
-# Positive tests for sea (teal: green/blue channels well above red) and
-# border (near-black line); land is defined as neither, rather than a
-# positive "must be brownish" test -- some terrain (e.g. desert/flat
-# regions) renders as near-grayscale rather than brown and was being
-# skipped entirely under the old brown-only test.
-sea_color_mask = (g_ch > r_ch + 20) & (b_ch > r_ch + 10)
-border_mask = (r_ch + g_ch + b_ch) < 150
-land_mask = ~sea_color_mask & ~border_mask
-land_labels, num_labels = ndimage.label(land_mask, structure=np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]))
-
-# (x0, y0, x1, y1) search box, in reference-image pixels
-MULTI_SEED_BOX = {
-    81: (140, 940, 360, 1080),     # Cuba -- main island + Isle of Youth
-    144: (340, 1600, 540, 1740),   # Falkland Islands
-    101: (2170, 1150, 2410, 1370),  # Philippines
-    109: (2370, 1140, 2660, 1460),  # New Guinea
-    77: (2820, 900, 3020, 1040),   # Hawaii
-    148: (2930, 1270, 3160, 1420),  # Polynesia (currently unassigned; box kept ready for whenever it gets a faction)
-}
+land_labels, num_labels, centroid_of = label_land(img)
+labels_by_territory = territory_labels(spaces, land_labels, centroid_of)
 
 land_spaces = [sp for sp in spaces if sp.get('type') == 'land' and sp.get('faction')]
 
-primary_label = {}
-for sp in land_spaces:
-    lab = land_labels[int(sp['y']), int(sp['x'])]
-    if lab != 0:
-        primary_label[sp['id']] = lab
-claimed_labels = set(primary_label.values())
-
-# centroid of every component, computed once, for the box membership test
-label_ids = np.arange(1, num_labels + 1)
-centroids = ndimage.center_of_mass(land_mask, land_labels, label_ids) if num_labels else []
-centroid_of = {lab: (cx, cy) for lab, (cy, cx) in zip(label_ids, centroids)}
-
 for sp in land_spaces:
     tid = sp['id']
-    own_lab = primary_label.get(tid)
-    if own_lab is None:
+    labels_to_fill = labels_by_territory.get(tid)
+    if not labels_to_fill:
         continue
-    labels_to_fill = {own_lab}
-    box = MULTI_SEED_BOX.get(tid)
-    if box:
-        x0, y0, x1, y1 = box
-        for lab, (cx, cy) in centroid_of.items():
-            if lab == own_lab or lab in claimed_labels:
-                continue
-            if x0 <= cx <= x1 and y0 <= cy <= y1:
-                labels_to_fill.add(lab)
     region = np.isin(land_labels, list(labels_to_fill))
     color = np.array(FAC_BGR[sp['faction']], dtype=float)
     img[region] = (img[region].astype(float) * (1 - FILL_ALPHA) + color * FILL_ALPHA).astype(np.uint8)

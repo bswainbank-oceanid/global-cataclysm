@@ -2,12 +2,15 @@
 Run the full regeneration pipeline, in dependency order, producing:
   exports/GC1972_Territories.xlsx
   exports/map.png
+  data/territory_shapes.json
 
 Everything under derived/ and exports/ is fully regenerable from data/ +
 tools/ -- this script is the one place that order is written down.
-data/adjacency.json is also regenerated here (tools/compute_adjacency.py):
-it's kept in data/ rather than derived/ since it's foundational/canonical
-enough to want reviewed directly, but nothing in it is hand-edited.
+data/adjacency.json and data/territory_shapes.json are also regenerated
+here (tools/compute_adjacency.py, tools/extract_territory_shapes.py):
+both are kept in data/ rather than derived/ since they're
+foundational/canonical enough to want reviewed directly, but nothing in
+either is hand-edited.
 
 Run from the repo root:
     python3 tools/build_all.py
@@ -24,6 +27,7 @@ STEPS = [
     ['python3', '/mnt/skills/public/xlsx/scripts/recalc.py', 'exports/GC1972_Territories.xlsx'],
     ['python3', 'tools/validate_setup.py'],
     ['python3', 'tools/render_map.py'],
+    ['python3', 'tools/extract_territory_shapes.py'],
 ]
 
 for step in STEPS:
