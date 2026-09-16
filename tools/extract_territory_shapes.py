@@ -24,7 +24,7 @@ sea zones merged into one shape.
 import json
 import cv2
 import numpy as np
-from map_geometry import label_land, territory_labels, label_sea, sea_territory_masks
+from map_geometry import label_land, territory_labels, label_sea, sea_territory_masks, absorb_unclaimed_land
 
 json_path = 'data/territories.json'
 base_path = 'assets/base_map.png'
@@ -72,6 +72,11 @@ labels_by_territory = territory_labels(spaces, land_labels, land_centroid_of)
 
 sea_labels, _, sea_centroid_of = label_sea(img)
 masks_by_sea_territory = sea_territory_masks(spaces, sea_labels, sea_centroid_of)
+
+claimed_land_labels = set()
+for labs in labels_by_territory.values():
+    claimed_land_labels |= labs
+masks_by_sea_territory = absorb_unclaimed_land(masks_by_sea_territory, land_labels, land_centroid_of, claimed_land_labels)
 
 shapes = {}
 for sp in spaces:

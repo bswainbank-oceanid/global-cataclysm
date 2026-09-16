@@ -115,6 +115,37 @@ def label_sea(img):
     return labels, num_labels, centroid_of
 
 
+# (x0, y0, x1, y1) search box, in reference-image pixels. Some small
+# islets in the base art are too small/insignificant to be their own
+# land territory and sit unclaimed by any land territory's seed (not
+# even via MULTI_SEED_BOX) -- left alone they render as an unfilled
+# speck. Any unclaimed land component (not already part of a real land
+# territory) whose centroid falls in this box is folded into the named
+# SEA territory's mask instead. See absorb_unclaimed_land().
+SEA_ABSORBS_UNCLAIMED_LAND_BOX = {
+    114: (1970, 1240, 2000, 1340),  # small islet chain west of Indonesia (107)
+}
+
+
+def absorb_unclaimed_land(sea_masks, land_labels, land_centroid_of, claimed_land_labels):
+    """Folds small unclaimed land components (per
+    SEA_ABSORBS_UNCLAIMED_LAND_BOX) into the named sea zone's mask.
+    Returns a new dict; doesn't mutate sea_masks."""
+    out = dict(sea_masks)
+    for tid, box in SEA_ABSORBS_UNCLAIMED_LAND_BOX.items():
+        if tid not in out:
+            continue
+        x0, y0, x1, y1 = box
+        extra = np.zeros_like(out[tid])
+        for lab, (cx, cy) in land_centroid_of.items():
+            if lab in claimed_land_labels:
+                continue
+            if x0 <= cx <= x1 and y0 <= cy <= y1:
+                extra |= land_labels == lab
+        out[tid] = out[tid] | extra
+    return out
+
+
 def sea_territory_masks(spaces, labels, centroid_of):
     """Given the full `spaces` list and a labeled sea mask (from
     label_sea), returns {territory_id: boolean_mask} -- one full-size
