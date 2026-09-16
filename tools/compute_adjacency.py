@@ -1,7 +1,9 @@
 """
 Compute data/adjacency.json from scratch: a Delaunay triangulation over
 every space's center point (land and sea together, matching the original
-methodology), edges kept under a 420px length threshold.
+methodology), edges kept under a 420px length threshold, plus a small
+hand-confirmed FORCED_EDGES list for real adjacencies the generic
+distance check misses (see below).
 
 This REPLACES the old adjacency.json, which was a one-time migration from
 a pre-project graph.pkl (see git history / tools/export_adjacency.py) and
@@ -43,6 +45,26 @@ from scipy.spatial import Delaunay
 WIDTH = 3500
 THRESHOLD = 420
 
+# The threshold above is a sanity check against spurious long-distance
+# Delaunay edges, not a hard adjacency rule -- it can wrongly exclude a
+# real adjacency when a territory is large enough that its center point
+# sits far from its actual shared border/coastline. Confirmed by hand,
+# not derived, and applied after the normal triangulation+threshold
+# process:
+#   (10, 20)  Western Canada / Eastern Canada -- the base_map2 redraw of
+#             10 makes their coastlines visually touch across the
+#             east-west wrap seam, but their centers are ~529px apart.
+#   (150, 3)  Bering Strait / Beaufort Sea -- a real Delaunay edge
+#             (784px) just over threshold.
+#   (150, 11) Bering Strait / Hudson Bay -- not even a raw Delaunay edge
+#             (Beaufort Sea sits between them geometrically), added for
+#             the same Arctic-gateway connectivity as the (150, 3) case.
+FORCED_EDGES = {
+    (10, 20),
+    (150, 3),
+    (150, 11),
+}
+
 territories = json.load(open('data/territories.json'))['spaces']
 
 pts = []
@@ -66,6 +88,7 @@ for simplex in tri.simplices:
         if d <= THRESHOLD:
             edges.add(tuple(sorted((ra, rb))))
 
+edges |= {tuple(sorted(e)) for e in FORCED_EDGES}
 edges = sorted(edges)
 
 neighbors = {}
