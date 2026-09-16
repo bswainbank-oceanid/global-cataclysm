@@ -115,10 +115,18 @@ def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_t
     against a roster that still has a normally-reachable target is just
     an ordinary full-damage hit; the half-damage bypass is the cost of
     reaching an otherwise-unhittable target specifically, not a tax on
-    rolling well. If neither pool has anyone (no clean target and the
-    roll isn't the die max), this roll is a miss, but a target is still
-    chosen (for display) from the toughest still-standing enemies whose
-    defense exceeds the roll -- the closest ones to being hittable."""
+    rolling well.
+
+    When there's no clean target, the pool (whether this ends up a
+    bypass hit or a miss) is built the same way either way: only the
+    NEXT-highest defense tier above the roll -- e.g. a roll of 6 with no
+    clean target, facing a defense-7 Armor, a defense-7 Mechanized
+    Infantry, and a defense-8 Fighter standing, only puts the two
+    defense-7 units in the pool; the defense-8 Fighter is excluded
+    entirely, even on a bypass hit. Same-type weighting still applies
+    within that narrower pool. Whether it's actually a hit (bypass, half
+    damage) or a miss (0 damage, targeted for display only) depends
+    purely on whether roll == die_max."""
     standing = [e for e in enemies if e.current_hp - pending_damage.get(e.unit_id, 0) > 0]
     if not standing:
         return None, False, False
@@ -127,12 +135,13 @@ def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_t
 
     if clean_pool:
         pool, is_hit, is_bypass = clean_pool, True, False
-    elif roll == die_max:
-        pool, is_hit, is_bypass = standing, True, True
     else:
         min_defense = min(e.effective_stats(unit_defs)['defense'] for e in standing)
         pool = [e for e in standing if e.effective_stats(unit_defs)['defense'] == min_defense]
-        is_hit, is_bypass = False, False
+        if roll == die_max:
+            is_hit, is_bypass = True, True
+        else:
+            is_hit, is_bypass = False, False
 
     weights = [same_type_weight if (attacker_type != 'Bomber' and e.unit_type == attacker_type) else 1 for e in pool]
     target = rng.choices(pool, weights=weights, k=1)[0]

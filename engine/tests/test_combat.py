@@ -157,6 +157,30 @@ class TestTargetSelectionWeighting(unittest.TestCase):
         self.assertTrue(is_bypass)
         self.assertEqual(target.unit_id, 1)
 
+    def test_bypass_pool_restricted_to_next_highest_defense_tier(self):
+        # Mech Inf attacker (D6, max roll 6): no clean target exists (all
+        # defenses > 6). Armor (defense 7) and a *promoted* Mech Inf
+        # (base defense 6 + 1 = 7 -- a plain one would be defense 6 and
+        # wrongly land in the clean pool at roll 6) both sit at defense
+        # 7, the tier immediately above the roll, and are the only
+        # bypass candidates, weighted 2:1 toward the same-type (Mech
+        # Inf) one. A defense-8 Fighter is a tougher tier still and must
+        # be excluded from the bypass pool entirely, not just deprioritized.
+        armor = make(1, 'Armor', 'AAC')  # defense 7
+        mech_inf = make(2, 'Mechanized Infantry', 'AAC', promoted=True)  # defense 7
+        fighter = make(3, 'Fighter', 'AAC')  # defense 8
+        counts = {1: 0, 2: 0, 3: 0}
+        rng = random.Random(5)
+        for _ in range(2000):
+            target, is_hit, is_bypass = _select_target(
+                rng, 6, 6, 'Mechanized Infantry', [armor, mech_inf, fighter], UNIT_DEFS, 2, 1, {})
+            self.assertTrue(is_hit)
+            self.assertTrue(is_bypass)
+            counts[target.unit_id] += 1
+        self.assertEqual(counts[3], 0, 'defense-8 Fighter should never be in the bypass pool')
+        ratio = counts[2] / counts[1]
+        self.assertTrue(1.6 < ratio < 2.4, f'expected ~2:1 toward same-type Mech Inf, got {counts}')
+
 
 class TestBattleOutcomes(unittest.TestCase):
     def test_three_round_cap_produces_contested_when_both_sides_survive(self):

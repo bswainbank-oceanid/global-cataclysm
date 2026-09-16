@@ -32,7 +32,7 @@
     "air_superiority_rounds": 1,
     "air_superiority_trigger": "occurs only if both sides in the battle have at least 1 air unit present AND at least one of the two sides has at least 1 Fighter present; two bomber-only air forces facing each other do not trigger it",
     "hit_rule": "attack die roll >= target's defense is a hit; the max value on the die always hits, even against a target whose defense exceeds the roll",
-    "damage_rule": "a hit deals damage equal to the attacker's damage rating. A target normally reachable by the roll (defense <= roll) is always preferred and takes full damage, even if the roll happens to be the die's max value. The max-die-always-hits bypass -- reaching a target whose defense exceeds the roll -- is only used once no normally-reachable target remains, and that bypass hit specifically deals half damage (rounded down): the cost of forcing a hit on an otherwise-unhittable target, not a tax on rolling well.",
+    "damage_rule": "a hit deals damage equal to the attacker's damage rating. A target normally reachable by the roll (defense <= roll) is always preferred and takes full damage, even if the roll happens to be the die's max value. The max-die-always-hits bypass -- reaching a target whose defense exceeds the roll -- is only used once no normally-reachable target remains, and even then is restricted to the single next-highest defense tier above the roll (see target_selection.fallback_rule; a tougher tier still is never reached), and that bypass hit specifically deals half damage (rounded down): the cost of forcing a hit on an otherwise-unhittable target, not a tax on rolling well.",
     "resolution_order": {
       "land": ["Infantry", "Mechanized Infantry", "Armor", "Fighter", "Bomber"],
       "sea": ["Submarine", "Fighter", "Bomber", "Cruiser", "Aircraft Carrier"],
@@ -40,7 +40,7 @@
     },
     "target_selection": {
       "eligible_pool_rule": "enemy units in the battle with defense <= the attack roll and HP > 0 (not yet eliminated this round)",
-      "fallback_rule": "if the eligible pool is empty, fall back to the eligible units with the next-lowest defense above the roll",
+      "fallback_rule": "if the eligible pool is empty, fall back to the eligible units with the next-lowest defense above the roll. This same fallback pool is what a max-die bypass hit draws from too, not the full standing roster -- a unit whose defense is even higher (a tougher tier still) is excluded either way.",
       "same_type_weight": 2,
       "bomber_attacker_weight": 1,
       "weighting_note": "an attacking unit is twice as likely to target an eligible enemy unit of its own unit type as any other eligible unit, except a Bomber attacker, which uses uniform (1x) weighting across the whole eligible pool. Bombers themselves are ordinary targets for everyone else's attacks -- no special protection, no extra likelihood."
