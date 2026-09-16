@@ -52,14 +52,20 @@ class TestHitAndDamageMath(unittest.TestCase):
         self.assertEqual(e.target_hp_after, -2)
 
     def test_max_die_roll_always_hits_regardless_of_defense_and_halves_damage(self):
-        # Bomber: D10, damage 4 -- rolling the die max (10) always hits
-        # and halves damage to 2, enough to kill this hp-1 Carrier.
-        attacker = make(1, 'Bomber', 'NAA')  # D10, damage 4, defense 7
-        defender = make(2, 'Aircraft Carrier', 'AAC', hp=1)  # defense 6, D8 can't reach 7
-        events = drain([attacker], [defender], 'sea', ScriptedRNG([10, 1]))
+        # Infantry: D6 (max 6), damage 2. Armor's defense (7) is HIGHER
+        # than Infantry's max possible roll, so under the plain roll >=
+        # defense rule, a 6 would normally miss (6 < 7) -- this is the
+        # case that actually isolates the bypass, unlike a big-die
+        # attacker whose max roll would already beat any real unit's
+        # defense on its own. Because 6 is Infantry's die max, it still
+        # forces a hit, with damage halved (2 // 2 = 1), enough to kill
+        # this hp-1 Armor.
+        attacker = make(1, 'Infantry', 'NAA')  # D6, damage 2, defense 5
+        defender = make(2, 'Armor', 'AAC', hp=1)  # defense 7 -- unreachable by a plain D6 roll
+        events = drain([attacker], [defender], 'land', ScriptedRNG([6, 1]))
         e = [ev for ev in events if ev.kind == EventKind.UNIT_ROLL][0]
         self.assertTrue(e.hit)
-        self.assertEqual(e.damage, 2)  # damage 4 // 2
+        self.assertEqual(e.damage, 1)  # damage 2 // 2
 
     def test_below_defense_roll_misses_but_still_shows_a_target(self):
         attacker = make(1, 'Infantry', 'NAA')  # D6, can't reach a defense of 7
