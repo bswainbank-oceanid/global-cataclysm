@@ -45,19 +45,61 @@ APPROX_EPSILON = 2.5
 MIN_CONTOUR_AREA = 25
 
 
+def bridge_hole(outer, hole):
+    """Merges a hole ring into its outer ring via a zero-width bridge at
+    their closest pair of points, producing one simple (self-touching,
+    not self-crossing) polygon that any ordinary polygon-fill rule
+    renders with the hole correctly excluded -- the standard trick for
+    representing a polygon-with-hole in formats (like ours) that only
+    support simple polygons. Needed because a sea zone that fully
+    surrounds an island (e.g. 114 around Indonesia/107, 85 around
+    Hawaii/77) has a real hole in its mask; without this, the enclosed
+    land territory silently vanishes under the sea zone's fill."""
+    best = None
+    for i, po in enumerate(outer):
+        for j, ph in enumerate(hole):
+            d = (po[0] - ph[0]) ** 2 + (po[1] - ph[1]) ** 2
+            if best is None or d < best[0]:
+                best = (d, i, j)
+    _, i, j = best
+    hole_rot = hole[j:] + hole[:j + 1]
+    return outer[:i + 1] + hole_rot + [outer[i]] + outer[i + 1:]
+
+
 def polygons_from_mask(mask):
     """mask: boolean array, true for pixels belonging to one territory.
-    Returns a list of simplified vertex polygons (usually one)."""
+    Returns a list of simplified vertex polygons (usually one; a sea
+    zone that fully encloses an island has its hole(s) bridged into the
+    same polygon rather than returned separately -- see bridge_hole)."""
     region = mask.astype(np.uint8) * 255
-    contours, _ = cv2.findContours(region, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    polygons = []
-    for c in contours:
+    contours, hierarchy = cv2.findContours(region, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    if hierarchy is None:
+        return []
+    hierarchy = hierarchy[0]
+
+    def simplify(c):
         if cv2.contourArea(c) < MIN_CONTOUR_AREA:
-            continue
+            return None
         approx = cv2.approxPolyDP(c, APPROX_EPSILON, closed=True)
         if len(approx) < 3:
+            return None
+        return [[int(pt[0][0]), int(pt[0][1])] for pt in approx]
+
+    polygons = []
+    for idx, c in enumerate(contours):
+        parent = hierarchy[idx][3]
+        if parent != -1:
+            continue  # handled as a hole of its parent, below
+        outer = simplify(c)
+        if outer is None:
             continue
-        polygons.append([[int(pt[0][0]), int(pt[0][1])] for pt in approx])
+        child = hierarchy[idx][2]
+        while child != -1:
+            hole = simplify(contours[child])
+            if hole is not None:
+                outer = bridge_hole(outer, hole)
+            child = hierarchy[child][0]  # next sibling hole
+        polygons.append(outer)
     return polygons
 
 
