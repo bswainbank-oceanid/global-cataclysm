@@ -276,6 +276,75 @@ class TestNonCombatMoveDestinations(unittest.TestCase):
         self.assertIn(3, dest)  # contested by the mover
         self.assertNotIn(4, dest)  # clean foreign -- never legal for a non-combat move
 
+    def test_any_contested_territory_is_legal_regardless_of_participants(self):
+        # 1 (land, origin) -- 2 (land, owned by AAC, contested by a
+        # THIRD faction, UER -- the mover, NAA, isn't involved at all).
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}},
+            adjacency={1: [2]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={1: 'NAA', 2: 'AAC'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UER': PowerMode.HUMAN},
+            contested={2: {'UER'}},
+        )
+        dest = legal_noncombat_move_destinations('Infantry', 'NAA', 1, gs, data)
+        self.assertIn(2, dest, 'a contested territory is a legal non-combat destination regardless of who is contesting it')
+
+
+class TestAllianceAwareMovement(unittest.TestCase):
+    def _allied_state(self, data, territory_owners, contested=None, units_by_territory=None):
+        gs = make_state(
+            data, territory_owners,
+            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            contested=contested, units_by_territory=units_by_territory,
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        return gs
+
+    def test_noncombat_move_into_allied_land_is_legal(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        gs = self._allied_state(data, {1: 'NAA', 2: 'UE'})
+        dest = legal_noncombat_move_destinations('Infantry', 'NAA', 1, gs, data)
+        self.assertIn(2, dest, "moving into an ally's territory is a legal non-combat move")
+
+    def test_combat_move_can_pass_through_allied_land(self):
+        # 1 (land, origin, NAA) -- 2 (land, allied UE, uncontested) -- 3
+        # (land, empty enemy AAC, beyond 2). Confirms allied territory is
+        # freely transitable for a combat move too, not just non-combat.
+        custom = dict(LAND_UNITS, Infantry={'category': 'Land', 'combat_move': 2, 'non_combat_move': 2})
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+            unit_defs=custom,
+        )
+        gs = self._allied_state(data, {1: 'NAA', 2: 'UE', 3: 'AAC'})
+        dest = legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data)
+        self.assertIn(3, dest, "allied territory should be freely passable on a combat move, same as your own")
+
+    def test_ally_occupied_sea_zone_does_not_block_noncombat_movement(self):
+        # 1 (sea, origin) -- 2 (sea, only an ALLY's warship present) --
+        # 3 (sea, beyond). Should pass freely; an ally isn't an enemy.
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'sea'}, 3: {'type': 'sea'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = self._allied_state(data, {}, units_by_territory={2: [enemy_unit(1, 'Cruiser', 'UE')]})
+        dest = legal_noncombat_move_destinations('Submarine', 'NAA', 1, gs, data)
+        self.assertIn(3, dest, "an ally's warship should not block non-combat passage through its sea zone")
+
+    def test_non_ally_occupied_sea_zone_blocks_noncombat_movement(self):
+        # Same shape, but the occupying faction (AAC) is NOT an ally.
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'sea'}, 3: {'type': 'sea'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = self._allied_state(data, {}, units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')]})
+        dest = legal_noncombat_move_destinations('Submarine', 'NAA', 1, gs, data)
+        self.assertNotIn(3, dest, 'a non-ally-occupied sea zone should block non-combat passage -- would need to be a combat move')
+
 
 class TestAirMovement(unittest.TestCase):
     def test_air_flies_over_occupied_territory_freely(self):
@@ -292,7 +361,7 @@ class TestAirMovement(unittest.TestCase):
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', gs, data)
         self.assertIn(3, dest, 'air units are exempt from the enemy-occupation stop rule')
 
-    def test_noncombat_air_landing_restricted_to_friendly_territory_or_own_carrier(self):
+    def test_noncombat_air_landing_on_own_land_allowed_even_if_contested(self):
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}, 4: {'type': 'sea'}},
             adjacency={1: [2, 3, 4]},
@@ -301,13 +370,31 @@ class TestAirMovement(unittest.TestCase):
             data,
             territory_owners={1: 'NAA', 2: 'NAA', 3: 'NAA'},
             faction_modes={'NAA': PowerMode.HUMAN},
-            contested={3: {'NAA'}},  # contested LAND -- not a legal air landing spot
+            contested={3: {'NAA'}},  # own contested land -- IS a legal air landing spot
             units_by_territory={4: [enemy_unit(1, 'Aircraft Carrier', 'NAA')]},
         )
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
         self.assertIn(2, dest)  # friendly land
+        self.assertIn(3, dest, 'contested land you own is a legal landing spot for aircraft')
         self.assertIn(4, dest)  # own carrier's sea zone
-        self.assertNotIn(3, dest, 'a contested LAND territory is not a legal landing spot for aircraft')
+
+    def test_noncombat_air_landing_on_ally_land_allowed_even_if_contested_but_not_ally_carrier(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'sea'}},
+            adjacency={1: [2, 3]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={1: 'NAA', 2: 'UE'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            contested={2: {'NAA'}},  # ally's contested territory
+            units_by_territory={3: [enemy_unit(1, 'Aircraft Carrier', 'UE')]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
+        self.assertIn(2, dest, "allied land is a legal landing spot even contested -- landing doesn't care")
+        self.assertNotIn(3, dest, "an ally's carrier is not landable on, even though their land is")
 
 
 if __name__ == '__main__':

@@ -9,11 +9,22 @@ file for the prose version of each rule this implements.
 
 Two move types, with different destination rules:
 - combat: the destination becomes an attack (or joins one already in
-  progress). Ends when the path enters foreign or contested territory --
-  Mechanized Infantry is the sole exception, able to pass through (and
-  capture) an EMPTY foreign land territory and keep going.
-- noncombat: reposition only. Friendly or already-contested-by-you
-  territory; never a clean foreign one.
+  progress). Ends when the path enters non-allied or contested
+  territory -- Mechanized Infantry is the sole exception, able to pass
+  through (and capture) an EMPTY foreign land territory and keep going.
+- noncombat: reposition only. Own or allied territory (contested or
+  not), or any already-contested territory regardless of who's involved;
+  never a clean (uncontested), non-allied foreign one. A sea zone
+  occupied by a non-ally blocks non-combat movement -- that needs a
+  combat move instead.
+
+Alliances: FactionState.alliance is a plain membership tag (see
+data/rules.json's alliances.status) that this module actively consults
+throughout -- own-or-allied territory/units are treated as friendly
+everywhere above, even though the alliance MECHANICS (joining/
+withdrawing, betrayal) are still out of scope. Air's landing rule is the
+one asymmetric case: allied LAND is fine (even contested), but landing
+specifically requires the mover's OWN carrier, never an ally's.
 
 Movement budget: a unit's move stat, extended by +1 (to both move types,
 for the rest of the turn) the moment it's in a sea zone -- whether it
@@ -49,10 +60,25 @@ def _is_contested(territory_id, game_state):
     return bool(game_state.territories[territory_id].contested_by)
 
 
+def _is_ally_or_self(game_state, mover_faction, other_faction):
+    """True if `other_faction` is the mover itself or shares its
+    alliance. Alliance mechanics (joining/withdrawing, betrayal) are
+    still out of scope for v1 -- FactionState.alliance is a simple, already-
+    set membership tag movement.py consults, not something this module
+    manages."""
+    if other_faction is None:
+        return False
+    if other_faction == mover_faction:
+        return True
+    mover_alliance = game_state.factions[mover_faction].alliance
+    return mover_alliance is not None and mover_alliance == game_state.factions[other_faction].alliance
+
+
 def _enemies_present(territory_id, mover_faction, game_state):
-    """Enemy combatants in a territory -- Transports never count as an
-    occupying presence, per enemy_occupation_stop_rule."""
-    return any(u.owner != mover_faction and u.unit_type != 'Transport'
+    """Combatants belonging to a faction that's neither the mover nor
+    one of its allies -- Transports never count as an occupying
+    presence, per enemy_occupation_stop_rule."""
+    return any(not _is_ally_or_self(game_state, mover_faction, u.owner) and u.unit_type != 'Transport'
                for u in game_state.territories[territory_id].units)
 
 
@@ -86,36 +112,38 @@ def _classify_combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_s
     dest = game_state.territories[dest_id]
     is_land = territories[dest_id]['type'] == 'land'
     contested = _is_contested(dest_id, game_state)
+    own_or_ally_land = is_land and _is_ally_or_self(game_state, mover_faction, dest.owner)
 
     if not is_land and is_land_unit and (contested or _enemies_present(dest_id, mover_faction, game_state)):
         # Hostile (occupied OR contested) sea zone, land unit currently
         # in transit (i.e. riding a Transport): must be prepared to
         # fight/rejoin the naval battle here, but may continue straight
         # on to adjacent LAND in the same move -- to attack, join an
-        # ongoing fight, or land safely on friendly territory to escape
-        # the hostile water. Landing there is always a legal stop for
-        # this move regardless of whose land it is (see the BFS driver,
-        # which enforces that even though the ordinary classification of
-        # friendly land below wouldn't otherwise mark it as one) --
-        # still a combat move, not a non-combat one, since it passed
-        # through contested/occupied water to get there. Actually
-        # completing the crossing is contingent on surviving that sea
-        # zone's naval battle first (see combat.battle_resolution_pass_order),
-        # an execution-time dependency, not a reachability concern.
+        # ongoing fight, or land safely on friendly (own or allied)
+        # territory to escape the hostile water. Landing there is
+        # always a legal stop for this move regardless of whose land it
+        # is (see the BFS driver, which enforces that even though the
+        # ordinary classification of friendly land below wouldn't
+        # otherwise mark it as one) -- still a combat move, not a
+        # non-combat one, since it passed through contested/occupied
+        # water to get there. Actually completing the crossing is
+        # contingent on surviving that sea zone's naval battle first
+        # (see combat.battle_resolution_pass_order), an execution-time
+        # dependency, not a reachability concern.
         return STOP_AND_PASS_LAND_ONLY
 
-    if is_land and dest.owner == mover_faction and not contested:
-        return PASS_ONLY  # own territory, uncontested -- just transit; attacking your own land isn't a thing
+    if own_or_ally_land:
+        # Own or allied territory -- freely transitable regardless of
+        # contested status (checked before the generic contested check
+        # below, so this doesn't get swallowed by it); attacking your
+        # own or an ally's land isn't a thing.
+        return PASS_ONLY
 
     if contested:
         # Joining or continuing a fight already in progress -- a legal
         # place to end a combat move, but combat move must result in an
         # attack, not walk past one; never a pass-through.
         return STOP_ONLY
-
-    if is_land and dest.owner == mover_faction:
-        # own territory, contested -- freely transitable, same as uncontested own land
-        return PASS_ONLY
 
     if _enemies_present(dest_id, mover_faction, game_state):
         return STOP_ONLY  # occupied foreign territory (or occupied sea for a non-land unit): attack, stop here
@@ -133,15 +161,24 @@ def _classify_combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_s
 
 
 def _classify_noncombat_hop(dest_id, mover_faction, game_state, territories):
-    """Noncombat move: friendly or contested-by-you territory only, pass
-    or stop identically (no attack semantics, no Mech Inf exception --
-    that's a combat-move-only ability)."""
+    """Noncombat move: own or allied land (contested or not), any
+    territory already contested (regardless of who owns it or who's
+    contesting it -- unqualified), or open/allied-occupied sea. Never a
+    clean foreign (non-allied) land territory, and never a sea zone
+    occupied by a non-ally -- that would require a combat move instead.
+    No attack semantics, no Mech Inf exception (that's combat-move-only),
+    but land units DO still get the water-crossing budget bonus for a
+    non-combat move (handled by the caller, not here)."""
     if _is_neutral(dest_id, game_state):
         return BLOCKED
     dest = game_state.territories[dest_id]
     is_land = territories[dest_id]['type'] == 'land'
-    if is_land and dest.owner != mover_faction and not _is_contested(dest_id, game_state):
-        return BLOCKED  # never a clean foreign territory
+    if is_land:
+        if _is_ally_or_self(game_state, mover_faction, dest.owner) or _is_contested(dest_id, game_state):
+            return STOP_AND_PASS
+        return BLOCKED  # clean, non-allied foreign land
+    if _enemies_present(dest_id, mover_faction, game_state):
+        return BLOCKED  # non-ally-occupied water -- would need to be a combat move
     return STOP_AND_PASS
 
 
@@ -232,8 +269,9 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
     concept) and where they're allowed to end the turn: a combat move
     still needs to land in a legal spot (friendly territory, or an
     enemy/contested space to attack), while a non-combat move is
-    restricted to friendly territory or a carrier -- never a contested
-    LAND territory even though a contested sea zone's carrier is fine."""
+    restricted to own-or-allied land (contested or not -- landing there
+    doesn't care) or the mover's own carrier specifically (never an
+    ally's, even though allied land is fine)."""
     unit_defs = data_module.units()
     territories = data_module.territories()
     adjacency = data_module.adjacency()
@@ -261,9 +299,15 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
         def legal_landing(tid):
             dest = game_state.territories[tid]
             if territories[tid]['type'] == 'land':
-                return dest.owner == owner and not dest.contested_by  # friendly AND uncontested land only
-            has_own_carrier = any(u.owner == owner and u.unit_type == 'Aircraft Carrier' for u in dest.units)
-            return has_own_carrier
+                # Own or allied land, contested or not -- unlike ground
+                # units' pass-through rules, landing here doesn't care
+                # about contested status at all as long as it's owned by
+                # you or an ally.
+                return _is_ally_or_self(game_state, owner, dest.owner)
+            # Sea: strictly the mover's OWN carrier, never an ally's --
+            # landing/basing rights don't extend to allied carriers even
+            # though allied land does.
+            return any(u.owner == owner and u.unit_type == 'Aircraft Carrier' for u in dest.units)
         return {tid for tid in reachable if legal_landing(tid)}
 
     return reachable
