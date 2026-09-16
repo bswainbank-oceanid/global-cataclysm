@@ -23,6 +23,7 @@ MULTI_SEED_BOX = {
     109: (2370, 1140, 2660, 1460),  # New Guinea
     77: (2820, 900, 3020, 1040),    # Hawaii
     148: (2930, 1270, 3160, 1420),  # Polynesia
+    90: (585, 920, 750, 1020),      # West Africa -- coastal strip cut off near the Algeria border
 }
 
 

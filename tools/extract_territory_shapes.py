@@ -20,6 +20,19 @@ Each territory gets a *list* of polygons, not one flat polygon:
   component), so it still produces one clean mask per zone.
 A single-polygon assumption would silently drop islands, or leave two
 sea zones merged into one shape.
+
+A sea zone's polygon is its outer boundary only -- it is NOT punched
+through where an island it fully encloses sits (e.g. 114 around
+Indonesia/107, 85 around Hawaii/77). Representing that properly needs a
+real hole (or an explicit fill/hole split in the schema); an earlier
+version of this script "solved" it with a zero-width bridge line
+stitching the hole into the outer ring, but that line rendered as a
+visible seam across open water. Simpler and standard for this kind of
+layered territory map: leave the sea polygon whole, and always draw/
+instantiate land territories after (on top of) sea territories, so the
+island naturally covers the sea fill underneath it. Any consumer
+(including tools/render_map.py's land-color fill and this file's own
+preview snippets) must respect that draw order.
 """
 import json
 import cv2
@@ -45,61 +58,22 @@ APPROX_EPSILON = 2.5
 MIN_CONTOUR_AREA = 25
 
 
-def bridge_hole(outer, hole):
-    """Merges a hole ring into its outer ring via a zero-width bridge at
-    their closest pair of points, producing one simple (self-touching,
-    not self-crossing) polygon that any ordinary polygon-fill rule
-    renders with the hole correctly excluded -- the standard trick for
-    representing a polygon-with-hole in formats (like ours) that only
-    support simple polygons. Needed because a sea zone that fully
-    surrounds an island (e.g. 114 around Indonesia/107, 85 around
-    Hawaii/77) has a real hole in its mask; without this, the enclosed
-    land territory silently vanishes under the sea zone's fill."""
-    best = None
-    for i, po in enumerate(outer):
-        for j, ph in enumerate(hole):
-            d = (po[0] - ph[0]) ** 2 + (po[1] - ph[1]) ** 2
-            if best is None or d < best[0]:
-                best = (d, i, j)
-    _, i, j = best
-    hole_rot = hole[j:] + hole[:j + 1]
-    return outer[:i + 1] + hole_rot + [outer[i]] + outer[i + 1:]
-
-
 def polygons_from_mask(mask):
     """mask: boolean array, true for pixels belonging to one territory.
-    Returns a list of simplified vertex polygons (usually one; a sea
-    zone that fully encloses an island has its hole(s) bridged into the
-    same polygon rather than returned separately -- see bridge_hole)."""
+    Returns a list of simplified vertex polygons (usually one). Outer
+    boundaries only -- holes (an enclosed island) are not cut out; see
+    the module docstring for why, and the required land-over-sea draw
+    order that makes that a non-issue."""
     region = mask.astype(np.uint8) * 255
-    contours, hierarchy = cv2.findContours(region, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-    if hierarchy is None:
-        return []
-    hierarchy = hierarchy[0]
-
-    def simplify(c):
+    contours, _ = cv2.findContours(region, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    polygons = []
+    for c in contours:
         if cv2.contourArea(c) < MIN_CONTOUR_AREA:
-            return None
+            continue
         approx = cv2.approxPolyDP(c, APPROX_EPSILON, closed=True)
         if len(approx) < 3:
-            return None
-        return [[int(pt[0][0]), int(pt[0][1])] for pt in approx]
-
-    polygons = []
-    for idx, c in enumerate(contours):
-        parent = hierarchy[idx][3]
-        if parent != -1:
-            continue  # handled as a hole of its parent, below
-        outer = simplify(c)
-        if outer is None:
             continue
-        child = hierarchy[idx][2]
-        while child != -1:
-            hole = simplify(contours[child])
-            if hole is not None:
-                outer = bridge_hole(outer, hole)
-            child = hierarchy[child][0]  # next sibling hole
-        polygons.append(outer)
+        polygons.append([[int(pt[0][0]), int(pt[0][1])] for pt in approx])
     return polygons
 
 
@@ -155,7 +129,11 @@ out = {
         'polygons (usually one; land island-chain territories and a '
         'couple of sea zones with border-art gaps can have several), '
         'each a list of [x, y] vertices in reference-image pixel '
-        'coordinates, closed (no repeated last point).'
+        'coordinates, closed (no repeated last point). A sea zone polygon '
+        'is its outer boundary only -- islands it encloses are NOT cut '
+        'out as holes. Consumers MUST draw/instantiate land territories '
+        'after (on top of) sea territories so enclosed islands show '
+        'through correctly.'
     ),
     'approx_epsilon_px': APPROX_EPSILON,
     'territory_count': len(shapes),
