@@ -48,6 +48,7 @@ class TestHitAndDamageMath(unittest.TestCase):
         e = roll_events[0]
         self.assertEqual(e.side, 'attacker')
         self.assertTrue(e.hit)
+        self.assertFalse(e.bypass_hit)
         self.assertEqual(e.damage, 4)  # full damage, not halved
         self.assertEqual(e.target_hp_after, -2)
 
@@ -65,6 +66,7 @@ class TestHitAndDamageMath(unittest.TestCase):
         events = drain([attacker], [defender], 'land', ScriptedRNG([6, 1]))
         e = [ev for ev in events if ev.kind == EventKind.UNIT_ROLL][0]
         self.assertTrue(e.hit)
+        self.assertTrue(e.bypass_hit)
         self.assertEqual(e.damage, 1)  # damage 2 // 2
 
     def test_below_defense_roll_misses_but_still_shows_a_target(self):
@@ -101,23 +103,26 @@ class TestResolutionOrder(unittest.TestCase):
 class TestTargetSelectionWeighting(unittest.TestCase):
     def test_same_type_weighted_2to1_except_for_bomber_attacker(self):
         rng = random.Random(123)
-        infantry = make(1, 'Infantry', 'AAC')
-        armor = make(2, 'Armor', 'AAC')
-        # Attacker is Infantry: should weight the Infantry defender 2x.
-        _, hit = _select_target(rng, 6, 6, 'Infantry', [infantry, armor], UNIT_DEFS, 2, 1, {})
+        infantry = make(1, 'Infantry', 'AAC')  # defense 5
+        armor = make(2, 'Armor', 'AAC')  # defense 7
+        # roll=7 (below a die max of 8, so this is an ordinary clean-hit
+        # pool, not the bypass path) reaches both defenders' defense --
+        # needed so both are actually in the eligible pool to weight
+        # between; a max roll would exclude the non-clean one entirely
+        # once a clean hit is available (see _select_target).
         counts = {1: 0, 2: 0}
         for _ in range(2000):
-            t, _ = _select_target(rng, 6, 6, 'Infantry', [infantry, armor], UNIT_DEFS, 2, 1, {})
+            t, _, _ = _select_target(rng, 7, 8, 'Infantry', [infantry, armor], UNIT_DEFS, 2, 1, {})
             counts[t.unit_id] += 1
         ratio = counts[1] / counts[2]
         self.assertTrue(1.6 < ratio < 2.4, f'expected ~2:1 same-type weighting, got {counts}')
 
         # Attacker is a Bomber: uniform weighting even against a same-type target.
-        bomber_defender = make(3, 'Bomber', 'AAC')
-        other = make(4, 'Fighter', 'AAC')
+        bomber_defender = make(3, 'Bomber', 'AAC')  # defense 7
+        other = make(4, 'Fighter', 'AAC')  # defense 8
         counts2 = {3: 0, 4: 0}
         for _ in range(2000):
-            t, _ = _select_target(rng, 12, 12, 'Bomber', [bomber_defender, other], UNIT_DEFS, 2, 1, {})
+            t, _, _ = _select_target(rng, 8, 10, 'Bomber', [bomber_defender, other], UNIT_DEFS, 2, 1, {})
             counts2[t.unit_id] += 1
         ratio2 = counts2[3] / counts2[4]
         self.assertTrue(0.8 < ratio2 < 1.2, f'expected ~1:1 (bomber attacker), got {counts2}')
@@ -128,8 +133,29 @@ class TestTargetSelectionWeighting(unittest.TestCase):
         # weak already has 1 pending damage -- exactly its HP -- so it must
         # be excluded from targeting even though current_hp still reads 1.
         pending = {1: 1}
-        target, _ = _select_target(random.Random(1), 6, 6, 'Infantry', [weak, tough], UNIT_DEFS, 2, 1, pending)
+        target, _, _ = _select_target(random.Random(1), 6, 6, 'Infantry', [weak, tough], UNIT_DEFS, 2, 1, pending)
         self.assertEqual(target.unit_id, 2)
+
+    def test_clean_hit_preferred_over_bypass_when_both_available(self):
+        # roll = die_max (6), so the bypass *could* reach Armor (defense
+        # 7 > 6), but Infantry (defense 5 <= 6) is a clean hit -- must
+        # take the clean hit, at full damage, not the bypass.
+        clean = make(1, 'Infantry', 'AAC')  # defense 5
+        needs_bypass = make(2, 'Armor', 'AAC')  # defense 7
+        for _ in range(200):
+            target, is_hit, is_bypass = _select_target(
+                random.Random(), 6, 6, 'Mechanized Infantry', [clean, needs_bypass], UNIT_DEFS, 2, 1, {})
+            self.assertTrue(is_hit)
+            self.assertFalse(is_bypass)
+            self.assertEqual(target.unit_id, 1)
+
+    def test_bypass_only_used_once_all_clean_targets_are_gone(self):
+        needs_bypass = make(1, 'Armor', 'AAC')  # defense 7, only reachable via bypass at roll 6
+        target, is_hit, is_bypass = _select_target(
+            random.Random(1), 6, 6, 'Infantry', [needs_bypass], UNIT_DEFS, 2, 1, {})
+        self.assertTrue(is_hit)
+        self.assertTrue(is_bypass)
+        self.assertEqual(target.unit_id, 1)
 
 
 class TestBattleOutcomes(unittest.TestCase):

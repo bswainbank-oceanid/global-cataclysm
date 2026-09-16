@@ -49,6 +49,7 @@ class BattleEvent:
     die: Optional[str] = None
     roll: Optional[int] = None
     hit: Optional[bool] = None
+    bypass_hit: Optional[bool] = None  # True if this hit only landed via the max-die bypass (defense > roll, half damage) -- False for an ordinary hit, None on a miss
     target_unit_id: Optional[int] = None  # set even on a miss, for display -- see module docstring / target selection
     damage: Optional[int] = None
     target_hp_after: Optional[int] = None
@@ -100,36 +101,42 @@ def _alive(units):
 
 
 def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_type_weight, bomber_weight, pending_damage):
-    """Returns (target_or_None, is_hit). `pending_damage` maps unit_id ->
-    damage already applied to it earlier in THIS side's roll-through this
-    round (not yet subtracted from current_hp) -- a unit whose pending
-    damage has already reduced it to 0 or below is excluded from
-    targeting, even though it's still nominally "alive" until round-end
-    casualty removal.
+    """Returns (target_or_None, is_hit, is_bypass_hit). `pending_damage`
+    maps unit_id -> damage already applied to it earlier in THIS side's
+    roll-through this round (not yet subtracted from current_hp) -- a
+    unit whose pending damage has already reduced it to 0 or below is
+    excluded from targeting, even though it's still nominally "alive"
+    until round-end casualty removal.
 
-    Hit-eligible pool: enemies with defense <= roll and not already
-    knocked out by pending damage (max die value always hits, so at
-    max roll every such enemy is eligible regardless of defense).
-    If that pool is empty, this roll is a miss, but a target is still
+    A "clean" hit (defense <= roll) is always preferred when one is
+    available, at full damage -- the max-die-always-hits bypass (which
+    can reach a target whose defense exceeds the roll, at half damage)
+    only kicks in once no clean target remains. This means a max roll
+    against a roster that still has a normally-reachable target is just
+    an ordinary full-damage hit; the half-damage bypass is the cost of
+    reaching an otherwise-unhittable target specifically, not a tax on
+    rolling well. If neither pool has anyone (no clean target and the
+    roll isn't the die max), this roll is a miss, but a target is still
     chosen (for display) from the toughest still-standing enemies whose
     defense exceeds the roll -- the closest ones to being hittable."""
     standing = [e for e in enemies if e.current_hp - pending_damage.get(e.unit_id, 0) > 0]
     if not standing:
-        return None, False
+        return None, False, False
 
-    is_max_roll = roll == die_max
-    hit_pool = standing if is_max_roll else [e for e in standing if e.effective_stats(unit_defs)['defense'] <= roll]
+    clean_pool = [e for e in standing if e.effective_stats(unit_defs)['defense'] <= roll]
 
-    if hit_pool:
-        pool, is_hit = hit_pool, True
+    if clean_pool:
+        pool, is_hit, is_bypass = clean_pool, True, False
+    elif roll == die_max:
+        pool, is_hit, is_bypass = standing, True, True
     else:
         min_defense = min(e.effective_stats(unit_defs)['defense'] for e in standing)
         pool = [e for e in standing if e.effective_stats(unit_defs)['defense'] == min_defense]
-        is_hit = False
+        is_hit, is_bypass = False, False
 
     weights = [same_type_weight if (attacker_type != 'Bomber' and e.unit_type == attacker_type) else 1 for e in pool]
     target = rng.choices(pool, weights=weights, k=1)[0]
-    return target, is_hit
+    return target, is_hit, is_bypass
 
 
 def _resolution_sequence(units, unit_defs, type_order):
@@ -161,19 +168,20 @@ def _roll_side(rng, side_label, acting_units, enemy_units, unit_defs, target_cfg
         die = stats['attack_die']
         die_max = DIE_MAX[die]
         roll = rng.randint(1, die_max)
-        target, is_hit = _select_target(
+        target, is_hit, is_bypass = _select_target(
             rng, roll, die_max, unit.unit_type, enemy_units, unit_defs,
             target_cfg['same_type_weight'], target_cfg['bomber_attacker_weight'], pending_damage,
         )
         damage = 0
         target_hp_after = None
         if is_hit and target is not None:
-            damage = stats['damage'] // 2 if roll == die_max else stats['damage']
+            damage = stats['damage'] // 2 if is_bypass else stats['damage']
             pending_damage[target.unit_id] = pending_damage.get(target.unit_id, 0) + damage
             target_hp_after = target.current_hp - pending_damage[target.unit_id]
         yield BattleEvent(
             kind=EventKind.UNIT_ROLL, round_number=round_number, side=side_label,
             unit_id=unit.unit_id, unit_type=unit.unit_type, die=die, roll=roll, hit=is_hit,
+            bypass_hit=is_bypass if is_hit else None,
             target_unit_id=target.unit_id if target else None, damage=damage, target_hp_after=target_hp_after,
         )
 
