@@ -42,14 +42,16 @@ class FakeData:
         return self._adjacency
 
 
-def make_state(data, territory_owners, faction_modes, contested=None, units_by_territory=None):
+def make_state(data, territory_owners, faction_modes, contested=None, units_by_territory=None, pending_deployment_by_territory=None):
     """data: the FakeData for this test, used to get every territory id
     in the map -- a TerritoryState is created for ALL of them (sea zones
     included), not just the ones with an explicit owner, since movement.py
     looks up game_state.territories[id] for any territory it visits.
     territory_owners: {id: faction_code}, only for owned (land) ones.
     faction_modes: {faction_code: PowerMode}. contested: {id: {faction_codes}}.
-    units_by_territory: {id: [UnitInstance, ...]}."""
+    units_by_territory: {id: [UnitInstance, ...]}.
+    pending_deployment_by_territory: {id: [UnitInstance, ...]} -- units
+    bought this turn's purchase phase, not yet actually on the board."""
     gs = GameState()
     for code, mode in faction_modes.items():
         gs.factions[code] = FactionState(code=code, mode=mode)
@@ -58,6 +60,7 @@ def make_state(data, territory_owners, faction_modes, contested=None, units_by_t
             territory_id=tid, owner=territory_owners.get(tid),
             units=(units_by_territory or {}).get(tid, []),
             contested_by=(contested or {}).get(tid),
+            pending_deployment=(pending_deployment_by_territory or {}).get(tid, []),
         )
     return gs
 
@@ -401,14 +404,13 @@ class TestAirMovement(unittest.TestCase):
         self.assertIn(3, dest, 'contested land you own is a legal landing spot for aircraft')
         self.assertIn(4, dest)  # own carrier's sea zone
 
-    def test_noncombat_air_landing_on_ally_land_and_ally_carrier_zone_both_legal_to_declare(self):
-        # A zone with only an ally's carrier is legal to DECLARE a
-        # landing at, same as open water -- the mover might still move
-        # their OWN carrier there later the same turn. (Whether it
-        # actually being an ally's carrier -- not the mover's own --
-        # counts for SURVIVAL at phase-end is a separate, later
-        # consequence this function doesn't decide; see
-        # rules.json's stranded_aircraft_rule.)
+    def test_noncombat_air_landing_on_ally_land_legal_but_not_on_ally_carrier_zone(self):
+        # Allied LAND is a legal landing spot even contested -- landing
+        # there doesn't care about that. An ally's CARRIER is a
+        # different story: unlike land, a sea zone with only an ally's
+        # carrier is NOT a legal landing target -- landing on water
+        # specifically requires the mover's own carrier (present or
+        # pending deployment), never an ally's.
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'sea'}},
             adjacency={1: [2, 3]},
@@ -424,23 +426,51 @@ class TestAirMovement(unittest.TestCase):
         gs.factions['UE'].alliance = 'pact'
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
         self.assertIn(2, dest, "allied land is a legal landing spot even contested -- landing doesn't care")
-        self.assertIn(3, dest, "a zone with only an ally's carrier is legal to declare, same as open water")
+        self.assertNotIn(3, dest, "an ally's carrier is still not a legal landing target, only your own")
 
-    def test_noncombat_air_landing_on_empty_open_water_is_legal_pending_a_carrier(self):
-        # No carrier of ANY kind at territory 2 -- just open water. Legal
-        # to declare this landing even with no own carrier there yet,
-        # since a carrier might arrive later the same turn (its own move
-        # order, or a fresh purchase deploying at turn end); movement.py
-        # only validates this one unit's move in isolation. Whether the
-        # aircraft survives being left there with nothing to land on is
-        # a separate, later phase-end consequence this function doesn't decide.
+    def test_noncombat_air_landing_on_truly_open_water_is_illegal(self):
+        # No carrier of any kind at territory 2, and none pending --
+        # genuinely open water. Landing here is NOT legal to declare,
+        # even though a carrier COULD arrive later the same phase via
+        # its own move order: movement.py evaluates one unit's move in
+        # isolation and can't (and per this rule, shouldn't) anticipate
+        # another unit's not-yet-submitted move.
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
         gs = make_state(
             data, territory_owners={1: 'NAA'},
             faction_modes={'NAA': PowerMode.HUMAN},
         )
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
-        self.assertIn(2, dest, 'open water with no carrier at all is still a legal landing spot to declare')
+        self.assertNotIn(2, dest, 'open water with no carrier and none pending must not be a legal landing spot')
+
+    def test_noncombat_air_landing_legal_when_own_carrier_pending_deployment(self):
+        # No carrier physically at territory 2 yet, but the mover's own
+        # faction has one queued in this turn's pending_deployment --
+        # a real, already-known GameState fact (unlike another unit's
+        # own move order), so this IS legal to declare.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
+        gs = make_state(
+            data, territory_owners={1: 'NAA'},
+            faction_modes={'NAA': PowerMode.HUMAN},
+            pending_deployment_by_territory={2: [enemy_unit(9, 'Aircraft Carrier', 'NAA')]},
+        )
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
+        self.assertIn(2, dest, "a zone with the mover's own carrier queued to deploy this turn is a legal landing spot")
+
+    def test_noncombat_air_landing_illegal_when_only_allied_carrier_pending_deployment(self):
+        # Same "own carrier only" restriction applies to a PENDING
+        # deployment too, not just one already on the board -- an
+        # ally's queued carrier doesn't make this a legal landing spot.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
+        gs = make_state(
+            data, territory_owners={1: 'NAA'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            pending_deployment_by_territory={2: [enemy_unit(9, 'Aircraft Carrier', 'UE')]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
+        self.assertNotIn(2, dest, "an ally's carrier, pending or not, is still never a legal landing spot")
 
 
 class TestFindEmergencyLanding(unittest.TestCase):

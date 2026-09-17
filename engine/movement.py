@@ -273,11 +273,14 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
       can't capture (per the turn-order rule) -- there's nothing there
       to actually attack.
     - noncombat: own-or-allied land (contested or not -- landing there
-      doesn't care), or ANY non-ally-occupied sea zone -- an existing own
-      carrier there is NOT required for this to be a legal destination
-      (see legal_landing's docstring below for why); whether the
-      aircraft survives being left there with no carrier is a separate,
-      later concern this function doesn't decide."""
+      doesn't care), or a sea zone where the mover's OWN Aircraft
+      Carrier -- never an ally's, unlike land -- is already present OR
+      queued to deploy there this turn (see legal_landing's docstring
+      below). Landing on open water with no own carrier there yet and
+      none pending is never legal, even though one COULD show up later
+      the same phase via its own move order; movement.py only ever
+      evaluates one unit's move in isolation and can't see, and per this
+      rule shouldn't guess at, another unit's not-yet-submitted move."""
     unit_defs = data_module.units()
     territories = data_module.territories()
     adjacency = data_module.adjacency()
@@ -310,27 +313,26 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
                 # about contested status at all as long as it's owned by
                 # you or an ally.
                 return _is_ally_or_self(game_state, owner, dest.owner)
-            # Sea: legal if not occupied by a non-ally -- an existing
-            # OWN carrier is NOT required to legally DECLARE this move,
-            # and neither does the presence of an ALLY's carrier make
-            # any difference to legality: a zone with only an ally's
-            # carrier is treated the same as genuinely open water, since
-            # the mover might still move their OWN carrier there later
-            # the same turn regardless of what else is already present.
-            # Carriers and aircraft move independently within the same
-            # turn (moving a carrier never auto-moves aircraft sitting
-            # on it, and vice versa) -- a carrier might arrive at this
-            # zone later the same turn via its own move order, or a
-            # fresh purchase deploying there at turn end. movement.py
-            # only sees this one unit's move in isolation, not the rest
-            # of the turn's orders, so it can't (and shouldn't)
-            # pre-validate "is MY carrier here yet" as a legality gate.
-            # Whether the aircraft actually SURVIVES ending the phase
-            # with no OWN carrier present (an ally's doesn't count) is a
-            # separate, later consequence (see rules.json's
-            # stranded_aircraft_rule) -- checked once the whole
-            # non-combat-move phase resolves, in engine.py, not here.
-            return not _enemies_present(tid, owner, game_state)
+            # Sea: illegal outright if occupied by a non-ally (that
+            # needs a combat move instead, same as ground units).
+            # Otherwise legal only if the mover's OWN (never an ally's --
+            # unlike land, landing specifically requires your own
+            # carrier) Aircraft Carrier is either already sitting there,
+            # or already queued to deploy there this turn
+            # (TerritoryState.pending_deployment -- a real, GameState-
+            # visible fact, unlike another unit's own move order, which
+            # hasn't happened yet and might not). Landing on open water
+            # with no carrier of ANY kind present, or one that's only an
+            # ally's, is illegal even though your own carrier COULD
+            # arrive there later the same phase via its own move:
+            # movement.py only ever evaluates one unit's move in
+            # isolation, so it has no way to know, and per this rule
+            # shouldn't try to guess, what order a player will submit
+            # the rest of their moves in.
+            if _enemies_present(tid, owner, game_state):
+                return False
+            own_carrier = lambda u: u.unit_type == 'Aircraft Carrier' and u.owner == owner
+            return any(own_carrier(u) for u in dest.units) or any(own_carrier(u) for u in dest.pending_deployment)
         return {tid for tid in reachable if legal_landing(tid)}
 
     # combat: must result in an attack, same as any other combat move --

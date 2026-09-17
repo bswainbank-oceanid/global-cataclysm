@@ -71,6 +71,18 @@ class UnitInstance:
     # unit_id of the Transport carrying this unit, if it's a land unit
     # currently riding one across a sea zone; None otherwise.
     transported_by: Optional[int] = None
+    # unit_id of the Aircraft Carrier this air unit currently calls
+    # home, if any (None if it's land-based, or not yet assigned). A
+    # land territory never needs this -- it doesn't move, so "where this
+    # unit started the turn" is enough on its own -- but a carrier can
+    # relocate mid-turn (its own combat or non-combat move), so an air
+    # unit riding one needs to track WHICH carrier, not just a fixed
+    # location, to correctly return to "wherever it is" after combat, or
+    # to ride along when that carrier moves. See rules.json's
+    # movement.carrier_air_operations -- engine.py (not yet built) is
+    # what actually sets, clears, and acts on this field; movement.py's
+    # reachability queries don't read or write it.
+    based_on_carrier: Optional[int] = None
 
     def effective_stats(self, unit_defs, round1_bonus=False, defending=False, air_superiority=False):
         """unit_defs: engine.data.units() (or an equivalent test fixture).
@@ -157,6 +169,7 @@ class UnitInstance:
             'has_moved_noncombat': self.has_moved_noncombat,
             'last_combat_global_turn': self.last_combat_global_turn,
             'transported_by': self.transported_by,
+            'based_on_carrier': self.based_on_carrier,
         }
 
     @staticmethod
