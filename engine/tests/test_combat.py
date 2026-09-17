@@ -3,7 +3,7 @@ import unittest
 
 from engine import data
 from engine.state import UnitInstance
-from engine.combat import resolve_battle, BattleResult, EventKind, _select_target, _resolution_sequence
+from engine.combat import resolve_battle, BattleResult, EventKind, _select_target, _resolution_sequence, _fight_one_round
 
 UNIT_DEFS = data.units()
 RULES = data.rules()
@@ -30,8 +30,14 @@ def make(uid, unit_type, owner, hp=None, promoted=False):
     return UnitInstance(unit_id=uid, unit_type=unit_type, owner=owner, current_hp=hp, promoted=promoted)
 
 
-def drain(attackers, defenders, battle_type, rng, turn=0):
-    return list(resolve_battle(attackers, defenders, battle_type, rng, turn, UNIT_DEFS, RULES))
+def drain(attackers, defenders, battle_type, rng, turn=0, round1_bonus_side=None):
+    return list(resolve_battle(attackers, defenders, battle_type, rng, turn, UNIT_DEFS, RULES, round1_bonus_side=round1_bonus_side))
+
+
+def combat_cfg():
+    cfg = dict(RULES['combat'])
+    cfg['_promotion_cfg'] = RULES['promotion']
+    return cfg
 
 
 class TestHitAndDamageMath(unittest.TestCase):
@@ -265,6 +271,77 @@ class TestMutualElimination(unittest.TestCase):
         self.assertEqual(end.outcome, 'mutual_elimination')
         self.assertEqual(end.surviving_attacker_ids, [])
         self.assertEqual(end.surviving_defender_ids, [])
+
+
+class TestFirstRoundCombatBonus(unittest.TestCase):
+    """combat.first_round_bonuses' mechanism: resolve_battle's
+    round1_bonus_side steps the recipient side's attack die up one size
+    and adds +1 defense (capped), same transform as a promotion, for
+    round 1 of main combat only -- never the air-superiority round,
+    never rounds 2-3 -- and stacks additively with an existing
+    promotion. WHICH case (if any) applies to a real battle -- amphibious
+    landing, sea-deploy surprise, former-ally reclaim -- is engine.py's
+    job (not yet built) to decide; these tests drive the mechanism
+    directly via round1_bonus_side, the same way TestTargetSelectionWeighting
+    drives _select_target directly."""
+
+    def _run_round(self, round_number, attacker, defender, rolls, round1_bonus_side):
+        rng = ScriptedRNG(rolls)
+        return list(_fight_one_round(
+            rng, round_number, [attacker], [defender], UNIT_DEFS, combat_cfg(),
+            RULES['combat']['resolution_order']['land'], 0, round1_bonus_side=round1_bonus_side,
+        ))
+
+    def test_defender_bonus_raises_defense_and_can_turn_a_hit_into_a_miss(self):
+        # Infantry defense 5 normally; a roll of 5 would hit. With the
+        # round-1 defender bonus (+1 defense, capped at 10) it becomes 6,
+        # and 5 is neither >= 6 nor the attacker's die-max (6), so this
+        # is a genuine miss, not even a bypass.
+        attacker = make(1, 'Infantry', 'NAA')
+        defender = make(2, 'Infantry', 'AAC')
+        events = self._run_round(1, attacker, defender, rolls=[5, 1], round1_bonus_side='defender')
+        attacker_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
+        self.assertFalse(attacker_roll.hit, 'the round-1 defender bonus should have turned this into a miss')
+
+    def test_bonus_does_not_apply_outside_round_1(self):
+        attacker = make(1, 'Infantry', 'NAA')
+        defender = make(2, 'Infantry', 'AAC')
+        events = self._run_round(2, attacker, defender, rolls=[5, 1], round1_bonus_side='defender')
+        attacker_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
+        self.assertTrue(attacker_roll.hit, 'round 2 should see the defender back at its normal, unboosted defense')
+
+    def test_attacker_bonus_steps_up_the_attack_die(self):
+        attacker = make(1, 'Infantry', 'NAA')  # base D6
+        defender = make(2, 'Infantry', 'AAC')
+        events = self._run_round(1, attacker, defender, rolls=[3, 1], round1_bonus_side='attacker')
+        attacker_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
+        self.assertEqual(attacker_roll.die, 'D8', 'round-1 attacker bonus should step Infantry up from D6 to D8')
+
+    def test_bonus_stacks_with_an_existing_promotion(self):
+        # Promotion alone: D6 -> D8. The round-1 bonus on top: D8 -> D10.
+        attacker = make(1, 'Infantry', 'NAA', promoted=True)
+        defender = make(2, 'Infantry', 'AAC')
+        events = self._run_round(1, attacker, defender, rolls=[3, 1], round1_bonus_side='attacker')
+        attacker_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
+        self.assertEqual(attacker_roll.die, 'D10', 'promotion (D6->D8) and the round-1 bonus (D8->D10) should stack')
+
+    def test_air_superiority_round_is_never_boosted_even_if_requested(self):
+        attacker = make(1, 'Infantry', 'NAA')
+        defender = make(2, 'Infantry', 'AAC')
+        events = self._run_round(0, attacker, defender, rolls=[3, 1], round1_bonus_side='attacker')
+        attacker_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
+        self.assertEqual(attacker_roll.die, 'D6', 'round_number 0 (air superiority) must never receive the round-1-only bonus')
+
+    def test_resolve_battle_plumbs_round1_bonus_side_through_to_round_1(self):
+        # End-to-end smoke test of the public API, not just the isolated
+        # _fight_one_round helper the other tests above use.
+        attacker = make(1, 'Infantry', 'NAA', hp=2)
+        defender = make(2, 'Infantry', 'AAC', hp=2)
+        events = drain([attacker], [defender], 'land', ScriptedRNG([5, 1]), round1_bonus_side='attacker')
+        round1_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker' and e.round_number == 1)
+        self.assertEqual(round1_roll.die, 'D8', "round1_bonus_side should reach round 1 through resolve_battle's real call chain")
+        end = next(e for e in events if e.kind == EventKind.BATTLE_END)
+        self.assertEqual(end.outcome, 'defender_eliminated')
 
 
 if __name__ == '__main__':

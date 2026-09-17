@@ -100,8 +100,12 @@ def _alive(units):
     return [u for u in units if u.current_hp > 0]
 
 
-def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_type_weight, bomber_weight, pending_damage):
-    """Returns (target_or_None, is_hit, is_bypass_hit). `pending_damage`
+def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_type_weight, bomber_weight, pending_damage, enemy_round1_bonus=False):
+    """Returns (target_or_None, is_hit, is_bypass_hit). `enemy_round1_bonus`:
+    True if the enemies' side qualifies for one of combat.
+    first_round_bonuses this round -- their defense (used below for both
+    the clean-pool and bypass-tier checks) reflects it, same as an
+    existing promotion would. `pending_damage`
     maps unit_id -> damage already applied to it earlier in THIS side's
     roll-through this round (not yet subtracted from current_hp) -- a
     unit whose pending damage has already reduced it to 0 or below is
@@ -131,13 +135,14 @@ def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_t
     if not standing:
         return None, False, False
 
-    clean_pool = [e for e in standing if e.effective_stats(unit_defs)['defense'] <= roll]
+    defense_of = lambda e: e.effective_stats(unit_defs, round1_bonus=enemy_round1_bonus)['defense']
+    clean_pool = [e for e in standing if defense_of(e) <= roll]
 
     if clean_pool:
         pool, is_hit, is_bypass = clean_pool, True, False
     else:
-        min_defense = min(e.effective_stats(unit_defs)['defense'] for e in standing)
-        pool = [e for e in standing if e.effective_stats(unit_defs)['defense'] == min_defense]
+        min_defense = min(defense_of(e) for e in standing)
+        pool = [e for e in standing if defense_of(e) == min_defense]
         if roll == die_max:
             is_hit, is_bypass = True, True
         else:
@@ -148,20 +153,21 @@ def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_t
     return target, is_hit, is_bypass
 
 
-def _resolution_sequence(units, unit_defs, type_order):
+def _resolution_sequence(units, unit_defs, type_order, round1_bonus=False):
     """Units grouped by type per `type_order`, then by attack die size
-    ascending within a type (promotions can give same-type units
-    different dice)."""
+    ascending within a type (promotions, and now a round-1 combat bonus,
+    can give same-type units different dice)."""
     def sort_key(u):
-        stats = u.effective_stats(unit_defs)
+        stats = u.effective_stats(unit_defs, round1_bonus=round1_bonus)
         die = stats['attack_die']
         die_rank = list(DIE_MAX).index(die) if die in DIE_MAX else -1
         type_rank = type_order.index(u.unit_type) if u.unit_type in type_order else len(type_order)
         return (type_rank, die_rank)
-    return sorted([u for u in units if u.effective_stats(unit_defs)['attack_die']], key=sort_key)
+    return sorted([u for u in units if u.effective_stats(unit_defs, round1_bonus=round1_bonus)['attack_die']], key=sort_key)
 
 
-def _roll_side(rng, side_label, acting_units, enemy_units, unit_defs, target_cfg, round_number, current_global_turn):
+def _roll_side(rng, side_label, acting_units, enemy_units, unit_defs, target_cfg, round_number, current_global_turn,
+                acting_round1_bonus=False, enemy_round1_bonus=False):
     """Yields one UNIT_ROLL event per acting unit's die roll, applying
     damage progressively into a local pending_damage tally (not yet
     subtracted from real current_hp -- that happens for both sides
@@ -169,17 +175,23 @@ def _roll_side(rng, side_label, acting_units, enemy_units, unit_defs, target_cfg
     reconstructs the tally from these events rather than relying on a
     generator return value). Also stamps last_combat_global_turn on every
     acting unit that rolls, since it took part in a round of combat
-    regardless of hit/miss."""
+    regardless of hit/miss.
+
+    acting_round1_bonus / enemy_round1_bonus: whether this side, and the
+    side it's rolling against, each currently qualify for one of
+    combat.first_round_bonuses (only ever true together with round_number
+    == 1 -- see _fight_one_round, which computes these)."""
     pending_damage = {}
     for unit in acting_units:
         unit.last_combat_global_turn = current_global_turn
-        stats = unit.effective_stats(unit_defs)
+        stats = unit.effective_stats(unit_defs, round1_bonus=acting_round1_bonus)
         die = stats['attack_die']
         die_max = DIE_MAX[die]
         roll = rng.randint(1, die_max)
         target, is_hit, is_bypass = _select_target(
             rng, roll, die_max, unit.unit_type, enemy_units, unit_defs,
             target_cfg['same_type_weight'], target_cfg['bomber_attacker_weight'], pending_damage,
+            enemy_round1_bonus=enemy_round1_bonus,
         )
         damage = 0
         target_hp_after = None
@@ -225,14 +237,26 @@ def _apply_xp_and_check_promotions(round_number, attackers_before, defenders_bef
                                promoted_unit_id=unit.unit_id, promoted_side=side_label)
 
 
-def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_cfg, resolution_order, current_global_turn):
+def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_cfg, resolution_order, current_global_turn,
+                      round1_bonus_side=None):
     """One full round (or the air-superiority round): attacker's whole
     ordered roll sequence, then defender's, then both sides' casualties
     are removed together. Yields UNIT_ROLL events (from both sides),
-    then a ROUND_CASUALTIES event, then any PROMOTION events."""
+    then a ROUND_CASUALTIES event, then any PROMOTION events.
+
+    round1_bonus_side: None | 'attacker' | 'defender' -- which side (if
+    any) qualifies for one of combat.first_round_bonuses in THIS battle
+    (amphibious landing favors the defender; a sea-deploy surprise favors
+    the attacker; see rules.json -- determining which case applies, if
+    any, is the caller's job, not this module's). It only ever actually
+    applies when round_number == 1 -- passing it in for the air-
+    superiority round (round_number 0) or a later round (2, 3) is
+    harmless, since the check below excludes those rounds regardless."""
     target_cfg = combat_cfg['target_selection']
-    attacker_order = _resolution_sequence(attackers, unit_defs, resolution_order)
-    defender_order = _resolution_sequence(defenders, unit_defs, resolution_order)
+    attacker_bonus = round1_bonus_side == 'attacker' and round_number == 1
+    defender_bonus = round1_bonus_side == 'defender' and round_number == 1
+    attacker_order = _resolution_sequence(attackers, unit_defs, resolution_order, round1_bonus=attacker_bonus)
+    defender_order = _resolution_sequence(defenders, unit_defs, resolution_order, round1_bonus=defender_bonus)
 
     attacker_hit_ids = set()
     defender_hit_ids = set()
@@ -240,9 +264,10 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
     defenders_by_id = {u.unit_id: u for u in defenders}
     attackers_by_id = {u.unit_id: u for u in attackers}
 
-    def run_side(side_label, acting, enemies, enemies_by_id, hit_ids):
+    def run_side(side_label, acting, acting_bonus, enemies, enemies_bonus, enemies_by_id, hit_ids):
         pending = {}
-        for event in _roll_side(rng, side_label, acting, enemies, unit_defs, target_cfg, round_number, current_global_turn):
+        for event in _roll_side(rng, side_label, acting, enemies, unit_defs, target_cfg, round_number, current_global_turn,
+                                 acting_round1_bonus=acting_bonus, enemy_round1_bonus=enemies_bonus):
             yield event
             if event.hit:
                 hit_ids.add(event.unit_id)
@@ -251,8 +276,8 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
                     killed_by[event.unit_id] = enemies_by_id[event.target_unit_id]
         return pending
 
-    attacker_pending = yield from run_side('attacker', attacker_order, defenders, defenders_by_id, attacker_hit_ids)
-    defender_pending = yield from run_side('defender', defender_order, attackers, attackers_by_id, defender_hit_ids)
+    attacker_pending = yield from run_side('attacker', attacker_order, attacker_bonus, defenders, defender_bonus, defenders_by_id, attacker_hit_ids)
+    defender_pending = yield from run_side('defender', defender_order, defender_bonus, attackers, attacker_bonus, attackers_by_id, defender_hit_ids)
 
     for unit_id, dmg in attacker_pending.items():
         defenders_by_id[unit_id].current_hp -= dmg
@@ -278,7 +303,8 @@ def _has_fighter(units):
     return any(u.unit_type == 'Fighter' for u in units)
 
 
-def resolve_battle(attacker_units, defender_units, battle_type, rng, current_global_turn, unit_defs, rules):
+def resolve_battle(attacker_units, defender_units, battle_type, rng, current_global_turn, unit_defs, rules,
+                    round1_bonus_side=None):
     """attacker_units / defender_units: list[UnitInstance] (mutated in
     place). battle_type: 'land' | 'sea'. rng: a random.Random instance
     (seed it for deterministic tests/replays). current_global_turn: the
@@ -286,6 +312,16 @@ def resolve_battle(attacker_units, defender_units, battle_type, rng, current_glo
     participating unit's last_combat_global_turn. unit_defs: engine.data.units().
     rules: engine.data.rules() (reads combat.resolution_order,
     combat.target_selection, combat.air_superiority_trigger, promotion.*).
+
+    round1_bonus_side: None | 'attacker' | 'defender' -- see
+    combat.first_round_bonuses in rules.json for the three cases this
+    covers (amphibious landing, sea-deploy surprise, former-ally
+    reclaim). Whether this battle actually qualifies for one, and for
+    which side, is decided by the caller (engine.py, not yet built) from
+    movement/deploy history this module has no visibility into -- combat.py
+    only knows how to apply the bonus once told who gets it. It's only
+    ever applied in round 1 of main combat, never the air-superiority
+    round.
 
     A generator yielding BattleEvent -- drain it for auto-play, or step
     it with next() for an interactive reveal. The final event is always
@@ -310,7 +346,8 @@ def resolve_battle(attacker_units, defender_units, battle_type, rng, current_glo
         if not attackers or not defenders:
             break
         yield BattleEvent(kind=EventKind.ROUND_START, round_number=round_number)
-        yield from _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_cfg, resolution_order, current_global_turn)
+        yield from _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_cfg, resolution_order, current_global_turn,
+                                     round1_bonus_side=round1_bonus_side)
         attackers = _alive(attackers)
         defenders = _alive(defenders)
 

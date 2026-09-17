@@ -57,12 +57,22 @@ class UnitInstance:
     # currently riding one across a sea zone; None otherwise.
     transported_by: Optional[int] = None
 
-    def effective_stats(self, unit_defs):
+    def effective_stats(self, unit_defs, round1_bonus=False):
         """unit_defs: engine.data.units() (or an equivalent test fixture).
         Returns the unit's current attack_die/defense/hp/damage after
         applying the promotion bonus (die up one size max D12, +1
         defense max 10, +1 HP) if promoted. cost/sc_cost/moves are not
-        affected by promotion and are returned as-is from unit_defs."""
+        affected by promotion and are returned as-is from unit_defs.
+
+        round1_bonus: applies one of combat.first_round_bonuses' three
+        situational bonuses (amphibious landing / sea-deploy surprise /
+        former-ally reclaim) -- same die-up/+1-defense transform as
+        promotion, stacking additively with an existing promotion (a
+        promoted unit that also qualifies steps its die up twice and
+        gets +2 defense, still capped at D12/10), but grants no HP and
+        is never persisted here -- the caller (combat.py) re-derives it
+        fresh every time it's relevant (round 1 of one specific battle
+        only), it's not a property of the unit itself."""
         base = unit_defs[self.unit_type]
         die = base['attack_die']
         defense = base['defense']
@@ -73,6 +83,11 @@ class UnitInstance:
             if defense is not None:
                 defense = min(defense + 1, 10)
             max_hp = max_hp + 1
+        if round1_bonus:
+            if die is not None:
+                die = step_up_die(die)
+            if defense is not None:
+                defense = min(defense + 1, 10)
         return {
             'attack_die': die,
             'defense': defense,

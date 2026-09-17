@@ -54,10 +54,32 @@
     "recovery_rule": "a unit heals to full HP once a full round has elapsed since it last took part in a round of combat, counting the turn it was hurt on as the start of that count. Tracked against a single global, monotonically-increasing turn counter (one tick per faction-turn, not per round): a unit heals once current_global_turn - last_combat_global_turn >= num_powers, checked at the deploy phase of EVERY faction's turn, over the whole board -- not only the acting faction's own units. Example: a unit damaged during faction X's turn heals at the deploy phase of faction X's NEXT turn (exactly one full round later), provided it hasn't been in combat again since.",
     "contested_territory_rule": "if units remain on both sides after 3 rounds, the territory stays with its original owner, contributes no IPC to either side, and only the owner's Infantry may be mustered there until resolved",
     "deferred_combat_bonuses": [
-      "Infantry 'Dig In': +1 defense when defending -- not yet implemented",
-      "Amphibious assault first-round combat bonus for transported land units attacking (none for non-amphibious attackers) -- not yet implemented",
-      "Alliance-reclaim first-round combat bonus when retaking territory lost by a former ally -- not yet implemented, depends on alliances"
+      "Infantry 'Dig In': +1 defense when defending -- not yet implemented. Distinct from first_round_bonuses below: permanent/always-on rather than round-1-only, and a property of the unit type, not the battle."
     ],
+    "first_round_bonuses": {
+      "magnitude": "attack die steps up one size (max D12) and +1 defense (max 10) -- the same transform a promotion applies, but temporary and not persisted: it's recomputed fresh every relevant call, applies only to round_number == 1 of main combat (never the air-superiority round, never rounds 2-3), and grants no HP (unlike promotion's +1 HP). Stacks additively with an existing promotion -- a promoted unit that also qualifies steps its die up twice and gets +2 defense, still capped at D12/10, for that one round.",
+      "mechanism_status": "implemented -- resolve_battle() takes an optional round1_bonus_side ('attacker' | 'defender' | None, default None) and applies it via UnitInstance.effective_stats(unit_defs, round1_bonus=True) to every unit on that side. Determining WHICH side (if any) qualifies for a given real battle, from the trigger conditions below, is engine.py's job (not yet built) -- combat.py has no visibility into movement/deploy history, only into who currently gets the bonus once told.",
+      "cases": [
+        {
+          "name": "amphibious landing",
+          "recipient": "defender",
+          "trigger": "the attack is a pure amphibious assault -- every attacking land unit arrived via Transport this move. Negated entirely (no bonus at all, for either side) if even one attacking land unit reached the battle overland instead -- a combined-arms assault overwhelms the defender's beach-landing advantage rather than partially blunting it.",
+          "status": "mechanism implemented; engine.py must still determine per-battle whether an attack is purely amphibious before passing round1_bonus_side='defender'"
+        },
+        {
+          "name": "sea deploy into enemy-occupied zone",
+          "recipient": "attacker, on the following turn",
+          "trigger": "a faction deploys new sea units directly into a sea zone that already has enemy units present but isn't contested -- legal, since sea zones have no ownership/occupation-blocks-deploy concept the way land does, and Deploy happens after that turn's combat resolution, so no battle results from the deploy itself. If the enemy who was already there then attacks that zone on their own next turn, they get the bonus -- catching the freshly-deployed fleet unprepared. The bonus belongs to whoever was already sitting there when the deploy happened, not the depositing faction.",
+          "status": "mechanism implemented; engine.py must still track, per sea zone, whether an uncontested deploy just happened into an occupied zone, and grant the bonus to that zone's prior occupant on their next attack there"
+        },
+        {
+          "name": "former-ally territory reclaim",
+          "recipient": "attacker, the betrayed former ally",
+          "trigger": "an alliance breaks and one member is left occupying territory that used to belong to the other; the original owner gets the bonus retaking it",
+          "status": "TODO -- not designed beyond this note. Depends on alliance mechanics (join/withdraw/betrayal) that are entirely out of scope for v1 (see alliances.status); revisit once those exist."
+        }
+      ]
+    },
     "emergency_landing": {
       "trigger": "a defending Aircraft Carrier is destroyed during a sea battle, stranding surviving aircraft that were relying on it",
       "timing": "resolved ONLY once the whole battle has concluded (win, loss, or contested after the 3-round cap) -- never mid-battle. An aircraft whose carrier is destroyed in, say, round 1 of a 3-round battle keeps fighting normally through every remaining round of that same battle exactly as if nothing had happened to its carrier; only after the battle fully resolves does this rule check whether any defending aircraft are left in a sea zone with no own carrier surviving.",
