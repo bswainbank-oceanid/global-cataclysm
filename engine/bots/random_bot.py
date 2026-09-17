@@ -19,7 +19,14 @@ Behavior, as specified by the user this session:
   policy.excluded_naval_purchase_zones (the landlocked Caspian Sea, id
   43 -- setup.excluded_naval_zones) is never a candidate target at all,
   for either pass -- a shared rule for this bot AND ANY FUTURE BOT in
-  this package, not something specific to RandomBot's own policy.
+  this package, not something specific to RandomBot's own policy. The
+  candidate unit type for a given attempt is always chosen AFTER the
+  target, and restricted to what that target actually is -- a sea
+  target's pool never includes a Land-category unit type at all ("SCs
+  should never produce land units in sea areas," a bot defense policy,
+  this session -- GameEngine itself still allows it; deploying a land
+  unit to a sea zone is a deliberate, valid feature, just not one this
+  bot chooses to use).
 - Combat Move: for each of the bot's own units that hasn't combat-moved
   yet, make the first legal combat move found. "First" is defined here
   as closest (fewest hops), ties broken by lowest territory_id -- a
@@ -49,6 +56,14 @@ Behavior, as specified by the user this session:
   (movement.graph_distances -- plain adjacency, not move-budget-aware)
   to that target. A unit with no legal moves, or no enemy territory
   anywhere on the reachable graph, simply stays put.
+- Defense: an Infantry unit currently sitting on a Strategic Center this
+  faction owns never moves at all, via combat move OR non-combat move --
+  it garrisons there permanently once it arrives, however it got there
+  (bot defense policy, this session: "Infantry should never leave an
+  SC... once they reach an SC, they just stay there"). Checked fresh
+  every phase from the unit's current position (_garrisons_an_sc), so a
+  later arrival is covered automatically without any separate
+  "has arrived" state.
 
 Only Purchase is randomized (per spec); Combat Move and Non-Combat Move
 are both deterministic given the board state, which keeps a driven game
@@ -77,16 +92,14 @@ class RandomBot:
     def take_purchase_phase(self):
         gs = self.engine.game_state
         treasury = gs.factions[self.faction].treasury_mpc
-        unit_defs = self.engine.data.units()
-        purchasable_types = [t for t, d in unit_defs.items() if d.get('purchasable')]
 
         sc_targets, other_targets = self._purchase_target_pools()
         orders = []
-        if purchasable_types and sc_targets:
+        if sc_targets:
             sc_budget = self.rng.uniform(0, 0.55) * treasury
-            orders = self._random_fill_purchases(orders, sc_targets, purchasable_types, sc_budget)
-        if purchasable_types and other_targets:
-            orders = self._random_fill_purchases(orders, other_targets, purchasable_types, treasury)
+            orders = self._random_fill_purchases(orders, sc_targets, sc_budget)
+        if other_targets:
+            orders = self._random_fill_purchases(orders, other_targets, treasury)
 
         self.engine.submit_purchases(self.faction, orders)
         self.engine.confirm_purchases(self.faction)
@@ -127,11 +140,33 @@ class RandomBot:
 
         return list(sc_targets), list(other_targets)
 
-    def _random_fill_purchases(self, orders, targets, unit_types, budget_cap, max_consecutive_failures=25):
+    def _random_fill_purchases(self, orders, targets, budget_cap, max_consecutive_failures=25):
+        """Picks the target FIRST, then a unit type valid for THAT
+        target -- never the reverse -- so a sea target's candidate pool
+        never includes a Land-category unit type at all (bot defense
+        policy, this session: 'SCs should never produce land units in
+        sea areas' -- and this applies to every sea target, not just an
+        SC-funded one, since the underlying issue -- a land unit with
+        nothing to independently exist on in open water -- is the same
+        either way). GameEngine itself still allows it (confirmed
+        deliberate and tested: a land unit purchased at a sea zone just
+        starts out already mid-transit, no different from one that
+        walked into hostile water and got swept up as cargo) -- this is
+        a bot-policy choice, not an engine-level restriction."""
+        terrs = self.engine.data.territories()
+        unit_defs = self.engine.data.units()
         failures = 0
         while failures < max_consecutive_failures:
-            unit_type = self.rng.choice(unit_types)
             target = self.rng.choice(targets)
+            is_sea = terrs[target]['type'] == 'sea'
+            candidate_types = [
+                t for t, d in unit_defs.items()
+                if d.get('purchasable') and not (is_sea and d['category'] == 'Land')
+            ]
+            if not candidate_types:
+                failures += 1
+                continue
+            unit_type = self.rng.choice(candidate_types)
             candidate = self._with_extra_unit(orders, unit_type, target)
             try:
                 total_cost = self.engine.submit_purchases(self.faction, candidate)
@@ -153,6 +188,26 @@ class RandomBot:
                 new_orders[i] = PurchaseOrder(unit_type, o.qty + 1, target)
                 return new_orders
         return orders + [PurchaseOrder(unit_type, 1, target)]
+
+    # ---- shared defense policy --------------------------------------------
+
+    def _garrisons_an_sc(self, unit, origin_id, game_state):
+        """True for an Infantry unit currently sitting on a Strategic
+        Center this faction owns -- bot defense policy, this session:
+        Infantry never leaves an SC, and once one arrives there (however
+        it got there) it just stays, permanently -- checked fresh every
+        phase from the unit's CURRENT position, so no separate
+        "has arrived" state is needed; it's already implied by being
+        there. Scoped to Infantry specifically -- the ruleset's
+        designated defensive garrison unit type (see purchase.
+        contested_land_deploy_restriction, the only unit type ever
+        allowed into a contested territory) -- not other land units."""
+        if unit.unit_type != 'Infantry':
+            return False
+        terr = self.engine.data.territories().get(origin_id)
+        if terr is None or terr['type'] != 'land' or not terr.get('strategic_center'):
+            return False
+        return game_state.territories[origin_id].owner == self.faction
 
     # ---- Combat Move ----------------------------------------------------
 
@@ -178,6 +233,8 @@ class RandomBot:
         for tid in list(working.territories.keys()):
             for u in list(working.territories[tid].units):
                 if u.owner != self.faction or u.has_moved_combat:
+                    continue
+                if self._garrisons_an_sc(u, tid, working):
                     continue
                 category = unit_defs[u.unit_type]['category']
                 path = self._first_combat_move_path(u, tid, category, working)
@@ -255,6 +312,8 @@ class RandomBot:
         for tid in list(working.territories.keys()):
             for u in list(working.territories[tid].units):
                 if u.owner != self.faction or u.has_moved_noncombat:
+                    continue
+                if self._garrisons_an_sc(u, tid, working):
                     continue
                 category = unit_defs[u.unit_type]['category']
                 if category != 'Air' and u.has_moved_combat:

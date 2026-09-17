@@ -93,6 +93,32 @@ class TestPurchasePhase(unittest.TestCase):
         )
         self.assertEqual(pending_cost, 20 - gs.factions['NAA'].treasury_mpc)
 
+    def test_never_purchases_land_units_for_a_sea_target(self):
+        # Bot defense policy, this session: "SCs should never produce
+        # land units in sea areas" -- applies to every sea target, not
+        # just an SC-funded one, since a land unit has nothing to
+        # independently exist on in open water either way. A generous
+        # treasury and only 2 targets total (1 land, 2 sea) makes it
+        # near-certain some purchases land at the sea target, which is
+        # what this test actually needs to be meaningful.
+        data = FakeData(
+            territories={1: {'type': 'land', 'value': 2, 'strategic_center': True}, 2: {'type': 'sea'}},
+            adjacency={1: [2], 2: [1]},
+        )
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT}, treasury={'NAA': 200})
+        engine = GameEngine(gs, data)
+        bot = RandomBot(engine, 'NAA', rng=__import__('random').Random(1))
+        bot.take_purchase_phase()
+
+        sea_pending = gs.territories[2].pending_deployment
+        self.assertTrue(sea_pending, 'expected at least one purchase at the sea target for this test to be meaningful')
+        unit_defs = data.units()
+        for u in sea_pending:
+            self.assertNotEqual(
+                unit_defs[u.unit_type]['category'], 'Land',
+                f'{u.unit_type} is a land unit but was purchased at sea territory 2',
+            )
+
 
 class TestCombatMovePhase(unittest.TestCase):
     def test_prefers_lowest_id_among_equally_close_targets(self):
@@ -190,6 +216,56 @@ class TestCombatMovePhase(unittest.TestCase):
 
         self.assertIn(mover.unit_id, [u.unit_id for u in gs.territories[5].units])
 
+    def test_infantry_on_an_owned_sc_never_gets_a_combat_move_order(self):
+        # Bot defense policy, this session: "Infantry should never leave
+        # an SC." Territory 2 is a Strategic Center NAA owns, with an
+        # adjacent empty foreign target (4) an Infantry there would
+        # otherwise combat-move into as its "first legal move" -- it
+        # must stay put instead. A second Infantry at NON-SC territory 1
+        # (also adjacent to 4) confirms the garrison rule is scoped to
+        # the SC specifically, not Infantry across the board.
+        data = FakeData(
+            territories={
+                1: {'type': 'land', 'value': 1},
+                2: {'type': 'land', 'value': 2, 'strategic_center': True},
+                4: {'type': 'land', 'value': 1},
+            },
+            adjacency={1: [4], 2: [4], 4: [1, 2]},
+        )
+        gs = make_state(data, {1: 'NAA', 2: 'NAA', 4: 'AAC'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT},
+                        phase=Phase.COMBAT_MOVE)
+        garrison = make_unit('Infantry', 'NAA')
+        mobile = make_unit('Infantry', 'NAA')
+        gs.territories[2].units.append(garrison)
+        gs.territories[1].units.append(mobile)
+        engine = GameEngine(gs, data)
+        bot = RandomBot(engine, 'NAA')
+        bot.take_combat_move_phase()
+
+        self.assertIn(garrison.unit_id, [u.unit_id for u in gs.territories[2].units], 'must never leave the SC')
+        self.assertFalse(garrison.has_moved_combat)
+        self.assertTrue(mobile.has_moved_combat, 'a non-SC Infantry should still move normally')
+
+    def test_armor_on_an_owned_sc_still_moves_normally(self):
+        # The garrison rule is scoped to Infantry specifically (the
+        # ruleset's designated defensive garrison unit type) -- Armor
+        # sitting on the same SC is unaffected.
+        data = FakeData(
+            territories={
+                2: {'type': 'land', 'value': 2, 'strategic_center': True},
+                4: {'type': 'land', 'value': 1},
+            },
+            adjacency={2: [4], 4: [2]},
+        )
+        gs = make_state(data, {2: 'NAA', 4: 'AAC'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT}, phase=Phase.COMBAT_MOVE)
+        mover = make_unit('Armor', 'NAA')
+        gs.territories[2].units.append(mover)
+        engine = GameEngine(gs, data)
+        bot = RandomBot(engine, 'NAA')
+        bot.take_combat_move_phase()
+
+        self.assertIn(mover.unit_id, [u.unit_id for u in gs.territories[4].units])
+
 
 class TestNonCombatMovePhase(unittest.TestCase):
     def test_moves_toward_nearest_enemy_owned_territory(self):
@@ -224,6 +300,30 @@ class TestNonCombatMovePhase(unittest.TestCase):
         bot = RandomBot(engine, 'NAA')
         bot.take_noncombat_move_phase()  # should not raise
         self.assertIn(unit.unit_id, [u.unit_id for u in gs.territories[2].units])
+
+    def test_infantry_on_an_owned_sc_never_gets_a_noncombat_move_order(self):
+        # Same shape as test_moves_toward_nearest_enemy_owned_territory
+        # (territory 8 would otherwise be the correct move, getting
+        # closer to enemy-owned 9), but the mover starts ON an owned SC
+        # -- it must stay there instead.
+        data = FakeData(
+            territories={
+                2: {'type': 'land', 'value': 2, 'strategic_center': True},
+                8: {'type': 'land', 'value': 2},
+                9: {'type': 'land', 'value': 1},
+            },
+            adjacency={2: [8], 8: [2, 9], 9: [8]},
+        )
+        gs = make_state(data, {2: 'NAA', 8: 'NAA', 9: 'AAC'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT},
+                        phase=Phase.NONCOMBAT_MOVE)
+        garrison = make_unit('Infantry', 'NAA')
+        gs.territories[2].units.append(garrison)
+        engine = GameEngine(gs, data)
+        bot = RandomBot(engine, 'NAA')
+        bot.take_noncombat_move_phase()
+
+        self.assertIn(garrison.unit_id, [u.unit_id for u in gs.territories[2].units])
+        self.assertFalse(garrison.has_moved_noncombat)
 
 
 class TestPlayToCompletion(unittest.TestCase):
@@ -260,15 +360,18 @@ class TestPlayToCompletion(unittest.TestCase):
         # forever and no income was ever collected. This proves a single
         # first turn, with the (default) setting active, still actually
         # reaches Deploy + Income and deploys whatever was purchased.
+        # randomize_play_order=False and seeded bot RNGs make this
+        # deterministic -- which faction goes first, and exactly what it
+        # buys, is otherwise random and irrelevant to what this test
+        # checks.
         modes = {code: FactionMode.NEUTRAL for code in real_data.factions()}
         modes['NAA'] = FactionMode.BOT
         modes['AAC'] = FactionMode.BOT
-        gs = build_game_state('starting_setup_200ipc', modes)
+        gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
         self.assertFalse(gs.allow_combat_moves_first_turn)
         stats = GameStats()
         engine = GameEngine(gs, stats=stats)
         first_faction = gs.active_faction
-        starting_treasury = gs.factions[first_faction].treasury_mpc
         bots = {
             'NAA': RandomBot(engine, 'NAA', rng=__import__('random').Random(1)),
             'AAC': RandomBot(engine, 'AAC', rng=__import__('random').Random(2)),
@@ -276,9 +379,13 @@ class TestPlayToCompletion(unittest.TestCase):
 
         play_to_completion(engine, bots, max_turns=1)
 
+        # A weak "treasury != starting value" check would be flaky here
+        # by coincidence alone -- if the bot happens to spend exactly
+        # what that turn's income collects, the net change is legitimately
+        # zero even though both purchase and income both did fire. These
+        # two are the real, unambiguous proof the bug is fixed.
         self.assertTrue(any(k[0] == first_faction for k in stats.deployed), 'purchased units must actually deploy, not just sit pending')
         self.assertIn(first_faction, stats.cumulative_mpc, 'income must actually be collected on the first turn')
-        self.assertNotEqual(gs.factions[first_faction].treasury_mpc, starting_treasury)
 
 
 if __name__ == '__main__':
