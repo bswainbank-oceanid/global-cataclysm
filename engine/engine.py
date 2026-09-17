@@ -1,34 +1,38 @@
 """
 GameEngine: the phased order-submission API wrapping a GameState,
 exposed identically to human and bot callers (see docs/GAME_ARCHITECTURE.md's
-build plan, Step 4). Purchase, Deploy + Income, Combat Move, and Combat
-Resolution are implemented so far -- Purchase covers data/rules.json's
-full `purchase` section (location targeting, the start-of-turn ownership
-snapshot, SC-discounted cost, the SC-first-then-most-remaining-capacity
-multi-territory allocation with spillover, naval/land location
-restrictions, and the contested-land Infantry-only restriction);
-Deploy + Income covers placing pending_deployment onto the board (with
-the carrierless-air and lost-contested-purchase fallbacks, and
-hostile-sea-zone deploys becoming contested), income collection, and the
-global recovery/heal sweep; Combat Move covers relocating units along a
-validated path, immediate ownership capture for undefended land (both a
-Mechanized Infantry blitz's intermediate stops and any unit's
-uncontested final stop), and marking an attacked/joined destination
-contested; Combat Resolution gathers each declared battle's units per
-combat.multi_party_battles (the active faction's own units as attacker,
-every non-allied faction present pooled as defender), drives
-combat.resolve_battle() to completion, cleans up the dead, and runs the
-sea-battle emergency-landing check. Non-Combat Move and Capture Territory
-are not yet implemented -- notably, nothing here yet transitions
+build plan, Step 4). Every phase but Capture Territory is implemented so
+far -- Purchase covers data/rules.json's full `purchase` section
+(location targeting, the start-of-turn ownership snapshot, SC-discounted
+cost, the SC-first-then-most-remaining-capacity multi-territory
+allocation with spillover, naval/land location restrictions, and the
+contested-land Infantry-only restriction); Deploy + Income covers
+placing pending_deployment onto the board (with the carrierless-air and
+lost-contested-purchase fallbacks, and hostile-sea-zone deploys becoming
+contested), income collection, and the global recovery/heal sweep;
+Combat Move covers relocating units along a validated path, immediate
+ownership capture for undefended land (both a Mechanized Infantry
+blitz's intermediate stops and any unit's uncontested final stop), and
+marking an attacked/joined destination contested; Combat Resolution
+gathers each declared battle's units per combat.multi_party_battles (the
+active faction's own units as attacker, every non-allied faction present
+pooled as defender), drives combat.resolve_battle() to completion,
+cleans up the dead, and runs the sea-battle emergency-landing check;
+Non-Combat Move relocates units that didn't combat-move this turn (air
+exempt from that exclusivity) -- no capture, no contested-marking to
+apply, since entering an already-contested territory is simply a legal
+destination and any newly-arrived unit is picked up automatically by the
+next Combat Resolution pass based purely on presence. Capture Territory
+is not yet implemented -- notably, nothing here yet transitions
 GameState.phase itself between phases; callers currently set it directly
 (see the tests).
 
-Rollback (phase_confirmation): submit_purchases/submit_combat_moves both
-take the COMPLETE desired order list every call, wholesale-replacing any
-previously staged list for that faction -- there's no separate
-undo_last()/append() API. A caller "undoes" a choice simply by calling
-submit_* again with a corrected list; nothing is written to GameState
-until confirm_purchases()/confirm_combat_moves() is called, which is
+Rollback (phase_confirmation): submit_purchases/submit_combat_moves/
+submit_noncombat_moves all take the COMPLETE desired order list every
+call, wholesale-replacing any previously staged list for that faction --
+there's no separate undo_last()/append() API. A caller "undoes" a choice
+simply by calling submit_* again with a corrected list; nothing is
+written to GameState until the matching confirm_*() is called, which is
 irreversible for that faction's turn (submit_* and confirm_* both then
 refuse further calls for that faction, for that phase). Deploy + Income
 and Combat Resolution have no such staging -- both are automatic/
@@ -43,7 +47,10 @@ from dataclasses import dataclass
 from . import data as _default_data
 from .combat import BattleResult, resolve_battle
 from .economy import compute_income
-from .movement import _is_ally_or_self, find_emergency_landing, legal_air_move_destinations, trace_combat_move
+from .movement import (
+    _is_ally_or_self, find_emergency_landing, legal_air_move_destinations,
+    legal_noncombat_move_destinations, trace_combat_move,
+)
 from .state import Phase, UnitInstance
 
 
@@ -68,6 +75,17 @@ class CombatMoveOrder:
     path: list
 
 
+@dataclass
+class NonCombatMoveOrder:
+    unit_id: int
+    # Just the final destination -- unlike CombatMoveOrder, a non-combat
+    # move never captures anything along the way (there's no blitz
+    # concept off the combat-move phase), so there's nothing a full path
+    # would add: legal_noncombat_move_destinations/legal_air_move_destinations
+    # already do their own BFS internally and only the endpoint matters.
+    destination: int
+
+
 class GameEngine:
     def __init__(self, game_state, data_module=None):
         self.game_state = game_state
@@ -77,6 +95,8 @@ class GameEngine:
         self._staged_combat_moves = {}  # faction_code -> [CombatMoveOrder, ...]
         self._combat_moves_confirmed = set()
         self._combat_resolved = set()  # faction_codes that have already run resolve_combat this turn
+        self._staged_noncombat_moves = {}  # faction_code -> [NonCombatMoveOrder, ...]
+        self._noncombat_moves_confirmed = set()
 
     def _purchase_sources(self, deploy_at, faction):
         """Ordered list of territory_ids whose capacity/cost apply to a
@@ -577,3 +597,78 @@ class GameEngine:
             if landing is not None:
                 self.game_state.territories[landing].units.append(u)
             # else: no adjacent own carrier, own land, or allied land -- lost
+
+    def _execute_noncombat_moves(self, orders, faction, game_state):
+        """Runs `orders` (a list of NonCombatMoveOrder) against
+        `game_state` in order, relocating each unit if its destination
+        is legal. No capture, no contested-marking to apply -- entering
+        a territory the mover is already contesting (or one contested by
+        anyone else, for that matter) is simply a legal destination
+        (movement.noncombat_move_destination); any newly-arrived unit is
+        automatically picked up by the NEXT Combat Resolution pass
+        through gather_battle_units, which only cares about who's
+        physically present, not how they got there -- no extra
+        contested_by bookkeeping needed here. Raises ValueError on the
+        first illegal order. Used identically by submit_noncombat_moves
+        (against a throwaway deep copy) and confirm_noncombat_moves
+        (against the real GameState)."""
+        unit_defs = self.data.units()
+        for order in orders:
+            unit, origin_id = self._find_unit(game_state, order.unit_id, faction)
+            if unit.has_moved_noncombat:
+                raise ValueError(f'unit {order.unit_id} has already made a non-combat move this turn')
+
+            category = unit_defs[unit.unit_type]['category']
+            if category == 'Air':
+                # movement.combat_or_noncombat_not_both: air is exempt
+                # from the combat-move/non-combat-move exclusivity --
+                # may non-combat-move even after already combat-moving.
+                legal = legal_air_move_destinations(unit.unit_type, faction, origin_id, 'noncombat', game_state, self.data)
+            else:
+                if unit.has_moved_combat:
+                    raise ValueError(f'unit {order.unit_id} already made a combat move this turn and cannot also non-combat-move')
+                legal = legal_noncombat_move_destinations(unit.unit_type, faction, origin_id, game_state, self.data)
+
+            if order.destination not in legal:
+                raise ValueError(f'{order.destination} is not a legal non-combat move destination for unit {order.unit_id}')
+
+            game_state.territories[origin_id].units.remove(unit)
+            game_state.territories[order.destination].units.append(unit)
+            unit.has_moved_noncombat = True
+
+    def submit_noncombat_moves(self, faction, orders):
+        """Validates and stages `orders` (a list of NonCombatMoveOrder)
+        as the COMPLETE desired non-combat-move list for `faction` this
+        turn -- replaces any previously staged list outright, so
+        resubmitting a corrected list is how a caller "undoes" a prior
+        choice. Runs the full sequence against a throwaway deep copy of
+        GameState purely to validate it (discarded either way) --
+        nothing real is touched here. Raises ValueError (nothing staged)
+        if any order is illegal."""
+        if faction not in self.game_state.active_powers():
+            raise ValueError(f'{faction} is not an active power and cannot submit non-combat moves')
+        if self.game_state.phase != Phase.NONCOMBAT_MOVE:
+            raise ValueError('submit_noncombat_moves is only valid during the Non-Combat Move phase')
+        if faction in self._noncombat_moves_confirmed:
+            raise ValueError(f'{faction} has already confirmed non-combat moves this turn')
+
+        working = copy.deepcopy(self.game_state)
+        self._execute_noncombat_moves(orders, faction, working)
+
+        self._staged_noncombat_moves[faction] = list(orders)
+
+    def confirm_noncombat_moves(self, faction):
+        """Commits `faction`'s currently-staged non-combat-move list
+        (empty if submit_noncombat_moves was never called) -- re-runs
+        the exact same validated sequence against the real GameState.
+        Irreversible: submit_noncombat_moves and confirm_noncombat_moves
+        both refuse further calls for this faction this turn afterward."""
+        if faction not in self.game_state.active_powers():
+            raise ValueError(f'{faction} is not an active power')
+        if faction in self._noncombat_moves_confirmed:
+            raise ValueError(f'{faction} has already confirmed non-combat moves this turn')
+
+        orders = self._staged_noncombat_moves.get(faction, [])
+        self._execute_noncombat_moves(orders, faction, self.game_state)
+        self._noncombat_moves_confirmed.add(faction)
+        self._staged_noncombat_moves.pop(faction, None)

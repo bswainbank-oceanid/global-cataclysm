@@ -3,7 +3,7 @@ import unittest
 
 from engine import data as real_data
 from engine.combat import BattleResult
-from engine.engine import GameEngine, PurchaseOrder, CombatMoveOrder
+from engine.engine import GameEngine, PurchaseOrder, CombatMoveOrder, NonCombatMoveOrder
 from engine.state import GameState, TerritoryState, FactionState, UnitInstance, PowerMode, Phase
 
 UNIT_DEFS = {
@@ -948,6 +948,153 @@ class TestEmergencyLandingConsequence(unittest.TestCase):
         engine = GameEngine(gs, data)
         engine._apply_battle_outcome(1, 'land', 'NAA', result, random.Random(1))
         self.assertIn(survivor, gs.territories[1].units)
+
+
+class TestNonCombatMoveExecution(unittest.TestCase):
+    def test_simple_move_to_own_territory(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
+        engine.confirm_noncombat_moves('NAA')
+        self.assertNotIn(mover, gs.territories[1].units)
+        self.assertIn(mover, gs.territories[2].units)
+        self.assertTrue(mover.has_moved_noncombat)
+
+    def test_entering_a_territory_the_mover_is_already_contesting_is_legal(self):
+        # NAA is already fighting for territory 2 (its own combat-moved
+        # unit is there) -- reinforcing via a non-combat move needs no
+        # fresh attack declaration.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        reinforcement = make_unit('Infantry', 'NAA')
+        already_there = make_unit('Infantry', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            contested={2: {'NAA', 'AAC'}},
+            units_by_territory={1: [reinforcement], 2: [already_there, defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(reinforcement.unit_id, 2)])
+        engine.confirm_noncombat_moves('NAA')
+        self.assertIn(reinforcement, gs.territories[2].units)
+
+    def test_entering_a_territory_contested_by_others_only_is_also_legal(self):
+        # Contested between two OTHER factions entirely -- NAA isn't
+        # part of it yet, but can still walk in via non-combat move.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            phase=Phase.NONCOMBAT_MOVE, contested={2: {'AAC', 'UE'}}, units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
+        engine.confirm_noncombat_moves('NAA')
+        self.assertIn(mover, gs.territories[2].units)
+
+    def test_cannot_noncombat_move_after_already_combat_moving(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        mover = make_unit('Infantry', 'NAA')
+        mover.has_moved_combat = True
+        gs = make_state(
+            data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
+
+    def test_air_can_noncombat_move_after_already_combat_moving(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        mover = make_unit('Fighter', 'NAA')
+        mover.has_moved_combat = True
+        gs = make_state(
+            data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
+        engine.confirm_noncombat_moves('NAA')
+        self.assertIn(mover, gs.territories[2].units)
+
+    def test_illegal_destination_is_rejected(self):
+        # Clean (uncontested), non-allied foreign land -- never a legal
+        # non-combat move target.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
+
+    def test_cannot_move_the_same_unit_twice(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}}, adjacency={1: [2], 2: [1, 3]},
+        )
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'NAA', 3: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.submit_noncombat_moves('NAA', [
+                NonCombatMoveOrder(mover.unit_id, 2),
+                NonCombatMoveOrder(mover.unit_id, 3),
+            ])
+
+
+class TestNonCombatMoveRollback(unittest.TestCase):
+    def test_resubmitting_replaces_the_staged_list(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
+        engine.submit_noncombat_moves('NAA', [])  # "undo"
+        engine.confirm_noncombat_moves('NAA')
+        self.assertIn(mover, gs.territories[1].units)
+        self.assertFalse(mover.has_moved_noncombat)
+
+    def test_cannot_resubmit_after_confirming(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
+        engine.confirm_noncombat_moves('NAA')
+        with self.assertRaises(ValueError):
+            engine.submit_noncombat_moves('NAA', [])
+        with self.assertRaises(ValueError):
+            engine.confirm_noncombat_moves('NAA')
+
+    def test_wrong_phase_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(1, 2)])
+
+    def test_defensive_faction_cannot_submit_noncombat_moves(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.DEFENSIVE}, phase=Phase.NONCOMBAT_MOVE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(1, 2)])
 
 
 if __name__ == '__main__':

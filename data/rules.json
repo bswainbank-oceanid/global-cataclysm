@@ -50,7 +50,12 @@
     },
     {
       "phase": "Non-Combat Move",
-      "summary": "Units that didn't combat-move this turn may reposition. Air units are exempt from the combat-move/non-combat-move exclusivity that binds everyone else -- they can always non-combat-move too, even after already attacking.",
+      "summary": "Units that didn't combat-move this turn may reposition. Air units are exempt from the combat-move/non-combat-move exclusivity that binds everyone else -- they can always non-combat-move too, even after already attacking. Implemented -- see engine.engine.GameEngine.submit_noncombat_moves/confirm_noncombat_moves.",
+      "execution_notes": [
+        "Entering a territory the mover is already contesting -- or one contested by any other factions entirely, unrelated to the mover -- is simply a legal destination (movement.noncombat_move_destination), no different from any other legal move (confirmed this session, and already how legal_noncombat_move_destinations was built). No contested_by bookkeeping happens here at all: a newly-arrived unit is picked up automatically by the next Combat Resolution pass through gather_battle_units, which only checks who's physically PRESENT, never how they got there.",
+        "Orders carry just a destination, not a path like CombatMoveOrder does -- there's no capture/blitz concept for a non-combat move, so only the endpoint matters; legal_noncombat_move_destinations/legal_air_move_destinations already do their own BFS internally.",
+        "carrier_air_operations' ride-along/return-to-base/open-water-anticipation mechanics are NOT wired in yet -- this phase only relocates the units it's explicitly given orders for; a plane still 'based on' a carrier that also moves this phase does not yet move with it automatically."
+      ],
       "see": ["movement.noncombat_move_destination", "movement.air_landing_rule", "movement.carrier_air_operations", "movement.stranded_aircraft_rule", "phase_confirmation"]
     },
     {
