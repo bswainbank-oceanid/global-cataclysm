@@ -959,6 +959,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
         engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
         engine.confirm_noncombat_moves('NAA')
         self.assertNotIn(mover, gs.territories[1].units)
@@ -979,6 +980,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
             units_by_territory={1: [reinforcement], 2: [already_there, defender]},
         )
         engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
         engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(reinforcement.unit_id, 2)])
         engine.confirm_noncombat_moves('NAA')
         self.assertIn(reinforcement, gs.territories[2].units)
@@ -993,6 +995,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
             phase=Phase.NONCOMBAT_MOVE, contested={2: {'AAC', 'UE'}}, units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
         engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
         engine.confirm_noncombat_moves('NAA')
         self.assertIn(mover, gs.territories[2].units)
@@ -1006,6 +1009,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
         with self.assertRaises(ValueError):
             engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
 
@@ -1018,6 +1022,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
         engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
         engine.confirm_noncombat_moves('NAA')
         self.assertIn(mover, gs.territories[2].units)
@@ -1032,6 +1037,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
         with self.assertRaises(ValueError):
             engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
 
@@ -1045,6 +1051,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
         with self.assertRaises(ValueError):
             engine.submit_noncombat_moves('NAA', [
                 NonCombatMoveOrder(mover.unit_id, 2),
@@ -1061,6 +1068,7 @@ class TestNonCombatMoveRollback(unittest.TestCase):
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
         engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
         engine.submit_noncombat_moves('NAA', [])  # "undo"
         engine.confirm_noncombat_moves('NAA')
@@ -1075,6 +1083,7 @@ class TestNonCombatMoveRollback(unittest.TestCase):
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
         engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
         engine.confirm_noncombat_moves('NAA')
         with self.assertRaises(ValueError):
@@ -1095,6 +1104,236 @@ class TestNonCombatMoveRollback(unittest.TestCase):
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(1, 2)])
+
+    def test_submit_noncombat_moves_requires_return_to_base_first(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.submit_noncombat_moves('NAA', [])
+
+
+class TestReturnToBase(unittest.TestCase):
+    def test_land_takeoff_returns_to_origin_territory(self):
+        # Fighter attacked from territory 1 (still NAA's) and is now
+        # sitting at territory 2 (its attack destination) after combat.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        flyer = make_unit('Fighter', 'NAA')
+        flyer.combat_move_origin = 1
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={2: [flyer]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        self.assertNotIn(flyer, gs.territories[2].units)
+        self.assertIn(flyer, gs.territories[1].units)
+        self.assertTrue(flyer.has_moved_noncombat)
+        self.assertIsNone(flyer.combat_move_origin)
+
+    def test_carrier_takeoff_returns_to_carrier_wherever_it_now_is(self):
+        # Flyer departed carrier's original zone (territory 1). The
+        # carrier has SINCE moved (its own order, already applied) to
+        # territory 3. The flyer should return to territory 3, not 1.
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}, 3: {'type': 'sea'}}, adjacency={},
+        )
+        carrier = make_unit('Aircraft Carrier', 'NAA')
+        flyer = make_unit('Fighter', 'NAA')
+        flyer.combat_move_origin = 1
+        flyer.based_on_carrier = carrier.unit_id
+        gs = make_state(
+            data, {2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={2: [flyer], 3: [carrier]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        self.assertIn(flyer, gs.territories[3].units)
+        self.assertTrue(flyer.has_moved_noncombat)
+
+    def test_carrier_destroyed_falls_through_to_regular_move(self):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'land'}}, adjacency={2: [1]})
+        flyer = make_unit('Fighter', 'NAA')
+        flyer.combat_move_origin = 1
+        flyer.based_on_carrier = 9999  # no unit anywhere has this id -- destroyed
+        gs = make_state(
+            data, {2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={2: [flyer]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        self.assertIn(flyer, gs.territories[2].units, 'left exactly where it was -- no auto-relocation possible')
+        self.assertFalse(flyer.has_moved_noncombat, 'free to receive a normal non-combat move order instead')
+        self.assertIsNone(flyer.combat_move_origin, 'the return-to-base attempt is still consumed either way')
+
+    def test_units_without_a_combat_move_this_turn_are_unaffected(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        untouched = make_unit('Fighter', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [untouched]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        self.assertFalse(untouched.has_moved_noncombat)
+
+    def test_cannot_process_return_to_base_twice(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE)
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        with self.assertRaises(ValueError):
+            engine.process_return_to_base('NAA')
+
+    def test_wrong_phase_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.process_return_to_base('NAA')
+
+    def test_non_active_faction_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.NEUTRAL}, phase=Phase.NONCOMBAT_MOVE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.process_return_to_base('NAA')
+
+
+class TestCarrierRideAlong(unittest.TestCase):
+    def test_default_ride_along_with_no_order_of_its_own(self):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
+        carrier = make_unit('Aircraft Carrier', 'NAA')
+        flyer = make_unit('Fighter', 'NAA')
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [carrier, flyer]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(carrier.unit_id, 2)])
+        engine.confirm_noncombat_moves('NAA')
+        self.assertIn(carrier, gs.territories[2].units)
+        self.assertIn(flyer, gs.territories[2].units, 'co-located plane with no order of its own rides along')
+        self.assertTrue(flyer.has_moved_noncombat)
+
+    def test_preemption_a_planes_own_earlier_move_excludes_it_from_the_ride(self):
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'sea'}, 3: {'type': 'land'}},
+            adjacency={1: [2, 3], 3: [1]},
+        )
+        carrier = make_unit('Aircraft Carrier', 'NAA')
+        flyer = make_unit('Fighter', 'NAA')
+        gs = make_state(
+            data, {3: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [carrier, flyer]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        engine.submit_noncombat_moves('NAA', [
+            NonCombatMoveOrder(flyer.unit_id, 3),  # plane's own move, processed first -- flies to friendly land
+            NonCombatMoveOrder(carrier.unit_id, 2),  # carrier's own move, processed after
+        ])
+        engine.confirm_noncombat_moves('NAA')
+        self.assertIn(flyer, gs.territories[3].units, "the plane's own move should stick, not get dragged to the carrier's zone")
+        self.assertIn(carrier, gs.territories[2].units)
+
+    def test_chaining_a_plane_that_flies_onto_the_carrier_then_rides_its_later_move(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'sea'}, 3: {'type': 'sea'}},
+            adjacency={1: [2], 2: [1, 3]},
+        )
+        carrier = make_unit('Aircraft Carrier', 'NAA')
+        flyer = make_unit('Fighter', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [flyer], 2: [carrier]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        engine.submit_noncombat_moves('NAA', [
+            NonCombatMoveOrder(flyer.unit_id, 2),  # plane flies onto the carrier's CURRENT zone, using its own move
+            NonCombatMoveOrder(carrier.unit_id, 3),  # carrier then moves on -- plane should ride along for free
+        ])
+        engine.confirm_noncombat_moves('NAA')
+        self.assertIn(flyer, gs.territories[3].units, "chaining: the plane should ride the carrier's later move too")
+        self.assertIn(carrier, gs.territories[3].units)
+
+    def test_only_same_faction_air_units_are_swept_along(self):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
+        carrier = make_unit('Aircraft Carrier', 'NAA')
+        own_flyer = make_unit('Fighter', 'NAA')
+        ally_flyer = make_unit('Fighter', 'UE')
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [carrier, own_flyer, ally_flyer]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(carrier.unit_id, 2)])
+        engine.confirm_noncombat_moves('NAA')
+        self.assertIn(own_flyer, gs.territories[2].units)
+        self.assertIn(ally_flyer, gs.territories[1].units, "an ally's aircraft isn't swept along by NAA's carrier order")
+
+
+class TestStrandedAircraftCheck(unittest.TestCase):
+    def test_aircraft_without_own_carrier_is_lost(self):
+        data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
+        flyer = make_unit('Fighter', 'NAA')
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [flyer]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        engine.submit_noncombat_moves('NAA', [])
+        engine.confirm_noncombat_moves('NAA')
+        self.assertNotIn(flyer, gs.territories[1].units)
+
+    def test_aircraft_with_own_carrier_survives(self):
+        data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
+        carrier = make_unit('Aircraft Carrier', 'NAA')
+        flyer = make_unit('Fighter', 'NAA')
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [carrier, flyer]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        engine.submit_noncombat_moves('NAA', [])
+        engine.confirm_noncombat_moves('NAA')
+        self.assertIn(flyer, gs.territories[1].units)
+
+    def test_allied_carrier_does_not_save_a_stranded_aircraft(self):
+        data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
+        ally_carrier = make_unit('Aircraft Carrier', 'UE')
+        flyer = make_unit('Fighter', 'NAA')
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [ally_carrier, flyer]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        engine.submit_noncombat_moves('NAA', [])
+        engine.confirm_noncombat_moves('NAA')
+        self.assertNotIn(flyer, gs.territories[1].units, "an ally's carrier doesn't count -- only your own")
+
+    def test_land_units_are_never_stranded(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        soldier = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [soldier]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        engine.submit_noncombat_moves('NAA', [])
+        engine.confirm_noncombat_moves('NAA')
+        self.assertIn(soldier, gs.territories[1].units)
 
 
 if __name__ == '__main__':

@@ -71,18 +71,25 @@ class UnitInstance:
     # unit_id of the Transport carrying this unit, if it's a land unit
     # currently riding one across a sea zone; None otherwise.
     transported_by: Optional[int] = None
-    # unit_id of the Aircraft Carrier this air unit currently calls
-    # home, if any (None if it's land-based, or not yet assigned). A
-    # land territory never needs this -- it doesn't move, so "where this
-    # unit started the turn" is enough on its own -- but a carrier can
-    # relocate mid-turn (its own combat or non-combat move), so an air
-    # unit riding one needs to track WHICH carrier, not just a fixed
-    # location, to correctly return to "wherever it is" after combat, or
-    # to ride along when that carrier moves. See rules.json's
-    # movement.carrier_air_operations -- engine.py (not yet built) is
-    # what actually sets, clears, and acts on this field; movement.py's
-    # reachability queries don't read or write it.
+    # unit_id of the Aircraft Carrier this air unit departed from on its
+    # most recent COMBAT move, if that carrier's sea zone was its
+    # origin -- None if it combat-moved from land, or hasn't combat-
+    # moved this turn. Scoped narrowly to feeding
+    # GameEngine.process_return_to_base (a carrier can relocate mid-turn
+    # via its own move, so a returning plane needs to track WHICH
+    # carrier, not a fixed location, to find it "wherever it is" after
+    # combat) -- NOT a fully general "current home carrier" tracker for
+    # every move a plane makes; see combat_move_origin below and
+    # rules.json's movement.carrier_air_operations for what's covered
+    # and what (ride-along outside this specific return trip, chaining)
+    # still isn't. Cleared once process_return_to_base consumes it.
     based_on_carrier: Optional[int] = None
+    # Territory_id this air unit combat-moved FROM, set alongside
+    # based_on_carrier on every combat move (regardless of whether the
+    # origin had a carrier) -- the return_to_base fallback target when
+    # there's no carrier to track, or that carrier didn't survive.
+    # Cleared once process_return_to_base consumes it.
+    combat_move_origin: Optional[int] = None
     # The LAND territory whose deploy capacity/cost actually paid for
     # this unit (engine.GameEngine.confirm_purchases sets this) -- for a
     # direct land purchase this is just the deploy target itself, but
@@ -181,6 +188,7 @@ class UnitInstance:
             'last_combat_global_turn': self.last_combat_global_turn,
             'transported_by': self.transported_by,
             'based_on_carrier': self.based_on_carrier,
+            'combat_move_origin': self.combat_move_origin,
             'purchased_at': self.purchased_at,
         }
 

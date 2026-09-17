@@ -97,6 +97,7 @@ class GameEngine:
         self._combat_resolved = set()  # faction_codes that have already run resolve_combat this turn
         self._staged_noncombat_moves = {}  # faction_code -> [NonCombatMoveOrder, ...]
         self._noncombat_moves_confirmed = set()
+        self._return_to_base_processed = set()  # faction_codes that have already run process_return_to_base this turn
 
     def _purchase_sources(self, deploy_at, faction):
         """Ordered list of territory_ids whose capacity/cost apply to a
@@ -429,6 +430,15 @@ class GameEngine:
                 legal = legal_air_move_destinations(unit.unit_type, faction, origin_id, 'combat', game_state, self.data)
                 if dest_id not in legal:
                     raise ValueError(f'{dest_id} is not a legal air combat-move destination for unit {order.unit_id}')
+                # Groundwork for process_return_to_base: remember where
+                # this plane took off from, and which own carrier (if
+                # any) was sitting there, BEFORE it leaves -- a survivor
+                # snaps back to this at the start of Non-Combat Move.
+                unit.combat_move_origin = origin_id
+                unit.based_on_carrier = next(
+                    (u.unit_id for u in origin_state.units if u.unit_type == 'Aircraft Carrier' and u.owner == faction),
+                    None,
+                )
                 origin_state.units.remove(unit)
                 dest_state.units.append(unit)
                 self._mark_contested_by_attack(dest_state, faction, game_state)  # air alone can't capture, only attack
@@ -598,6 +608,77 @@ class GameEngine:
                 self.game_state.territories[landing].units.append(u)
             # else: no adjacent own carrier, own land, or allied land -- lost
 
+    def process_return_to_base(self, faction):
+        """carrier_air_operations.return_to_base_after_combat: an
+        automated step at the very start of the Non-Combat Move phase --
+        call this BEFORE submit_noncombat_moves, which refuses to run
+        until it has. Every surviving air unit that made a combat move
+        this turn (UnitInstance.combat_move_origin set, stamped by
+        _execute_combat_moves) snaps back to wherever it took off from --
+        that same origin territory, or, if it took off from a carrier's
+        sea zone, that SAME carrier specifically, wherever it currently
+        is, even if the carrier has since moved on its own. This
+        REPLACES the unit's non-combat move for the turn (has_moved_noncombat
+        is set True by it, same as a real move).
+
+        If the recorded carrier didn't survive, or the recorded
+        territory is no longer a legal landing spot for this unit (own-
+        or-allied, matching legal_air_move_destinations' own standard --
+        practically this only ever bites the carrier case, since a
+        LAND territory the active faction owned at combat-move time
+        can't change hands mid-turn, nobody else acts on this faction's
+        own turn), nothing is auto-applied -- the unit is simply left
+        exactly where it is, free to receive a normal non-combat move
+        order instead (the documented 'gets a regular non-combat move to
+        land' fallback).
+
+        Automatic and irreversible, like Deploy + Income and Combat
+        Resolution -- no staging, no undo, and only callable once per
+        faction per turn."""
+        if faction not in self.game_state.active_powers():
+            raise ValueError(f'{faction} is not an active power')
+        if self.game_state.phase != Phase.NONCOMBAT_MOVE:
+            raise ValueError('process_return_to_base is only valid during the Non-Combat Move phase')
+        if faction in self._return_to_base_processed:
+            raise ValueError(f'{faction} has already processed return-to-base this turn')
+        self._return_to_base_processed.add(faction)
+
+        pending_unit_ids = [
+            u.unit_id for t in self.game_state.territories.values() for u in t.units
+            if u.owner == faction and u.combat_move_origin is not None
+        ]
+        for unit_id in pending_unit_ids:
+            unit, current_id = self._find_unit(self.game_state, unit_id, faction)
+            target = self._resolve_return_to_base_target(unit, faction)
+            unit.combat_move_origin = None
+            unit.based_on_carrier = None
+            if target is None:
+                continue
+            if target != current_id:
+                self.game_state.territories[current_id].units.remove(unit)
+                self.game_state.territories[target].units.append(unit)
+            unit.has_moved_noncombat = True
+
+    def _resolve_return_to_base_target(self, unit, faction):
+        """Where `unit` should snap back to, or None if that's no
+        longer possible (falls through to a regular non-combat move)."""
+        if unit.based_on_carrier is not None:
+            for t in self.game_state.territories.values():
+                if any(u.unit_id == unit.based_on_carrier for u in t.units):
+                    return t.territory_id
+            return None  # that carrier didn't survive
+        origin_id = unit.combat_move_origin
+        origin_terr = self.data.territories()[origin_id]
+        origin_state = self.game_state.territories[origin_id]
+        if origin_terr['type'] == 'land':
+            return origin_id if _is_ally_or_self(self.game_state, faction, origin_state.owner) else None
+        # Sea origin with no carrier recorded (departed from open water,
+        # unusual but not impossible) -- only safe if faction's own
+        # carrier happens to be there now.
+        if any(u.unit_type == 'Aircraft Carrier' and u.owner == faction for u in origin_state.units):
+            return origin_id
+        return None
+
     def _execute_noncombat_moves(self, orders, faction, game_state):
         """Runs `orders` (a list of NonCombatMoveOrder) against
         `game_state` in order, relocating each unit if its destination
@@ -611,7 +692,19 @@ class GameEngine:
         contested_by bookkeeping needed here. Raises ValueError on the
         first illegal order. Used identically by submit_noncombat_moves
         (against a throwaway deep copy) and confirm_noncombat_moves
-        (against the real GameState)."""
+        (against the real GameState).
+
+        carrier_air_operations.carrier_ride_along: moving an Aircraft
+        Carrier here also sweeps along every one of `faction`'s air
+        units CURRENTLY co-located in the carrier's origin -- covers the
+        default ride-along (no order of its own -- still there when the
+        carrier moves) and chaining (its OWN earlier order in this same
+        list flew it onto the carrier -- still co-located when the
+        carrier's order comes later) uniformly, since both are just
+        "physically there when the carrier moves," with no need to
+        distinguish them. A plane that pre-empts by moving AWAY via its
+        own earlier order is naturally excluded -- it's simply not there
+        anymore by the time the carrier's order runs."""
         unit_defs = self.data.units()
         for order in orders:
             unit, origin_id = self._find_unit(game_state, order.unit_id, faction)
@@ -632,9 +725,21 @@ class GameEngine:
             if order.destination not in legal:
                 raise ValueError(f'{order.destination} is not a legal non-combat move destination for unit {order.unit_id}')
 
+            riders = []
+            if unit.unit_type == 'Aircraft Carrier':
+                riders = [
+                    u for u in game_state.territories[origin_id].units
+                    if u.owner == faction and unit_defs[u.unit_type]['category'] == 'Air'
+                ]
+
             game_state.territories[origin_id].units.remove(unit)
             game_state.territories[order.destination].units.append(unit)
             unit.has_moved_noncombat = True
+
+            for rider in riders:
+                game_state.territories[origin_id].units.remove(rider)
+                game_state.territories[order.destination].units.append(rider)
+                rider.has_moved_noncombat = True
 
     def submit_noncombat_moves(self, faction, orders):
         """Validates and stages `orders` (a list of NonCombatMoveOrder)
@@ -651,6 +756,8 @@ class GameEngine:
             raise ValueError('submit_noncombat_moves is only valid during the Non-Combat Move phase')
         if faction in self._noncombat_moves_confirmed:
             raise ValueError(f'{faction} has already confirmed non-combat moves this turn')
+        if faction not in self._return_to_base_processed:
+            raise ValueError(f'process_return_to_base must run for {faction} before submit_noncombat_moves')
 
         working = copy.deepcopy(self.game_state)
         self._execute_noncombat_moves(orders, faction, working)
@@ -660,9 +767,12 @@ class GameEngine:
     def confirm_noncombat_moves(self, faction):
         """Commits `faction`'s currently-staged non-combat-move list
         (empty if submit_noncombat_moves was never called) -- re-runs
-        the exact same validated sequence against the real GameState.
-        Irreversible: submit_noncombat_moves and confirm_noncombat_moves
-        both refuse further calls for this faction this turn afterward."""
+        the exact same validated sequence against the real GameState,
+        then applies movement.stranded_aircraft_rule: any of faction's
+        air units left sitting over a sea zone with no own carrier
+        present (an ally's doesn't count) are lost. Irreversible:
+        submit_noncombat_moves and confirm_noncombat_moves both refuse
+        further calls for this faction this turn afterward."""
         if faction not in self.game_state.active_powers():
             raise ValueError(f'{faction} is not an active power')
         if faction in self._noncombat_moves_confirmed:
@@ -670,5 +780,20 @@ class GameEngine:
 
         orders = self._staged_noncombat_moves.get(faction, [])
         self._execute_noncombat_moves(orders, faction, self.game_state)
+        self._apply_stranded_aircraft_check(faction)
         self._noncombat_moves_confirmed.add(faction)
         self._staged_noncombat_moves.pop(faction, None)
+
+    def _apply_stranded_aircraft_check(self, faction):
+        """movement.stranded_aircraft_rule: run once, at the end of the
+        Non-Combat Move phase -- any of `faction`'s air units sitting
+        over a sea zone with no OWN Aircraft Carrier present (an ally's
+        never counts) are lost."""
+        terrs = self.data.territories()
+        unit_defs = self.data.units()
+        for tid, t in self.game_state.territories.items():
+            if terrs[tid]['type'] != 'sea':
+                continue
+            if any(u.unit_type == 'Aircraft Carrier' and u.owner == faction for u in t.units):
+                continue
+            t.units = [u for u in t.units if not (u.owner == faction and unit_defs[u.unit_type]['category'] == 'Air')]
