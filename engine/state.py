@@ -39,6 +39,13 @@ def step_up_die(die):
     return DIE_SIZES[min(idx + 1, len(DIE_SIZES) - 1)]
 
 
+def step_down_die(die):
+    if die not in DIE_SIZES:
+        return die
+    idx = DIE_SIZES.index(die)
+    return DIE_SIZES[max(idx - 1, 0)]
+
+
 def _has_dig_in(base):
     """True if this unit type's data (units.json's special_abilities list)
     carries the 'Dig In' trait -- currently Infantry only, but driven by
@@ -65,7 +72,7 @@ class UnitInstance:
     # currently riding one across a sea zone; None otherwise.
     transported_by: Optional[int] = None
 
-    def effective_stats(self, unit_defs, round1_bonus=False, defending=False):
+    def effective_stats(self, unit_defs, round1_bonus=False, defending=False, air_superiority=False):
         """unit_defs: engine.data.units() (or an equivalent test fixture).
         Returns the unit's current attack_die/defense/hp/damage after
         applying the promotion bonus (die up one size max D12, +1
@@ -92,10 +99,21 @@ class UnitInstance:
         trait (units.json's special_abilities -- Infantry, currently)
         get +1 defense (capped at 10) while defending, stacking
         additively with promotion and round1_bonus same as those do with
-        each other."""
+        each other.
+
+        air_superiority: True only for the pre-combat air-superiority
+        round -- Fighter steps its attack die up one size (stacking on
+        top of any promotion, same as round1_bonus would); Bomber steps
+        its attack die DOWN one size instead and its damage is fixed at
+        2 (an absolute override, not a relative one -- Bomber's normal
+        damage, 4, isn't touched by promotion either, so there's nothing
+        to stack against). Every other unit type is unaffected -- this
+        never touches defense, so it plays no part in a target's
+        defense_of computation, only the acting unit's own roll."""
         base = unit_defs[self.unit_type]
         die = base['attack_die']
         defense = base['defense']
+        damage = base['damage']
         max_hp = base['hp']
         if self.promoted:
             if die is not None:
@@ -110,10 +128,17 @@ class UnitInstance:
                 defense = min(defense + 1, 10)
         if defending and defense is not None and _has_dig_in(base):
             defense = min(defense + 1, 10)
+        if air_superiority:
+            if self.unit_type == 'Fighter' and die is not None:
+                die = step_up_die(die)
+            elif self.unit_type == 'Bomber':
+                if die is not None:
+                    die = step_down_die(die)
+                damage = 2
         return {
             'attack_die': die,
             'defense': defense,
-            'damage': base['damage'],
+            'damage': damage,
             'max_hp': max_hp,
             'category': base['category'],
             'combat_move': base['combat_move'],

@@ -31,6 +31,12 @@
     "rounds_per_battle": 3,
     "air_superiority_rounds": 1,
     "air_superiority_trigger": "occurs only if both sides in the battle have at least 1 air unit present AND at least one of the two sides has at least 1 Fighter present; two bomber-only air forces facing each other do not trigger it",
+    "air_superiority_die_adjustments": {
+      "fighter": "attack die steps up one size for this round only (D8 -> D10), stacking on top of an existing promotion the same way first_round_bonuses would (a promoted Fighter, D8->D10 from promotion, steps to D12 for air superiority).",
+      "bomber": "attack die steps DOWN one size instead (D10 -> D8), and damage is fixed at 2 for this round -- an absolute override of Bomber's normal 4, not a relative one (promotion doesn't touch damage either, so there's nothing to stack against here).",
+      "scope": "only the pre-combat air-superiority round (round_number 0) -- rounds 1-3 of main combat use each unit's normal stats. Never touches defense, only the acting unit's own die/damage.",
+      "status": "implemented -- see UnitInstance.effective_stats' air_superiority parameter"
+    },
     "hit_rule": "attack die roll >= target's defense is a hit; the max value on the die always hits, even against a target whose defense exceeds the roll",
     "damage_rule": "a hit deals damage equal to the attacker's damage rating. A target normally reachable by the roll (defense <= roll) is always preferred and takes full damage, even if the roll happens to be the die's max value. The max-die-always-hits bypass -- reaching a target whose defense exceeds the roll -- is only used once no normally-reachable target remains, and even then is restricted to the single next-highest defense tier above the roll (see target_selection.fallback_rule; a tougher tier still is never reached), and that bypass hit specifically deals half damage (rounded down): the cost of forcing a hit on an otherwise-unhittable target, not a tax on rolling well.",
     "resolution_order": {
@@ -44,6 +50,11 @@
       "same_type_weight": 2,
       "bomber_attacker_weight": 1,
       "weighting_note": "an attacking unit is twice as likely to target an eligible enemy unit of its own unit type as any other eligible unit, except a Bomber attacker, which uses uniform (1x) weighting across the whole eligible pool. Bombers themselves are ordinary targets for everyone else's attacks -- no special protection, no extra likelihood."
+    },
+    "submarine_air_invisibility": {
+      "rule": "a Submarine attacker's target pool never includes an Air-category unit (Fighter, Bomber), and an Air-category attacker's target pool never includes a Submarine -- excluded entirely before the eligible/fallback pool logic runs, regardless of the roll (even the max-die bypass, which can otherwise reach a target whose defense exceeds the roll, can never reach one). If that exclusion empties a side's target pool entirely for a given roll, it's a normal miss with no target, same as facing no standing enemies at all.",
+      "source": "units.json's 'Submerge' special ability (\"can't engage or be attacked by aircraft\")",
+      "status": "implemented -- see combat._select_target's standing-pool filter"
     },
     "casualty_resolution": "attacker rolls all attacks first (defending casualties noted, not removed), then defender rolls all attacks (both sides' casualties removed together)",
     "progressive_elimination_note": "within one side's own ordered roll-through (per resolution_order), damage accumulates progressively against the other side -- a unit-type group resolving later in that same side's sequence can find its preferred targets already reduced to 0 HP by an earlier group in the sequence. Actual removal from the board for BOTH sides happens together only after both attacker and defender have finished rolling for the round.",

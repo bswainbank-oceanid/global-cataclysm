@@ -409,5 +409,109 @@ class TestDigIn(unittest.TestCase):
         self.assertEqual(end.outcome, 'attacker_eliminated')
 
 
+class TestAirSuperiorityDieAdjustments(unittest.TestCase):
+    """combat.air_superiority_die_adjustments: during the pre-combat
+    air-superiority round only, Fighter's attack die steps up one size
+    (D8 -> D10) and Bomber's steps DOWN one size (D10 -> D8) with its
+    damage fixed at 2 (an absolute override of its normal 4, not a
+    relative one) -- see UnitInstance.effective_stats' `air_superiority`
+    parameter. Driven directly via _fight_one_round the same way
+    TestFirstRoundCombatBonus drives round1_bonus_side."""
+
+    def _run_round(self, round_number, attacker, defender, rolls, air_superiority):
+        rng = ScriptedRNG(rolls)
+        return list(_fight_one_round(
+            rng, round_number, [attacker], [defender], UNIT_DEFS, combat_cfg(),
+            RULES['combat']['resolution_order']['sea'], 0, air_superiority=air_superiority,
+        ))
+
+    def test_fighter_die_steps_up(self):
+        attacker = make(1, 'Fighter', 'NAA')  # base D8
+        defender = make(2, 'Cruiser', 'AAC')
+        events = self._run_round(0, attacker, defender, rolls=[3, 1], air_superiority=True)
+        roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
+        self.assertEqual(roll.die, 'D10', "Fighter's air-superiority die should step up from D8 to D10")
+
+    def test_fighter_die_unaffected_outside_air_superiority(self):
+        attacker = make(1, 'Fighter', 'NAA')
+        defender = make(2, 'Cruiser', 'AAC')
+        events = self._run_round(1, attacker, defender, rolls=[3, 1], air_superiority=False)
+        roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
+        self.assertEqual(roll.die, 'D8')
+
+    def test_bomber_die_steps_down_and_damage_drops_to_2(self):
+        attacker = make(1, 'Bomber', 'NAA')  # base D10, damage 4
+        defender = make(2, 'Cruiser', 'AAC', hp=10)  # defense 7 -- reachable by the boosted D8's max roll
+        events = self._run_round(0, attacker, defender, rolls=[8, 1], air_superiority=True)
+        roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
+        self.assertEqual(roll.die, 'D8', "Bomber's air-superiority die should step DOWN from D10 to D8")
+        self.assertTrue(roll.hit)
+        self.assertEqual(roll.damage, 2, 'air-superiority Bomber damage is fixed at 2, not the normal 4')
+
+    def test_bomber_normal_damage_unaffected_outside_air_superiority(self):
+        attacker = make(1, 'Bomber', 'NAA')
+        defender = make(2, 'Cruiser', 'AAC', hp=10)
+        events = self._run_round(1, attacker, defender, rolls=[8, 1], air_superiority=False)
+        roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
+        self.assertEqual(roll.die, 'D10')
+        self.assertTrue(roll.hit)
+        self.assertEqual(roll.damage, 4)
+
+    def test_stacks_with_promotion(self):
+        # Fighter promoted: D8 -> D10 (promotion alone). Air superiority
+        # steps it up once more on top: D10 -> D12.
+        attacker = make(1, 'Fighter', 'NAA', promoted=True)
+        defender = make(2, 'Cruiser', 'AAC')
+        events = self._run_round(0, attacker, defender, rolls=[3, 1], air_superiority=True)
+        roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
+        self.assertEqual(roll.die, 'D12', 'promotion (D8->D10) and air superiority (D10->D12) should stack')
+
+
+class TestSubmarineAirInvisibility(unittest.TestCase):
+    """combat.submarine_air_invisibility (units.json's 'Submerge' trait):
+    a Submarine attacker never sees an Air-category unit in its target
+    pool, and an Air attacker never sees a Submarine, regardless of the
+    roll -- filtered out before the clean/bypass pool logic even runs,
+    driven directly via _select_target the same way
+    TestTargetSelectionWeighting does."""
+
+    def test_submarine_never_targets_a_fighter_even_at_die_max(self):
+        # roll == die_max (8): without the exclusion, Fighter's defense
+        # (8) would be a clean hit target. With it, Fighter must never
+        # be selectable at all.
+        fighter = make(1, 'Fighter', 'AAC')  # defense 8
+        for _ in range(200):
+            target, is_hit, is_bypass = _select_target(random.Random(), 8, 8, 'Submarine', [fighter], UNIT_DEFS, 2, 1, {})
+            self.assertIsNone(target, 'a lone Fighter must never be targetable by a Submarine')
+            self.assertFalse(is_hit)
+
+    def test_submarine_targets_the_non_air_unit_when_a_fighter_is_also_present(self):
+        fighter = make(1, 'Fighter', 'AAC')  # defense 8 -- would clean-hit at roll 8 if not excluded
+        cruiser = make(2, 'Cruiser', 'AAC')  # defense 7
+        for _ in range(200):
+            target, is_hit, is_bypass = _select_target(random.Random(), 8, 8, 'Submarine', [fighter, cruiser], UNIT_DEFS, 2, 1, {})
+            self.assertEqual(target.unit_id, 2, 'the Fighter must be excluded from the pool entirely, leaving only the Cruiser')
+            self.assertTrue(is_hit)
+            self.assertFalse(is_bypass, 'Cruiser is reached via a clean hit, not the bypass')
+
+    def test_fighter_never_targets_a_submarine(self):
+        sub = make(1, 'Submarine', 'AAC')  # defense 6
+        for _ in range(200):
+            target, is_hit, is_bypass = _select_target(random.Random(), 8, 8, 'Fighter', [sub], UNIT_DEFS, 2, 1, {})
+            self.assertIsNone(target, 'a lone Submarine must never be targetable by a Fighter')
+
+    def test_bomber_never_targets_a_submarine_either(self):
+        sub = make(1, 'Submarine', 'AAC')  # defense 6
+        cruiser = make(2, 'Cruiser', 'AAC')  # defense 7
+        for _ in range(200):
+            target, is_hit, is_bypass = _select_target(random.Random(), 8, 8, 'Bomber', [sub, cruiser], UNIT_DEFS, 2, 1, {})
+            self.assertEqual(target.unit_id, 2, 'the Submarine must be excluded from a Bomber attacker\'s pool too')
+
+    def test_non_air_non_submarine_attackers_are_unaffected(self):
+        sub = make(1, 'Submarine', 'AAC')  # defense 6
+        target, is_hit, is_bypass = _select_target(random.Random(1), 6, 6, 'Cruiser', [sub], UNIT_DEFS, 2, 1, {})
+        self.assertEqual(target.unit_id, 1, 'a Cruiser (not Submarine or Air) can target a Submarine normally')
+
+
 if __name__ == '__main__':
     unittest.main()

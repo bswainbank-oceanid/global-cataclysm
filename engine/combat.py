@@ -135,8 +135,21 @@ def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_t
     entirely, even on a bypass hit. Same-type weighting still applies
     within that narrower pool. Whether it's actually a hit (bypass, half
     damage) or a miss (0 damage, targeted for display only) depends
-    purely on whether roll == die_max."""
+    purely on whether roll == die_max.
+
+    Submarine/aircraft mutual invisibility (units.json's 'Submerge'
+    trait -- see combat.submarine_air_invisibility): a Submarine
+    attacker never sees Air-category units in its target pool, and an
+    Air attacker never sees a Submarine, at any roll -- filtered out of
+    `standing` before the clean/bypass pool logic even runs, so neither
+    a clean hit nor the max-die bypass can ever reach one. If that
+    filtering empties the pool entirely, this is a normal no-target miss
+    (None, False, False), same as facing no standing enemies at all."""
     standing = [e for e in enemies if e.current_hp - pending_damage.get(e.unit_id, 0) > 0]
+    if attacker_type == 'Submarine':
+        standing = [e for e in standing if unit_defs[e.unit_type]['category'] != 'Air']
+    elif unit_defs[attacker_type]['category'] == 'Air':
+        standing = [e for e in standing if e.unit_type != 'Submarine']
     if not standing:
         return None, False, False
 
@@ -158,21 +171,22 @@ def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_t
     return target, is_hit, is_bypass
 
 
-def _resolution_sequence(units, unit_defs, type_order, round1_bonus=False):
+def _resolution_sequence(units, unit_defs, type_order, round1_bonus=False, air_superiority=False):
     """Units grouped by type per `type_order`, then by attack die size
-    ascending within a type (promotions, and now a round-1 combat bonus,
-    can give same-type units different dice)."""
+    ascending within a type (promotions, a round-1 combat bonus, and now
+    the air-superiority die adjustments can give same-type units
+    different dice)."""
     def sort_key(u):
-        stats = u.effective_stats(unit_defs, round1_bonus=round1_bonus)
+        stats = u.effective_stats(unit_defs, round1_bonus=round1_bonus, air_superiority=air_superiority)
         die = stats['attack_die']
         die_rank = list(DIE_MAX).index(die) if die in DIE_MAX else -1
         type_rank = type_order.index(u.unit_type) if u.unit_type in type_order else len(type_order)
         return (type_rank, die_rank)
-    return sorted([u for u in units if u.effective_stats(unit_defs, round1_bonus=round1_bonus)['attack_die']], key=sort_key)
+    return sorted([u for u in units if u.effective_stats(unit_defs, round1_bonus=round1_bonus, air_superiority=air_superiority)['attack_die']], key=sort_key)
 
 
 def _roll_side(rng, side_label, acting_units, enemy_units, unit_defs, target_cfg, round_number, current_global_turn,
-                acting_round1_bonus=False, enemy_round1_bonus=False, enemies_are_defenders=False):
+                acting_round1_bonus=False, enemy_round1_bonus=False, enemies_are_defenders=False, acting_air_superiority=False):
     """Yields one UNIT_ROLL event per acting unit's die roll, applying
     damage progressively into a local pending_damage tally (not yet
     subtracted from real current_hp -- that happens for both sides
@@ -188,11 +202,14 @@ def _roll_side(rng, side_label, acting_units, enemy_units, unit_defs, target_cfg
     == 1 -- see _fight_one_round, which computes these). enemies_are_defenders:
     forwarded to _select_target for the Dig In check -- true for every
     round (not just round 1) whenever `enemy_units` is this battle's
-    actual defending side."""
+    actual defending side. acting_air_superiority: applies the Fighter/
+    Bomber air-superiority die (and, for Bomber, damage) adjustment to
+    this side's own roll -- never touches defense, so unlike the other
+    flags it has no enemy-side counterpart to forward into _select_target."""
     pending_damage = {}
     for unit in acting_units:
         unit.last_combat_global_turn = current_global_turn
-        stats = unit.effective_stats(unit_defs, round1_bonus=acting_round1_bonus)
+        stats = unit.effective_stats(unit_defs, round1_bonus=acting_round1_bonus, air_superiority=acting_air_superiority)
         die = stats['attack_die']
         die_max = DIE_MAX[die]
         roll = rng.randint(1, die_max)
@@ -247,7 +264,7 @@ def _apply_xp_and_check_promotions(round_number, attackers_before, defenders_bef
 
 
 def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_cfg, resolution_order, current_global_turn,
-                      round1_bonus_side=None):
+                      round1_bonus_side=None, air_superiority=False):
     """One full round (or the air-superiority round): attacker's whole
     ordered roll sequence, then defender's, then both sides' casualties
     are removed together. Yields UNIT_ROLL events (from both sides),
@@ -260,12 +277,18 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
     any, is the caller's job, not this module's). It only ever actually
     applies when round_number == 1 -- passing it in for the air-
     superiority round (round_number 0) or a later round (2, 3) is
-    harmless, since the check below excludes those rounds regardless."""
+    harmless, since the check below excludes those rounds regardless.
+
+    air_superiority: True only for resolve_battle's dedicated air-
+    superiority round call -- applies to BOTH sides uniformly (unlike
+    round1_bonus_side, there's no "which side" question here; see
+    combat.air_superiority_die_adjustments and UnitInstance.
+    effective_stats' `air_superiority` parameter)."""
     target_cfg = combat_cfg['target_selection']
     attacker_bonus = round1_bonus_side == 'attacker' and round_number == 1
     defender_bonus = round1_bonus_side == 'defender' and round_number == 1
-    attacker_order = _resolution_sequence(attackers, unit_defs, resolution_order, round1_bonus=attacker_bonus)
-    defender_order = _resolution_sequence(defenders, unit_defs, resolution_order, round1_bonus=defender_bonus)
+    attacker_order = _resolution_sequence(attackers, unit_defs, resolution_order, round1_bonus=attacker_bonus, air_superiority=air_superiority)
+    defender_order = _resolution_sequence(defenders, unit_defs, resolution_order, round1_bonus=defender_bonus, air_superiority=air_superiority)
 
     attacker_hit_ids = set()
     defender_hit_ids = set()
@@ -277,7 +300,7 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
         pending = {}
         for event in _roll_side(rng, side_label, acting, enemies, unit_defs, target_cfg, round_number, current_global_turn,
                                  acting_round1_bonus=acting_bonus, enemy_round1_bonus=enemies_bonus,
-                                 enemies_are_defenders=enemies_are_defenders):
+                                 enemies_are_defenders=enemies_are_defenders, acting_air_superiority=air_superiority):
             yield event
             if event.hit:
                 hit_ids.add(event.unit_id)
@@ -349,7 +372,8 @@ def resolve_battle(attacker_units, defender_units, battle_type, rng, current_glo
         yield BattleEvent(kind=EventKind.AIR_SUPERIORITY_START, round_number=0)
         air_attackers = [u for u in attackers if unit_defs[u.unit_type]['category'] == 'Air']
         air_defenders = [u for u in defenders if unit_defs[u.unit_type]['category'] == 'Air']
-        yield from _fight_one_round(rng, 0, air_attackers, air_defenders, unit_defs, combat_cfg, resolution_order, current_global_turn)
+        yield from _fight_one_round(rng, 0, air_attackers, air_defenders, unit_defs, combat_cfg, resolution_order, current_global_turn,
+                                     air_superiority=True)
         attackers = _alive(attackers)
         defenders = _alive(defenders)
 
