@@ -370,12 +370,25 @@ class CombatMoveTrace:
     movement.combat_move_destination and turn_order's Capture Territory
     entry) -- 'capture' here is just a label distinguishing "nobody was
     defending it" from 'attack', not a claim that ownership already
-    changed."""
-    __slots__ = ('entered_en_route', 'final_kind')
+    changed.
 
-    def __init__(self, entered_en_route, final_kind):
+    crossed_water: True for a LAND unit whose path touched a sea zone
+    anywhere -- as its origin, an intermediate hop, or even the final
+    stop -- i.e. it rode a Transport for at least part of this move.
+    Always False for a sea unit (moving through open water is just
+    normal movement for it, not a meaningful "crossing"). Feeds
+    combat.first_round_bonuses' amphibious-landing check
+    (engine.engine.GameEngine._execute_combat_moves stamps this onto
+    UnitInstance.arrived_amphibiously for Land-category units) -- only
+    meaningful there when the unit's FINAL stop is land (one that ends
+    in open water instead is a naval combatant, never a land-battle
+    attacker, so a True value here for that case is harmless)."""
+    __slots__ = ('entered_en_route', 'final_kind', 'crossed_water')
+
+    def __init__(self, entered_en_route, final_kind, crossed_water):
         self.entered_en_route = entered_en_route
         self.final_kind = final_kind
+        self.crossed_water = crossed_water
 
 
 def trace_combat_move(unit_type, owner, path, game_state, data_module):
@@ -491,7 +504,7 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
     else:
         final_kind = 'attack'  # empty open sea is never a legal final stop -- see _classify_combat_hop
 
-    return CombatMoveTrace(entered_en_route=entered_en_route, final_kind=final_kind)
+    return CombatMoveTrace(entered_en_route=entered_en_route, final_kind=final_kind, crossed_water=water_active)
 
 
 def legal_noncombat_move_destinations(unit_type, owner, origin_id, game_state, data_module):

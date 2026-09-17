@@ -691,6 +691,47 @@ class TestTraceCombatMove(unittest.TestCase):
         self.assertEqual(trace.final_kind, 'attack')
         self.assertEqual(trace.entered_en_route, [])
 
+    def test_crossed_water_false_for_a_pure_overland_path(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 2: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Infantry', 'AAC')]},
+        )
+        trace = trace_combat_move('Infantry', 'NAA', [1, 2], gs, data)
+        self.assertFalse(trace.crossed_water)
+
+    def test_crossed_water_true_when_the_path_passes_through_a_sea_zone(self):
+        # 1 (land, origin) -- 2 (sea) -- 3 (land, empty enemy).
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'sea'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 3: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+        )
+        trace = trace_combat_move('Infantry', 'NAA', [1, 2, 3], gs, data)
+        self.assertTrue(trace.crossed_water)
+
+    def test_crossed_water_true_when_already_starting_in_a_sea_zone(self):
+        # 1 (sea, origin -- e.g. stranded there from an earlier turn) -- 2 (land, empty enemy).
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        gs = make_state(
+            data, territory_owners={2: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+        )
+        trace = trace_combat_move('Infantry', 'NAA', [1, 2], gs, data)
+        self.assertTrue(trace.crossed_water)
+
+    def test_crossed_water_always_false_for_a_sea_unit(self):
+        # empty open sea is never a legal final stop -- use an
+        # enemy-occupied sea zone as the destination instead.
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
+        gs = make_state(
+            data, territory_owners={}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Submarine', 'AAC')]},
+        )
+        trace = trace_combat_move('Submarine', 'NAA', [1, 2], gs, data)
+        self.assertFalse(trace.crossed_water, 'crossing open water is just normal movement for a sea unit, not a "crossing"')
+
     def test_single_hop_capture_of_empty_foreign_land(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         gs = make_state(

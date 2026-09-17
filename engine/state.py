@@ -101,6 +101,18 @@ class UnitInstance:
     # purchase.contested_purchase_lost_during_turn_fallback (both
     # reference "the purchasing land space").
     purchased_at: Optional[int] = None
+    # combat.first_round_bonuses' "amphibious landing" case: True for a
+    # LAND unit whose most recent combat move (movement.
+    # trace_combat_move's crossed_water) touched a sea zone -- stamped by
+    # GameEngine._execute_combat_moves, read by resolve_combat (only
+    # meaningful there alongside has_moved_combat == True, i.e. this
+    # turn's move specifically -- see that method's own comment), and
+    # reset to False, like has_moved_combat, at the end of this unit's
+    # owner's turn (GameEngine.advance_turn). Deliberately NOT a
+    # multi-turn "has this unit ever crossed water and not walked since"
+    # tracker -- the bonus is one-shot, only for the turn a purely-
+    # amphibious assault actually lands, confirmed this session.
+    arrived_amphibiously: bool = False
 
     def effective_stats(self, unit_defs, round1_bonus=False, defending=False, air_superiority=False):
         """unit_defs: engine.data.units() (or an equivalent test fixture).
@@ -190,6 +202,7 @@ class UnitInstance:
             'based_on_carrier': self.based_on_carrier,
             'combat_move_origin': self.combat_move_origin,
             'purchased_at': self.purchased_at,
+            'arrived_amphibiously': self.arrived_amphibiously,
         }
 
     @staticmethod
@@ -218,6 +231,17 @@ class TerritoryState:
     # here, whatever the outcome -- a different faction attacking first
     # leaves it untouched, waiting for the intended recipient.
     reclaim_bonus_for: Optional[str] = None
+    # combat.first_round_bonuses' "sea deploy into enemy-occupied zone"
+    # case: every faction code currently owed the first-round ATTACK
+    # bonus the next time IT specifically attacks this sea zone -- set by
+    # GameEngine._deploy_to_sea for every non-ally who already had units
+    # here when a hostile deploy landed on top of them (potentially more
+    # than one faction at once, each caught equally unprepared --
+    # confirmed this session). Consumed (removed from this set, not the
+    # whole set cleared) only when that one named faction actually
+    # attacks here, whatever the outcome; every other still-queued
+    # faction's entry is untouched.
+    ambush_bonus_for: set = field(default_factory=set)
 
     def to_dict(self):
         return {
@@ -227,6 +251,7 @@ class TerritoryState:
             'contested_by': sorted(self.contested_by) if self.contested_by else None,
             'pending_deployment': [u.to_dict() for u in self.pending_deployment],
             'reclaim_bonus_for': self.reclaim_bonus_for,
+            'ambush_bonus_for': sorted(self.ambush_bonus_for),
         }
 
     @staticmethod
@@ -238,6 +263,7 @@ class TerritoryState:
             contested_by=set(d['contested_by']) if d.get('contested_by') else None,
             pending_deployment=[UnitInstance.from_dict(u) for u in d['pending_deployment']],
             reclaim_bonus_for=d.get('reclaim_bonus_for'),
+            ambush_bonus_for=set(d.get('ambush_bonus_for', [])),
         )
 
 

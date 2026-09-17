@@ -428,6 +428,12 @@ class GameEngine:
         non_allies = {o for o in other_owners if not _is_ally_or_self(self.game_state, faction, o)}
         if non_allies:
             t.contested_by = (t.contested_by or set()) | {faction} | non_allies
+            # combat.first_round_bonuses' "sea deploy into enemy-occupied
+            # zone" case -- every prior non-ally caught here was equally
+            # unprepared for `faction`'s deploy (confirmed this session:
+            # more than one can be queued at once, each independently
+            # consumed on their own next attack here).
+            t.ambush_bonus_for |= non_allies
 
     def _run_recovery_check(self):
         """combat.recovery_rule, run at every faction's Deploy + Income:
@@ -526,6 +532,12 @@ class GameEngine:
                 self._mark_contested_by_attack(dest_state, faction, game_state)  # air alone can't capture, only attack
             else:
                 trace = trace_combat_move(unit.unit_type, faction, order.path, game_state, self.data)
+                if category == 'Land':
+                    # combat.first_round_bonuses' amphibious-landing check
+                    # (resolve_combat) -- stamped fresh on every land
+                    # unit's own combat move, overwriting whatever was
+                    # left from an earlier turn either way.
+                    unit.arrived_amphibiously = trace.crossed_water
                 riders = []
                 if unit.unit_type == 'Aircraft Carrier':
                     riders = [
@@ -645,14 +657,37 @@ class GameEngine:
         (combat.emergency_landing). Returns a list of BattleResult, one
         per battle, in the order resolved.
 
-        combat.first_round_bonuses' former-ally-territory-reclaim case:
-        if this territory's TerritoryState.reclaim_bonus_for is `faction`
-        (set by an earlier withdraw_from_alliance, when this territory,
-        belonging to `faction`, was left occupied by the withdrawing
-        faction), `faction`'s attack here gets the round-1 bonus, and
-        the flag is cleared -- one-time, regardless of outcome. Left
-        untouched if it names some OTHER faction (a third party fighting
-        here first doesn't consume the betrayed ally's bonus).
+        combat.first_round_bonuses: all three cases resolved here, in
+        priority order (a battle only ever gets one), each one-time --
+        consumed/cleared the moment it applies, regardless of outcome:
+        1. Former-ally-territory-reclaim (land only): if this territory's
+           TerritoryState.reclaim_bonus_for is `faction` (set by an
+           earlier withdraw_from_alliance, when this territory, belonging
+           to `faction`, was left occupied by the withdrawing faction),
+           `faction`'s attack gets the round-1 bonus, and the flag is
+           cleared. Left untouched if it names some OTHER faction (a
+           third party fighting here first doesn't consume the betrayed
+           ally's bonus).
+        2. Sea-deploy-ambush (sea only): if `faction` is in this
+           territory's TerritoryState.ambush_bonus_for (set by an earlier
+           _deploy_to_sea, when `faction` already had units in a sea zone
+           a non-ally then deployed into), `faction`'s attack gets the
+           round-1 bonus, and just `faction` is removed from that set --
+           any OTHER still-queued faction's own entry is untouched.
+        3. Amphibious landing (land only, one-shot -- confirmed this
+           session): if EVERY Land-category unit currently on the
+           attacking side both combat-moved THIS turn
+           (UnitInstance.has_moved_combat) and did so via a path that
+           touched a sea zone (UnitInstance.arrived_amphibiously, stamped
+           by _execute_combat_moves from movement.trace_combat_move's
+           crossed_water), the DEFENDER gets the round-1 bonus instead --
+           nothing to clear here, it's recomputed fresh from unit state
+           every call, never queued. A mid-battle refight of an ongoing
+           multi-turn stalemate (no fresh combat move this turn) never
+           qualifies, even if the same units are still sitting there,
+           since has_moved_combat is false for anyone who didn't just
+           move -- this is deliberately NOT a "this unit has ever crossed
+           water and hasn't walked since" persistent tracker.
 
         Not reversible (phase_confirmation.scope: dice have already been
         rolled) -- there's no staging here, this is the real thing the
@@ -678,14 +713,24 @@ class GameEngine:
         for territory_id, battle_type in self.declared_battles(faction):
             attacker_units, defender_units = self.gather_battle_units(territory_id, faction)
             t = self.game_state.territories[territory_id]
-            round1_bonus_side = 'attacker' if t.reclaim_bonus_for == faction else None
+
+            round1_bonus_side = None
+            if t.reclaim_bonus_for == faction:
+                round1_bonus_side = 'attacker'
+                t.reclaim_bonus_for = None
+            elif faction in t.ambush_bonus_for:
+                round1_bonus_side = 'attacker'
+                t.ambush_bonus_for.discard(faction)
+            elif battle_type == 'land':
+                land_attackers = [u for u in attacker_units if unit_defs[u.unit_type]['category'] == 'Land']
+                if land_attackers and all(u.has_moved_combat and u.arrived_amphibiously for u in land_attackers):
+                    round1_bonus_side = 'defender'
+
             events = list(resolve_battle(
                 attacker_units, defender_units, battle_type, rng,
                 self.game_state.global_turn, unit_defs, rules,
                 round1_bonus_side=round1_bonus_side,
             ))
-            if round1_bonus_side is not None:
-                t.reclaim_bonus_for = None
             result = BattleResult.from_events(events)
             self._record_combat_stats(events, attacker_units, defender_units, battle_type)
             self._apply_battle_outcome(territory_id, battle_type, faction, result, rng)
@@ -1408,6 +1453,7 @@ class GameEngine:
                     if u.owner == finishing:
                         u.has_moved_combat = False
                         u.has_moved_noncombat = False
+                        u.arrived_amphibiously = False
             self._purchases_confirmed.discard(finishing)
             self._combat_moves_confirmed.discard(finishing)
             self._combat_resolved.discard(finishing)

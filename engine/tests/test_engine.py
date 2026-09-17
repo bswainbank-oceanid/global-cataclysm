@@ -423,6 +423,36 @@ class TestHostileSeaDeployCreatesContested(unittest.TestCase):
         engine.deploy_and_collect_income('NAA')
         self.assertEqual(gs.territories[2].contested_by, {'NAA', 'AAC'})
 
+    def test_deploying_into_enemy_occupied_zone_queues_the_ambush_bonus(self):
+        # combat.first_round_bonuses' "sea deploy into enemy-occupied
+        # zone" case -- the prior occupant (AAC) is queued for the bonus
+        # on its own next attack here.
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            units_by_territory={2: [make_unit('Cruiser', 'AAC')]},
+            pending_by_territory={2: [make_unit('Cruiser', 'NAA', purchased_at=1)]},
+        )
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(gs.territories[2].ambush_bonus_for, {'AAC'})
+
+    def test_ambush_bonus_queues_every_prior_non_ally_at_once(self):
+        # Two distinct non-allied factions (AAC, UER) already share the
+        # zone -- confirmed this session: both get queued independently,
+        # not just one.
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
+        gs = make_state(
+            data, {1: 'NAA'},
+            {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UER': FactionMode.HUMAN},
+            phase=Phase.DEPLOY_INCOME,
+            units_by_territory={2: [make_unit('Cruiser', 'AAC'), make_unit('Cruiser', 'UER')]},
+            pending_by_territory={2: [make_unit('Cruiser', 'NAA', purchased_at=1)]},
+        )
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(gs.territories[2].ambush_bonus_for, {'AAC', 'UER'})
+
     def test_deploying_into_allied_occupied_zone_stays_uncontested(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
         gs = make_state(
@@ -435,6 +465,7 @@ class TestHostileSeaDeployCreatesContested(unittest.TestCase):
         engine = GameEngine(gs, data)
         engine.deploy_and_collect_income('NAA')
         self.assertIsNone(gs.territories[2].contested_by)
+        self.assertEqual(gs.territories[2].ambush_bonus_for, set(), 'an allied deploy never queues the ambush bonus')
 
     def test_deploying_into_empty_zone_stays_uncontested(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
@@ -2615,6 +2646,187 @@ class TestReclaimBonusInCombat(unittest.TestCase):
             attacker.unit_id, [u.unit_id for u in gs.territories[1].units],
             'the round-1 defense bonus should have saved the attacker',
         )
+
+
+class TestAmbushBonusInCombat(unittest.TestCase):
+    def test_ambush_bonus_applies_and_is_consumed(self):
+        data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
+        attacker = make_unit('Cruiser', 'AAC')  # the prior occupant, queued for the bonus
+        defender = make_unit('Cruiser', 'NAA')  # the faction that deployed hostilely
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        gs.territories[1].ambush_bonus_for = {'AAC'}
+        engine = GameEngine(gs, data)
+        # Consumption happens the moment resolve_combat determines the
+        # bonus applies, before any dice are rolled -- the rolls
+        # themselves just need to be enough to play a Cruiser 1v1 (D10,
+        # nobody dies to a safe roll of 1) out to the 3-round cap.
+        engine.resolve_combat('AAC', rng=ScriptedRNG([1, 1, 1, 1, 1, 1]))
+        self.assertEqual(gs.territories[1].ambush_bonus_for, set(), "consumed on the named faction's first attempt")
+
+    def test_ambush_bonus_left_untouched_for_a_different_attacker(self):
+        data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
+        attacker = make_unit('Cruiser', 'NAA')
+        defender = make_unit('Cruiser', 'AAC')
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        gs.territories[1].ambush_bonus_for = {'UER'}  # some other faction's queued bonus
+        engine = GameEngine(gs, data)
+        engine.resolve_combat('NAA', rng=ScriptedRNG([1, 1, 1, 1, 1, 1]))
+        self.assertEqual(gs.territories[1].ambush_bonus_for, {'UER'}, "a third party's attack must not consume it")
+
+    def test_multiple_queued_factions_are_consumed_independently(self):
+        # AAC and UER were both caught by the same hostile deploy --
+        # only the one that actually attacks first gets consumed; the
+        # other stays queued for its own later turn (confirmed this
+        # session).
+        data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
+        attacker = make_unit('Cruiser', 'AAC')
+        defender = make_unit('Cruiser', 'NAA')
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UER': FactionMode.HUMAN},
+            phase=Phase.COMBAT_RESOLUTION, contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        gs.territories[1].ambush_bonus_for = {'AAC', 'UER'}
+        engine = GameEngine(gs, data)
+        engine.resolve_combat('AAC', rng=ScriptedRNG([1, 1, 1, 1, 1, 1]))
+        self.assertEqual(gs.territories[1].ambush_bonus_for, {'UER'})
+
+    def test_ambush_bonus_actually_changes_combat_math(self):
+        data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
+        attacker = make_unit('Cruiser', 'AAC')  # the ambush-bonus recipient
+        defender = make_unit('Cruiser', 'NAA')
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        gs.territories[1].ambush_bonus_for = {'AAC'}
+        engine = GameEngine(gs, data)
+        # Cruiser: D10, defense 7, damage 3, hp 5. Defender's roll of 7
+        # cleanly hits (7 <= 7) an unboosted defense-7 attacker, but
+        # misses the round-1-boosted defense-8 attacker. Pad the rest so
+        # the battle plays out to the 3-round cap without anyone dying.
+        engine.resolve_combat('AAC', rng=ScriptedRNG([1, 7, 1, 1, 1, 1]))
+        self.assertIn(
+            attacker.unit_id, [u.unit_id for u in gs.territories[1].units],
+            'the round-1 defense bonus should have saved the attacker',
+        )
+
+
+class TestAmphibiousLandingBonusInCombat(unittest.TestCase):
+    def test_bonus_applies_when_every_land_attacker_arrived_amphibiously_this_turn(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        attacker = make_unit('Infantry', 'NAA')
+        attacker.has_moved_combat = True
+        attacker.arrived_amphibiously = True
+        defender = make_unit('Infantry', 'AAC')  # the amphibious-landing-bonus recipient
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        engine = GameEngine(gs, data)
+        # Attacker's roll of 5 cleanly hits (5 <= 5) an unboosted
+        # defense-5 defender, but misses the round-1-boosted defense-6
+        # defender. Pad the rest to the 3-round cap.
+        engine.resolve_combat('NAA', rng=ScriptedRNG([5, 1, 1, 1, 1, 1]))
+        self.assertIn(
+            defender.unit_id, [u.unit_id for u in gs.territories[1].units],
+            'the round-1 defense bonus should have saved the defender',
+        )
+
+    def test_bonus_does_not_apply_if_any_land_attacker_walked_in_overland(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        amphibious = make_unit('Infantry', 'NAA')
+        amphibious.has_moved_combat = True
+        amphibious.arrived_amphibiously = True
+        overland = make_unit('Mechanized Infantry', 'NAA')
+        overland.has_moved_combat = True
+        overland.arrived_amphibiously = False
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [amphibious, overland, defender]},
+        )
+        engine = GameEngine(gs, data)
+        # A roll of 5 against an UNBOOSTED defense-5 defender is a clean
+        # hit -- if the (wrongly-granted) bonus boosted it to 6, this
+        # would miss instead, so a kill here proves no bonus applied.
+        events = engine.resolve_combat('NAA', rng=ScriptedRNG([1, 5, 6, 1]))
+        self.assertNotIn(
+            defender.unit_id, [u.unit_id for u in gs.territories[1].units],
+            'one overland attacker should negate the bonus entirely',
+        )
+
+    def test_bonus_does_not_apply_to_a_carryover_unit_from_an_earlier_turn(self):
+        # A multi-turn stalemate: this land unit is still standing from
+        # an earlier turn's amphibious landing, but made no NEW combat
+        # move this turn (has_moved_combat False) -- confirmed this
+        # session: the bonus is one-shot, not a persistent "hasn't
+        # walked since" tracker, so a mere refight never re-grants it.
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        attacker = make_unit('Infantry', 'NAA')
+        attacker.has_moved_combat = False
+        attacker.arrived_amphibiously = True  # stale from an earlier turn
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.resolve_combat('NAA', rng=ScriptedRNG([5, 1]))
+        self.assertNotIn(
+            defender.unit_id, [u.unit_id for u in gs.territories[1].units],
+            'a stalemate refought with no fresh combat move must not re-grant the bonus',
+        )
+
+    def test_bonus_never_applies_with_zero_land_attackers(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        attacker = make_unit('Fighter', 'NAA')
+        attacker.has_moved_combat = True
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        engine = GameEngine(gs, data)
+        # Air units don't roll against ground defense the same way, so
+        # just confirm resolve_combat doesn't error and no bonus is
+        # otherwise observable -- covered structurally (land_attackers
+        # is empty, so "if land_attackers and all(...)" is False, not
+        # vacuously True) by the earlier carryover/mixed tests' same
+        # code path; this only guards the zero-land-attacker edge itself.
+        engine.resolve_combat('NAA', rng=ScriptedRNG([1, 1, 1, 1, 1, 1, 1, 1]))
+
+    def test_bonus_never_applies_to_a_sea_battle(self):
+        # A LAND unit CAN end a combat move sitting in open contested
+        # water (no land option that turn) -- exactly the case that
+        # could slip through if the battle_type == 'land' gate were
+        # missing, since it's genuinely a Land-category unit that
+        # "arrived amphibiously" by this test's construction. Armor
+        # (D8, defense 7, damage 4, hp 4) is used as the attacker so a
+        # roll of 7 is a normal defense check, not the D8 die-max bypass
+        # (8), which would hit regardless of any bonus and prove nothing.
+        data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
+        attacker = make_unit('Armor', 'NAA')
+        attacker.has_moved_combat = True
+        attacker.arrived_amphibiously = True
+        defender = make_unit('Cruiser', 'AAC')  # defense 7, hp 5
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        engine = GameEngine(gs, data)
+        # Round 1: attacker rolls 7 -- hits (7 <= 7) an unboosted
+        # defense-7 defender, dealing 4 damage (hp 5 -> 1); would MISS
+        # if the amphibious bonus were wrongly granted here (defense 8).
+        # Defender survives either way (4 < 5 hp), so pad the rest to
+        # the 3-round cap with safe misses.
+        engine.resolve_combat('NAA', rng=ScriptedRNG([7, 1, 1, 1, 1, 1]))
+        self.assertEqual(defender.current_hp, 1, 'the sea battle must not have granted the land-only amphibious bonus')
 
 
 class TestAdvancePhase(unittest.TestCase):

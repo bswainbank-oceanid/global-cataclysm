@@ -166,14 +166,18 @@ the same JSON, not a parallel editing path.
   (`engine/stats.py`) for per-turn/per-game reporting. The Alliance
   System (invite/accept/withdraw, the Strategic-Center withdrawal lock,
   the rejoin ban, the former-ally reclaim combat bonus, an elimination-
-  aware max-alliance-size cap, and bot decision policy for all of it) is
-  now fully implemented too — not yet marked done because two of
-  combat.first_round_bonuses' three cases (amphibious landing, sea-deploy
-  ambush) still have their trigger-detection undone in engine.py: the
-  bonus mechanism itself works (`combat.resolve_battle`'s
-  `round1_bonus_side` param), but `GameEngine.resolve_combat` never
-  determines whether a given real battle actually qualifies as either
-  case, so neither ever fires yet (the third case, former-ally reclaim,
-  is fully wired end-to-end).
+  aware max-alliance-size cap, and bot decision policy for all of it) and
+  all three of combat.first_round_bonuses' cases (amphibious landing,
+  sea-deploy ambush, former-ally reclaim) are now fully implemented too.
+  Not yet marked done: a real, pre-existing bug found this session (not
+  caused by the above, reproduces on prior commits too) — a faction can
+  become eliminated (`victory.elimination_rule`) DURING its own turn
+  (e.g. its own Combat Resolution/Capture Territory phase resolves a
+  standing multi-turn stalemate against it badly enough to drop it to
+  <=1 Strategic Center), and the driver's later phase calls for that
+  same, now-eliminated faction (Deploy + Income, Alliances) then raise
+  ValueError instead of being skipped — crashes `engine.bots.driver.
+  play_to_completion` outright rather than just ending that faction's
+  turn early. Not yet investigated in depth or fixed.
 - ⬜ Godot client / map rendering / wraparound camera.
 - ⬜ Backend / persistence / multiplayer.
