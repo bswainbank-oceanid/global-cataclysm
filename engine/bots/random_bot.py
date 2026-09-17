@@ -16,6 +16,10 @@ Behavior, as specified by the user this session:
   only if the growing order list stays legal (GameEngine.submit_purchases
   is the source of truth) and, for the SC pass, within its sub-budget;
   each pass gives up after a run of consecutive rejections.
+  policy.excluded_naval_purchase_zones (the landlocked Caspian Sea, id
+  43 -- setup.excluded_naval_zones) is never a candidate target at all,
+  for either pass -- a shared rule for this bot AND ANY FUTURE BOT in
+  this package, not something specific to RandomBot's own policy.
 - Combat Move: for each of the bot's own units that hasn't combat-moved
   yet, make the first legal combat move found. "First" is defined here
   as closest (fewest hops), ties broken by lowest territory_id -- a
@@ -59,6 +63,7 @@ from ..movement import (
     legal_combat_move_paths, legal_noncombat_move_paths, trace_combat_move,
 )
 from ..state import FactionMode
+from .policy import excluded_naval_purchase_zones
 
 
 class RandomBot:
@@ -93,7 +98,9 @@ class RandomBot:
         owned land territories), split by whether a Strategic Center's
         capacity/cost is actually in play there. A sea target counts as
         an SC target if ANY of its eligible sources
-        (_purchase_sources -- SC-first) is a Strategic Center."""
+        (_purchase_sources -- SC-first) is a Strategic Center.
+        policy.excluded_naval_purchase_zones are dropped from both pools
+        entirely -- every bot's purchase policy, not just this one's."""
         terrs = self.engine.data.territories()
         adjacency = self.engine.data.adjacency()
         gs = self.engine.game_state
@@ -113,6 +120,10 @@ class RandomBot:
                 sc_targets.add(sea_tid)
             else:
                 other_targets.add(sea_tid)
+
+        excluded = excluded_naval_purchase_zones(self.engine.data)
+        sc_targets -= excluded
+        other_targets -= excluded
 
         return list(sc_targets), list(other_targets)
 

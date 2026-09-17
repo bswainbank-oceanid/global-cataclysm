@@ -10,7 +10,41 @@ from engine.stats import GameStats
 from engine.tests.test_engine import FakeData, make_state, make_unit
 
 
+class FakeDataWithExcludedZones(FakeData):
+    """FakeData, but with a controllable setup.excluded_naval_zones
+    instead of always delegating to the real ruleset -- lets a test pick
+    a small, deliberate exclusion list rather than the real one (43)."""
+    def __init__(self, *args, excluded_naval_zones, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._excluded_naval_zones = excluded_naval_zones
+
+    def rules(self):
+        return {'setup': {'excluded_naval_zones': self._excluded_naval_zones}}
+
+
 class TestPurchaseTargetPools(unittest.TestCase):
+    def test_excluded_naval_zone_is_never_a_purchase_target(self):
+        # 1: land SC (NAA), 2: land non-SC (NAA), 3: sea adjacent to
+        # both (would otherwise be an SC target, per the other tests
+        # here) -- excluded outright by policy.excluded_naval_purchase_zones.
+        data = FakeDataWithExcludedZones(
+            territories={
+                1: {'type': 'land', 'value': 2, 'strategic_center': True},
+                2: {'type': 'land', 'value': 3},
+                3: {'type': 'sea'},
+            },
+            adjacency={1: [3], 2: [3], 3: [1, 2]},
+            excluded_naval_zones=[3],
+        )
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT})
+        engine = GameEngine(gs, data)
+        bot = RandomBot(engine, 'NAA')
+        sc_targets, other_targets = bot._purchase_target_pools()
+        self.assertEqual(set(sc_targets), {1})
+        self.assertEqual(set(other_targets), {2})
+        self.assertNotIn(3, sc_targets)
+        self.assertNotIn(3, other_targets)
+
     def test_sc_adjacent_sea_zone_is_classified_as_an_sc_target(self):
         # 1: land SC (NAA), 2: land non-SC (NAA), 3: sea adjacent to both.
         data = FakeData(
