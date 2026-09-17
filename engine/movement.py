@@ -273,8 +273,11 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
       can't capture (per the turn-order rule) -- there's nothing there
       to actually attack.
     - noncombat: own-or-allied land (contested or not -- landing there
-      doesn't care), or the mover's own carrier specifically (never an
-      ally's, even though allied land is fine)."""
+      doesn't care), or ANY non-ally-occupied sea zone -- an existing own
+      carrier there is NOT required for this to be a legal destination
+      (see legal_landing's docstring below for why); whether the
+      aircraft survives being left there with no carrier is a separate,
+      later concern this function doesn't decide."""
     unit_defs = data_module.units()
     territories = data_module.territories()
     adjacency = data_module.adjacency()
@@ -307,10 +310,27 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
                 # about contested status at all as long as it's owned by
                 # you or an ally.
                 return _is_ally_or_self(game_state, owner, dest.owner)
-            # Sea: strictly the mover's OWN carrier, never an ally's --
-            # landing/basing rights don't extend to allied carriers even
-            # though allied land does.
-            return any(u.owner == owner and u.unit_type == 'Aircraft Carrier' for u in dest.units)
+            # Sea: legal if not occupied by a non-ally -- an existing
+            # OWN carrier is NOT required to legally DECLARE this move,
+            # and neither does the presence of an ALLY's carrier make
+            # any difference to legality: a zone with only an ally's
+            # carrier is treated the same as genuinely open water, since
+            # the mover might still move their OWN carrier there later
+            # the same turn regardless of what else is already present.
+            # Carriers and aircraft move independently within the same
+            # turn (moving a carrier never auto-moves aircraft sitting
+            # on it, and vice versa) -- a carrier might arrive at this
+            # zone later the same turn via its own move order, or a
+            # fresh purchase deploying there at turn end. movement.py
+            # only sees this one unit's move in isolation, not the rest
+            # of the turn's orders, so it can't (and shouldn't)
+            # pre-validate "is MY carrier here yet" as a legality gate.
+            # Whether the aircraft actually SURVIVES ending the phase
+            # with no OWN carrier present (an ally's doesn't count) is a
+            # separate, later consequence (see rules.json's
+            # stranded_aircraft_rule) -- checked once the whole
+            # non-combat-move phase resolves, in engine.py, not here.
+            return not _enemies_present(tid, owner, game_state)
         return {tid for tid in reachable if legal_landing(tid)}
 
     # combat: must result in an attack, same as any other combat move --
@@ -323,4 +343,51 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
         return _is_contested(tid, game_state) or _enemies_present(tid, owner, game_state)
     return {tid for tid in reachable if is_attack_target(tid)}
 
-    return reachable
+
+def find_emergency_landing(origin_id, owner, game_state, data_module, rng):
+    """Where a defending aircraft whose carrier was just destroyed can put
+    down. A ONE-HOP adjacent-territory search -- not an ordinary move, and
+    not gated by the aircraft's own move budget. This is a pure spatial
+    query; WHEN and for WHOM it's appropriate to call it is entirely
+    engine.py's job (not yet built) to enforce, per rules.json's
+    emergency_landing rule:
+    - only resolved once the whole battle has concluded, never mid-battle
+      -- an aircraft whose carrier dies in round 1 of a 3-round battle
+      keeps fighting normally through any later rounds, exactly as if
+      nothing had happened, and this search only runs afterward, for
+      aircraft still standing in a zone that ends the battle with no own
+      carrier left;
+    - only for DEFENDING aircraft -- an attacker's aircraft that loses its
+      carrier has no equivalent rescue.
+
+    Priority among adjacent territories: an own carrier first, then own
+    land, then allied land -- notably NOT an ally's carrier (unlike
+    legal_air_move_destinations' noncombat landing rule, where an ally's
+    carrier zone is fine to voluntarily fly into since the mover might
+    park their own carrier there later the same turn; this is a forced,
+    no-choice emergency landing, so it's held to the stricter "must
+    actually be a safe home" standard). Random choice among ties within
+    the same tier -- takes an explicit rng for determinism, same
+    convention as combat.py's resolve_battle. Returns the chosen
+    territory id, or None if nothing qualifies -- the aircraft is lost.
+    """
+    territories = data_module.territories()
+    adjacency = data_module.adjacency()
+
+    own_carrier, own_land, allied_land = [], [], []
+    for neighbor_id in adjacency.get(origin_id, []):
+        if _is_neutral(neighbor_id, game_state):
+            continue
+        dest = game_state.territories[neighbor_id]
+        if territories[neighbor_id]['type'] == 'land':
+            if dest.owner == owner:
+                own_land.append(neighbor_id)
+            elif _is_ally_or_self(game_state, owner, dest.owner):
+                allied_land.append(neighbor_id)
+        elif any(u.owner == owner and u.unit_type == 'Aircraft Carrier' for u in dest.units):
+            own_carrier.append(neighbor_id)
+
+    for tier in (own_carrier, own_land, allied_land):
+        if tier:
+            return rng.choice(tier)
+    return None

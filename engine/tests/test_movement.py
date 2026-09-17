@@ -1,8 +1,10 @@
+import random
 import unittest
 
 from engine.state import GameState, TerritoryState, FactionState, UnitInstance, PowerMode
 from engine.movement import (
     legal_combat_move_destinations, legal_noncombat_move_destinations, legal_air_move_destinations,
+    find_emergency_landing,
 )
 
 # Minimal unit_defs -- movement.py only ever reads combat_move/
@@ -399,7 +401,14 @@ class TestAirMovement(unittest.TestCase):
         self.assertIn(3, dest, 'contested land you own is a legal landing spot for aircraft')
         self.assertIn(4, dest)  # own carrier's sea zone
 
-    def test_noncombat_air_landing_on_ally_land_allowed_even_if_contested_but_not_ally_carrier(self):
+    def test_noncombat_air_landing_on_ally_land_and_ally_carrier_zone_both_legal_to_declare(self):
+        # A zone with only an ally's carrier is legal to DECLARE a
+        # landing at, same as open water -- the mover might still move
+        # their OWN carrier there later the same turn. (Whether it
+        # actually being an ally's carrier -- not the mover's own --
+        # counts for SURVIVAL at phase-end is a separate, later
+        # consequence this function doesn't decide; see
+        # rules.json's stranded_aircraft_rule.)
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'sea'}},
             adjacency={1: [2, 3]},
@@ -415,7 +424,136 @@ class TestAirMovement(unittest.TestCase):
         gs.factions['UE'].alliance = 'pact'
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
         self.assertIn(2, dest, "allied land is a legal landing spot even contested -- landing doesn't care")
-        self.assertNotIn(3, dest, "an ally's carrier is not landable on, even though their land is")
+        self.assertIn(3, dest, "a zone with only an ally's carrier is legal to declare, same as open water")
+
+    def test_noncombat_air_landing_on_empty_open_water_is_legal_pending_a_carrier(self):
+        # No carrier of ANY kind at territory 2 -- just open water. Legal
+        # to declare this landing even with no own carrier there yet,
+        # since a carrier might arrive later the same turn (its own move
+        # order, or a fresh purchase deploying at turn end); movement.py
+        # only validates this one unit's move in isolation. Whether the
+        # aircraft survives being left there with nothing to land on is
+        # a separate, later phase-end consequence this function doesn't decide.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
+        gs = make_state(
+            data, territory_owners={1: 'NAA'},
+            faction_modes={'NAA': PowerMode.HUMAN},
+        )
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
+        self.assertIn(2, dest, 'open water with no carrier at all is still a legal landing spot to declare')
+
+
+class TestFindEmergencyLanding(unittest.TestCase):
+    """find_emergency_landing is a pure one-hop spatial query -- WHEN it's
+    appropriate to call it (only at battle end, only for the defender) is
+    entirely engine.py's job and isn't exercised here."""
+
+    def test_prefers_own_carrier_over_own_or_allied_land(self):
+        # 1 (sea, origin, carrier just destroyed) -- 2 (own land),
+        # 3 (own carrier's sea zone), 4 (allied land).
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}, 3: {'type': 'sea'}, 4: {'type': 'land'}},
+            adjacency={1: [2, 3, 4]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={2: 'NAA', 4: 'UE'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            units_by_territory={3: [enemy_unit(1, 'Aircraft Carrier', 'NAA')]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        result = find_emergency_landing(1, 'NAA', gs, data, random.Random(0))
+        self.assertEqual(result, 3)
+
+    def test_falls_back_to_own_land_when_no_own_carrier_adjacent(self):
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2, 3]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={2: 'NAA', 3: 'UE'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        result = find_emergency_landing(1, 'NAA', gs, data, random.Random(0))
+        self.assertEqual(result, 2, 'own land beats allied land')
+
+    def test_falls_back_to_allied_land_when_nothing_better_adjacent(self):
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2, 3]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={2: 'UE', 3: 'AAC'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        result = find_emergency_landing(1, 'NAA', gs, data, random.Random(0))
+        self.assertEqual(result, 2, 'allied land is the only qualifying option; enemy land 3 must be excluded')
+
+    def test_allied_carrier_does_not_count_as_a_safe_landing(self):
+        # Unlike the voluntary noncombat-move-declaration rule, an ally's
+        # carrier is NOT a valid emergency landing spot -- only the
+        # mover's own carrier is. With no own carrier, own land, or
+        # allied land adjacent, this must return None even though an
+        # ally's carrier sits right next door.
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'sea'}},
+            adjacency={1: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={},
+            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Aircraft Carrier', 'UE')]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        result = find_emergency_landing(1, 'NAA', gs, data, random.Random(0))
+        self.assertIsNone(result, "an ally's carrier is not a safe home for a forced emergency landing")
+
+    def test_returns_none_when_nothing_qualifies(self):
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}},
+            adjacency={1: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={2: 'AAC'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+        )
+        result = find_emergency_landing(1, 'NAA', gs, data, random.Random(0))
+        self.assertIsNone(result, 'enemy land is never a qualifying emergency landing spot')
+
+    def test_neutral_territory_is_excluded(self):
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}},
+            adjacency={1: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={2: 'NAA'},
+            faction_modes={'NAA': PowerMode.NEUTRAL},
+        )
+        # territory 2 is 'owned' by NAA but NAA is itself the Neutral
+        # power here -- exercising the exclusion path directly regardless
+        # of who the mover is.
+        result = find_emergency_landing(1, 'AAC', gs, data, random.Random(0))
+        self.assertIsNone(result)
+
+    def test_random_choice_within_a_tier(self):
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2, 3]},
+        )
+        gs = make_state(
+            data, territory_owners={2: 'NAA', 3: 'NAA'},
+            faction_modes={'NAA': PowerMode.HUMAN},
+        )
+        seen = {find_emergency_landing(1, 'NAA', gs, data, random.Random(seed)) for seed in range(20)}
+        self.assertEqual(seen, {2, 3}, 'both own-land options should be reachable across enough random seeds')
 
 
 if __name__ == '__main__':
