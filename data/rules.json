@@ -1,11 +1,11 @@
 {
   "_comment": "Constants and formulas that were previously hardcoded (differently, in several places) across ad hoc scripts. Consolidated here so the whole pipeline and any future game engine reads the same numbers. Expanded to cover the full ruleset (turn order, movement, power modes, alliances, victory) after discovering data/rules.json was only a partial distillation of reference/Global Cataclysm Design Doc.odt -- see docs/GAME_ARCHITECTURE.md for how this maps onto the engine.",
   "setup": {
-    "territory_ipc_per_faction": 25,
+    "territory_mpc_per_faction": 25,
     "territory_value_range": [0, 5],
     "strategic_centers_per_faction": 3,
     "strategic_center_value_bonus": 2,
-    "starting_unit_budget_ipc": 200,
+    "starting_unit_budget_mpc": 200,
     "promotions_per_faction_at_setup": 3,
     "territory_stacking_cap_formula": "value + 3 + (2 if strategic_center else 0)",
     "stacking_cap_scope": "a starting-setup purchase limit only (not an in-game limit): every unit purchased at a territory counts against that territory's cap, including naval units and any air unit riding an Aircraft Carrier's escort, even though those deploy to a sea zone rather than the land territory itself. See production.per_turn_deploy_cap_formula for the separate, ongoing (post-setup) rule.",
@@ -22,13 +22,8 @@
   "turn_order": [
     {
       "phase": "Purchase",
-      "summary": "Spend the faction's treasury_ipc budget and choose deploy locations. The units are decided now but don't appear on the board yet -- they sit in TerritoryState.pending_deployment until Deploy + Income.",
-      "see": ["production", "combat.contested_territory_rule", "phase_confirmation"],
-      "open_questions": [
-        "Do setup's naval-purchase constraints (coastal-territory-only, mandatory carrier escort, no sharing a sea zone with another faction) carry over to every ongoing turn's purchases, or were they setup-specific scaffolding?",
-        "Does deploying at a Strategic Center still auto-apply units.json's cheaper sc_cost on ongoing turns, same as at setup?",
-        "Can a purchase earmark a deploy location the faction doesn't yet own, betting on this same turn's Combat Move/Resolution capturing it before Deploy + Income runs? Or must every deploy target already be owned at purchase time?"
-      ]
+      "summary": "Spend the faction's treasury_mpc budget and choose deploy locations. The units are decided now but don't appear on the board yet -- they sit in TerritoryState.pending_deployment until Deploy + Income.",
+      "see": ["purchase", "production", "combat.contested_territory_rule", "phase_confirmation"]
     },
     {
       "phase": "Combat Move",
@@ -97,7 +92,7 @@
     "promotion_check_timing": "after_every_round",
     "promotion_check_note": "promotion is checked after every round of combat, including the air-superiority round -- a mid-battle promotion (die size up, +1 defense) affects that same battle's remaining rounds.",
     "recovery_rule": "a unit heals to full HP once a full round has elapsed since it last took part in a round of combat, counting the turn it was hurt on as the start of that count. Tracked against a single global, monotonically-increasing turn counter (one tick per faction-turn, not per round): a unit heals once current_global_turn - last_combat_global_turn >= num_powers, checked at the deploy phase of EVERY faction's turn, over the whole board -- not only the acting faction's own units. Example: a unit damaged during faction X's turn heals at the deploy phase of faction X's NEXT turn (exactly one full round later), provided it hasn't been in combat again since.",
-    "contested_territory_rule": "if units remain on both sides after 3 rounds, the territory stays with its original owner, contributes no IPC to either side, and only the owner's Infantry may be mustered there until resolved",
+    "contested_territory_rule": "if units remain on both sides after 3 rounds, the territory stays with its original owner, contributes no MPC to either side, and only the owner's Infantry may be mustered there until resolved",
     "dig_in": {
       "effect": "+1 defense (capped at 10), every round of a battle (not round-1-only) -- unlike first_round_bonuses below, this is unconditional and entirely intrinsic to combat.py: it applies automatically whenever a unit with the trait is on the defending side, with no engine.py-level trigger determination needed.",
       "which_units": "data-driven from units.json's special_abilities (a string starting with 'Dig In') rather than a hardcoded unit-type check -- currently Infantry only, but any future unit type tagged the same way picks it up automatically. See UnitInstance.effective_stats' `defending` parameter in engine/state.py.",
@@ -117,8 +112,8 @@
         {
           "name": "sea deploy into enemy-occupied zone",
           "recipient": "attacker, on the following turn",
-          "trigger": "a faction deploys new sea units directly into a sea zone that already has enemy units present but isn't contested -- legal, since sea zones have no ownership/occupation-blocks-deploy concept the way land does, and Deploy happens after that turn's combat resolution, so no battle results from the deploy itself. If the enemy who was already there then attacks that zone on their own next turn, they get the bonus -- catching the freshly-deployed fleet unprepared. The bonus belongs to whoever was already sitting there when the deploy happened, not the depositing faction.",
-          "status": "mechanism implemented; engine.py must still track, per sea zone, whether an uncontested deploy just happened into an occupied zone, and grant the bonus to that zone's prior occupant on their next attack there"
+          "trigger": "a faction deploys new sea units directly into a sea zone occupied by a non-ally -- legal, since sea zones have no ownership/occupation-blocks-deploy concept the way land does, and Deploy happens after that turn's combat resolution, so no battle results from the deploy itself. The zone becomes CONTESTED immediately as a direct result of the deployment (see purchase.hostile_sea_deploy_creates_contested) -- not silent co-occupation. When the prior occupant then makes a combat move to attack (joining/resolving that contested zone) on their own later turn, they get the bonus -- catching the freshly-deployed fleet unprepared. The bonus belongs to whoever was already sitting there when the deploy happened, not the depositing faction.",
+          "status": "mechanism implemented; engine.py must still mark the zone contested at deploy time and grant the bonus to its prior occupant on their next attack there"
         },
         {
           "name": "former-ally territory reclaim",
@@ -175,10 +170,23 @@
     "engine_note": "not yet implemented -- see docs/GAME_ARCHITECTURE.md build plan Step 4 (engine.py). Requires a tentative/staged order buffer per phase, kept separate from the committed GameState, with an explicit confirm_phase() call that atomically applies the buffer (irreversible from that point on) and an undo_last()/reset_phase() call that discards some or all of the buffer beforehand. Applies identically to human and bot callers, same as every other part of the order-submission API."
   },
   "production": {
-    "per_turn_deploy_cap_formula": "value + (2 if strategic_center else 0)",
-    "cap_scope": "a pure unit-COUNT limit on newly-deployed units per territory per turn -- not IPC-weighted, and distinct from setup.territory_stacking_cap_formula (which only applies at initial setup). There is no cap at all on total units already present in a territory -- only on how many new ones can land there in a single turn.",
+    "per_turn_deploy_cap_formula": "value (no Strategic Center bonus added here -- that's income only, see income_formula; a corrected reading of an earlier draft of this rule that DID add +2 for an SC, which was wrong)",
+    "cap_scope": "a pure unit-COUNT limit on newly-deployed units per LAND territory per turn -- not MPC-weighted, and distinct from setup.territory_stacking_cap_formula (which only applies at initial setup). There is no cap at all on total units already present in a territory -- only on how many new ones can land there in a single turn. A sea space draws its cap from an adjacent owned land territory instead of having one of its own -- see purchase.sea_deploy_cost_and_cap_source.",
     "income_formula": "sum of (value + 2 if strategic_center) over every territory the faction currently controls that ISN'T contested, collected at Deploy + Income -- territories.json carries a value and strategic_center field on every land space (confirmed present on all 87). A contested territory contributes to neither side's income, per combat.contested_territory_rule. Sea zones have no value field and generate no income.",
-    "income_formula_status": "inferred from territories.json's data shape and the existing contested-territory rule, not yet independently confirmed with the user -- flag before relying on it in engine.py"
+    "income_formula_status": "confirmed and implemented -- see engine/economy.py's compute_income(); every faction's real territories.json data sums to exactly the expected 31 MPC starting treasury (25 base value + 3 Strategic Centers x 2), verified by engine/tests/test_setup.py and test_economy.py."
+  },
+  "purchase": {
+    "location_rule": "a purchase targets either a land territory the faction owns, or a sea zone adjacent to one it owns -- see multi_adjacent_allocation_order for a sea zone touching more than one owned territory. Ownership is checked against the START of the faction's own turn (see ownership_snapshot_rule) -- Purchase is the first phase, before that turn's own Combat Move/Resolution/Capture Territory can change anything, so a purchase can never target a territory the faction doesn't already control, even one its own combat this same turn might go on to capture.",
+    "ownership_snapshot_rule": "a faction may only purchase at territories it controls at the beginning of its turn. This falls out naturally from the phase order (Purchase runs before any of this turn's own combat), but is called out explicitly to foreclose 'buy now, capture later this same turn' as a strategy.",
+    "unit_type_by_location": "land and air units may be deployed to a land location. ANY unit type -- including land units, not just naval/air -- may instead be deployed directly to a sea space: a land unit deployed this way starts the game as Transport cargo, exactly as if it had entered water mid-move (see movement.water_movement_bonus_rule) -- there's still no such thing as an independently-purchased Transport.",
+    "sea_deploy_cost_and_cap_source": "a sea space has no value or deploy cap of its own -- when units deploy there, the applicable per-unit cost (including any Strategic Center discount, see sc_discount_rule) and the per-turn deploy cap (production.per_turn_deploy_cap_formula) are both drawn from whichever adjacent OWNED land territory is being charged for that purchase.",
+    "sc_discount_rule": "units.json's cheaper sc_cost applies whenever a purchase is charged against a Strategic Center -- whether the units deploy directly on that SC's own land territory, or to an adjacent sea space being charged against it (see sea_deploy_cost_and_cap_source). Not setup-specific -- applies on every ongoing turn's purchases too.",
+    "multi_adjacent_allocation_order": "when a sea space touches more than one territory the purchasing faction owns, its deploy capacity is drawn from those adjacent territories in a fixed order: the Strategic Center first (if any of them is one), then whichever remaining territory has the most CAPACITY STILL UNUSED this turn -- not its raw/total value; if other purchases already this turn have eaten into a territory's cap, that lowers its priority here. Cost (sc_cost vs cost) follows whichever territory the capacity is actually being drawn from at that moment.",
+    "contested_land_deploy_restriction": "only Infantry may be deployed into a contested LAND territory (combat.contested_territory_rule), and specifically onto the land itself -- being adjacent water doesn't create a loophole around this; the restriction is about the land territory's contested status, not about location type.",
+    "carrierless_air_deploy_fallback": "if air units are purchased for deployment to a sea space and, once Deploy + Income actually runs, no Aircraft Carrier is present there or arriving there that same turn (neither pre-existing nor a fresh purchase), the air units deploy instead to the LAND territory they were purchased at, rather than being lost or left stranded.",
+    "contested_purchase_lost_during_turn_fallback": "if Infantry are purchased into a contested territory and that territory is then lost (captured by the enemy) before Deploy + Income runs, the units fall back in order: (1) an adjacent territory the faction still controls; (2) if none, an adjacent sea zone, deployed as Transport cargo (see unit_type_by_location); (3) if neither exists, the units are lost outright -- purchased but never placed, the MPC already spent.",
+    "hostile_sea_deploy_creates_contested": "deploying units into a sea zone currently occupied by a non-ally makes that zone CONTESTED immediately, as a direct result of the deployment -- not silent co-occupation. The faction already there gets combat.first_round_bonuses' 'sea deploy into enemy-occupied zone' bonus in the first round of whatever battle eventually resolves the contest.",
+    "status": "documentation only -- none of this purchase/deploy validation and allocation logic is implemented yet. The multi-territory capacity-drawing order in particular needs turn-scoped state that accumulates across a whole Purchase phase (which territory's cap has already been eaten into by an earlier purchase this same turn) -- real GameEngine orchestration (engine.py, Step 4, not started) working against the phase_confirmation staged-order buffer, not a pure movement.py-style query function. production.income_formula (compute_income) is the one piece of this already implemented, since it needed no purchase-order state at all."
   },
   "promotion": {
     "xp_for_surviving_a_round": 1,

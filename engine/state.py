@@ -214,7 +214,7 @@ class TerritoryState:
 class FactionState:
     code: str
     mode: PowerMode
-    treasury_ipc: int = 0
+    treasury_mpc: int = 0  # MPC: the game's currency, spent in the Purchase phase, earned at Deploy + Income
     alliance: Optional[str] = None  # stub, unused in v1 (strict free-for-all)
     eliminated: bool = False
 
@@ -222,7 +222,7 @@ class FactionState:
         return {
             'code': self.code,
             'mode': self.mode.value,
-            'treasury_ipc': self.treasury_ipc,
+            'treasury_mpc': self.treasury_mpc,
             'alliance': self.alliance,
             'eliminated': self.eliminated,
         }
@@ -232,7 +232,7 @@ class FactionState:
         return FactionState(
             code=d['code'],
             mode=PowerMode(d['mode']),
-            treasury_ipc=d['treasury_ipc'],
+            treasury_mpc=d['treasury_mpc'],
             alliance=d['alliance'],
             eliminated=d['eliminated'],
         )

@@ -76,6 +76,15 @@ class TestSetup(unittest.TestCase):
         self.assertEqual(gs.active_faction, 'UE')
         self.assertNotIn('NAA', gs.active_powers())
 
+    def test_starting_treasury_is_31_mpc_for_every_faction(self):
+        # setup.territory_ipc_per_faction (25) + strategic_centers_per_faction
+        # (3) x strategic_center_value_bonus (2) = 31 -- confirmed against
+        # every faction's real territories.json data, not just the formula.
+        modes = {c: PowerMode.HUMAN for c in data.factions()}
+        gs = build_game_state('starting_setup_200ipc', modes)
+        for fac in data.factions():
+            self.assertEqual(gs.factions[fac].treasury_mpc, 31, f'{fac} starting treasury mismatch')
+
 
 if __name__ == '__main__':
     unittest.main()

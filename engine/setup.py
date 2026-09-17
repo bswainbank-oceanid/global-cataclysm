@@ -3,9 +3,10 @@ Builds an initial GameState from a scenario file plus a per-faction power-
 mode assignment. HUMAN/BOT factions get the scenario's purchases/
 promotions/carrier_escorts/naval_deploy_overrides placed on the board
 directly (this is initial deployment, not a pending purchase -- units are
-live from turn 0, and the design doc's 200/100 IPC starting budget never
-touches a faction's treasury; it's spent once, here). DEFENSIVE factions
-always use the checked-in 100-IPC/no-SC scenario for their own units,
+live from turn 0, and the design doc's 200/100 MPC starting budget never
+touches a faction's treasury_mpc; it's a separate, one-time bootstrapping
+budget spent once, here, on units directly). DEFENSIVE factions always
+use the checked-in 100-IPC/no-SC scenario file for their own units,
 regardless of which scenario the rest of the game uses -- that's the
 ruleset the design doc specifies for a non-turn-taking defender, and it's
 already generated and validated, so this reuses it rather than
@@ -14,9 +15,14 @@ side effects, not safe to import -- see engine/data.py's docstring).
 NEUTRAL factions get zero units; their territories stay "owned" by that
 faction code (for identity/color) but it's the faction's mode, not a
 per-territory flag, that makes the territory impassable -- see
-engine/movement.py.
+engine/movement.py. Every faction's treasury_mpc (including DEFENSIVE/
+NEUTRAL's, though they never spend it) is then seeded with its starting
+MPC income (engine/economy.py's compute_income, see data/rules.json's
+production.income_formula) once its territories are in place --
+ordinarily 31 MPC (25 base territory value + 3 Strategic Centers x 2).
 """
 from . import data
+from .economy import compute_income
 from .state import GameState, TerritoryState, FactionState, UnitInstance, PowerMode, Phase
 
 
@@ -102,7 +108,18 @@ def build_game_state(scenario_name, power_modes, defensive_scenario_name='starti
         gs.territories[tid] = TerritoryState(territory_id=tid, owner=owner)
 
     for code in data.factions():
-        gs.factions[code] = FactionState(code=code, mode=power_modes[code], treasury_ipc=0)
+        gs.factions[code] = FactionState(code=code, mode=power_modes[code], treasury_mpc=0)
+
+    for code, fstate in gs.factions.items():
+        # Starting treasury: this faction's territories are already
+        # placed above, so its opening MPC income (per
+        # production.income_formula) is computable now -- e.g. 25 base
+        # territory value + 3 Strategic Centers x 2 = 31 MPC for a
+        # standard faction. This is separate from, and unrelated to, the
+        # one-time 200/100-MPC scenario budget spent above to buy each
+        # faction's STARTING UNITS -- that's a bootstrapping budget, not
+        # treasury_mpc.
+        fstate.treasury_mpc = compute_income(code, gs, data)
 
     main_scenario = data.scenario(scenario_name)
     defensive_scenario = None
