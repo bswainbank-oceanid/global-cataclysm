@@ -23,10 +23,21 @@ def play_to_completion(engine, bots, max_turns=500):
     Phase-aware, not a fixed 7-call sequence: game_start_settings can
     make advance_phase() skip Combat Move and/or Non-Combat Move
     entirely for a faction's own first turn (GameState.phase never
-    becomes that phase at all that turn), so each bot call below only
-    runs if GameState.phase is actually still the phase it expects --
-    calling e.g. take_combat_move_phase() when the phase has already
-    moved on to Combat Resolution would otherwise raise."""
+    becomes that phase at all that turn). This is a single while loop
+    over "whatever GameState.phase currently is" -- calling
+    advance_phase() exactly once per phase actually encountered -- NOT
+    one independent `if phase == X: ...; advance_phase()` block per
+    phase in a fixed row. That fixed-block shape looks equivalent but
+    isn't: advance_phase() already skips a disabled phase internally in
+    a single call, so the NEXT block's own unconditional advance_phase()
+    would then fire a SECOND time against a phase it never actually
+    processed, skipping it too -- and that cascades: skipping Combat
+    Move this way silently skipped Combat Resolution, which skipped
+    Non-Combat Move, which skipped Capture Territory, which skipped
+    Deploy + Income entirely, EVERY first turn (the default setting).
+    Purchased units sat in pending_deployment forever, and no income was
+    ever collected, for a faction's whole first turn -- a real bug this
+    exact shape had until fixed this session."""
     gs = engine.game_state
     turns_played = 0
     while not gs.game_over and turns_played < max_turns:
@@ -35,30 +46,21 @@ def play_to_completion(engine, bots, max_turns=500):
             break
         bot = bots[faction]
 
-        if gs.phase == Phase.PURCHASE:
-            bot.take_purchase_phase()
-        engine.advance_phase()
-
-        if gs.phase == Phase.COMBAT_MOVE:
-            bot.take_combat_move_phase()
-        engine.advance_phase()
-
-        if gs.phase == Phase.COMBAT_RESOLUTION:
-            engine.resolve_combat(faction)
-        engine.advance_phase()
-
-        if gs.phase == Phase.NONCOMBAT_MOVE:
-            bot.take_noncombat_move_phase()
-        engine.advance_phase()
-
-        if gs.phase == Phase.CAPTURE:
-            engine.process_capture_territory(faction)
-            engine.process_elimination_check()
-        engine.advance_phase()
-
-        if gs.phase == Phase.DEPLOY_INCOME:
-            engine.deploy_and_collect_income(faction)
-        engine.advance_phase()
+        while gs.phase != Phase.ALLIANCES:
+            if gs.phase == Phase.PURCHASE:
+                bot.take_purchase_phase()
+            elif gs.phase == Phase.COMBAT_MOVE:
+                bot.take_combat_move_phase()
+            elif gs.phase == Phase.COMBAT_RESOLUTION:
+                engine.resolve_combat(faction)
+            elif gs.phase == Phase.NONCOMBAT_MOVE:
+                bot.take_noncombat_move_phase()
+            elif gs.phase == Phase.CAPTURE:
+                engine.process_capture_territory(faction)
+                engine.process_elimination_check()
+            elif gs.phase == Phase.DEPLOY_INCOME:
+                engine.deploy_and_collect_income(faction)
+            engine.advance_phase()
 
         engine.process_game_end_check(faction)
         turns_played += 1

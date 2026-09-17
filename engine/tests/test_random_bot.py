@@ -246,6 +246,40 @@ class TestPlayToCompletion(unittest.TestCase):
         self.assertIn('=== Territory Captures ===', report)
         self.assertIn('=== Unit Stats ===', report)
 
+    def test_first_turn_with_combat_moves_disabled_still_deploys_and_collects_income(self):
+        # game_start_settings.allow_combat_moves_first_turn defaults
+        # False -- advance_phase() skips Combat Move entirely on a
+        # faction's own first turn. A real bug found this session: the
+        # driver's old shape (one independent `if phase == X: ...;
+        # advance_phase()` block per phase) double-advanced past
+        # whichever phase came right after the skipped one, and that
+        # cascaded all the way through -- Combat Resolution, Non-Combat
+        # Move, Capture Territory, and Deploy + Income were ALL silently
+        # skipped on every faction's first turn, every game, no matter
+        # who the bots were. Purchased units sat in pending_deployment
+        # forever and no income was ever collected. This proves a single
+        # first turn, with the (default) setting active, still actually
+        # reaches Deploy + Income and deploys whatever was purchased.
+        modes = {code: FactionMode.NEUTRAL for code in real_data.factions()}
+        modes['NAA'] = FactionMode.BOT
+        modes['AAC'] = FactionMode.BOT
+        gs = build_game_state('starting_setup_200ipc', modes)
+        self.assertFalse(gs.allow_combat_moves_first_turn)
+        stats = GameStats()
+        engine = GameEngine(gs, stats=stats)
+        first_faction = gs.active_faction
+        starting_treasury = gs.factions[first_faction].treasury_mpc
+        bots = {
+            'NAA': RandomBot(engine, 'NAA', rng=__import__('random').Random(1)),
+            'AAC': RandomBot(engine, 'AAC', rng=__import__('random').Random(2)),
+        }
+
+        play_to_completion(engine, bots, max_turns=1)
+
+        self.assertTrue(any(k[0] == first_faction for k in stats.deployed), 'purchased units must actually deploy, not just sit pending')
+        self.assertIn(first_faction, stats.cumulative_mpc, 'income must actually be collected on the first turn')
+        self.assertNotEqual(gs.factions[first_faction].treasury_mpc, starting_treasury)
+
 
 if __name__ == '__main__':
     unittest.main()
