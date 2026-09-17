@@ -283,7 +283,12 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
             # mark it as one (e.g. friendly uncontested land, which is
             # normally pass-through-only) -- it's still a combat move,
             # just one that ends in a safe landing rather than an attack.
-            if hop.stop or (land_only and neighbor_is_land):
+            # NEUTRAL is the one exception even to that override -- it's
+            # never enterable at all (movement.neutral_exclusion), so the
+            # override only applies when the hop wasn't neutral-blocked
+            # (a bug found and fixed this session: `hop.stop or (land_only
+            # and neighbor_is_land)` used to bypass _is_neutral entirely).
+            if hop.stop or (land_only and neighbor_is_land and not _is_neutral(neighbor_id, game_state)):
                 destinations.add(neighbor_id)
             if hop.pass_through:
                 stack.append((neighbor_id, new_moves_used, new_water_active, hop.pass_through == 'land_only'))
@@ -405,6 +410,15 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
                 raise ValueError(f'cannot continue past hostile water without landing at {next_id}')
             if not is_last:
                 raise ValueError('a hostile-water landing must be the final stop of this combat move')
+            if _is_neutral(next_id, game_state):
+                # The amphibious exception overrides ordinary land
+                # classification (own/ally land's normal pass-only
+                # status, in particular), but never NEUTRAL -- that's
+                # still an absolute block, same as everywhere else (a
+                # bug found and fixed this session: this hop used to
+                # skip _classify_combat_hop -- and so its _is_neutral
+                # check -- entirely once land_only_restricted was set).
+                raise ValueError(f'{next_id} is neutral territory and cannot be entered')
 
         water_active = water_active or (is_land_unit and not neighbor_is_land)
         budget = base_budget + (1 if water_active else 0)

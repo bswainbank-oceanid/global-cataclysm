@@ -263,6 +263,28 @@ class TestNeutralExclusion(unittest.TestCase):
         self.assertNotIn(2, dest)
         self.assertNotIn(3, dest, 'Neutral territory blocks passage entirely, not just capture')
 
+    def test_amphibious_escape_cannot_land_on_neutral_territory(self):
+        # 1 (land, NAA origin) -- 2 (sea, hostile: enemy Cruiser present)
+        # -- 3 (land, NEUTRAL). The hostile-water escape/amphibious
+        # exception overrides ordinary land classification (own/ally
+        # land's normal pass-only status), but must never override
+        # NEUTRAL exclusion -- a bug found and fixed this session
+        # (`hop.stop or (land_only and neighbor_is_land)` used to bypass
+        # _is_neutral entirely).
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'sea'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={1: 'NAA', 3: 'PAF'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'PAF': PowerMode.NEUTRAL, 'AAC': PowerMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')]},
+        )
+        dest = legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data)
+        self.assertIn(2, dest)  # still must be prepared to fight the naval battle there
+        self.assertNotIn(3, dest, 'neutral territory is never a legal landing spot, even via the amphibious exception')
+
 
 class TestNonCombatMoveDestinations(unittest.TestCase):
     def test_friendly_and_self_contested_are_legal_clean_foreign_is_not(self):
@@ -727,6 +749,24 @@ class TestTraceCombatMove(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3], gs, data)
+
+    def test_amphibious_escape_cannot_land_on_neutral_territory(self):
+        # Same hostile-water-escape shape as
+        # test_amphibious_escape_through_hostile_water_to_friendly_land,
+        # but the far shore is NEUTRAL -- must still be rejected, even
+        # though the amphibious exception otherwise skips the landing
+        # hop's ordinary classification entirely.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'sea'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 3: 'PAF'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'PAF': PowerMode.NEUTRAL, 'AAC': PowerMode.HUMAN},
+            contested={2: {'NAA', 'AAC'}},
+        )
+        with self.assertRaises(ValueError):
+            trace_combat_move('Infantry', 'NAA', [1, 2, 3], gs, data)
 
 
 if __name__ == '__main__':
