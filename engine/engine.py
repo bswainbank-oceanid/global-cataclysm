@@ -1,31 +1,34 @@
 """
 GameEngine: the phased order-submission API wrapping a GameState,
 exposed identically to human and bot callers (see docs/GAME_ARCHITECTURE.md's
-build plan, Step 4). Every phase but Capture Territory is implemented so
-far -- Purchase covers data/rules.json's full `purchase` section
-(location targeting, the start-of-turn ownership snapshot, SC-discounted
-cost, the SC-first-then-most-remaining-capacity multi-territory
-allocation with spillover, naval/land location restrictions, and the
-contested-land Infantry-only restriction); Deploy + Income covers
-placing pending_deployment onto the board (with the carrierless-air and
-lost-contested-purchase fallbacks, and hostile-sea-zone deploys becoming
-contested), income collection, and the global recovery/heal sweep;
-Combat Move covers relocating units along a validated path, immediate
-ownership capture for undefended land (both a Mechanized Infantry
-blitz's intermediate stops and any unit's uncontested final stop), and
-marking an attacked/joined destination contested; Combat Resolution
-gathers each declared battle's units per combat.multi_party_battles (the
-active faction's own units as attacker, every non-allied faction present
-pooled as defender), drives combat.resolve_battle() to completion,
-cleans up the dead, and runs the sea-battle emergency-landing check;
-Non-Combat Move relocates units that didn't combat-move this turn (air
-exempt from that exclusivity) -- no capture, no contested-marking to
-apply, since entering an already-contested territory is simply a legal
-destination and any newly-arrived unit is picked up automatically by the
-next Combat Resolution pass based purely on presence. Capture Territory
-is not yet implemented -- notably, nothing here yet transitions
-GameState.phase itself between phases; callers currently set it directly
-(see the tests).
+build plan, Step 4). Every phase is now implemented -- Purchase covers
+data/rules.json's full `purchase` section (location targeting, the
+start-of-turn ownership snapshot, SC-discounted cost, the SC-first-then-
+most-remaining-capacity multi-territory allocation with spillover,
+naval/land location restrictions, and the contested-land Infantry-only
+restriction); Deploy + Income covers placing pending_deployment onto the
+board (with the carrierless-air and lost-contested-purchase fallbacks,
+and hostile-sea-zone deploys becoming contested), income collection, and
+the global recovery/heal sweep; Combat Move covers relocating units
+along a validated path and marking every foreign territory entered or
+passed through contested (never an immediate capture, even an
+undefended Mechanized Infantry blitz -- ownership is resolved later, in
+Capture Territory); Combat Resolution gathers each declared battle's
+units per combat.multi_party_battles (the active faction's own units as
+attacker, every non-allied faction present pooled as defender), drives
+combat.resolve_battle() to completion, cleans up the dead, and runs the
+sea-battle emergency-landing check; Non-Combat Move relocates units that
+didn't combat-move this turn (air exempt from that exclusivity) -- no
+contested-marking of its own, since entering an already-contested
+territory is simply a legal destination and any newly-arrived unit is
+picked up automatically by the next Combat Resolution or Capture
+Territory pass based purely on presence; Capture Territory claims every
+territory faction is contesting where no non-allied LAND units remain
+(an undefended entry nobody ever fought over, or a battle faction won
+outright even if air-only survivors linger on the other side), leaving
+ownership untouched wherever a genuine contest between other powers is
+still live. Nothing here yet transitions GameState.phase itself between
+phases; callers currently set it directly (see the tests).
 
 Rollback (phase_confirmation): submit_purchases/submit_combat_moves/
 submit_noncombat_moves all take the COMPLETE desired order list every
@@ -469,13 +472,17 @@ class GameEngine:
                         and unit_defs[u.unit_type]['category'] == 'Air'
                     ]
                 origin_state.units.remove(unit)
-                for captured_tid in trace.captured_en_route:
-                    game_state.territories[captured_tid].owner = faction
-                if trace.final_kind == 'capture':
-                    dest_state.owner = faction
-                elif trace.final_kind in ('attack', 'join_contest'):
+                # Every foreign territory entered or passed through this
+                # way is marked contested -- never captured outright,
+                # even an entirely undefended Mechanized Infantry blitz
+                # (confirmed this session). Actual ownership is resolved
+                # later, in the Capture Territory phase, from whatever
+                # the board looks like by then.
+                for entered_tid in trace.entered_en_route:
+                    self._mark_contested_by_attack(game_state.territories[entered_tid], faction, game_state)
+                if trace.final_kind in ('capture', 'attack', 'join_contest'):
                     self._mark_contested_by_attack(dest_state, faction, game_state)
-                # 'safe_landing': already friendly -- no ownership or contested change
+                # 'safe_landing': already friendly -- no contested change
                 dest_state.units.append(unit)
 
                 for rider in riders:
@@ -831,3 +838,49 @@ class GameEngine:
             if any(u.unit_type == 'Aircraft Carrier' and u.owner == faction for u in t.units):
                 continue
             t.units = [u for u in t.units if not (u.owner == faction and unit_defs[u.unit_type]['category'] == 'Air')]
+
+    def process_capture_territory(self, faction):
+        """The automated Capture Territory phase -- no player choice, no
+        staging (phase_confirmation.scope), a single direct call like
+        Deploy + Income and Combat Resolution. Scans every LAND
+        territory where `faction` is listed in contested_by (it entered,
+        attacked, or merely passed through there at some point this
+        turn -- see Combat Move's execution_notes: every foreign
+        territory entered is marked contested, never captured outright,
+        even an undefended Mechanized Infantry blitz) and claims it for
+        `faction` if no LAND units belonging to a non-ally are currently
+        present there. That single check covers both documented cases at
+        once: an undefended blitz-through (nobody's land units were ever
+        there) and a battle faction won outright where the loser's only
+        survivors are air units (air can't hold ground, so it doesn't
+        block the claim).
+
+        If land units belonging to some OTHER, non-allied faction (or
+        factions) are still there, ownership is left exactly as it
+        stands -- even if the territory's registered owner has since
+        been eliminated from the game entirely, as long as the contest
+        between two (or more) powers other than `faction` is still live,
+        nothing here resolves it in `faction`'s favor. Whichever power
+        actually ends up the sole remaining land claimant picks it up on
+        ITS OWN Capture Territory phase instead -- this only ever
+        settles `faction`'s own claim."""
+        if faction not in self.game_state.active_powers():
+            raise ValueError(f'{faction} is not an active power')
+        if self.game_state.phase != Phase.CAPTURE:
+            raise ValueError('process_capture_territory is only valid during the Capture Territory phase')
+
+        terrs = self.data.territories()
+        unit_defs = self.data.units()
+        for tid, t in self.game_state.territories.items():
+            if terrs[tid]['type'] != 'land':
+                continue
+            if not t.contested_by or faction not in t.contested_by:
+                continue
+            non_allied_land_owners = {
+                u.owner for u in t.units
+                if unit_defs[u.unit_type]['category'] == 'Land' and not _is_ally_or_self(self.game_state, faction, u.owner)
+            }
+            if non_allied_land_owners:
+                continue
+            t.owner = faction
+            t.contested_by = None

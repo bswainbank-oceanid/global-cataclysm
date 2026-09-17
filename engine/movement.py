@@ -257,21 +257,31 @@ def legal_combat_move_destinations(unit_type, owner, origin_id, game_state, data
 
 
 class CombatMoveTrace:
-    """Result of trace_combat_move: which LAND territories were
-    captured via an uncontested Mechanized-Infantry blitz pass-through
-    (captured_en_route -- never includes the final stop), and what kind
+    """Result of trace_combat_move: which LAND territories were entered
+    via an uncontested Mechanized-Infantry blitz pass-through
+    (entered_en_route -- never includes the final stop), and what kind
     of consequence the final stop represents (final_kind):
-    'capture' (empty foreign land, uncontested -- owned immediately, no
-    fight needed), 'attack' (enemy-occupied, now contested), 'join_contest'
-    (already contested, stays so), or 'safe_landing' (friendly land
-    reached via a hostile-water escape, or -- for a naval unit -- simply
-    contested/enemy water, which for a non-land unit is always an
-    attack/join, never a "landing"; see engine.py's caller for how each
-    is actually applied to GameState)."""
-    __slots__ = ('captured_en_route', 'final_kind')
+    'capture' (empty foreign land, uncontested), 'attack' (enemy-
+    occupied), 'join_contest' (already contested), or 'safe_landing'
+    (friendly land reached via a hostile-water escape, or -- for a naval
+    unit -- simply contested/enemy water, which for a non-land unit is
+    always an attack/join, never a "landing").
 
-    def __init__(self, captured_en_route, final_kind):
-        self.captured_en_route = captured_en_route
+    Every territory entered or passed through this way -- both
+    entered_en_route and a 'capture'/'attack'/'join_contest' final stop
+    -- is marked CONTESTED by the caller (engine.py), never given
+    immediate ownership: even an entirely undefended Mechanized Infantry
+    blitz doesn't capture outright the moment it passes through. Actual
+    ownership is resolved later, in the Capture Territory phase, from
+    whatever the board looks like by then (see rules.json's
+    movement.combat_move_destination and turn_order's Capture Territory
+    entry) -- 'capture' here is just a label distinguishing "nobody was
+    defending it" from 'attack', not a claim that ownership already
+    changed."""
+    __slots__ = ('entered_en_route', 'final_kind')
+
+    def __init__(self, entered_en_route, final_kind):
+        self.entered_en_route = entered_en_route
         self.final_kind = final_kind
 
 
@@ -306,7 +316,7 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
     base_budget = _base_move(unit_type, 'combat', unit_defs)
     water_active = is_land_unit and territories[path[0]]['type'] == 'sea'
     moves_used = 0
-    captured_en_route = []
+    entered_en_route = []
     # True when the PREVIOUS hop was a hostile-water crossing (_Hop's
     # 'land_only' pass-through) -- forces THIS hop to be land, and to be
     # the final stop of the whole path (see the amphibious-landing
@@ -341,8 +351,8 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
             # friendly land); final_kind below, derived from raw state,
             # works out whether it's an attack, a capture, joining a
             # fight, or a safe landing. Never itself a "capture along
-            # the way" in captured_en_route's sense -- it's already the
-            # final hop (enforced above), so any capture here shows up
+            # the way" in entered_en_route's sense -- it's already the
+            # final hop (enforced above), so any entry here shows up
             # as final_kind == 'capture' instead.
             land_only_restricted = False
             continue
@@ -360,8 +370,9 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
                 # blitz (STOP_AND_PASS) -- own/allied land is pass-only
                 # (never "stop"), and a contested/enemy-occupied hop is
                 # stop-only (never continuable), so reaching here always
-                # means an uncontested capture along the way.
-                captured_en_route.append(next_id)
+                # means an uncontested entry along the way -- marked
+                # contested by the caller, same as everything else here.
+                entered_en_route.append(next_id)
         land_only_restricted = (hop.pass_through == 'land_only')
 
     final_id = path[-1]
@@ -378,7 +389,7 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
     else:
         final_kind = 'attack'  # empty open sea is never a legal final stop -- see _classify_combat_hop
 
-    return CombatMoveTrace(captured_en_route=captured_en_route, final_kind=final_kind)
+    return CombatMoveTrace(entered_en_route=entered_en_route, final_kind=final_kind)
 
 
 def legal_noncombat_move_destinations(unit_type, owner, origin_id, game_state, data_module):

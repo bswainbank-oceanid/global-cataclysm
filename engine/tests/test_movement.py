@@ -607,7 +607,7 @@ class TestTraceCombatMove(unittest.TestCase):
         )
         trace = trace_combat_move('Infantry', 'NAA', [1, 2], gs, data)
         self.assertEqual(trace.final_kind, 'attack')
-        self.assertEqual(trace.captured_en_route, [])
+        self.assertEqual(trace.entered_en_route, [])
 
     def test_single_hop_capture_of_empty_foreign_land(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
@@ -630,7 +630,7 @@ class TestTraceCombatMove(unittest.TestCase):
             units_by_territory={3: [enemy_unit(1, 'Infantry', 'AAC')]},
         )
         trace = trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3], gs, data)
-        self.assertEqual(trace.captured_en_route, [2])
+        self.assertEqual(trace.entered_en_route, [2])
         self.assertEqual(trace.final_kind, 'attack')
 
     def test_mech_inf_blitz_ends_in_capture_not_attack(self):
@@ -643,7 +643,7 @@ class TestTraceCombatMove(unittest.TestCase):
             faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
         )
         trace = trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3], gs, data)
-        self.assertEqual(trace.captured_en_route, [2])
+        self.assertEqual(trace.entered_en_route, [2])
         self.assertEqual(trace.final_kind, 'capture')
 
     def test_non_mech_inf_cannot_pass_through_empty_foreign_land(self):

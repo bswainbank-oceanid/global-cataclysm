@@ -531,7 +531,10 @@ class TestCombatMoveExecution(unittest.TestCase):
         self.assertTrue(attacker.has_moved_combat)
         self.assertEqual(gs.territories[2].owner, 'AAC', 'still contested -- not captured until the battle resolves')
 
-    def test_single_hop_capture_of_empty_territory_flips_ownership(self):
+    def test_single_hop_entry_into_empty_territory_marks_it_contested_not_owned(self):
+        # Confirmed this session: even an entirely undefended entry
+        # never captures outright -- it's marked contested, and actual
+        # ownership is resolved later, in Capture Territory.
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         mover = make_unit('Armor', 'NAA')
         gs = make_state(
@@ -541,10 +544,13 @@ class TestCombatMoveExecution(unittest.TestCase):
         engine = GameEngine(gs, data)
         engine.submit_combat_moves('NAA', [CombatMoveOrder(mover.unit_id, [1, 2])])
         engine.confirm_combat_moves('NAA')
-        self.assertEqual(gs.territories[2].owner, 'NAA')
-        self.assertIsNone(gs.territories[2].contested_by, 'an uncontested capture never marks the territory contested')
+        self.assertEqual(gs.territories[2].owner, 'AAC', 'not captured immediately -- Capture Territory resolves it later')
+        self.assertEqual(gs.territories[2].contested_by, {'NAA', 'AAC'})
 
-    def test_mech_inf_blitz_captures_en_route_and_attacks(self):
+    def test_mech_inf_blitz_marks_every_entered_territory_contested(self):
+        # Confirmed this session: "even if it's just a Mech Inf running
+        # through" -- every territory entered or passed through is
+        # marked contested, not just the final, defended stop.
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
             adjacency={1: [2], 2: [1, 3], 3: [2]},
@@ -558,7 +564,8 @@ class TestCombatMoveExecution(unittest.TestCase):
         engine = GameEngine(gs, data)
         engine.submit_combat_moves('NAA', [CombatMoveOrder(mover.unit_id, [1, 2, 3])])
         engine.confirm_combat_moves('NAA')
-        self.assertEqual(gs.territories[2].owner, 'NAA', 'captured on the way through, even though the unit kept moving')
+        self.assertEqual(gs.territories[2].owner, 'AAC', 'passed through, not captured immediately')
+        self.assertEqual(gs.territories[2].contested_by, {'NAA', 'AAC'}, 'marked contested even though the unit kept moving')
         self.assertIn(mover, gs.territories[3].units)
         self.assertEqual(gs.territories[3].contested_by, {'NAA', 'AAC'})
 
@@ -637,32 +644,38 @@ class TestCombatMoveExecution(unittest.TestCase):
                 CombatMoveOrder(mover.unit_id, [1, 3]),
             ])
 
-    def test_later_order_can_depend_on_an_earlier_orders_capture(self):
-        # Unit A captures territory 2 (empty foreign land). Unit B,
-        # starting at territory 1 too, then stages THROUGH territory 2
-        # (now NAA's) to attack territory 3 -- only legal because unit
-        # A's capture already applied within this same submission.
+    def test_a_later_order_sees_contested_state_an_earlier_order_just_created(self):
+        # Unit A attacks territory 2 first in this submission, marking
+        # it contested. Unit B, starting elsewhere, then joins that same
+        # fight -- demonstrating _execute_combat_moves threads each
+        # order's mutation into the game_state the NEXT order sees,
+        # rather than validating every order against a frozen snapshot
+        # of the turn's starting board (ownership no longer flips
+        # immediately on an empty capture, so this is no longer about
+        # "enabling" a move that would otherwise be illegal -- both
+        # orders would succeed independently too -- but the resulting
+        # contested_by must still correctly reflect BOTH units' factions
+        # merged from two separate calls, not just the second one's).
         data = FakeData(
-            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
-            adjacency={1: [2], 2: [1, 3], 3: [2]},
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 4: {'type': 'land'}},
+            adjacency={1: [2], 4: [2]},
         )
         unit_a = make_unit('Infantry', 'NAA')
-        unit_b = make_unit('Mechanized Infantry', 'NAA')
+        unit_b = make_unit('Infantry', 'NAA')
         defender = make_unit('Infantry', 'AAC')
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC', 3: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
-            units_by_territory={1: [unit_a, unit_b], 3: [defender]},
+            data, {1: 'NAA', 2: 'AAC', 4: 'NAA'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [unit_a], 2: [defender], 4: [unit_b]},
         )
         engine = GameEngine(gs, data)
         engine.submit_combat_moves('NAA', [
             CombatMoveOrder(unit_a.unit_id, [1, 2]),
-            CombatMoveOrder(unit_b.unit_id, [1, 2, 3]),
+            CombatMoveOrder(unit_b.unit_id, [4, 2]),
         ])
         engine.confirm_combat_moves('NAA')
-        self.assertEqual(gs.territories[2].owner, 'NAA')
         self.assertIn(unit_a, gs.territories[2].units)
-        self.assertIn(unit_b, gs.territories[3].units)
-        self.assertEqual(gs.territories[3].contested_by, {'NAA', 'AAC'})
+        self.assertIn(unit_b, gs.territories[2].units)
+        self.assertEqual(gs.territories[2].contested_by, {'NAA', 'AAC'}, 'no duplication or loss across the two sequential calls')
 
 
 class TestCombatMoveCarrierRideAlong(unittest.TestCase):
@@ -1443,6 +1456,125 @@ class TestStrandedAircraftCheck(unittest.TestCase):
         engine.submit_noncombat_moves('NAA', [])
         engine.confirm_noncombat_moves('NAA')
         self.assertIn(soldier, gs.territories[1].units)
+
+
+class TestCaptureTerritory(unittest.TestCase):
+    def test_claims_unoccupied_territory_ran_through(self):
+        # Nobody's land units are physically there -- faction passed
+        # through and kept moving -- but it's still owed the claim.
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            contested={1: {'NAA', 'AAC'}},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_capture_territory('NAA')
+        self.assertEqual(gs.territories[1].owner, 'NAA')
+        self.assertIsNone(gs.territories[1].contested_by)
+
+    def test_claims_territory_with_only_own_land_units_remaining(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        survivor = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [survivor]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_capture_territory('NAA')
+        self.assertEqual(gs.territories[1].owner, 'NAA')
+        self.assertIsNone(gs.territories[1].contested_by)
+
+    def test_leaves_ownership_unchanged_when_enemy_land_units_remain(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_capture_territory('NAA')
+        self.assertEqual(gs.territories[1].owner, 'AAC', 'still genuinely contested -- ownership stays put')
+        self.assertEqual(gs.territories[1].contested_by, {'NAA', 'AAC'})
+
+    def test_air_only_survivors_do_not_block_the_claim(self):
+        # The defender's only survivor is a Fighter -- air can't hold ground.
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        surviving_fighter = make_unit('Fighter', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [surviving_fighter]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_capture_territory('NAA')
+        self.assertEqual(gs.territories[1].owner, 'NAA')
+        self.assertIsNone(gs.territories[1].contested_by)
+
+    def test_allied_land_units_do_not_block_the_claim(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        ally_unit = make_unit('Infantry', 'UE')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            contested={1: {'NAA', 'AAC', 'UE'}}, units_by_territory={1: [ally_unit]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        engine.process_capture_territory('NAA')
+        self.assertEqual(gs.territories[1].owner, 'NAA', "an ally's land presence doesn't block the claim")
+
+    def test_two_other_powers_still_contesting_leaves_ownership_alone(self):
+        # Neither AAC nor UE is allied with NAA (or each other); both
+        # still have land units present -- even the nominal owner being
+        # a THIRD, unrelated faction (simulating one that's since been
+        # eliminated) shouldn't matter -- nothing resolves in NAA's
+        # favor while two other powers are still genuinely contesting.
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        aac_unit = make_unit('Infantry', 'AAC')
+        ue_unit = make_unit('Infantry', 'UE')
+        gs = make_state(
+            data, {1: 'PAF'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            contested={1: {'NAA', 'AAC', 'UE'}}, units_by_territory={1: [aac_unit, ue_unit]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_capture_territory('NAA')
+        self.assertEqual(gs.territories[1].owner, 'PAF', 'original ownership maintained regardless of NAA')
+        self.assertEqual(gs.territories[1].contested_by, {'NAA', 'AAC', 'UE'})
+
+    def test_faction_not_in_contested_by_is_untouched(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            contested={1: {'AAC', 'UE'}},  # NAA has no stake in this one
+        )
+        engine = GameEngine(gs, data)
+        engine.process_capture_territory('NAA')
+        self.assertEqual(gs.territories[1].owner, 'AAC')
+        self.assertEqual(gs.territories[1].contested_by, {'AAC', 'UE'})
+
+    def test_sea_territories_are_never_touched(self):
+        data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            contested={1: {'NAA', 'AAC'}},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_capture_territory('NAA')  # should not raise
+        self.assertIsNone(gs.territories[1].owner)
+        self.assertEqual(gs.territories[1].contested_by, {'NAA', 'AAC'}, 'sea contested status is Combat Resolution\'s concern, not this phase\'s')
+
+    def test_wrong_phase_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.process_capture_territory('NAA')
+
+    def test_non_active_faction_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(data, {1: 'AAC'}, {'NAA': PowerMode.NEUTRAL, 'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.process_capture_territory('NAA')
 
 
 if __name__ == '__main__':
