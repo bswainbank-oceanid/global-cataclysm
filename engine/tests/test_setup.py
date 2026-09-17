@@ -2,7 +2,7 @@ import unittest
 
 from engine import data
 from engine.setup import build_game_state
-from engine.state import PowerMode
+from engine.state import FactionMode
 
 
 def _all_units(gs):
@@ -11,7 +11,7 @@ def _all_units(gs):
 
 class TestSetup(unittest.TestCase):
     def test_200ipc_scenario_unit_counts_match(self):
-        modes = {c: PowerMode.HUMAN for c in data.factions()}
+        modes = {c: FactionMode.HUMAN for c in data.factions()}
         gs = build_game_state('starting_setup_200ipc', modes)
         scenario = data.scenario('starting_setup_200ipc')
         for fac in data.factions():
@@ -20,7 +20,7 @@ class TestSetup(unittest.TestCase):
             self.assertEqual(actual, expected, f'{fac} unit count mismatch')
 
     def test_naval_units_deploy_to_sea_zones(self):
-        modes = {c: PowerMode.HUMAN for c in data.factions()}
+        modes = {c: FactionMode.HUMAN for c in data.factions()}
         gs = build_game_state('starting_setup_200ipc', modes)
         unit_defs = data.units()
         terrs = data.territories()
@@ -31,7 +31,7 @@ class TestSetup(unittest.TestCase):
                                       f'{u.unit_type} ({u.owner}) landed on {t.territory_id}, not a sea zone')
 
     def test_carrier_escort_colocated_with_carrier(self):
-        modes = {c: PowerMode.HUMAN for c in data.factions()}
+        modes = {c: FactionMode.HUMAN for c in data.factions()}
         gs = build_game_state('starting_setup_200ipc', modes)
         scenario = data.scenario('starting_setup_200ipc')
         for fac, escorts in scenario['carrier_escorts'].items():
@@ -45,7 +45,7 @@ class TestSetup(unittest.TestCase):
                 self.assertTrue(escort_present, f'{fac} escort {esc} not found alongside its carrier')
 
     def test_promotions_applied(self):
-        modes = {c: PowerMode.HUMAN for c in data.factions()}
+        modes = {c: FactionMode.HUMAN for c in data.factions()}
         gs = build_game_state('starting_setup_200ipc', modes)
         scenario = data.scenario('starting_setup_200ipc')
         for fac in data.factions():
@@ -54,8 +54,8 @@ class TestSetup(unittest.TestCase):
             self.assertEqual(actual, expected, f'{fac} promotion count mismatch')
 
     def test_defensive_mode_uses_100ipc_scenario(self):
-        modes = {c: PowerMode.HUMAN for c in data.factions()}
-        modes['AAC'] = PowerMode.DEFENSIVE
+        modes = {c: FactionMode.HUMAN for c in data.factions()}
+        modes['AAC'] = FactionMode.DEFENSIVE
         gs = build_game_state('starting_setup_200ipc', modes)
         scenario_100 = data.scenario('starting_setup_100ipc')
         expected = sum(u['qty'] for entry in scenario_100['purchases'].get('AAC', []) for u in entry['units'])
@@ -63,24 +63,24 @@ class TestSetup(unittest.TestCase):
         self.assertEqual(actual, expected)
 
     def test_neutral_mode_gets_zero_units(self):
-        modes = {c: PowerMode.HUMAN for c in data.factions()}
-        modes['PAF'] = PowerMode.NEUTRAL
+        modes = {c: FactionMode.HUMAN for c in data.factions()}
+        modes['PAF'] = FactionMode.NEUTRAL
         gs = build_game_state('starting_setup_200ipc', modes)
         actual = sum(1 for u in _all_units(gs) if u.owner == 'PAF')
         self.assertEqual(actual, 0)
 
     def test_active_faction_is_first_human_or_bot(self):
-        modes = {c: PowerMode.HUMAN for c in data.factions()}
-        modes['NAA'] = PowerMode.NEUTRAL
+        modes = {c: FactionMode.HUMAN for c in data.factions()}
+        modes['NAA'] = FactionMode.NEUTRAL
         gs = build_game_state('starting_setup_200ipc', modes)
         self.assertEqual(gs.active_faction, 'UE')
-        self.assertNotIn('NAA', gs.active_powers())
+        self.assertNotIn('NAA', gs.active_factions())
 
     def test_starting_treasury_is_31_mpc_for_every_faction(self):
         # setup.territory_ipc_per_faction (25) + strategic_centers_per_faction
         # (3) x strategic_center_value_bonus (2) = 31 -- confirmed against
         # every faction's real territories.json data, not just the formula.
-        modes = {c: PowerMode.HUMAN for c in data.factions()}
+        modes = {c: FactionMode.HUMAN for c in data.factions()}
         gs = build_game_state('starting_setup_200ipc', modes)
         for fac in data.factions():
             self.assertEqual(gs.factions[fac].treasury_mpc, 31, f'{fac} starting treasury mismatch')

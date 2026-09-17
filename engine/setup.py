@@ -1,5 +1,5 @@
 """
-Builds an initial GameState from a scenario file plus a per-faction power-
+Builds an initial GameState from a scenario file plus a per-faction faction-
 mode assignment. HUMAN/BOT factions get the scenario's purchases/
 promotions/carrier_escorts/naval_deploy_overrides placed on the board
 directly (this is initial deployment, not a pending purchase -- units are
@@ -23,7 +23,7 @@ ordinarily 31 MPC (25 base territory value + 3 Strategic Centers x 2).
 """
 from . import data
 from .economy import compute_income
-from .state import GameState, TerritoryState, FactionState, UnitInstance, PowerMode, Phase
+from .state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode, Phase
 
 
 def _sea_zone_name_to_id():
@@ -93,9 +93,9 @@ def _apply_promotions(scenario, faction, bought_at):
                 break
 
 
-def build_game_state(scenario_name, power_modes, defensive_scenario_name='starting_setup_100ipc'):
+def build_game_state(scenario_name, faction_modes, defensive_scenario_name='starting_setup_100ipc'):
     """scenario_name: e.g. 'starting_setup_200ipc', used for every HUMAN/
-    BOT faction. power_modes: {faction_code: PowerMode}, one entry per
+    BOT faction. faction_modes: {faction_code: FactionMode}, one entry per
     faction in data.factions(). Returns a fresh GameState at global_turn 0
     with every territory's TerritoryState created (land territories'
     owner comes from territories.json; sea territories have no owner),
@@ -108,7 +108,7 @@ def build_game_state(scenario_name, power_modes, defensive_scenario_name='starti
         gs.territories[tid] = TerritoryState(territory_id=tid, owner=owner)
 
     for code in data.factions():
-        gs.factions[code] = FactionState(code=code, mode=power_modes[code], treasury_mpc=0)
+        gs.factions[code] = FactionState(code=code, mode=faction_modes[code], treasury_mpc=0)
 
     for code, fstate in gs.factions.items():
         # Starting treasury: this faction's territories are already
@@ -126,9 +126,9 @@ def build_game_state(scenario_name, power_modes, defensive_scenario_name='starti
     name_to_id = _sea_zone_name_to_id()
 
     for code, fstate in gs.factions.items():
-        if fstate.mode == PowerMode.NEUTRAL:
+        if fstate.mode == FactionMode.NEUTRAL:
             continue
-        if fstate.mode == PowerMode.DEFENSIVE:
+        if fstate.mode == FactionMode.DEFENSIVE:
             if defensive_scenario is None:
                 defensive_scenario = data.scenario(defensive_scenario_name)
             bought_at = _place_faction_units(gs, code, defensive_scenario, name_to_id)
@@ -137,6 +137,6 @@ def build_game_state(scenario_name, power_modes, defensive_scenario_name='starti
             bought_at = _place_faction_units(gs, code, main_scenario, name_to_id)
             _apply_promotions(main_scenario, code, bought_at)
 
-    active = gs.active_powers()
+    active = gs.active_factions()
     gs.active_faction = active[0] if active else None
     return gs

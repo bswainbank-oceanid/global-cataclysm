@@ -146,7 +146,7 @@ def build_setup_tab(wb, sheet_name, scenario_path, use_sc, min_types, cap_bonus=
                 'any aircraft riding a carrier as its escort. Naval units are bought at a coastal territory and '
                 'begin in their own sea zone — no two factions deploy naval units to the same sea zone. Every '
                 'Aircraft Carrier has at least 1 escorting Fighter/Bomber that deploys aboard it, in the same sea '
-                'zone. Every territory bordering a foreign power has at least 1 land unit (Infantry, Mechanized '
+                'zone. Every territory bordering a foreign faction has at least 1 land unit (Infantry, Mechanized '
                 f'Infantry, or Armor). Each faction purchases at least {min_types} of the 8 purchasable unit '
                 f'types, guided by its doctrine focus.{sc_desc} {promo_desc}'
                 'Territory / Faction / SC / cost / cap columns below are LIVE — edit ‘All Territories’ and they '

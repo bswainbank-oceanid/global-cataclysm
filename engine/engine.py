@@ -26,15 +26,15 @@ Territory pass based purely on presence; Capture Territory claims every
 territory faction is contesting where no non-allied LAND units remain
 (an undefended entry nobody ever fought over, or a battle faction won
 outright even if air-only survivors linger on the other side), leaving
-ownership untouched wherever a genuine contest between other powers is
+ownership untouched wherever a genuine contest between other factions is
 still live. process_elimination_check (victory.elimination_rule, meant
 to run right after Capture Territory) sweeps every faction's Strategic
 Center count and eliminates -- clears remaining units, and excludes from
-GameState.active_powers() forever after, which is what actually enforces
+GameState.active_factions() forever after, which is what actually enforces
 "no more turns" -- anyone down to 1 or 0. process_game_end_check
 (victory.game_end_rule, meant to run once at the very end of a
 faction's full turn, after the stubbed Alliances phase) sets
-GameState.game_over once every remaining active power is mutually
+GameState.game_over once every remaining active faction is mutually
 allied with every other -- nobody non-allied left to keep fighting --
 but first gives the faction whose turn is ending one last chance to
 withdraw from its alliance instead, which keeps the game going; that's
@@ -49,7 +49,7 @@ has_moved_noncombat flags and clearing it from every phase-confirmation
 guard set, both of which nothing else in the engine ever does, so
 skipping this is what used to make a second turn for any faction
 impossible -- then advances active_faction to the next one in
-active_powers() (wrapping around, dynamically skipping anyone eliminated
+active_factions() (wrapping around, dynamically skipping anyone eliminated
 since), bumps global_turn, and resets phase to PURCHASE. A driver loop
 is expected to call the phase methods in turn_order's order for
 active_faction each turn, calling advance_phase() between them and
@@ -79,7 +79,7 @@ from .movement import (
     _is_ally_or_self, find_emergency_landing, legal_air_move_destinations,
     legal_noncombat_move_destinations, trace_combat_move,
 )
-from .state import Phase, PowerMode, UnitInstance
+from .state import Phase, FactionMode, UnitInstance
 
 # turn_order's fixed 7-phase sequence for one faction's full turn.
 _PHASE_ORDER = [
@@ -251,8 +251,8 @@ class GameEngine:
         Raises ValueError (nothing staged) if any order is illegal, or
         if the total cost exceeds treasury_mpc. Returns the total MPC
         cost on success."""
-        if faction not in self.game_state.active_powers():
-            raise ValueError(f'{faction} is not an active power and cannot submit purchases')
+        if faction not in self.game_state.active_factions():
+            raise ValueError(f'{faction} is not an active faction and cannot submit purchases')
         if self.game_state.phase != Phase.PURCHASE:
             raise ValueError('submit_purchases is only valid during the Purchase phase')
         if faction in self._purchases_confirmed:
@@ -277,8 +277,8 @@ class GameEngine:
         purchase fallbacks, is deploy_and_collect_income's job).
         Irreversible: submit_purchases and confirm_purchases both refuse
         further calls for this faction this turn afterward."""
-        if faction not in self.game_state.active_powers():
-            raise ValueError(f'{faction} is not an active power')
+        if faction not in self.game_state.active_factions():
+            raise ValueError(f'{faction} is not an active faction')
         if faction in self._purchases_confirmed:
             raise ValueError(f'{faction} has already confirmed purchases this turn')
 
@@ -313,8 +313,8 @@ class GameEngine:
         _purchases_confirmed -- a faction that never bought anything
         this turn still collects income and still triggers the global
         recovery sweep."""
-        if faction not in self.game_state.active_powers():
-            raise ValueError(f'{faction} is not an active power')
+        if faction not in self.game_state.active_factions():
+            raise ValueError(f'{faction} is not an active faction')
         if self.game_state.phase != Phase.DEPLOY_INCOME:
             raise ValueError('deploy_and_collect_income is only valid during the Deploy + Income phase')
 
@@ -417,17 +417,17 @@ class GameEngine:
         """combat.recovery_rule, run at every faction's Deploy + Income:
         any unit on the WHOLE board heals to full HP once a full round
         has elapsed since it last took part in combat --
-        current_global_turn - last_combat_global_turn >= num_powers,
-        where num_powers is len(active_powers()) (turn_order_note)."""
+        current_global_turn - last_combat_global_turn >= num_factions,
+        where num_factions is len(active_factions()) (turn_order_note)."""
         unit_defs = self.data.units()
-        num_powers = len(self.game_state.active_powers())
-        if num_powers == 0:
+        num_factions = len(self.game_state.active_factions())
+        if num_factions == 0:
             return
         for t in self.game_state.territories.values():
             for u in t.units:
                 if u.last_combat_global_turn is None:
                     continue
-                if self.game_state.global_turn - u.last_combat_global_turn >= num_powers:
+                if self.game_state.global_turn - u.last_combat_global_turn >= num_factions:
                     u.current_hp = u.effective_stats(unit_defs)['max_hp']
 
     def _find_unit(self, game_state, unit_id, faction):
@@ -552,8 +552,8 @@ class GameEngine:
         of GameState purely to validate it (discarded either way) --
         nothing real is touched here. Raises ValueError (nothing staged)
         if any order is illegal."""
-        if faction not in self.game_state.active_powers():
-            raise ValueError(f'{faction} is not an active power and cannot submit combat moves')
+        if faction not in self.game_state.active_factions():
+            raise ValueError(f'{faction} is not an active faction and cannot submit combat moves')
         if self.game_state.phase != Phase.COMBAT_MOVE:
             raise ValueError('submit_combat_moves is only valid during the Combat Move phase')
         if faction in self._combat_moves_confirmed:
@@ -570,8 +570,8 @@ class GameEngine:
         same validated sequence against the real GameState. Irreversible:
         submit_combat_moves and confirm_combat_moves both refuse further
         calls for this faction this turn afterward."""
-        if faction not in self.game_state.active_powers():
-            raise ValueError(f'{faction} is not an active power')
+        if faction not in self.game_state.active_factions():
+            raise ValueError(f'{faction} is not an active faction')
         if faction in self._combat_moves_confirmed:
             raise ValueError(f'{faction} has already confirmed combat moves this turn')
 
@@ -634,8 +634,8 @@ class GameEngine:
         moment it's called. Can only be called once per faction per turn
         (a second call would otherwise re-fight any still-contested
         standoff a second time within the same phase)."""
-        if faction not in self.game_state.active_powers():
-            raise ValueError(f'{faction} is not an active power')
+        if faction not in self.game_state.active_factions():
+            raise ValueError(f'{faction} is not an active faction')
         if self.game_state.phase != Phase.COMBAT_RESOLUTION:
             raise ValueError('resolve_combat is only valid during the Combat Resolution phase')
         if faction in self._combat_resolved:
@@ -754,8 +754,8 @@ class GameEngine:
         Automatic and irreversible, like Deploy + Income and Combat
         Resolution -- no staging, no undo, and only callable once per
         faction per turn."""
-        if faction not in self.game_state.active_powers():
-            raise ValueError(f'{faction} is not an active power')
+        if faction not in self.game_state.active_factions():
+            raise ValueError(f'{faction} is not an active faction')
         if self.game_state.phase != Phase.NONCOMBAT_MOVE:
             raise ValueError('process_return_to_base is only valid during the Non-Combat Move phase')
         if faction in self._return_to_base_processed:
@@ -869,8 +869,8 @@ class GameEngine:
         GameState purely to validate it (discarded either way) --
         nothing real is touched here. Raises ValueError (nothing staged)
         if any order is illegal."""
-        if faction not in self.game_state.active_powers():
-            raise ValueError(f'{faction} is not an active power and cannot submit non-combat moves')
+        if faction not in self.game_state.active_factions():
+            raise ValueError(f'{faction} is not an active faction and cannot submit non-combat moves')
         if self.game_state.phase != Phase.NONCOMBAT_MOVE:
             raise ValueError('submit_noncombat_moves is only valid during the Non-Combat Move phase')
         if faction in self._noncombat_moves_confirmed:
@@ -892,8 +892,8 @@ class GameEngine:
         present (an ally's doesn't count) are lost. Irreversible:
         submit_noncombat_moves and confirm_noncombat_moves both refuse
         further calls for this faction this turn afterward."""
-        if faction not in self.game_state.active_powers():
-            raise ValueError(f'{faction} is not an active power')
+        if faction not in self.game_state.active_factions():
+            raise ValueError(f'{faction} is not an active faction')
         if faction in self._noncombat_moves_confirmed:
             raise ValueError(f'{faction} has already confirmed non-combat moves this turn')
 
@@ -941,14 +941,14 @@ class GameEngine:
         factions) are still there, ownership is left exactly as it
         stands -- even if the territory's registered owner has since
         been eliminated from the game entirely, as long as the contest
-        between two (or more) powers other than `faction`/its allies is
+        between two (or more) factions other than `faction`/its allies is
         still live, nothing here resolves it in anyone's favor.
-        Whichever power actually ends up the sole remaining land
+        Whichever faction actually ends up the sole remaining land
         claimant picks it up on ITS OWN Capture Territory phase instead
         -- this only ever settles a contest `faction` itself is part of
         (faction in contested_by)."""
-        if faction not in self.game_state.active_powers():
-            raise ValueError(f'{faction} is not an active power')
+        if faction not in self.game_state.active_factions():
+            raise ValueError(f'{faction} is not an active faction')
         if self.game_state.phase != Phase.CAPTURE:
             raise ValueError('process_capture_territory is only valid during the Capture Territory phase')
 
@@ -1023,7 +1023,7 @@ class GameEngine:
         even when nothing changed; an already-eliminated faction is
         simply skipped.
 
-        GameState.active_powers() is what actually enforces "gets no
+        GameState.active_factions() is what actually enforces "gets no
         more turns" -- it excludes eliminated factions, and every phase
         method in this class gates on it, so nothing else needed to
         change to make that stick."""
@@ -1039,7 +1039,7 @@ class GameEngine:
                 sc_counts[t.owner] = sc_counts.get(t.owner, 0) + 1
 
         for code, fstate in self.game_state.factions.items():
-            if fstate.eliminated or fstate.mode == PowerMode.NEUTRAL:
+            if fstate.eliminated or fstate.mode == FactionMode.NEUTRAL:
                 continue
             if sc_counts.get(code, 0) <= 1:
                 fstate.eliminated = True
@@ -1049,16 +1049,16 @@ class GameEngine:
     def would_game_end(self):
         """Pure query, no mutation: victory.game_end_rule -- would the
         game be over right now, as-is? True once every remaining active
-        power (GameState.active_powers()) is mutually allied with every
+        faction (GameState.active_factions()) is mutually allied with every
         other -- since FactionState.alliance is a single tag per
         faction, that's exactly equivalent to all of them sharing the
         same one non-None value (trivially true too with 1 or 0 active
-        powers left -- nobody remains to still be at war with). A caller
+        factions left -- nobody remains to still be at war with). A caller
         (a UI) uses this to decide whether it's even worth asking the
         current player about process_game_end_check's one-last-chance
         withdrawal -- nothing to prompt for if the game wasn't about to
         end anyway."""
-        active = self.game_state.active_powers()
+        active = self.game_state.active_factions()
         if len(active) <= 1:
             return True
         alliances = {self.game_state.factions[code].alliance for code in active}
@@ -1082,8 +1082,8 @@ class GameEngine:
         (phase_confirmation.scope), but unlike every other automatic
         phase call it DOES take a single yes/no player choice, since
         that choice is the entire point of the 'last chance' rule."""
-        if faction not in self.game_state.active_powers():
-            raise ValueError(f'{faction} is not an active power')
+        if faction not in self.game_state.active_factions():
+            raise ValueError(f'{faction} is not an active faction')
         if self.game_state.phase != Phase.ALLIANCES:
             raise ValueError('process_game_end_check is only valid during the Alliances phase')
 
@@ -1119,9 +1119,9 @@ class GameEngine:
         confirmation guard set (_purchases_confirmed and friends --
         without this, a faction could only ever complete each phase
         once, ever, ACROSS THE WHOLE GAME, not once per turn), then
-        advances active_faction to the next one in active_powers()
+        advances active_faction to the next one in active_factions()
         (wrapping around, and naturally skipping anyone eliminated since
-        this faction's turn began, since active_powers() is always
+        this faction's turn began, since active_factions() is always
         recomputed fresh), increments global_turn, and resets phase back
         to PURCHASE.
 
@@ -1145,7 +1145,7 @@ class GameEngine:
             self._noncombat_moves_confirmed.discard(finishing)
             self._return_to_base_processed.discard(finishing)
 
-        active = self.game_state.active_powers()
+        active = self.game_state.active_factions()
         if not active:
             self.game_state.active_faction = None
             self.game_state.game_over = True

@@ -1,7 +1,7 @@
 import random
 import unittest
 
-from engine.state import GameState, TerritoryState, FactionState, UnitInstance, PowerMode
+from engine.state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode
 from engine.movement import (
     legal_combat_move_destinations, legal_noncombat_move_destinations, legal_air_move_destinations,
     find_emergency_landing, trace_combat_move,
@@ -48,7 +48,7 @@ def make_state(data, territory_owners, faction_modes, contested=None, units_by_t
     included), not just the ones with an explicit owner, since movement.py
     looks up game_state.territories[id] for any territory it visits.
     territory_owners: {id: faction_code}, only for owned (land) ones.
-    faction_modes: {faction_code: PowerMode}. contested: {id: {faction_codes}}.
+    faction_modes: {faction_code: FactionMode}. contested: {id: {faction_codes}}.
     units_by_territory: {id: [UnitInstance, ...]}.
     pending_deployment_by_territory: {id: [UnitInstance, ...]} -- units
     bought this turn's purchase phase, not yet actually on the board."""
@@ -81,7 +81,7 @@ class TestWaterMovementBonus(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
         dest = legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data)
         self.assertIn(3, dest)
@@ -97,7 +97,7 @@ class TestWaterMovementBonus(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={2: 'NAA', 3: 'NAA', 4: 'AAC', 5: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
         dest = legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
         self.assertIn(4, dest)
@@ -115,7 +115,7 @@ class TestMechInfEmptyTerritoryPassThrough(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
         return data, gs
 
@@ -147,7 +147,7 @@ class TestOccupiedTerritoryStopsMovement(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(99, 'Infantry', 'AAC')]},
         )
         dest = legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
@@ -166,7 +166,7 @@ class TestOccupiedTerritoryStopsMovement(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(1, 'Transport', 'AAC')], 3: [enemy_unit(2, 'Cruiser', 'AAC')]},
         )
         dest = legal_combat_move_destinations('Submarine', 'NAA', 1, gs, data)
@@ -183,7 +183,7 @@ class TestAmphibiousThroughOccupiedWater(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')]},
         )
         dest = legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data)
@@ -201,7 +201,7 @@ class TestAmphibiousThroughOccupiedWater(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')]},
         )
         dest = legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data)
@@ -219,7 +219,7 @@ class TestAmphibiousThroughOccupiedWater(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')]},
         )
         dest = legal_combat_move_destinations('Submarine', 'NAA', 1, gs, data)
@@ -240,7 +240,7 @@ class TestAmphibiousThroughOccupiedWater(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 3: 'NAA'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             contested={2: {'NAA'}},
         )
         dest = legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data)
@@ -257,7 +257,7 @@ class TestNeutralExclusion(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 2: 'PAF', 3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'PAF': PowerMode.NEUTRAL, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN},
         )
         dest = legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
         self.assertNotIn(2, dest)
@@ -278,7 +278,7 @@ class TestNeutralExclusion(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 3: 'PAF'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'PAF': PowerMode.NEUTRAL, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')]},
         )
         dest = legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data)
@@ -295,7 +295,7 @@ class TestNonCombatMoveDestinations(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 2: 'NAA', 3: 'AAC', 4: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             contested={3: {'NAA'}},
         )
         dest = legal_noncombat_move_destinations('Infantry', 'NAA', 1, gs, data)
@@ -313,7 +313,7 @@ class TestNonCombatMoveDestinations(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 2: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UER': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UER': FactionMode.HUMAN},
             contested={2: {'UER'}},
         )
         dest = legal_noncombat_move_destinations('Infantry', 'NAA', 1, gs, data)
@@ -324,7 +324,7 @@ class TestAllianceAwareMovement(unittest.TestCase):
     def _allied_state(self, data, territory_owners, contested=None, units_by_territory=None):
         gs = make_state(
             data, territory_owners,
-            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             contested=contested, units_by_territory=units_by_territory,
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -386,7 +386,7 @@ class TestAirMovement(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(1, 'Armor', 'AAC')], 3: [enemy_unit(2, 'Armor', 'AAC')]},
         )
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', gs, data)
@@ -403,7 +403,7 @@ class TestAirMovement(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 2: 'NAA', 3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', gs, data)
         self.assertNotIn(2, dest, 'own territory is not an attack target')
@@ -417,7 +417,7 @@ class TestAirMovement(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 2: 'NAA', 3: 'NAA'},
-            faction_modes={'NAA': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN},
             contested={3: {'NAA'}},  # own contested land -- IS a legal air landing spot
             units_by_territory={4: [enemy_unit(1, 'Aircraft Carrier', 'NAA')]},
         )
@@ -439,7 +439,7 @@ class TestAirMovement(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 2: 'UE'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN},
             contested={2: {'NAA'}},  # ally's contested territory
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -454,7 +454,7 @@ class TestAirMovement(unittest.TestCase):
         )
         gs = make_state(
             data, territory_owners={1: 'NAA'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(1, 'Aircraft Carrier', 'UE')]},
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -472,7 +472,7 @@ class TestAirMovement(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
         gs = make_state(
             data, territory_owners={1: 'NAA'},
-            faction_modes={'NAA': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN},
         )
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
         self.assertNotIn(2, dest, 'open water with no carrier and none pending must not be a legal landing spot')
@@ -485,7 +485,7 @@ class TestAirMovement(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
         gs = make_state(
             data, territory_owners={1: 'NAA'},
-            faction_modes={'NAA': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN},
             pending_deployment_by_territory={2: [enemy_unit(9, 'Aircraft Carrier', 'NAA')]},
         )
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
@@ -498,7 +498,7 @@ class TestAirMovement(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
         gs = make_state(
             data, territory_owners={1: 'NAA'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN},
             pending_deployment_by_territory={2: [enemy_unit(9, 'Aircraft Carrier', 'UE')]},
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -522,7 +522,7 @@ class TestFindEmergencyLanding(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={2: 'NAA', 4: 'UE'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN},
             units_by_territory={3: [enemy_unit(1, 'Aircraft Carrier', 'NAA')]},
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -538,7 +538,7 @@ class TestFindEmergencyLanding(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={2: 'NAA', 3: 'UE'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN},
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -553,7 +553,7 @@ class TestFindEmergencyLanding(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={2: 'UE', 3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -572,7 +572,7 @@ class TestFindEmergencyLanding(unittest.TestCase):
         )
         gs = make_state(
             data, territory_owners={},
-            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(1, 'Aircraft Carrier', 'UE')]},
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -587,7 +587,7 @@ class TestFindEmergencyLanding(unittest.TestCase):
         )
         gs = make_state(
             data, territory_owners={2: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
         result = find_emergency_landing(1, 'NAA', gs, data, random.Random(0))
         self.assertIsNone(result, 'enemy land is never a qualifying emergency landing spot')
@@ -599,10 +599,10 @@ class TestFindEmergencyLanding(unittest.TestCase):
         )
         gs = make_state(
             data, territory_owners={2: 'NAA'},
-            faction_modes={'NAA': PowerMode.NEUTRAL},
+            faction_modes={'NAA': FactionMode.NEUTRAL},
         )
         # territory 2 is 'owned' by NAA but NAA is itself the Neutral
-        # power here -- exercising the exclusion path directly regardless
+        # faction here -- exercising the exclusion path directly regardless
         # of who the mover is.
         result = find_emergency_landing(1, 'AAC', gs, data, random.Random(0))
         self.assertIsNone(result)
@@ -614,7 +614,7 @@ class TestFindEmergencyLanding(unittest.TestCase):
         )
         gs = make_state(
             data, territory_owners={2: 'NAA', 3: 'NAA'},
-            faction_modes={'NAA': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN},
         )
         seen = {find_emergency_landing(1, 'NAA', gs, data, random.Random(seed)) for seed in range(20)}
         self.assertEqual(seen, {2, 3}, 'both own-land options should be reachable across enough random seeds')
@@ -624,7 +624,7 @@ class TestTraceCombatMove(unittest.TestCase):
     def test_single_hop_attack(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         gs = make_state(
-            data, territory_owners={1: 'NAA', 2: 'AAC'}, faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            data, territory_owners={1: 'NAA', 2: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(1, 'Infantry', 'AAC')]},
         )
         trace = trace_combat_move('Infantry', 'NAA', [1, 2], gs, data)
@@ -634,7 +634,7 @@ class TestTraceCombatMove(unittest.TestCase):
     def test_single_hop_capture_of_empty_foreign_land(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         gs = make_state(
-            data, territory_owners={1: 'NAA', 2: 'AAC'}, faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            data, territory_owners={1: 'NAA', 2: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
         trace = trace_combat_move('Armor', 'NAA', [1, 2], gs, data)
         self.assertEqual(trace.final_kind, 'capture')
@@ -648,7 +648,7 @@ class TestTraceCombatMove(unittest.TestCase):
         )
         gs = make_state(
             data, territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             units_by_territory={3: [enemy_unit(1, 'Infantry', 'AAC')]},
         )
         trace = trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3], gs, data)
@@ -662,7 +662,7 @@ class TestTraceCombatMove(unittest.TestCase):
         )
         gs = make_state(
             data, territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
         trace = trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3], gs, data)
         self.assertEqual(trace.entered_en_route, [2])
@@ -675,7 +675,7 @@ class TestTraceCombatMove(unittest.TestCase):
         )
         gs = make_state(
             data, territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
         with self.assertRaises(ValueError):
             trace_combat_move('Armor', 'NAA', [1, 2, 3], gs, data)
@@ -687,7 +687,7 @@ class TestTraceCombatMove(unittest.TestCase):
         )
         gs = make_state(
             data, territory_owners={1: 'NAA', 2: 'NAA', 3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
         # Infantry combat_move is 1 -- can't legally traverse two hops.
         with self.assertRaises(ValueError):
@@ -696,7 +696,7 @@ class TestTraceCombatMove(unittest.TestCase):
     def test_non_adjacent_hop_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}}, adjacency={1: [2]})
         gs = make_state(
-            data, territory_owners={1: 'NAA', 3: 'AAC'}, faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            data, territory_owners={1: 'NAA', 3: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
         with self.assertRaises(ValueError):
             trace_combat_move('Mechanized Infantry', 'NAA', [1, 3], gs, data)
@@ -704,7 +704,7 @@ class TestTraceCombatMove(unittest.TestCase):
     def test_joining_an_already_contested_destination(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         gs = make_state(
-            data, territory_owners={1: 'NAA', 2: 'AAC'}, faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            data, territory_owners={1: 'NAA', 2: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             contested={2: {'AAC', 'UE'}},
         )
         trace = trace_combat_move('Infantry', 'NAA', [1, 2], gs, data)
@@ -716,7 +716,7 @@ class TestTraceCombatMove(unittest.TestCase):
             adjacency={1: [2], 2: [1, 3], 3: [2]},
         )
         gs = make_state(
-            data, territory_owners={1: 'NAA', 3: 'NAA'}, faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            data, territory_owners={1: 'NAA', 3: 'NAA'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             contested={2: {'NAA', 'AAC'}},
         )
         trace = trace_combat_move('Infantry', 'NAA', [1, 2, 3], gs, data)
@@ -732,7 +732,7 @@ class TestTraceCombatMove(unittest.TestCase):
         )
         gs = make_state(
             data, territory_owners={1: 'NAA', 3: 'NAA', 4: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             contested={2: {'NAA', 'AAC'}},
         )
         with self.assertRaises(ValueError):
@@ -745,7 +745,7 @@ class TestTraceCombatMove(unittest.TestCase):
         )
         gs = make_state(
             data, territory_owners={1: 'NAA', 2: 'PAF', 3: 'AAC'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'PAF': PowerMode.NEUTRAL, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN},
         )
         with self.assertRaises(ValueError):
             trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3], gs, data)
@@ -762,7 +762,7 @@ class TestTraceCombatMove(unittest.TestCase):
         )
         gs = make_state(
             data, territory_owners={1: 'NAA', 3: 'PAF'},
-            faction_modes={'NAA': PowerMode.HUMAN, 'PAF': PowerMode.NEUTRAL, 'AAC': PowerMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN},
             contested={2: {'NAA', 'AAC'}},
         )
         with self.assertRaises(ValueError):

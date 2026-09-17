@@ -11,7 +11,7 @@ from enum import Enum
 from typing import Optional
 
 
-class PowerMode(Enum):
+class FactionMode(Enum):
     HUMAN = 'HUMAN'
     BOT = 'BOT'
     DEFENSIVE = 'DEFENSIVE'
@@ -233,7 +233,7 @@ class TerritoryState:
 @dataclass
 class FactionState:
     code: str
-    mode: PowerMode
+    mode: FactionMode
     treasury_mpc: int = 0  # MPC: the game's currency, spent in the Purchase phase, earned at Deploy + Income
     alliance: Optional[str] = None  # stub, unused in v1 (strict free-for-all)
     eliminated: bool = False
@@ -251,7 +251,7 @@ class FactionState:
     def from_dict(d):
         return FactionState(
             code=d['code'],
-            mode=PowerMode(d['mode']),
+            mode=FactionMode(d['mode']),
             treasury_mpc=d['treasury_mpc'],
             alliance=d['alliance'],
             eliminated=d['eliminated'],
@@ -262,7 +262,7 @@ class FactionState:
 class GameState:
     # Monotonically-increasing counter, one tick per faction-turn (not per
     # round) -- the recovery/heal rule is measured against this, not a
-    # per-faction turn number. A "round" is global_turn // num_active_powers.
+    # per-faction turn number. A "round" is global_turn // num_active_factions.
     global_turn: int = 0
     active_faction: Optional[str] = None
     phase: Phase = Phase.PURCHASE
@@ -271,7 +271,7 @@ class GameState:
     _next_unit_id: int = 1
     # victory.game_end_rule: set by GameEngine.process_game_end_check,
     # checked once per turn at the very end (after the Alliances phase)
-    # -- true once every remaining active power is mutually allied with
+    # -- true once every remaining active faction is mutually allied with
     # every other, with nobody left non-allied to keep fighting.
     game_over: bool = False
 
@@ -280,15 +280,15 @@ class GameState:
         self._next_unit_id += 1
         return uid
 
-    def active_powers(self):
+    def active_factions(self):
         """Faction codes with mode HUMAN or BOT, and not yet eliminated
         (victory.elimination_rule) -- the ones that actually take turns.
         Order is insertion order of `factions`. Every phase method in
         engine.GameEngine gates on this, and combat.recovery_rule's
-        num_powers is len(this) -- so excluding an eliminated faction
+        num_factions is len(this) -- so excluding an eliminated faction
         here is what actually enforces "gets no more turns," not
         anything phase-specific."""
-        return [code for code, f in self.factions.items() if f.mode in (PowerMode.HUMAN, PowerMode.BOT) and not f.eliminated]
+        return [code for code, f in self.factions.items() if f.mode in (FactionMode.HUMAN, FactionMode.BOT) and not f.eliminated]
 
     def to_dict(self):
         return {

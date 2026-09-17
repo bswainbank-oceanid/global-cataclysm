@@ -5,7 +5,7 @@ from engine.bots.driver import play_to_completion
 from engine.bots.random_bot import RandomBot
 from engine.engine import GameEngine
 from engine.setup import build_game_state
-from engine.state import Phase, PowerMode
+from engine.state import Phase, FactionMode
 from engine.stats import GameStats
 from engine.tests.test_engine import FakeData, make_state, make_unit
 
@@ -21,7 +21,7 @@ class TestPurchaseTargetPools(unittest.TestCase):
             },
             adjacency={1: [3], 2: [3], 3: [1, 2]},
         )
-        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.BOT, 'AAC': PowerMode.BOT})
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT})
         engine = GameEngine(gs, data)
         bot = RandomBot(engine, 'NAA')
         sc_targets, other_targets = bot._purchase_target_pools()
@@ -33,7 +33,7 @@ class TestPurchaseTargetPools(unittest.TestCase):
             territories={2: {'type': 'land', 'value': 3}, 3: {'type': 'sea'}},
             adjacency={2: [3], 3: [2]},
         )
-        gs = make_state(data, {2: 'NAA'}, {'NAA': PowerMode.BOT, 'AAC': PowerMode.BOT})
+        gs = make_state(data, {2: 'NAA'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT})
         engine = GameEngine(gs, data)
         bot = RandomBot(engine, 'NAA')
         sc_targets, other_targets = bot._purchase_target_pools()
@@ -47,7 +47,7 @@ class TestPurchasePhase(unittest.TestCase):
             territories={1: {'type': 'land', 'value': 2, 'strategic_center': True}},
             adjacency={},
         )
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.BOT, 'AAC': PowerMode.BOT}, treasury={'NAA': 20})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT}, treasury={'NAA': 20})
         engine = GameEngine(gs, data)
         bot = RandomBot(engine, 'NAA', rng=__import__('random').Random(1))
         bot.take_purchase_phase()
@@ -71,7 +71,7 @@ class TestCombatMovePhase(unittest.TestCase):
             },
             adjacency={2: [4, 7], 4: [2], 7: [2]},
         )
-        gs = make_state(data, {2: 'NAA', 4: 'AAC', 7: 'AAC'}, {'NAA': PowerMode.BOT, 'AAC': PowerMode.BOT},
+        gs = make_state(data, {2: 'NAA', 4: 'AAC', 7: 'AAC'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT},
                         phase=Phase.COMBAT_MOVE)
         unit = make_unit('Infantry', 'NAA')
         gs.territories[2].units.append(unit)
@@ -92,7 +92,7 @@ class TestCombatMovePhase(unittest.TestCase):
             },
             adjacency={2: [3], 3: [2, 6], 6: [3]},
         )
-        gs = make_state(data, {2: 'NAA'}, {'NAA': PowerMode.BOT, 'AAC': PowerMode.BOT}, phase=Phase.COMBAT_MOVE)
+        gs = make_state(data, {2: 'NAA'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT}, phase=Phase.COMBAT_MOVE)
         mover = make_unit('Infantry', 'NAA')
         gs.territories[2].units.append(mover)
         gs.territories[3].units.append(make_unit('Cruiser', 'AAC'))
@@ -116,7 +116,7 @@ class TestNonCombatMovePhase(unittest.TestCase):
             },
             adjacency={2: [8], 8: [2, 9], 9: [8]},
         )
-        gs = make_state(data, {2: 'NAA', 8: 'NAA', 9: 'AAC'}, {'NAA': PowerMode.BOT, 'AAC': PowerMode.BOT},
+        gs = make_state(data, {2: 'NAA', 8: 'NAA', 9: 'AAC'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT},
                         phase=Phase.NONCOMBAT_MOVE)
         unit = make_unit('Infantry', 'NAA')
         gs.territories[2].units.append(unit)
@@ -129,7 +129,7 @@ class TestNonCombatMovePhase(unittest.TestCase):
 
     def test_unit_with_no_legal_moves_stays_put(self):
         data = FakeData(territories={2: {'type': 'land', 'value': 2}}, adjacency={2: []})
-        gs = make_state(data, {2: 'NAA'}, {'NAA': PowerMode.BOT, 'AAC': PowerMode.BOT}, phase=Phase.NONCOMBAT_MOVE)
+        gs = make_state(data, {2: 'NAA'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT}, phase=Phase.NONCOMBAT_MOVE)
         unit = make_unit('Infantry', 'NAA')
         gs.territories[2].units.append(unit)
         engine = GameEngine(gs, data)
@@ -140,9 +140,9 @@ class TestNonCombatMovePhase(unittest.TestCase):
 
 class TestPlayToCompletion(unittest.TestCase):
     def test_naa_vs_aac_bot_game_runs_without_error(self):
-        modes = {code: PowerMode.NEUTRAL for code in real_data.factions()}
-        modes['NAA'] = PowerMode.BOT
-        modes['AAC'] = PowerMode.BOT
+        modes = {code: FactionMode.NEUTRAL for code in real_data.factions()}
+        modes['NAA'] = FactionMode.BOT
+        modes['AAC'] = FactionMode.BOT
         gs = build_game_state('starting_setup_200ipc', modes)
         stats = GameStats()
         engine = GameEngine(gs, stats=stats)

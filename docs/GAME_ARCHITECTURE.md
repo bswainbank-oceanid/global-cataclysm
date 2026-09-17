@@ -158,7 +158,7 @@ the same JSON, not a parallel editing path.
 - ✅ Territory shape/polygon extraction (`tools/extract_territory_shapes.py`
   → `data/territory_shapes.json`).
 - ⬜ Rules engine (standalone module) — Purchase, Deploy + Income, Combat
-  Move, Combat Resolution, Non-Combat Move, Capture Territory, power
+  Move, Combat Resolution, Non-Combat Move, Capture Territory, faction
   elimination, game-end detection, and full turn/phase orchestration are
   implemented and tested (`engine/`), along with a random bot
   (`engine/bots/`) that drives full games through the same public API a

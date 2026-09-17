@@ -53,7 +53,7 @@ crossing bonus above is the complete model for what happens when a land
 unit is "in a Transport"; nothing here ever calls legal_*_move_
 destinations with unit_type='Transport'.
 """
-from .state import PowerMode
+from .state import FactionMode
 
 
 def graph_distances(origin_id, data_module):
@@ -86,7 +86,7 @@ def _base_move(unit_type, move_type, unit_defs):
 
 def _is_neutral(territory_id, game_state):
     owner = game_state.territories[territory_id].owner
-    return owner is not None and game_state.factions[owner].mode == PowerMode.NEUTRAL
+    return owner is not None and game_state.factions[owner].mode == FactionMode.NEUTRAL
 
 
 def _is_contested(territory_id, game_state):

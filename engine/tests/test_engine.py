@@ -4,7 +4,7 @@ import unittest
 from engine import data as real_data
 from engine.combat import BattleResult
 from engine.engine import GameEngine, PurchaseOrder, CombatMoveOrder, NonCombatMoveOrder
-from engine.state import GameState, TerritoryState, FactionState, UnitInstance, PowerMode, Phase
+from engine.state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode, Phase
 
 UNIT_DEFS = {
     'Infantry': {'category': 'Land', 'cost': 4, 'sc_cost': 3, 'hp': 2, 'purchasable': True,
@@ -79,7 +79,7 @@ class TestLandPurchase(unittest.TestCase):
     def test_buy_within_capacity_and_confirm(self):
         # territory 1: land, value 2, owned by NAA -- cap 2.
         data = FakeData(territories={1: {'type': 'land', 'value': 2}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         cost = engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 2, 1)])
         self.assertEqual(cost, 8)  # 2 x cost 4
@@ -89,7 +89,7 @@ class TestLandPurchase(unittest.TestCase):
 
     def test_strategic_center_uses_sc_cost(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 2, 'strategic_center': True}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         cost = engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 2, 1)])
         self.assertEqual(cost, 6)  # 2 x sc_cost 3
@@ -97,28 +97,28 @@ class TestLandPurchase(unittest.TestCase):
     def test_exceeding_single_territory_capacity_is_rejected(self):
         # cap = value 2 + SC bonus 0 = 2; ordering 3 units should fail.
         data = FakeData(territories={1: {'type': 'land', 'value': 2}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 3, 1)])
 
     def test_sea_category_unit_cannot_deploy_on_land(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_purchases('NAA', [PurchaseOrder('Cruiser', 1, 1)])
 
     def test_unowned_land_target_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
-        gs = make_state(data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, 1)])
 
     def test_insufficient_treasury_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, treasury={'NAA': 3})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, treasury={'NAA': 3})
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, 1)])  # costs 4, only 3 available
@@ -127,13 +127,13 @@ class TestLandPurchase(unittest.TestCase):
 class TestContestedLandDeployRestriction(unittest.TestCase):
     def test_infantry_allowed_into_contested_land(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, contested={1: {'NAA', 'AAC'}})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, contested={1: {'NAA', 'AAC'}})
         engine = GameEngine(gs, data)
         engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, 1)])  # should not raise
 
     def test_non_infantry_rejected_from_contested_land(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, contested={1: {'NAA', 'AAC'}})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, contested={1: {'NAA', 'AAC'}})
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_purchases('NAA', [PurchaseOrder('Armor', 1, 1)])
@@ -146,14 +146,14 @@ class TestSeaDeployAllocation(unittest.TestCase):
             territories={1: {'type': 'land', 'value': 3, 'strategic_center': True}, 2: {'type': 'sea'}},
             adjacency={2: [1]},
         )
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         cost = engine.submit_purchases('NAA', [PurchaseOrder('Cruiser', 2, 2)])
         self.assertEqual(cost, 16)  # 2 x sc_cost 8 (SC's cap is 3+2=5, plenty of room)
 
     def test_no_adjacent_owned_territory_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 3}, 2: {'type': 'sea'}}, adjacency={2: [1]})
-        gs = make_state(data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_purchases('NAA', [PurchaseOrder('Cruiser', 1, 2)])
@@ -170,7 +170,7 @@ class TestSeaDeployAllocation(unittest.TestCase):
             },
             adjacency={3: [1, 2]},
         )
-        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         # Buy exactly 3 (the SC's full capacity) -- if the SC goes
         # first, all 3 should be sc_cost (3 x 3 = 9); if the larger
@@ -191,7 +191,7 @@ class TestSeaDeployAllocation(unittest.TestCase):
             },
             adjacency={3: [1, 2]},
         )
-        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         cost = engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 5, 3)])
         self.assertEqual(cost, 9 + 8)
@@ -206,7 +206,7 @@ class TestSeaDeployAllocation(unittest.TestCase):
             },
             adjacency={3: [1, 2]},
         )
-        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 9, 3)])
@@ -220,7 +220,7 @@ class TestSeaDeployAllocation(unittest.TestCase):
             territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}},
             adjacency={2: [1]},
         )
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 3, 2), PurchaseOrder('Armor', 3, 2)])
@@ -231,7 +231,7 @@ class TestSeaDeployAllocation(unittest.TestCase):
         # already treats any land unit sitting in a sea zone as riding
         # one); confirm_purchases just places the ordered unit type.
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, 2)])
         engine.confirm_purchases('NAA')
@@ -243,7 +243,7 @@ class TestSeaDeployAllocation(unittest.TestCase):
 class TestRollbackAndConfirmation(unittest.TestCase):
     def test_resubmitting_replaces_the_staged_list(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 2, 1)])
         engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, 1)])  # "undo" down to 1
@@ -252,7 +252,7 @@ class TestRollbackAndConfirmation(unittest.TestCase):
 
     def test_cannot_resubmit_after_confirming(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, 1)])
         engine.confirm_purchases('NAA')
@@ -263,21 +263,21 @@ class TestRollbackAndConfirmation(unittest.TestCase):
 
     def test_confirm_with_no_prior_submission_is_a_harmless_no_op(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         engine.confirm_purchases('NAA')
         self.assertEqual(gs.factions['NAA'].treasury_mpc, 1000)
 
     def test_defensive_faction_cannot_submit_purchases(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.DEFENSIVE})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.DEFENSIVE})
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, 1)])
 
     def test_wrong_phase_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         gs.phase = Phase.COMBAT_MOVE
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
@@ -288,7 +288,7 @@ class TestDeployPending(unittest.TestCase):
     def test_land_deploy_to_still_owned_territory(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
             pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1)]},
         )
         engine = GameEngine(gs, data)
@@ -298,7 +298,7 @@ class TestDeployPending(unittest.TestCase):
 
     def test_wrong_phase_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.PURCHASE)
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.PURCHASE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.deploy_and_collect_income('NAA')
@@ -313,7 +313,7 @@ class TestContestedPurchaseLostFallback(unittest.TestCase):
             adjacency={1: [2, 3]},
         )
         gs = make_state(
-            data, {1: 'AAC', 2: 'NAA'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            data, {1: 'AAC', 2: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             phase=Phase.DEPLOY_INCOME,
             pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1)]},
         )
@@ -328,7 +328,7 @@ class TestContestedPurchaseLostFallback(unittest.TestCase):
             adjacency={1: [2, 3]},
         )
         gs = make_state(
-            data, {1: 'AAC', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            data, {1: 'AAC', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             phase=Phase.DEPLOY_INCOME,
             pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1)]},
         )
@@ -342,7 +342,7 @@ class TestContestedPurchaseLostFallback(unittest.TestCase):
             adjacency={1: [2]},
         )
         gs = make_state(
-            data, {1: 'AAC', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            data, {1: 'AAC', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             phase=Phase.DEPLOY_INCOME,
             pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1)]},
         )
@@ -354,7 +354,7 @@ class TestContestedPurchaseLostFallback(unittest.TestCase):
     def test_still_owned_territory_is_unaffected(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
             contested={1: {'NAA', 'AAC'}},  # still contested but NOT lost
             pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1)]},
         )
@@ -367,7 +367,7 @@ class TestCarrierlessAirDeployFallback(unittest.TestCase):
     def test_redirects_to_purchasing_land_when_no_carrier_anywhere(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
             pending_by_territory={2: [make_unit('Fighter', 'NAA', purchased_at=1)]},
         )
         engine = GameEngine(gs, data)
@@ -378,7 +378,7 @@ class TestCarrierlessAirDeployFallback(unittest.TestCase):
     def test_stays_at_sea_when_own_carrier_already_present(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
             units_by_territory={2: [make_unit('Aircraft Carrier', 'NAA')]},
             pending_by_territory={2: [make_unit('Fighter', 'NAA', purchased_at=1)]},
         )
@@ -389,7 +389,7 @@ class TestCarrierlessAirDeployFallback(unittest.TestCase):
     def test_stays_at_sea_when_own_carrier_arrives_in_the_same_batch(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
             pending_by_territory={2: [make_unit('Fighter', 'NAA', purchased_at=1), make_unit('Aircraft Carrier', 'NAA', purchased_at=1)]},
         )
         engine = GameEngine(gs, data)
@@ -399,7 +399,7 @@ class TestCarrierlessAirDeployFallback(unittest.TestCase):
     def test_allied_carrier_does_not_count(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
             units_by_territory={2: [make_unit('Aircraft Carrier', 'UE')]},
             pending_by_territory={2: [make_unit('Fighter', 'NAA', purchased_at=1)]},
         )
@@ -414,7 +414,7 @@ class TestHostileSeaDeployCreatesContested(unittest.TestCase):
     def test_deploying_into_enemy_occupied_zone_creates_contested(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
             units_by_territory={2: [make_unit('Cruiser', 'AAC')]},
             pending_by_territory={2: [make_unit('Cruiser', 'NAA', purchased_at=1)]},
         )
@@ -425,7 +425,7 @@ class TestHostileSeaDeployCreatesContested(unittest.TestCase):
     def test_deploying_into_allied_occupied_zone_stays_uncontested(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
             units_by_territory={2: [make_unit('Cruiser', 'UE')]},
             pending_by_territory={2: [make_unit('Cruiser', 'NAA', purchased_at=1)]},
         )
@@ -438,7 +438,7 @@ class TestHostileSeaDeployCreatesContested(unittest.TestCase):
     def test_deploying_into_empty_zone_stays_uncontested(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
             pending_by_territory={2: [make_unit('Cruiser', 'NAA', purchased_at=1)]},
         )
         engine = GameEngine(gs, data)
@@ -452,7 +452,7 @@ class TestIncomeCollection(unittest.TestCase):
             territories={1: {'type': 'land', 'value': 3}, 2: {'type': 'land', 'value': 2, 'strategic_center': True}},
             adjacency={},
         )
-        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, treasury={'NAA': 10}, phase=Phase.DEPLOY_INCOME)
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, treasury={'NAA': 10}, phase=Phase.DEPLOY_INCOME)
         engine = GameEngine(gs, data)
         engine.deploy_and_collect_income('NAA')
         self.assertEqual(gs.factions['NAA'].treasury_mpc, 10 + 3 + (2 + 2))
@@ -460,7 +460,7 @@ class TestIncomeCollection(unittest.TestCase):
     def test_contested_territory_contributes_no_income(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, treasury={'NAA': 10}, phase=Phase.DEPLOY_INCOME,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, treasury={'NAA': 10}, phase=Phase.DEPLOY_INCOME,
             contested={1: {'NAA', 'AAC'}},
         )
         engine = GameEngine(gs, data)
@@ -472,10 +472,10 @@ class TestGlobalRecoverySweep(unittest.TestCase):
     def test_unit_heals_after_a_full_round_has_elapsed(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 5}}, adjacency={})
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             phase=Phase.DEPLOY_INCOME, global_turn=2,
         )
-        # 2 active powers -- damaged on global_turn 0, so a full round
+        # 2 active factions -- damaged on global_turn 0, so a full round
         # (2 turns) has elapsed by global_turn 2.
         damaged = make_unit('Armor', 'AAC', hp=1)
         damaged.last_combat_global_turn = 0
@@ -487,7 +487,7 @@ class TestGlobalRecoverySweep(unittest.TestCase):
     def test_unit_does_not_heal_before_a_full_round_has_elapsed(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 5}}, adjacency={})
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             phase=Phase.DEPLOY_INCOME, global_turn=1,
         )
         damaged = make_unit('Armor', 'AAC', hp=1)
@@ -495,14 +495,14 @@ class TestGlobalRecoverySweep(unittest.TestCase):
         gs.territories[2].units.append(damaged)
         engine = GameEngine(gs, data)
         engine.deploy_and_collect_income('NAA')
-        self.assertEqual(damaged.current_hp, 1, 'only 1 turn elapsed, not a full round (2 active powers)')
+        self.assertEqual(damaged.current_hp, 1, 'only 1 turn elapsed, not a full round (2 active factions)')
 
     def test_recovery_sweeps_the_whole_board_not_just_the_active_faction(self):
         # The unit healed above belongs to AAC, not the acting faction
         # NAA -- confirming the sweep really is global.
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 5}}, adjacency={})
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             phase=Phase.DEPLOY_INCOME, global_turn=2,
         )
         damaged = make_unit('Armor', 'AAC', hp=1)
@@ -519,7 +519,7 @@ class TestCombatMoveExecution(unittest.TestCase):
         attacker = make_unit('Infantry', 'NAA')
         defender = make_unit('Infantry', 'AAC')
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [attacker], 2: [defender]},
         )
         engine = GameEngine(gs, data)
@@ -538,7 +538,7 @@ class TestCombatMoveExecution(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         mover = make_unit('Armor', 'NAA')
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
@@ -558,7 +558,7 @@ class TestCombatMoveExecution(unittest.TestCase):
         mover = make_unit('Mechanized Infantry', 'NAA')
         defender = make_unit('Infantry', 'AAC')
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC', 3: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {1: 'NAA', 2: 'AAC', 3: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [mover], 3: [defender]},
         )
         engine = GameEngine(gs, data)
@@ -573,7 +573,7 @@ class TestCombatMoveExecution(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         mover = make_unit('Fighter', 'NAA')
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [mover]},  # territory 2 is EMPTY -- air alone can't attack nothing, so...
         )
         engine = GameEngine(gs, data)
@@ -586,7 +586,7 @@ class TestCombatMoveExecution(unittest.TestCase):
         mover = make_unit('Fighter', 'NAA')
         defender = make_unit('Infantry', 'AAC')
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [mover], 2: [defender]},
         )
         engine = GameEngine(gs, data)
@@ -598,7 +598,7 @@ class TestCombatMoveExecution(unittest.TestCase):
 
     def test_unit_not_found_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
-        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE)
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_combat_moves('NAA', [CombatMoveOrder(99999, [1, 2])])
@@ -607,7 +607,7 @@ class TestCombatMoveExecution(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         other_faction_unit = make_unit('Infantry', 'AAC')
         gs = make_state(
-            data, {1: 'AAC', 2: 'NAA'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {1: 'AAC', 2: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [other_faction_unit]},
         )
         engine = GameEngine(gs, data)
@@ -620,7 +620,7 @@ class TestCombatMoveExecution(unittest.TestCase):
         )
         mover = make_unit('Infantry', 'NAA')
         gs = make_state(
-            data, {1: 'NAA', 3: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {1: 'NAA', 3: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
@@ -634,7 +634,7 @@ class TestCombatMoveExecution(unittest.TestCase):
         )
         mover = make_unit('Infantry', 'NAA')
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC', 3: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {1: 'NAA', 2: 'AAC', 3: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
@@ -664,7 +664,7 @@ class TestCombatMoveExecution(unittest.TestCase):
         unit_b = make_unit('Infantry', 'NAA')
         defender = make_unit('Infantry', 'AAC')
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC', 4: 'NAA'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {1: 'NAA', 2: 'AAC', 4: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [unit_a], 2: [defender], 4: [unit_b]},
         )
         engine = GameEngine(gs, data)
@@ -685,7 +685,7 @@ class TestCombatMoveCarrierRideAlong(unittest.TestCase):
         rider = make_unit('Fighter', 'NAA')
         defender = make_unit('Cruiser', 'AAC')
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [carrier, rider], 2: [defender]},
         )
         engine = GameEngine(gs, data)
@@ -702,7 +702,7 @@ class TestCombatMoveCarrierRideAlong(unittest.TestCase):
         rider = make_unit('Fighter', 'NAA')
         defender = make_unit('Cruiser', 'AAC')
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [carrier, rider], 2: [defender]},
         )
         engine = GameEngine(gs, data)
@@ -717,7 +717,7 @@ class TestCombatMoveCarrierRideAlong(unittest.TestCase):
         rider = make_unit('Fighter', 'NAA')
         defender = make_unit('Cruiser', 'AAC')
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [carrier, rider], 2: [defender]},
         )
         engine = GameEngine(gs, data)
@@ -743,7 +743,7 @@ class TestCombatMoveCarrierRideAlong(unittest.TestCase):
                 sea_defender = make_unit('Cruiser', 'AAC')
                 land_defender = make_unit('Infantry', 'AAC')
                 gs = make_state(
-                    data, {3: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+                    data, {3: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
                     units_by_territory={1: [carrier, rider], 2: [sea_defender], 3: [land_defender]},
                 )
                 engine = GameEngine(gs, data)
@@ -762,7 +762,7 @@ class TestCombatMoveCarrierRideAlong(unittest.TestCase):
         escort = make_unit('Cruiser', 'NAA')
         defender = make_unit('Cruiser', 'AAC')
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [carrier, escort], 2: [defender]},
         )
         engine = GameEngine(gs, data)
@@ -776,7 +776,7 @@ class TestCombatMoveCarrierRideAlong(unittest.TestCase):
         ally_rider = make_unit('Fighter', 'UE')
         defender = make_unit('Cruiser', 'AAC')
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [carrier, ally_rider], 2: [defender]},
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -792,7 +792,7 @@ class TestCombatMoveRollback(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         mover = make_unit('Infantry', 'NAA')
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
@@ -806,7 +806,7 @@ class TestCombatMoveRollback(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         mover = make_unit('Infantry', 'NAA')
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
@@ -819,14 +819,14 @@ class TestCombatMoveRollback(unittest.TestCase):
 
     def test_wrong_phase_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
-        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.PURCHASE)
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.PURCHASE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_combat_moves('NAA', [CombatMoveOrder(1, [1, 2])])
 
     def test_defensive_faction_cannot_submit_combat_moves(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
-        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.DEFENSIVE, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE)
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.DEFENSIVE, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_combat_moves('NAA', [CombatMoveOrder(1, [1, 2])])
@@ -857,7 +857,7 @@ class TestDeclaredBattlesAndGathering(unittest.TestCase):
             territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'sea'}}, adjacency={},
         )
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
             contested={1: {'NAA', 'AAC'}, 3: {'NAA', 'AAC'}},
             units_by_territory={1: [make_unit('Infantry', 'NAA')], 3: [make_unit('Cruiser', 'NAA')]},
         )
@@ -868,7 +868,7 @@ class TestDeclaredBattlesAndGathering(unittest.TestCase):
     def test_excludes_uncontested_territories(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
             units_by_territory={1: [make_unit('Infantry', 'NAA')]},
         )
         engine = GameEngine(gs, data)
@@ -879,7 +879,7 @@ class TestDeclaredBattlesAndGathering(unittest.TestCase):
         # units there, so it's not NAA's battle to fight this turn.
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN},
             phase=Phase.COMBAT_RESOLUTION, contested={1: {'UE', 'AAC'}},
             units_by_territory={1: [make_unit('Infantry', 'AAC')]},
         )
@@ -892,7 +892,7 @@ class TestDeclaredBattlesAndGathering(unittest.TestCase):
         defender_ue = make_unit('Armor', 'UE')
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN},
             phase=Phase.COMBAT_RESOLUTION, contested={1: {'NAA', 'AAC', 'UE'}},
             units_by_territory={1: [attacker, defender_aac, defender_ue]},
         )
@@ -907,7 +907,7 @@ class TestDeclaredBattlesAndGathering(unittest.TestCase):
         enemy_unit = make_unit('Armor', 'AAC')
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN},
             phase=Phase.COMBAT_RESOLUTION, contested={1: {'NAA', 'AAC', 'UE'}},
             units_by_territory={1: [attacker, ally_unit, enemy_unit]},
         )
@@ -925,7 +925,7 @@ class TestResolveCombatEndToEnd(unittest.TestCase):
         attacker = make_unit('Infantry', 'NAA')
         defender = make_unit('Infantry', 'AAC')
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
             contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
         )
         engine = GameEngine(gs, data)
@@ -944,7 +944,7 @@ class TestResolveCombatEndToEnd(unittest.TestCase):
         attacker = make_unit('Infantry', 'NAA')
         defender = make_unit('Infantry', 'AAC')
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
             contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
         )
         engine = GameEngine(gs, data)
@@ -959,7 +959,7 @@ class TestResolveCombatEndToEnd(unittest.TestCase):
         attacker = make_unit('Armor', 'NAA')
         defender = make_unit('Armor', 'AAC')
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
             contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
         )
         engine = GameEngine(gs, data)
@@ -974,14 +974,14 @@ class TestResolveCombatEndToEnd(unittest.TestCase):
 
     def test_wrong_phase_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE)
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.resolve_combat('NAA')
 
     def test_already_resolved_this_turn_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION)
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION)
         engine = GameEngine(gs, data)
         engine.resolve_combat('NAA')
         with self.assertRaises(ValueError):
@@ -989,7 +989,7 @@ class TestResolveCombatEndToEnd(unittest.TestCase):
 
     def test_non_active_faction_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.NEUTRAL}, phase=Phase.COMBAT_RESOLUTION)
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.NEUTRAL}, phase=Phase.COMBAT_RESOLUTION)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.resolve_combat('NAA')
@@ -1006,7 +1006,7 @@ class TestEmergencyLandingConsequence(unittest.TestCase):
         carrier = make_unit('Aircraft Carrier', 'AAC')
         fighter = make_unit('Fighter', 'AAC')
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
             units_by_territory={2: [fighter]},  # carrier already removed by _apply_battle_outcome's dead-unit cleanup
         )
         result = BattleResult(
@@ -1024,7 +1024,7 @@ class TestEmergencyLandingConsequence(unittest.TestCase):
         carrier = make_unit('Aircraft Carrier', 'AAC')
         fighter = make_unit('Fighter', 'AAC')
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
             units_by_territory={2: [carrier, fighter]},
         )
         result = BattleResult(
@@ -1043,7 +1043,7 @@ class TestEmergencyLandingConsequence(unittest.TestCase):
         attacker_carrier = make_unit('Aircraft Carrier', 'NAA')
         attacker_fighter = make_unit('Fighter', 'NAA')
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
             units_by_territory={2: [attacker_fighter]},
         )
         result = BattleResult(
@@ -1059,7 +1059,7 @@ class TestEmergencyLandingConsequence(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         survivor = make_unit('Fighter', 'AAC')
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
             units_by_territory={1: [survivor]},
         )
         result = BattleResult(
@@ -1077,7 +1077,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         mover = make_unit('Infantry', 'NAA')
         gs = make_state(
-            data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
@@ -1097,7 +1097,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
         already_there = make_unit('Infantry', 'NAA')
         defender = make_unit('Infantry', 'AAC')
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             contested={2: {'NAA', 'AAC'}},
             units_by_territory={1: [reinforcement], 2: [already_there, defender]},
         )
@@ -1113,7 +1113,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         mover = make_unit('Infantry', 'NAA')
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN},
             phase=Phase.NONCOMBAT_MOVE, contested={2: {'AAC', 'UE'}}, units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
@@ -1127,7 +1127,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
         mover = make_unit('Infantry', 'NAA')
         mover.has_moved_combat = True
         gs = make_state(
-            data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
@@ -1140,7 +1140,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
         mover = make_unit('Fighter', 'NAA')
         mover.has_moved_combat = True
         gs = make_state(
-            data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
@@ -1155,7 +1155,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         mover = make_unit('Infantry', 'NAA')
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
@@ -1169,7 +1169,7 @@ class TestNonCombatMoveExecution(unittest.TestCase):
         )
         mover = make_unit('Infantry', 'NAA')
         gs = make_state(
-            data, {1: 'NAA', 2: 'NAA', 3: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {1: 'NAA', 2: 'NAA', 3: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
@@ -1186,7 +1186,7 @@ class TestNonCombatMoveRollback(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         mover = make_unit('Infantry', 'NAA')
         gs = make_state(
-            data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
@@ -1201,7 +1201,7 @@ class TestNonCombatMoveRollback(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         mover = make_unit('Infantry', 'NAA')
         gs = make_state(
-            data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [mover]},
         )
         engine = GameEngine(gs, data)
@@ -1215,21 +1215,21 @@ class TestNonCombatMoveRollback(unittest.TestCase):
 
     def test_wrong_phase_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
-        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE)
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(1, 2)])
 
     def test_defensive_faction_cannot_submit_noncombat_moves(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
-        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.DEFENSIVE}, phase=Phase.NONCOMBAT_MOVE)
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.DEFENSIVE}, phase=Phase.NONCOMBAT_MOVE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(1, 2)])
 
     def test_submit_noncombat_moves_requires_return_to_base_first(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
-        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE)
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_noncombat_moves('NAA', [])
@@ -1243,7 +1243,7 @@ class TestReturnToBase(unittest.TestCase):
         flyer = make_unit('Fighter', 'NAA')
         flyer.combat_move_origin = 1
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={2: [flyer]},
         )
         engine = GameEngine(gs, data)
@@ -1265,7 +1265,7 @@ class TestReturnToBase(unittest.TestCase):
         flyer.combat_move_origin = 1
         flyer.based_on_carrier = carrier.unit_id
         gs = make_state(
-            data, {2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={2: [flyer], 3: [carrier]},
         )
         engine = GameEngine(gs, data)
@@ -1279,7 +1279,7 @@ class TestReturnToBase(unittest.TestCase):
         flyer.combat_move_origin = 1
         flyer.based_on_carrier = 9999  # no unit anywhere has this id -- destroyed
         gs = make_state(
-            data, {2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={2: [flyer]},
         )
         engine = GameEngine(gs, data)
@@ -1292,7 +1292,7 @@ class TestReturnToBase(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         untouched = make_unit('Fighter', 'NAA')
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [untouched]},
         )
         engine = GameEngine(gs, data)
@@ -1301,7 +1301,7 @@ class TestReturnToBase(unittest.TestCase):
 
     def test_cannot_process_return_to_base_twice(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE)
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE)
         engine = GameEngine(gs, data)
         engine.process_return_to_base('NAA')
         with self.assertRaises(ValueError):
@@ -1309,14 +1309,14 @@ class TestReturnToBase(unittest.TestCase):
 
     def test_wrong_phase_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE)
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.process_return_to_base('NAA')
 
     def test_non_active_faction_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.NEUTRAL}, phase=Phase.NONCOMBAT_MOVE)
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.NEUTRAL}, phase=Phase.NONCOMBAT_MOVE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.process_return_to_base('NAA')
@@ -1328,7 +1328,7 @@ class TestCarrierRideAlong(unittest.TestCase):
         carrier = make_unit('Aircraft Carrier', 'NAA')
         flyer = make_unit('Fighter', 'NAA')
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [carrier, flyer]},
         )
         engine = GameEngine(gs, data)
@@ -1347,7 +1347,7 @@ class TestCarrierRideAlong(unittest.TestCase):
         carrier = make_unit('Aircraft Carrier', 'NAA')
         flyer = make_unit('Fighter', 'NAA')
         gs = make_state(
-            data, {3: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {3: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [carrier, flyer]},
         )
         engine = GameEngine(gs, data)
@@ -1368,7 +1368,7 @@ class TestCarrierRideAlong(unittest.TestCase):
         carrier = make_unit('Aircraft Carrier', 'NAA')
         flyer = make_unit('Fighter', 'NAA')
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [flyer], 2: [carrier]},
         )
         engine = GameEngine(gs, data)
@@ -1387,7 +1387,7 @@ class TestCarrierRideAlong(unittest.TestCase):
         own_flyer = make_unit('Fighter', 'NAA')
         ally_flyer = make_unit('Fighter', 'UE')
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [carrier, own_flyer, ally_flyer]},
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -1405,7 +1405,7 @@ class TestStrandedAircraftCheck(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
         flyer = make_unit('Fighter', 'NAA')
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [flyer]},
         )
         engine = GameEngine(gs, data)
@@ -1419,7 +1419,7 @@ class TestStrandedAircraftCheck(unittest.TestCase):
         carrier = make_unit('Aircraft Carrier', 'NAA')
         flyer = make_unit('Fighter', 'NAA')
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [carrier, flyer]},
         )
         engine = GameEngine(gs, data)
@@ -1433,7 +1433,7 @@ class TestStrandedAircraftCheck(unittest.TestCase):
         ally_carrier = make_unit('Aircraft Carrier', 'UE')
         flyer = make_unit('Fighter', 'NAA')
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [ally_carrier, flyer]},
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -1448,7 +1448,7 @@ class TestStrandedAircraftCheck(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         soldier = make_unit('Infantry', 'NAA')
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
             units_by_territory={1: [soldier]},
         )
         engine = GameEngine(gs, data)
@@ -1464,7 +1464,7 @@ class TestCaptureTerritory(unittest.TestCase):
         # through and kept moving -- but it's still owed the claim.
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE,
             contested={1: {'NAA', 'AAC'}},
         )
         engine = GameEngine(gs, data)
@@ -1476,7 +1476,7 @@ class TestCaptureTerritory(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         survivor = make_unit('Infantry', 'NAA')
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE,
             contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [survivor]},
         )
         engine = GameEngine(gs, data)
@@ -1488,7 +1488,7 @@ class TestCaptureTerritory(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         defender = make_unit('Infantry', 'AAC')
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE,
             contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [defender]},
         )
         engine = GameEngine(gs, data)
@@ -1501,7 +1501,7 @@ class TestCaptureTerritory(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         surviving_fighter = make_unit('Fighter', 'AAC')
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE,
             contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [surviving_fighter]},
         )
         engine = GameEngine(gs, data)
@@ -1517,7 +1517,7 @@ class TestCaptureTerritory(unittest.TestCase):
         own_unit = make_unit('Infantry', 'NAA')
         ally_unit = make_unit('Infantry', 'UE')
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.CAPTURE,
             contested={1: {'NAA', 'AAC', 'UE'}}, units_by_territory={1: [own_unit, ally_unit]},
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -1534,7 +1534,7 @@ class TestCaptureTerritory(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         ally_unit = make_unit('Infantry', 'UE')
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.CAPTURE,
             contested={1: {'NAA', 'AAC', 'UE'}}, units_by_territory={1: [ally_unit]},
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -1552,7 +1552,7 @@ class TestCaptureTerritory(unittest.TestCase):
         gpc_unit = make_unit('Infantry', 'GPC')
         gs = make_state(
             data, {1: 'AAC'},
-            {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN, 'GPC': PowerMode.HUMAN},
+            {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
             phase=Phase.CAPTURE, contested={1: {'NAA', 'AAC', 'UE', 'GPC'}},
             units_by_territory={1: [ue_unit, gpc_unit]},
         )
@@ -1569,7 +1569,7 @@ class TestCaptureTerritory(unittest.TestCase):
         gpc_unit = make_unit('Infantry', 'GPC')
         gs = make_state(
             data, {1: 'AAC'},
-            {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN, 'GPC': PowerMode.HUMAN},
+            {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
             phase=Phase.CAPTURE, contested={1: {'NAA', 'AAC', 'UE', 'GPC'}},
             units_by_territory={1: [ue_unit, gpc_unit]},
         )
@@ -1583,17 +1583,17 @@ class TestCaptureTerritory(unittest.TestCase):
         # iteration order and should win the tie.
         self.assertEqual(gs.territories[1].owner, 'UE', 'tied on cost -- earlier turn order wins')
 
-    def test_two_other_powers_still_contesting_leaves_ownership_alone(self):
+    def test_two_other_factions_still_contesting_leaves_ownership_alone(self):
         # Neither AAC nor UE is allied with NAA (or each other); both
         # still have land units present -- even the nominal owner being
         # a THIRD, unrelated faction (simulating one that's since been
         # eliminated) shouldn't matter -- nothing resolves in NAA's
-        # favor while two other powers are still genuinely contesting.
+        # favor while two other factions are still genuinely contesting.
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         aac_unit = make_unit('Infantry', 'AAC')
         ue_unit = make_unit('Infantry', 'UE')
         gs = make_state(
-            data, {1: 'PAF'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            data, {1: 'PAF'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.CAPTURE,
             contested={1: {'NAA', 'AAC', 'UE'}}, units_by_territory={1: [aac_unit, ue_unit]},
         )
         engine = GameEngine(gs, data)
@@ -1604,7 +1604,7 @@ class TestCaptureTerritory(unittest.TestCase):
     def test_faction_not_in_contested_by_is_untouched(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         gs = make_state(
-            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.CAPTURE,
             contested={1: {'AAC', 'UE'}},  # NAA has no stake in this one
         )
         engine = GameEngine(gs, data)
@@ -1615,7 +1615,7 @@ class TestCaptureTerritory(unittest.TestCase):
     def test_sea_territories_are_never_touched(self):
         data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE,
             contested={1: {'NAA', 'AAC'}},
         )
         engine = GameEngine(gs, data)
@@ -1625,14 +1625,14 @@ class TestCaptureTerritory(unittest.TestCase):
 
     def test_wrong_phase_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE)
+        gs = make_state(data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.process_capture_territory('NAA')
 
     def test_non_active_faction_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'AAC'}, {'NAA': PowerMode.NEUTRAL, 'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        gs = make_state(data, {1: 'AAC'}, {'NAA': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.process_capture_territory('NAA')
@@ -1641,14 +1641,14 @@ class TestCaptureTerritory(unittest.TestCase):
 class TestEliminationCheck(unittest.TestCase):
     def test_faction_with_zero_scs_is_eliminated(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 3}}, adjacency={})
-        gs = make_state(data, {1: 'AAC'}, {'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        gs = make_state(data, {1: 'AAC'}, {'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE)
         engine = GameEngine(gs, data)
         engine.process_elimination_check()
         self.assertTrue(gs.factions['AAC'].eliminated)
 
     def test_faction_with_exactly_one_sc_is_eliminated(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 2, 'strategic_center': True}}, adjacency={})
-        gs = make_state(data, {1: 'AAC'}, {'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        gs = make_state(data, {1: 'AAC'}, {'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE)
         engine = GameEngine(gs, data)
         engine.process_elimination_check()
         self.assertTrue(gs.factions['AAC'].eliminated)
@@ -1658,7 +1658,7 @@ class TestEliminationCheck(unittest.TestCase):
             territories={1: {'type': 'land', 'strategic_center': True}, 2: {'type': 'land', 'strategic_center': True}},
             adjacency={},
         )
-        gs = make_state(data, {1: 'AAC', 2: 'AAC'}, {'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        gs = make_state(data, {1: 'AAC', 2: 'AAC'}, {'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE)
         engine = GameEngine(gs, data)
         engine.process_elimination_check()
         self.assertFalse(gs.factions['AAC'].eliminated)
@@ -1671,7 +1671,7 @@ class TestEliminationCheck(unittest.TestCase):
         stranded_here = make_unit('Infantry', 'AAC')
         stranded_there = make_unit('Cruiser', 'AAC')
         gs = make_state(
-            data, {1: 'AAC'}, {'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            data, {1: 'AAC'}, {'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE,
             units_by_territory={1: [stranded_here], 2: [stranded_there]},
         )
         engine = GameEngine(gs, data)
@@ -1688,29 +1688,29 @@ class TestEliminationCheck(unittest.TestCase):
             adjacency={},
         )
         gs = make_state(
-            data, {1: 'AAC', 2: 'AAC'}, {'AAC': PowerMode.HUMAN, 'NAA': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            data, {1: 'AAC', 2: 'AAC'}, {'AAC': FactionMode.HUMAN, 'NAA': FactionMode.HUMAN}, phase=Phase.CAPTURE,
             contested={1: {'AAC', 'NAA'}},
         )
         engine = GameEngine(gs, data)
         engine.process_elimination_check()
         self.assertFalse(gs.factions['AAC'].eliminated)
 
-    def test_eliminated_faction_is_excluded_from_active_powers(self):
+    def test_eliminated_faction_is_excluded_from_active_factions(self):
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'land', 'strategic_center': True}, 3: {'type': 'land', 'strategic_center': True}},
             adjacency={},
         )
         gs = make_state(
-            data, {1: 'AAC', 2: 'NAA', 3: 'NAA'}, {'AAC': PowerMode.HUMAN, 'NAA': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            data, {1: 'AAC', 2: 'NAA', 3: 'NAA'}, {'AAC': FactionMode.HUMAN, 'NAA': FactionMode.HUMAN}, phase=Phase.CAPTURE,
         )
         engine = GameEngine(gs, data)
         engine.process_elimination_check()
-        self.assertNotIn('AAC', gs.active_powers())
-        self.assertIn('NAA', gs.active_powers())
+        self.assertNotIn('AAC', gs.active_factions())
+        self.assertIn('NAA', gs.active_factions())
 
     def test_neutral_factions_are_never_eliminated(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'PAF'}, {'PAF': PowerMode.NEUTRAL}, phase=Phase.CAPTURE)
+        gs = make_state(data, {1: 'PAF'}, {'PAF': FactionMode.NEUTRAL}, phase=Phase.CAPTURE)
         engine = GameEngine(gs, data)
         engine.process_elimination_check()
         self.assertFalse(gs.factions['PAF'].eliminated)
@@ -1719,7 +1719,7 @@ class TestEliminationCheck(unittest.TestCase):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         stranded = make_unit('Infantry', 'AAC')
         gs = make_state(
-            data, {1: 'AAC'}, {'AAC': PowerMode.DEFENSIVE}, phase=Phase.CAPTURE,
+            data, {1: 'AAC'}, {'AAC': FactionMode.DEFENSIVE}, phase=Phase.CAPTURE,
             units_by_territory={1: [stranded]},
         )
         engine = GameEngine(gs, data)
@@ -1729,7 +1729,7 @@ class TestEliminationCheck(unittest.TestCase):
 
     def test_calling_twice_is_idempotent(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'AAC'}, {'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        gs = make_state(data, {1: 'AAC'}, {'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE)
         engine = GameEngine(gs, data)
         engine.process_elimination_check()
         engine.process_elimination_check()  # should not raise
@@ -1737,30 +1737,30 @@ class TestEliminationCheck(unittest.TestCase):
 
     def test_wrong_phase_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'AAC'}, {'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE)
+        gs = make_state(data, {1: 'AAC'}, {'AAC': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.process_elimination_check()
 
 
 class TestGameEndCheck(unittest.TestCase):
-    def test_would_game_end_true_with_a_single_active_power(self):
+    def test_would_game_end_true_with_a_single_active_faction(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
         engine = GameEngine(gs, data)
         self.assertTrue(engine.would_game_end())
 
-    def test_would_game_end_true_when_all_active_powers_share_an_alliance(self):
+    def test_would_game_end_true_when_all_active_factions_share_an_alliance(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
         engine = GameEngine(gs, data)
         self.assertTrue(engine.would_game_end())
 
-    def test_would_game_end_false_when_non_allied_powers_remain(self):
+    def test_would_game_end_false_when_non_allied_factions_remain(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
         engine = GameEngine(gs, data)
         self.assertFalse(engine.would_game_end())
 
@@ -1769,7 +1769,7 @@ class TestGameEndCheck(unittest.TestCase):
         # mutually allied, so there's still someone to fight.
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -1778,11 +1778,11 @@ class TestGameEndCheck(unittest.TestCase):
 
     def test_eliminated_and_neutral_factions_dont_count(self):
         # AAC is eliminated, PAF is Neutral -- neither ever takes turns,
-        # so with NAA and UE (allied) as the only ACTIVE powers left,
+        # so with NAA and UE (allied) as the only ACTIVE factions left,
         # the game should still be considered over.
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'PAF': PowerMode.NEUTRAL},
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL},
             phase=Phase.ALLIANCES,
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -1793,7 +1793,7 @@ class TestGameEndCheck(unittest.TestCase):
 
     def test_process_game_end_check_sets_game_over(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
         engine = GameEngine(gs, data)
@@ -1803,7 +1803,7 @@ class TestGameEndCheck(unittest.TestCase):
 
     def test_withdrawing_keeps_the_game_going(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
         engine = GameEngine(gs, data)
@@ -1815,7 +1815,7 @@ class TestGameEndCheck(unittest.TestCase):
 
     def test_withdrawing_when_the_game_wasnt_going_to_end_anyway(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
         engine = GameEngine(gs, data)
         result = engine.process_game_end_check('NAA', withdraw_from_alliance=True)
         self.assertFalse(result)
@@ -1823,14 +1823,14 @@ class TestGameEndCheck(unittest.TestCase):
 
     def test_wrong_phase_is_rejected(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.CAPTURE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.process_game_end_check('NAA')
 
     def test_non_active_faction_is_rejected(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.NEUTRAL}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.NEUTRAL}, phase=Phase.ALLIANCES)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.process_game_end_check('NAA')
@@ -1839,7 +1839,7 @@ class TestGameEndCheck(unittest.TestCase):
 class TestAdvancePhase(unittest.TestCase):
     def test_steps_through_the_full_sequence_and_then_stops(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.PURCHASE)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.PURCHASE)
         engine = GameEngine(gs, data)
         expected = [
             Phase.COMBAT_MOVE, Phase.COMBAT_RESOLUTION, Phase.NONCOMBAT_MOVE,
@@ -1859,7 +1859,7 @@ class TestAdvanceTurn(unittest.TestCase):
         mover.has_moved_combat = True
         mover.has_moved_noncombat = True
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
             units_by_territory={1: [mover]},
         )
         gs.active_faction = 'NAA'
@@ -1870,7 +1870,7 @@ class TestAdvanceTurn(unittest.TestCase):
 
     def test_clears_phase_confirmation_guards_so_the_next_turn_works(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
         gs.active_faction = 'NAA'
         engine = GameEngine(gs, data)
         # Simulate NAA having already confirmed every phase this turn.
@@ -1889,10 +1889,10 @@ class TestAdvanceTurn(unittest.TestCase):
         gs.active_faction = 'NAA'
         engine.submit_purchases('NAA', [])  # should not raise
 
-    def test_cycles_to_the_next_active_power_and_wraps_around(self):
+    def test_cycles_to_the_next_active_faction_and_wraps_around(self):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
         )
         gs.active_faction = 'NAA'
         engine = GameEngine(gs, data)
@@ -1908,17 +1908,17 @@ class TestAdvanceTurn(unittest.TestCase):
     def test_skips_a_faction_eliminated_since_its_turn_began(self):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
-            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
         )
         gs.active_faction = 'NAA'
         gs.factions['AAC'].eliminated = True  # eliminated during NAA's own turn
         engine = GameEngine(gs, data)
         engine.advance_turn()
-        self.assertEqual(gs.active_faction, 'UE', 'AAC is skipped -- no longer an active power')
+        self.assertEqual(gs.active_faction, 'UE', 'AAC is skipped -- no longer an active faction')
 
     def test_increments_global_turn(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES, global_turn=5)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES, global_turn=5)
         gs.active_faction = 'NAA'
         engine = GameEngine(gs, data)
         engine.advance_turn()
@@ -1926,17 +1926,17 @@ class TestAdvanceTurn(unittest.TestCase):
 
     def test_resets_phase_to_purchase(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
         gs.active_faction = 'NAA'
         engine = GameEngine(gs, data)
         engine.advance_turn()
         self.assertEqual(gs.phase, Phase.PURCHASE)
 
-    def test_sets_game_over_when_no_active_powers_remain(self):
+    def test_sets_game_over_when_no_active_factions_remain(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
         gs.active_faction = 'NAA'
-        gs.factions['NAA'].eliminated = True  # the only active power, gone
+        gs.factions['NAA'].eliminated = True  # the only active faction, gone
         engine = GameEngine(gs, data)
         engine.advance_turn()
         self.assertTrue(gs.game_over)
@@ -1944,7 +1944,7 @@ class TestAdvanceTurn(unittest.TestCase):
 
     def test_raises_if_the_game_is_already_over(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
         gs.game_over = True
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
@@ -1952,7 +1952,7 @@ class TestAdvanceTurn(unittest.TestCase):
 
     def test_raises_if_not_at_the_alliances_phase(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.CAPTURE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.advance_turn()
@@ -2015,7 +2015,7 @@ class TestFullTurnLoopIntegration(unittest.TestCase):
             adjacency={},
         )
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC', 3: 'NAA', 4: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            data, {1: 'NAA', 2: 'AAC', 3: 'NAA', 4: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             phase=Phase.PURCHASE, treasury={'NAA': 0, 'AAC': 0},
         )
         gs.active_faction = 'NAA'
@@ -2047,7 +2047,7 @@ class TestFullTurnLoopIntegration(unittest.TestCase):
         )
         mover = make_unit('Infantry', 'NAA')
         gs = make_state(
-            data, {1: 'NAA', 2: 'NAA', 3: 'AAC', 4: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            data, {1: 'NAA', 2: 'NAA', 3: 'AAC', 4: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             phase=Phase.PURCHASE, units_by_territory={1: [mover]},
         )
         gs.active_faction = 'NAA'

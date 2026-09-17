@@ -15,7 +15,7 @@ import random
 from .. import data
 from ..engine import GameEngine
 from ..setup import build_game_state
-from ..state import PowerMode
+from ..state import FactionMode
 from ..stats import GameStats
 from .driver import play_to_completion
 from .random_bot import RandomBot
@@ -27,9 +27,9 @@ def main():
     parser.add_argument('--max-turns', type=int, default=500)
     args = parser.parse_args()
 
-    modes = {code: PowerMode.NEUTRAL for code in data.factions()}
-    modes['NAA'] = PowerMode.BOT
-    modes['AAC'] = PowerMode.BOT
+    modes = {code: FactionMode.NEUTRAL for code in data.factions()}
+    modes['NAA'] = FactionMode.BOT
+    modes['AAC'] = FactionMode.BOT
 
     gs = build_game_state('starting_setup_200ipc', modes)
     stats = GameStats()
