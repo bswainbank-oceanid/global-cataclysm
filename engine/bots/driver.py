@@ -37,7 +37,13 @@ def play_to_completion(engine, bots, max_turns=500):
     Deploy + Income entirely, EVERY first turn (the default setting).
     Purchased units sat in pending_deployment forever, and no income was
     ever collected, for a faction's whole first turn -- a real bug this
-    exact shape had until fixed this session."""
+    exact shape had until fixed this session.
+
+    Once the loop above reaches Phase.ALLIANCES, bot.take_alliance_phase()
+    runs its one optional invite/withdraw (engine.bots.alliance_policy),
+    BEFORE process_game_end_check -- withdrawing to avoid the game ending
+    is that same regular action, not a separate end-of-game window (see
+    engine.engine.GameEngine.process_game_end_check's own docstring)."""
     gs = engine.game_state
     turns_played = 0
     while not gs.game_over and turns_played < max_turns:
@@ -62,6 +68,7 @@ def play_to_completion(engine, bots, max_turns=500):
                 engine.deploy_and_collect_income(faction)
             engine.advance_phase()
 
+        bot.take_alliance_phase()
         engine.process_game_end_check(faction)
         turns_played += 1
         if gs.game_over:

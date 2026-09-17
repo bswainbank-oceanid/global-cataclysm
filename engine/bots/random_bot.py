@@ -64,10 +64,23 @@ Behavior, as specified by the user this session:
   every phase from the unit's current position (_garrisons_an_sc), so a
   later arrival is covered automatically without any separate
   "has arrived" state.
+- Alliances: one optional invite/withdraw per turn, driven entirely by
+  FactionState.alliance_strategy/alliance_behavior (game-start settings,
+  see setup.build_game_state's alliance_strategies/alliance_behaviors
+  params) -- the actual decision logic lives in engine.bots.
+  alliance_policy, a standalone module, since accepting an invitation is
+  the TARGET faction's own strategy decision, not the inviter's, and
+  needs to be computable for any faction without needing its bot
+  instance. See take_alliance_phase/_maybe_roll_treacherous_intent below
+  and alliance_policy's module docstring for the per-strategy/behavior
+  rules themselves.
 
 Only Purchase is randomized (per spec); Combat Move and Non-Combat Move
 are both deterministic given the board state, which keeps a driven game
-reproducible for a given purchase RNG seed.
+reproducible for a given purchase RNG seed. Alliance decisions are a mix:
+target/withdrawal SELECTION among several equally-valid options is
+randomized (this bot's own rng), but WHETHER to act at all follows each
+strategy/behavior's fixed rule.
 """
 import copy
 import random
@@ -78,6 +91,7 @@ from ..movement import (
     legal_combat_move_paths, legal_noncombat_move_paths, trace_combat_move,
 )
 from ..state import FactionMode
+from . import alliance_policy
 from .policy import excluded_naval_purchase_zones
 
 
@@ -90,6 +104,7 @@ class RandomBot:
     # ---- Purchase -----------------------------------------------------
 
     def take_purchase_phase(self):
+        self._maybe_roll_treacherous_intent()
         gs = self.engine.game_state
         treasury = gs.factions[self.faction].treasury_mpc
 
@@ -354,6 +369,53 @@ class RandomBot:
 
         dist_from_target = graph_distances(target, data)
         return min(legal, key=lambda d: (dist_from_target.get(d, float('inf')), d))
+
+    # ---- Alliances --------------------------------------------------------
+
+    def _maybe_roll_treacherous_intent(self):
+        """Start-of-turn hook (called from take_purchase_phase, Purchase
+        always being the first phase of every turn -- see turn_order):
+        alliance_behavior == 'treacherous' rolls its 15% withdraw chance
+        here, using this bot's own seeded rng, and stashes the result on
+        FactionState.pending_treacherous_withdrawal for
+        alliance_policy.should_withdraw to read later this same turn, at
+        the Alliances phase. Only rolls while actually in an alliance --
+        nothing to withdraw from otherwise, so the decision is moot."""
+        fstate = self.engine.game_state.factions[self.faction]
+        if fstate.alliance_behavior == 'treacherous' and fstate.alliance is not None:
+            fstate.pending_treacherous_withdrawal = self.rng.random() < 0.15
+
+    def take_alliance_phase(self):
+        """One optional action this turn, per alliance_strategy/
+        alliance_behavior (engine.bots.alliance_policy) -- withdrawing
+        (behavior-driven) takes priority over inviting (strategy-driven)
+        when both would apply, since a bot that wants out this turn has
+        no business also trying to grow the alliance it's about to
+        leave. GameEngine re-validates everything; a ValueError here just
+        means this bot's advisory pick didn't hold up (e.g. another
+        faction's invite this same Alliances-phase pass already changed
+        something) -- silently do nothing that turn rather than treat it
+        as a bug, exactly like every other speculative bot decision in
+        this file."""
+        gs = self.engine.game_state
+        fstate = gs.factions[self.faction]
+
+        if fstate.alliance is not None and gs.can_withdraw_from_alliances:
+            if alliance_policy.should_withdraw(self.engine, self.faction):
+                try:
+                    self.engine.withdraw_from_alliance(self.faction)
+                except ValueError:
+                    pass
+                return
+
+        target = alliance_policy.choose_invite_target(self.engine, self.faction, self.rng)
+        if target is None:
+            return
+        accepts = alliance_policy.accepts_invite(self.engine, target, self.faction)
+        try:
+            self.engine.invite_to_alliance(self.faction, target, accepts)
+        except ValueError:
+            pass
 
     # ---- shared submission helper ---------------------------------------
 

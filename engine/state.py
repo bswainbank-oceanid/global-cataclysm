@@ -263,6 +263,24 @@ class FactionState:
     # in this set (checked against the WHOLE prospective alliance, not
     # just the direct inviter, at invite_to_alliance time).
     former_allies: set = field(default_factory=set)
+    # Bot-only game-start settings (engine.bots.alliance_policy): a fixed
+    # string ('aggressive'/'passive'/'counterweight'/'independent' and
+    # 'loyal'/'opportunistic'/'treacherous' respectively) resolved ONCE at
+    # setup.build_game_state time -- a 'random' input is rolled to a
+    # concrete value there and only the concrete result is stored, so it
+    # stays fixed for the rest of the game even though it was chosen
+    # randomly. None for HUMAN/DEFENSIVE/NEUTRAL factions, which never
+    # consult this policy layer at all.
+    alliance_strategy: Optional[str] = None
+    alliance_behavior: Optional[str] = None
+    # alliance_behavior == 'treacherous' only: this faction's RandomBot
+    # rolls its 15%-chance "decide to withdraw" check once, at the START
+    # of its own turn (take_purchase_phase), and stores the result here
+    # so the SAME decision is still honored later that same turn, at the
+    # Alliances phase (take_alliance_phase) -- consumed (reset to False)
+    # the moment it's read there, whether or not the withdrawal actually
+    # went through.
+    pending_treacherous_withdrawal: bool = False
 
     def to_dict(self):
         return {
@@ -273,6 +291,9 @@ class FactionState:
             'eliminated': self.eliminated,
             'turns_taken': self.turns_taken,
             'former_allies': sorted(self.former_allies),
+            'alliance_strategy': self.alliance_strategy,
+            'alliance_behavior': self.alliance_behavior,
+            'pending_treacherous_withdrawal': self.pending_treacherous_withdrawal,
         }
 
     @staticmethod
@@ -285,6 +306,9 @@ class FactionState:
             eliminated=d['eliminated'],
             turns_taken=d.get('turns_taken', 0),
             former_allies=set(d.get('former_allies', [])),
+            alliance_strategy=d.get('alliance_strategy'),
+            alliance_behavior=d.get('alliance_behavior'),
+            pending_treacherous_withdrawal=d.get('pending_treacherous_withdrawal', False),
         )
 
 

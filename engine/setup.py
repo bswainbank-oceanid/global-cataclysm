@@ -24,6 +24,7 @@ ordinarily 31 MPC (25 base territory value + 3 Strategic Centers x 2).
 import random
 
 from . import data
+from .bots.alliance_policy import resolve_alliance_behavior, resolve_alliance_strategy
 from .economy import compute_income
 from .state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode, Phase
 
@@ -98,7 +99,8 @@ def _apply_promotions(scenario, faction, bought_at):
 def build_game_state(scenario_name, faction_modes, defensive_scenario_name='starting_setup_100ipc',
                       randomize_play_order=True, allow_combat_moves_first_turn=False,
                       allow_noncombat_moves_first_turn=True, max_alliance_size=2,
-                      can_withdraw_from_alliances=True, can_rejoin_alliances=False, rng=None):
+                      can_withdraw_from_alliances=True, can_rejoin_alliances=False,
+                      alliance_strategies=None, alliance_behaviors=None, rng=None):
     """scenario_name: e.g. 'starting_setup_200ipc', used for every HUMAN/
     BOT faction. faction_modes: {faction_code: FactionMode}, one entry per
     faction in data.factions(). Returns a fresh GameState at global_turn 0
@@ -123,7 +125,19 @@ def build_game_state(scenario_name, faction_modes, defensive_scenario_name='star
       (default True) / can_rejoin_alliances (default False): stored
       directly on GameState and enforced every Alliances phase by
       GameEngine.invite_to_alliance/withdraw_from_alliance -- not
-      validated here (a value outside 1-5 is trusted, not rejected)."""
+      validated here (a value outside 1-5 is trusted, not rejected).
+
+    alliance_strategies / alliance_behaviors: optional {faction_code: str}
+    -- per-BOT game-start settings (engine.bots.alliance_policy), each
+    value one of that module's STRATEGIES/BEHAVIORS, 'random', or simply
+    omitted (also treated as 'random'). Resolved ONCE here via
+    resolve_alliance_strategy/resolve_alliance_behavior (using `rng`, the
+    same one randomize_play_order uses) and stored as the concrete result
+    on FactionState.alliance_strategy/alliance_behavior -- fixed for the
+    rest of the game even when the input was 'random'. Only ever set for
+    FactionMode.BOT factions; HUMAN/DEFENSIVE/NEUTRAL factions never
+    consult this policy layer, so their fields stay None."""
+    rng = rng or random.Random()
     gs = GameState(
         global_turn=0, phase=Phase.PURCHASE,
         allow_combat_moves_first_turn=allow_combat_moves_first_turn,
@@ -139,10 +153,17 @@ def build_game_state(scenario_name, faction_modes, defensive_scenario_name='star
 
     faction_codes = list(data.factions())
     if randomize_play_order:
-        rng = rng or random.Random()
         rng.shuffle(faction_codes)
     for code in faction_codes:
         gs.factions[code] = FactionState(code=code, mode=faction_modes[code], treasury_mpc=0)
+
+    alliance_strategies = alliance_strategies or {}
+    alliance_behaviors = alliance_behaviors or {}
+    for code, fstate in gs.factions.items():
+        if fstate.mode != FactionMode.BOT:
+            continue
+        fstate.alliance_strategy = resolve_alliance_strategy(alliance_strategies.get(code), rng)
+        fstate.alliance_behavior = resolve_alliance_behavior(alliance_behaviors.get(code), rng)
 
     for code, fstate in gs.factions.items():
         # Starting treasury: this faction's territories are already
