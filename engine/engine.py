@@ -1,37 +1,41 @@
 """
 GameEngine: the phased order-submission API wrapping a GameState,
 exposed identically to human and bot callers (see docs/GAME_ARCHITECTURE.md's
-build plan, Step 4). Purchase and Deploy + Income are implemented so
-far -- Purchase covers data/rules.json's full `purchase` section
-(location targeting, the start-of-turn ownership snapshot, SC-discounted
-cost, the SC-first-then-most-remaining-capacity multi-territory
-allocation with spillover, naval/land location restrictions, and the
-contested-land Infantry-only restriction); Deploy + Income covers
-placing pending_deployment onto the board (with the carrierless-air and
-lost-contested-purchase fallbacks, and hostile-sea-zone deploys becoming
-contested), income collection, and the global recovery/heal sweep.
-Combat Move, Combat Resolution, Non-Combat Move, and Capture Territory
-are not yet implemented -- notably, nothing here yet transitions
-GameState.phase itself between phases; callers currently set it
-directly (see the tests).
+build plan, Step 4). Purchase, Deploy + Income, and Combat Move are
+implemented so far -- Purchase covers data/rules.json's full `purchase`
+section (location targeting, the start-of-turn ownership snapshot,
+SC-discounted cost, the SC-first-then-most-remaining-capacity
+multi-territory allocation with spillover, naval/land location
+restrictions, and the contested-land Infantry-only restriction);
+Deploy + Income covers placing pending_deployment onto the board (with
+the carrierless-air and lost-contested-purchase fallbacks, and
+hostile-sea-zone deploys becoming contested), income collection, and the
+global recovery/heal sweep; Combat Move covers relocating units along a
+validated path, immediate ownership capture for undefended land (both a
+Mechanized Infantry blitz's intermediate stops and any unit's
+uncontested final stop), and marking an attacked/joined destination
+contested. Combat Resolution, Non-Combat Move, and Capture Territory are
+not yet implemented -- notably, nothing here yet transitions
+GameState.phase itself between phases; callers currently set it directly
+(see the tests).
 
-Rollback (phase_confirmation): submit_purchases takes the COMPLETE
-desired order list every call, wholesale-replacing any previously staged
-list for that faction -- there's no separate undo_last()/append() API.
-A caller "undoes" a purchase simply by calling submit_purchases again
-with a corrected list; nothing is written to GameState (treasury_mpc,
-pending_deployment) until confirm_purchases() is called, which is
-irreversible for that faction's turn (submit_purchases and
-confirm_purchases both then refuse further calls for that faction).
-Deploy + Income has no such staging -- it's automatic and irreversible
-by nature (see turn_order's Deploy + Income entry), so it's just one
-direct call.
+Rollback (phase_confirmation): submit_purchases/submit_combat_moves both
+take the COMPLETE desired order list every call, wholesale-replacing any
+previously staged list for that faction -- there's no separate
+undo_last()/append() API. A caller "undoes" a choice simply by calling
+submit_* again with a corrected list; nothing is written to GameState
+until confirm_purchases()/confirm_combat_moves() is called, which is
+irreversible for that faction's turn (submit_* and confirm_* both then
+refuse further calls for that faction, for that phase). Deploy + Income
+has no such staging -- it's automatic and irreversible by nature (see
+turn_order's Deploy + Income entry), so it's just one direct call.
 """
+import copy
 from dataclasses import dataclass
 
 from . import data as _default_data
 from .economy import compute_income
-from .movement import _is_ally_or_self
+from .movement import _is_ally_or_self, legal_air_move_destinations, trace_combat_move
 from .state import Phase, UnitInstance
 
 
@@ -42,12 +46,28 @@ class PurchaseOrder:
     deploy_at: int  # territory_id, land or sea -- the actual final deploy target
 
 
+@dataclass
+class CombatMoveOrder:
+    unit_id: int
+    # The FULL route: path[0] must be wherever the unit currently is,
+    # path[-1] the chosen destination, every consecutive pair adjacent.
+    # Required even for a single-hop move (then just [origin, dest]) --
+    # not just a destination -- because a Mechanized Infantry blitz's
+    # intermediate captures depend on the actual route taken, not only
+    # the endpoint (see movement.trace_combat_move). Air units, which
+    # have no hop-by-hop legality or capture concerns, must still supply
+    # exactly a 2-entry [origin, destination] path.
+    path: list
+
+
 class GameEngine:
     def __init__(self, game_state, data_module=None):
         self.game_state = game_state
         self.data = data_module or _default_data
         self._staged_purchases = {}  # faction_code -> [PurchaseOrder, ...]
         self._purchases_confirmed = set()
+        self._staged_combat_moves = {}  # faction_code -> [CombatMoveOrder, ...]
+        self._combat_moves_confirmed = set()
 
     def _purchase_sources(self, deploy_at, faction):
         """Ordered list of territory_ids whose capacity/cost apply to a
@@ -330,3 +350,106 @@ class GameEngine:
                     continue
                 if self.game_state.global_turn - u.last_combat_global_turn >= num_powers:
                     u.current_hp = u.effective_stats(unit_defs)['max_hp']
+
+    def _find_unit(self, game_state, unit_id, faction):
+        for t in game_state.territories.values():
+            for u in t.units:
+                if u.unit_id == unit_id:
+                    if u.owner != faction:
+                        raise ValueError(f'unit {unit_id} does not belong to {faction}')
+                    return u, t.territory_id
+        raise ValueError(f'unit {unit_id} not found on the board (pending_deployment units cannot move this turn)')
+
+    def _mark_contested_by_attack(self, dest_state, faction, game_state):
+        """Adds `faction` and every non-allied defender (both current
+        occupants and, for a land territory, its registered owner) to
+        contested_by -- combat_move_destination's "relocating into the
+        target is what makes it contested"."""
+        defenders = {u.owner for u in dest_state.units if not _is_ally_or_self(game_state, faction, u.owner)}
+        if dest_state.owner and not _is_ally_or_self(game_state, faction, dest_state.owner):
+            defenders.add(dest_state.owner)
+        dest_state.contested_by = (dest_state.contested_by or set()) | {faction} | defenders
+
+    def _execute_combat_moves(self, orders, faction, game_state):
+        """Runs `orders` against `game_state`, relocating each unit
+        along its validated path and applying every consequence as it
+        goes -- so a LATER order in the same list can legitimately
+        depend on an EARLIER one's capture (e.g. staging a second wave
+        through ground the first wave just took). Raises ValueError on
+        the first illegal order. Used identically by submit_combat_moves
+        (against a throwaway deep copy, purely to validate) and
+        confirm_combat_moves (against the real GameState)."""
+        unit_defs = self.data.units()
+        for order in orders:
+            if len(order.path) < 2:
+                raise ValueError(f'unit {order.unit_id}: a combat move path needs at least an origin and a destination')
+            unit, origin_id = self._find_unit(game_state, order.unit_id, faction)
+            if unit.has_moved_combat:
+                raise ValueError(f'unit {order.unit_id} has already made a combat move this turn')
+            if origin_id != order.path[0]:
+                raise ValueError(f'unit {order.unit_id} is at {origin_id}, not {order.path[0]}')
+
+            category = unit_defs[unit.unit_type]['category']
+            dest_id = order.path[-1]
+            origin_state = game_state.territories[origin_id]
+            dest_state = game_state.territories[dest_id]
+
+            if category == 'Air':
+                if len(order.path) != 2:
+                    raise ValueError(f'unit {order.unit_id}: an air combat move path must be exactly [origin, destination]')
+                legal = legal_air_move_destinations(unit.unit_type, faction, origin_id, 'combat', game_state, self.data)
+                if dest_id not in legal:
+                    raise ValueError(f'{dest_id} is not a legal air combat-move destination for unit {order.unit_id}')
+                origin_state.units.remove(unit)
+                dest_state.units.append(unit)
+                self._mark_contested_by_attack(dest_state, faction, game_state)  # air alone can't capture, only attack
+            else:
+                trace = trace_combat_move(unit.unit_type, faction, order.path, game_state, self.data)
+                origin_state.units.remove(unit)
+                for captured_tid in trace.captured_en_route:
+                    game_state.territories[captured_tid].owner = faction
+                if trace.final_kind == 'capture':
+                    dest_state.owner = faction
+                elif trace.final_kind in ('attack', 'join_contest'):
+                    self._mark_contested_by_attack(dest_state, faction, game_state)
+                # 'safe_landing': already friendly -- no ownership or contested change
+                dest_state.units.append(unit)
+
+            unit.has_moved_combat = True
+
+    def submit_combat_moves(self, faction, orders):
+        """Validates and stages `orders` (a list of CombatMoveOrder) as
+        the COMPLETE desired combat-move list for `faction` this turn --
+        replaces any previously staged list outright, so resubmitting a
+        corrected list is how a caller "undoes" a prior choice. Runs the
+        full move/capture/contest sequence against a throwaway deep copy
+        of GameState purely to validate it (discarded either way) --
+        nothing real is touched here. Raises ValueError (nothing staged)
+        if any order is illegal."""
+        if faction not in self.game_state.active_powers():
+            raise ValueError(f'{faction} is not an active power and cannot submit combat moves')
+        if self.game_state.phase != Phase.COMBAT_MOVE:
+            raise ValueError('submit_combat_moves is only valid during the Combat Move phase')
+        if faction in self._combat_moves_confirmed:
+            raise ValueError(f'{faction} has already confirmed combat moves this turn')
+
+        working = copy.deepcopy(self.game_state)
+        self._execute_combat_moves(orders, faction, working)
+
+        self._staged_combat_moves[faction] = list(orders)
+
+    def confirm_combat_moves(self, faction):
+        """Commits `faction`'s currently-staged combat-move list (empty
+        if submit_combat_moves was never called) -- re-runs the exact
+        same validated sequence against the real GameState. Irreversible:
+        submit_combat_moves and confirm_combat_moves both refuse further
+        calls for this faction this turn afterward."""
+        if faction not in self.game_state.active_powers():
+            raise ValueError(f'{faction} is not an active power')
+        if faction in self._combat_moves_confirmed:
+            raise ValueError(f'{faction} has already confirmed combat moves this turn')
+
+        orders = self._staged_combat_moves.get(faction, [])
+        self._execute_combat_moves(orders, faction, self.game_state)
+        self._combat_moves_confirmed.add(faction)
+        self._staged_combat_moves.pop(faction, None)

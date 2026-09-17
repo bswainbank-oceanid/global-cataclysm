@@ -4,7 +4,7 @@ import unittest
 from engine.state import GameState, TerritoryState, FactionState, UnitInstance, PowerMode
 from engine.movement import (
     legal_combat_move_destinations, legal_noncombat_move_destinations, legal_air_move_destinations,
-    find_emergency_landing,
+    find_emergency_landing, trace_combat_move,
 )
 
 # Minimal unit_defs -- movement.py only ever reads combat_move/
@@ -584,6 +584,137 @@ class TestFindEmergencyLanding(unittest.TestCase):
         )
         seen = {find_emergency_landing(1, 'NAA', gs, data, random.Random(seed)) for seed in range(20)}
         self.assertEqual(seen, {2, 3}, 'both own-land options should be reachable across enough random seeds')
+
+
+class TestTraceCombatMove(unittest.TestCase):
+    def test_single_hop_attack(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 2: 'AAC'}, faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Infantry', 'AAC')]},
+        )
+        trace = trace_combat_move('Infantry', 'NAA', [1, 2], gs, data)
+        self.assertEqual(trace.final_kind, 'attack')
+        self.assertEqual(trace.captured_en_route, [])
+
+    def test_single_hop_capture_of_empty_foreign_land(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 2: 'AAC'}, faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+        )
+        trace = trace_combat_move('Armor', 'NAA', [1, 2], gs, data)
+        self.assertEqual(trace.final_kind, 'capture')
+
+    def test_mech_inf_blitz_captures_intermediate_empty_territories_then_attacks(self):
+        # Mech Inf's combat_move is 2 -- a 2-hop path: capture the empty
+        # territory 2 along the way, then attack the defended territory 3.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            units_by_territory={3: [enemy_unit(1, 'Infantry', 'AAC')]},
+        )
+        trace = trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3], gs, data)
+        self.assertEqual(trace.captured_en_route, [2])
+        self.assertEqual(trace.final_kind, 'attack')
+
+    def test_mech_inf_blitz_ends_in_capture_not_attack(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+        )
+        trace = trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3], gs, data)
+        self.assertEqual(trace.captured_en_route, [2])
+        self.assertEqual(trace.final_kind, 'capture')
+
+    def test_non_mech_inf_cannot_pass_through_empty_foreign_land(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+        )
+        with self.assertRaises(ValueError):
+            trace_combat_move('Armor', 'NAA', [1, 2, 3], gs, data)
+
+    def test_path_exceeding_budget_is_rejected(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 2: 'NAA', 3: 'AAC'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+        )
+        # Infantry combat_move is 1 -- can't legally traverse two hops.
+        with self.assertRaises(ValueError):
+            trace_combat_move('Infantry', 'NAA', [1, 2, 3], gs, data)
+
+    def test_non_adjacent_hop_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}}, adjacency={1: [2]})
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 3: 'AAC'}, faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+        )
+        with self.assertRaises(ValueError):
+            trace_combat_move('Mechanized Infantry', 'NAA', [1, 3], gs, data)
+
+    def test_joining_an_already_contested_destination(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 2: 'AAC'}, faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            contested={2: {'AAC', 'UE'}},
+        )
+        trace = trace_combat_move('Infantry', 'NAA', [1, 2], gs, data)
+        self.assertEqual(trace.final_kind, 'join_contest')
+
+    def test_amphibious_escape_through_hostile_water_to_friendly_land(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'sea'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 3: 'NAA'}, faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            contested={2: {'NAA', 'AAC'}},
+        )
+        trace = trace_combat_move('Infantry', 'NAA', [1, 2, 3], gs, data)
+        self.assertEqual(trace.final_kind, 'safe_landing')
+
+    def test_cannot_continue_past_an_amphibious_landing(self):
+        # Mech Inf: combat_move 2, +1 for touching water = 3, so budget
+        # alone would allow a 3rd hop -- but landing via the hostile-
+        # water exception must be the final stop of the move regardless.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'sea'}, 3: {'type': 'land'}, 4: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2, 4], 4: [3]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 3: 'NAA', 4: 'AAC'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            contested={2: {'NAA', 'AAC'}},
+        )
+        with self.assertRaises(ValueError):
+            trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3, 4], gs, data)
+
+    def test_neutral_territory_blocks_the_path(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 2: 'PAF', 3: 'AAC'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'PAF': PowerMode.NEUTRAL, 'AAC': PowerMode.HUMAN},
+        )
+        with self.assertRaises(ValueError):
+            trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3], gs, data)
 
 
 if __name__ == '__main__':

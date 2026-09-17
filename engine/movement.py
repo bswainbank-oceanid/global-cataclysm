@@ -256,6 +256,131 @@ def legal_combat_move_destinations(unit_type, owner, origin_id, game_state, data
     return _reachable_destinations(origin_id, owner, unit_type, 'combat', game_state, data_module)
 
 
+class CombatMoveTrace:
+    """Result of trace_combat_move: which LAND territories were
+    captured via an uncontested Mechanized-Infantry blitz pass-through
+    (captured_en_route -- never includes the final stop), and what kind
+    of consequence the final stop represents (final_kind):
+    'capture' (empty foreign land, uncontested -- owned immediately, no
+    fight needed), 'attack' (enemy-occupied, now contested), 'join_contest'
+    (already contested, stays so), or 'safe_landing' (friendly land
+    reached via a hostile-water escape, or -- for a naval unit -- simply
+    contested/enemy water, which for a non-land unit is always an
+    attack/join, never a "landing"; see engine.py's caller for how each
+    is actually applied to GameState)."""
+    __slots__ = ('captured_en_route', 'final_kind')
+
+    def __init__(self, captured_en_route, final_kind):
+        self.captured_en_route = captured_en_route
+        self.final_kind = final_kind
+
+
+def trace_combat_move(unit_type, owner, path, game_state, data_module):
+    """Validates `path` (a list of territory_ids: path[0] is where the
+    unit currently is, path[-1] the chosen final destination, every
+    consecutive pair adjacent) as a fully legal combat move for a LAND
+    or SEA `unit_type` -- air units have no hop-by-hop legality or
+    capture concerns and should use legal_air_move_destinations instead.
+    Unlike legal_combat_move_destinations (which BFS-explores every
+    reachable destination but never records HOW it got there), this
+    walks the ONE given path, hop by hop, using the exact same
+    _classify_combat_hop rules -- necessary because Mechanized
+    Infantry's blitz can legally capture more than one empty foreign
+    territory in a single move, and knowing WHICH ones requires the
+    actual route, not just the endpoint (a unit can have more than one
+    equal-length legal route to the same destination).
+
+    Raises ValueError with a specific reason if any hop is illegal or
+    the path exceeds the unit's combat-move budget (including the
+    dynamic water-crossing bonus, applied the same way
+    _reachable_destinations does). Returns a CombatMoveTrace on success.
+    """
+    if len(path) < 2:
+        raise ValueError('a combat move path needs at least an origin and a destination')
+
+    unit_defs = data_module.units()
+    territories = data_module.territories()
+    adjacency = data_module.adjacency()
+    is_land_unit = unit_defs[unit_type]['category'] == 'Land'
+
+    base_budget = _base_move(unit_type, 'combat', unit_defs)
+    water_active = is_land_unit and territories[path[0]]['type'] == 'sea'
+    moves_used = 0
+    captured_en_route = []
+    # True when the PREVIOUS hop was a hostile-water crossing (_Hop's
+    # 'land_only' pass-through) -- forces THIS hop to be land, and to be
+    # the final stop of the whole path (see the amphibious-landing
+    # comment below). Mirrors _reachable_destinations' BFS driver, which
+    # carries this same flag forward from one hop to the next rather
+    # than checking it against the hop that set it.
+    land_only_restricted = False
+
+    for i in range(1, len(path)):
+        current_id, next_id = path[i - 1], path[i]
+        if next_id not in adjacency.get(current_id, []):
+            raise ValueError(f'{current_id} and {next_id} are not adjacent')
+        neighbor_is_land = territories[next_id]['type'] == 'land'
+        is_last = (i == len(path) - 1)
+
+        if land_only_restricted:
+            if not neighbor_is_land:
+                raise ValueError(f'cannot continue past hostile water without landing at {next_id}')
+            if not is_last:
+                raise ValueError('a hostile-water landing must be the final stop of this combat move')
+
+        water_active = water_active or (is_land_unit and not neighbor_is_land)
+        budget = base_budget + (1 if water_active else 0)
+        moves_used += 1
+        if moves_used > budget:
+            raise ValueError(f"path exceeds {unit_type}'s combat move budget ({budget})")
+
+        if land_only_restricted:
+            # Landing forced by the amphibious exception -- always a
+            # legal stop here regardless of this land territory's own
+            # ordinary classification (e.g. even normally-pass-only
+            # friendly land); final_kind below, derived from raw state,
+            # works out whether it's an attack, a capture, joining a
+            # fight, or a safe landing. Never itself a "capture along
+            # the way" in captured_en_route's sense -- it's already the
+            # final hop (enforced above), so any capture here shows up
+            # as final_kind == 'capture' instead.
+            land_only_restricted = False
+            continue
+
+        hop = _classify_combat_hop(next_id, owner, unit_type, is_land_unit, game_state, territories)
+        if is_last:
+            if not hop.stop:
+                raise ValueError(f'{next_id} is not a legal place to end this combat move')
+        else:
+            if not hop.pass_through:
+                raise ValueError(f'{unit_type} cannot continue past {next_id}')
+            if hop.stop and neighbor_is_land:
+                # The only way a mid-path hop is BOTH a legal stop and
+                # continuable is Mechanized Infantry's empty-foreign-land
+                # blitz (STOP_AND_PASS) -- own/allied land is pass-only
+                # (never "stop"), and a contested/enemy-occupied hop is
+                # stop-only (never continuable), so reaching here always
+                # means an uncontested capture along the way.
+                captured_en_route.append(next_id)
+        land_only_restricted = (hop.pass_through == 'land_only')
+
+    final_id = path[-1]
+    final_state = game_state.territories[final_id]
+    final_is_land = territories[final_id]['type'] == 'land'
+    if final_is_land and _is_ally_or_self(game_state, owner, final_state.owner):
+        final_kind = 'safe_landing'
+    elif final_state.contested_by:
+        final_kind = 'join_contest'
+    elif _enemies_present(final_id, owner, game_state):
+        final_kind = 'attack'
+    elif final_is_land:
+        final_kind = 'capture'
+    else:
+        final_kind = 'attack'  # empty open sea is never a legal final stop -- see _classify_combat_hop
+
+    return CombatMoveTrace(captured_en_route=captured_en_route, final_kind=final_kind)
+
+
 def legal_noncombat_move_destinations(unit_type, owner, origin_id, game_state, data_module):
     """Territories/sea zones `owner`'s `unit_type` unit, currently at
     `origin_id`, could legally end a non-combat move at."""

@@ -1,11 +1,13 @@
 import unittest
 
-from engine.engine import GameEngine, PurchaseOrder
+from engine.engine import GameEngine, PurchaseOrder, CombatMoveOrder
 from engine.state import GameState, TerritoryState, FactionState, UnitInstance, PowerMode, Phase
 
 UNIT_DEFS = {
     'Infantry': {'category': 'Land', 'cost': 4, 'sc_cost': 3, 'hp': 2, 'purchasable': True,
                  'attack_die': 'D6', 'defense': 5, 'damage': 2, 'combat_move': 1, 'non_combat_move': 2},
+    'Mechanized Infantry': {'category': 'Land', 'cost': 6, 'sc_cost': 4, 'hp': 3, 'purchasable': True,
+                             'attack_die': 'D6', 'defense': 6, 'damage': 3, 'combat_move': 2, 'non_combat_move': 2},
     'Armor': {'category': 'Land', 'cost': 8, 'sc_cost': 6, 'hp': 4, 'purchasable': True,
               'attack_die': 'D8', 'defense': 7, 'damage': 4, 'combat_move': 1, 'non_combat_move': 2},
     'Cruiser': {'category': 'Sea', 'cost': 11, 'sc_cost': 8, 'hp': 5, 'purchasable': True,
@@ -498,6 +500,203 @@ class TestGlobalRecoverySweep(unittest.TestCase):
         engine = GameEngine(gs, data)
         engine.deploy_and_collect_income('NAA')
         self.assertGreater(damaged.current_hp, 1)
+
+
+class TestCombatMoveExecution(unittest.TestCase):
+    def test_single_hop_attack_marks_contested_and_relocates_unit(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        attacker = make_unit('Infantry', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [attacker], 2: [defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(attacker.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        self.assertNotIn(attacker, gs.territories[1].units)
+        self.assertIn(attacker, gs.territories[2].units)
+        self.assertEqual(gs.territories[2].contested_by, {'NAA', 'AAC'})
+        self.assertTrue(attacker.has_moved_combat)
+        self.assertEqual(gs.territories[2].owner, 'AAC', 'still contested -- not captured until the battle resolves')
+
+    def test_single_hop_capture_of_empty_territory_flips_ownership(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        mover = make_unit('Armor', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(mover.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        self.assertEqual(gs.territories[2].owner, 'NAA')
+        self.assertIsNone(gs.territories[2].contested_by, 'an uncontested capture never marks the territory contested')
+
+    def test_mech_inf_blitz_captures_en_route_and_attacks(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        mover = make_unit('Mechanized Infantry', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC', 3: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [mover], 3: [defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(mover.unit_id, [1, 2, 3])])
+        engine.confirm_combat_moves('NAA')
+        self.assertEqual(gs.territories[2].owner, 'NAA', 'captured on the way through, even though the unit kept moving')
+        self.assertIn(mover, gs.territories[3].units)
+        self.assertEqual(gs.territories[3].contested_by, {'NAA', 'AAC'})
+
+    def test_air_combat_move_never_captures_only_marks_contested(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        mover = make_unit('Fighter', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [mover]},  # territory 2 is EMPTY -- air alone can't attack nothing, so...
+        )
+        engine = GameEngine(gs, data)
+        # ...legal_air_move_destinations correctly rejects this (no attack target).
+        with self.assertRaises(ValueError):
+            engine.submit_combat_moves('NAA', [CombatMoveOrder(mover.unit_id, [1, 2])])
+
+    def test_air_combat_move_attacks_occupied_territory(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        mover = make_unit('Fighter', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [mover], 2: [defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(mover.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        self.assertIn(mover, gs.territories[2].units)
+        self.assertEqual(gs.territories[2].contested_by, {'NAA', 'AAC'})
+        self.assertEqual(gs.territories[2].owner, 'AAC', "air alone can't capture")
+
+    def test_unit_not_found_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.submit_combat_moves('NAA', [CombatMoveOrder(99999, [1, 2])])
+
+    def test_wrong_owner_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        other_faction_unit = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC', 2: 'NAA'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [other_faction_unit]},
+        )
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.submit_combat_moves('NAA', [CombatMoveOrder(other_faction_unit.unit_id, [1, 2])])
+
+    def test_path_origin_mismatch_is_rejected(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}}, adjacency={1: [2], 2: [1, 3]},
+        )
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 3: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        # mover is actually at 1, not 2
+        with self.assertRaises(ValueError):
+            engine.submit_combat_moves('NAA', [CombatMoveOrder(mover.unit_id, [2, 3])])
+
+    def test_cannot_move_the_same_unit_twice_in_one_submission(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}}, adjacency={1: [2], 2: [1, 3]},
+        )
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC', 3: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.submit_combat_moves('NAA', [
+                CombatMoveOrder(mover.unit_id, [1, 2]),
+                CombatMoveOrder(mover.unit_id, [1, 3]),
+            ])
+
+    def test_later_order_can_depend_on_an_earlier_orders_capture(self):
+        # Unit A captures territory 2 (empty foreign land). Unit B,
+        # starting at territory 1 too, then stages THROUGH territory 2
+        # (now NAA's) to attack territory 3 -- only legal because unit
+        # A's capture already applied within this same submission.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        unit_a = make_unit('Infantry', 'NAA')
+        unit_b = make_unit('Mechanized Infantry', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC', 3: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [unit_a, unit_b], 3: [defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [
+            CombatMoveOrder(unit_a.unit_id, [1, 2]),
+            CombatMoveOrder(unit_b.unit_id, [1, 2, 3]),
+        ])
+        engine.confirm_combat_moves('NAA')
+        self.assertEqual(gs.territories[2].owner, 'NAA')
+        self.assertIn(unit_a, gs.territories[2].units)
+        self.assertIn(unit_b, gs.territories[3].units)
+        self.assertEqual(gs.territories[3].contested_by, {'NAA', 'AAC'})
+
+
+class TestCombatMoveRollback(unittest.TestCase):
+    def test_resubmitting_replaces_the_staged_list(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(mover.unit_id, [1, 2])])
+        engine.submit_combat_moves('NAA', [])  # "undo" -- don't move it after all
+        engine.confirm_combat_moves('NAA')
+        self.assertIn(mover, gs.territories[1].units)
+        self.assertFalse(mover.has_moved_combat)
+
+    def test_cannot_resubmit_after_confirming(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(mover.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        with self.assertRaises(ValueError):
+            engine.submit_combat_moves('NAA', [])
+        with self.assertRaises(ValueError):
+            engine.confirm_combat_moves('NAA')
+
+    def test_wrong_phase_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.PURCHASE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.submit_combat_moves('NAA', [CombatMoveOrder(1, [1, 2])])
+
+    def test_defensive_faction_cannot_submit_combat_moves(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.DEFENSIVE, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.submit_combat_moves('NAA', [CombatMoveOrder(1, [1, 2])])
 
 
 if __name__ == '__main__':

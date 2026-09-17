@@ -27,7 +27,13 @@
     },
     {
       "phase": "Combat Move",
-      "summary": "Units move to attack; every combat move must result in an attack -- relocating a unit into the target territory/sea zone is what makes it contested (see movement.combat_move_destination). No separate 'declare an attack from next door' step.",
+      "summary": "Units move to attack; every combat move must result in an attack -- relocating a unit into the target territory/sea zone is what makes it contested (see movement.combat_move_destination). No separate 'declare an attack from next door' step. Implemented -- see engine.engine.GameEngine.submit_combat_moves/confirm_combat_moves and movement.trace_combat_move.",
+      "execution_notes": [
+        "Orders carry a full PATH (origin through destination, every consecutive pair adjacent), not just a destination -- a Mechanized Infantry blitz can capture more than one undefended foreign territory in a single move, and knowing which ones requires the actual route, since a unit can have more than one equal-length legal route to the same endpoint (confirmed this session: every territory blitzed through is captured, not just the final stop).",
+        "Any unit's uncontested final stop on empty foreign land is captured immediately, not deferred to Capture Territory -- that later phase is only for captures contingent on WINNING a battle (defender_eliminated), since those can't resolve until Combat Resolution finishes. An immediate, undefended capture needs nothing else to happen first.",
+        "Orders in one submission are executed IN ORDER, each against the board as already mutated by the earlier ones -- so a later order can legally depend on an earlier order's capture within the same submission (e.g. staging a second wave through ground the first wave just took). validate (submit_combat_moves) and commit (confirm_combat_moves) both run the identical sequence, submit against a throwaway deep copy purely to check it, confirm against the real GameState.",
+        "Air units supply a 2-entry [origin, destination] path (no hop-by-hop legality or capture concerns) and validate against movement.legal_air_move_destinations instead of trace_combat_move; an air combat move always marks the destination contested, never captures (air alone can't capture)."
+      ],
       "see": ["movement", "movement.carrier_air_operations.carrier_ride_along", "phase_confirmation"]
     },
     {
@@ -42,7 +48,7 @@
     },
     {
       "phase": "Capture Territory",
-      "summary": "Automatic, derived from this turn's Combat Move/Resolution outcomes -- a defender_eliminated land battle or a Mechanized Infantry empty-territory pass-through changes TerritoryState.owner now. Air units alone can never capture (no ground presence, nothing to hold the territory) -- no player choice here, nothing to roll back.",
+      "summary": "Automatic, derived from this turn's Combat RESOLUTION outcomes specifically -- a defender_eliminated land battle changes TerritoryState.owner now. (An undefended capture -- a Mechanized Infantry blitz, or any unit's uncontested final stop on empty foreign land -- needs no battle and no waiting, so it already happened immediately back in Combat Move; see turn_order's Combat Move entry. This phase is only for captures that were CONTINGENT on winning a fight, which couldn't resolve until Combat Resolution just finished.) Air units alone can never capture (no ground presence, nothing to hold the territory) -- no player choice here, nothing to roll back.",
       "see": ["movement.empty_foreign_territory_rule", "combat.battle_resolution_pass_order"]
     },
     {
