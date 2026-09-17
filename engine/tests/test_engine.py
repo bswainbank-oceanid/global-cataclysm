@@ -1577,5 +1577,110 @@ class TestCaptureTerritory(unittest.TestCase):
             engine.process_capture_territory('NAA')
 
 
+class TestEliminationCheck(unittest.TestCase):
+    def test_faction_with_zero_scs_is_eliminated(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 3}}, adjacency={})
+        gs = make_state(data, {1: 'AAC'}, {'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        engine = GameEngine(gs, data)
+        engine.process_elimination_check()
+        self.assertTrue(gs.factions['AAC'].eliminated)
+
+    def test_faction_with_exactly_one_sc_is_eliminated(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 2, 'strategic_center': True}}, adjacency={})
+        gs = make_state(data, {1: 'AAC'}, {'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        engine = GameEngine(gs, data)
+        engine.process_elimination_check()
+        self.assertTrue(gs.factions['AAC'].eliminated)
+
+    def test_faction_with_two_scs_survives(self):
+        data = FakeData(
+            territories={1: {'type': 'land', 'strategic_center': True}, 2: {'type': 'land', 'strategic_center': True}},
+            adjacency={},
+        )
+        gs = make_state(data, {1: 'AAC', 2: 'AAC'}, {'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        engine = GameEngine(gs, data)
+        engine.process_elimination_check()
+        self.assertFalse(gs.factions['AAC'].eliminated)
+
+    def test_eliminated_factions_units_are_removed_from_the_whole_board(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'sea'}},
+            adjacency={},
+        )
+        stranded_here = make_unit('Infantry', 'AAC')
+        stranded_there = make_unit('Cruiser', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            units_by_territory={1: [stranded_here], 2: [stranded_there]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_elimination_check()
+        self.assertNotIn(stranded_here, gs.territories[1].units)
+        self.assertNotIn(stranded_there, gs.territories[2].units)
+
+    def test_contested_sc_still_counts_toward_the_registered_owner(self):
+        # SC 1 is contested but AAC still owns it (ownership only
+        # changes via process_capture_territory, already run this turn)
+        # -- AAC's count should still include it, keeping AAC above 1.
+        data = FakeData(
+            territories={1: {'type': 'land', 'strategic_center': True}, 2: {'type': 'land', 'strategic_center': True}},
+            adjacency={},
+        )
+        gs = make_state(
+            data, {1: 'AAC', 2: 'AAC'}, {'AAC': PowerMode.HUMAN, 'NAA': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            contested={1: {'AAC', 'NAA'}},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_elimination_check()
+        self.assertFalse(gs.factions['AAC'].eliminated)
+
+    def test_eliminated_faction_is_excluded_from_active_powers(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land', 'strategic_center': True}, 3: {'type': 'land', 'strategic_center': True}},
+            adjacency={},
+        )
+        gs = make_state(
+            data, {1: 'AAC', 2: 'NAA', 3: 'NAA'}, {'AAC': PowerMode.HUMAN, 'NAA': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+        )
+        engine = GameEngine(gs, data)
+        engine.process_elimination_check()
+        self.assertNotIn('AAC', gs.active_powers())
+        self.assertIn('NAA', gs.active_powers())
+
+    def test_neutral_factions_are_never_eliminated(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(data, {1: 'PAF'}, {'PAF': PowerMode.NEUTRAL}, phase=Phase.CAPTURE)
+        engine = GameEngine(gs, data)
+        engine.process_elimination_check()
+        self.assertFalse(gs.factions['PAF'].eliminated)
+
+    def test_defensive_faction_can_be_eliminated(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        stranded = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'AAC': PowerMode.DEFENSIVE}, phase=Phase.CAPTURE,
+            units_by_territory={1: [stranded]},
+        )
+        engine = GameEngine(gs, data)
+        engine.process_elimination_check()
+        self.assertTrue(gs.factions['AAC'].eliminated)
+        self.assertNotIn(stranded, gs.territories[1].units)
+
+    def test_calling_twice_is_idempotent(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(data, {1: 'AAC'}, {'AAC': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        engine = GameEngine(gs, data)
+        engine.process_elimination_check()
+        engine.process_elimination_check()  # should not raise
+        self.assertTrue(gs.factions['AAC'].eliminated)
+
+    def test_wrong_phase_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(data, {1: 'AAC'}, {'AAC': PowerMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.process_elimination_check()
+
+
 if __name__ == '__main__':
     unittest.main()

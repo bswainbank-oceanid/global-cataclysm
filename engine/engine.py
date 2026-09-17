@@ -27,8 +27,13 @@ territory faction is contesting where no non-allied LAND units remain
 (an undefended entry nobody ever fought over, or a battle faction won
 outright even if air-only survivors linger on the other side), leaving
 ownership untouched wherever a genuine contest between other powers is
-still live. Nothing here yet transitions GameState.phase itself between
-phases; callers currently set it directly (see the tests).
+still live. process_elimination_check (victory.elimination_rule, meant
+to run right after Capture Territory) sweeps every faction's Strategic
+Center count and eliminates -- clears remaining units, and excludes from
+GameState.active_powers() forever after, which is what actually enforces
+"no more turns" -- anyone down to 1 or 0. Nothing here yet transitions
+GameState.phase itself between phases; callers currently set it directly
+(see the tests).
 
 Rollback (phase_confirmation): submit_purchases/submit_combat_moves/
 submit_noncombat_moves all take the COMPLETE desired order list every
@@ -54,7 +59,7 @@ from .movement import (
     _is_ally_or_self, find_emergency_landing, legal_air_move_destinations,
     legal_noncombat_move_destinations, trace_combat_move,
 )
-from .state import Phase, UnitInstance
+from .state import Phase, PowerMode, UnitInstance
 
 
 @dataclass
@@ -884,3 +889,46 @@ class GameEngine:
                 continue
             t.owner = faction
             t.contested_by = None
+
+    def process_elimination_check(self):
+        """victory.elimination_rule: any HUMAN/BOT/DEFENSIVE faction
+        currently controlling <=1 Strategic Center (original or
+        captured; a contested one still counts, since its
+        TerritoryState.owner doesn't change until the contest actually
+        resolves in Capture Territory -- see combat.contested_territory_rule)
+        is eliminated -- FactionState.eliminated is set True, and every
+        unit it still has anywhere on the board is removed immediately.
+        NEUTRAL is skipped -- it never had turns to lose, and the
+        concept doesn't meaningfully apply.
+
+        Ownership only ever changes via process_capture_territory, so
+        this should run right after it, once per turn -- automatic, no
+        player choice, nothing to roll back, same as that phase. Global:
+        sweeps every faction's SC count, not just whichever one's turn
+        it is, since one faction's own Capture Territory can reduce
+        ANOTHER faction down to elimination. Idempotent -- safe to call
+        even when nothing changed; an already-eliminated faction is
+        simply skipped.
+
+        GameState.active_powers() is what actually enforces "gets no
+        more turns" -- it excludes eliminated factions, and every phase
+        method in this class gates on it, so nothing else needed to
+        change to make that stick."""
+        if self.game_state.phase != Phase.CAPTURE:
+            raise ValueError('process_elimination_check is only valid during the Capture Territory phase')
+
+        terrs = self.data.territories()
+        sc_counts = {}
+        for tid, t in self.game_state.territories.items():
+            if terrs[tid]['type'] != 'land' or not terrs[tid].get('strategic_center'):
+                continue
+            if t.owner:
+                sc_counts[t.owner] = sc_counts.get(t.owner, 0) + 1
+
+        for code, fstate in self.game_state.factions.items():
+            if fstate.eliminated or fstate.mode == PowerMode.NEUTRAL:
+                continue
+            if sc_counts.get(code, 0) <= 1:
+                fstate.eliminated = True
+                for t in self.game_state.territories.values():
+                    t.units = [u for u in t.units if u.owner != code]

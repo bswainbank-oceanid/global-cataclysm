@@ -276,9 +276,14 @@ class GameState:
         return uid
 
     def active_powers(self):
-        """Faction codes with mode HUMAN or BOT -- the ones that actually
-        take turns. Order is insertion order of `factions`."""
-        return [code for code, f in self.factions.items() if f.mode in (PowerMode.HUMAN, PowerMode.BOT)]
+        """Faction codes with mode HUMAN or BOT, and not yet eliminated
+        (victory.elimination_rule) -- the ones that actually take turns.
+        Order is insertion order of `factions`. Every phase method in
+        engine.GameEngine gates on this, and combat.recovery_rule's
+        num_powers is len(this) -- so excluding an eliminated faction
+        here is what actually enforces "gets no more turns," not
+        anything phase-specific."""
+        return [code for code, f in self.factions.items() if f.mode in (PowerMode.HUMAN, PowerMode.BOT) and not f.eliminated]
 
     def to_dict(self):
         return {
