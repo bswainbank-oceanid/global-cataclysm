@@ -397,15 +397,16 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
       an attack, and neither is empty foreign territory, since air alone
       can't capture (per the turn-order rule) -- there's nothing there
       to actually attack.
-    - noncombat: own-or-allied land (contested or not -- landing there
-      doesn't care), or a sea zone where the mover's OWN Aircraft
-      Carrier -- never an ally's, unlike land -- is already present OR
-      queued to deploy there this turn (see legal_landing's docstring
-      below). Landing on open water with no own carrier there yet and
-      none pending is never legal, even though one COULD show up later
-      the same phase via its own move order; movement.py only ever
-      evaluates one unit's move in isolation and can't see, and per this
-      rule shouldn't guess at, another unit's not-yet-submitted move."""
+    - noncombat: own-or-allied land, contested or not -- landing there
+      doesn't care about contested status either way. A sea zone
+      requires the mover's OWN Aircraft Carrier -- never an ally's, and
+      that's unconditional too (regardless of contested status) --
+      already present OR queued to deploy there this turn. Landing on
+      open water with no own carrier there yet and none pending is never
+      legal, even though one COULD show up later the
+      same phase via its own move order; movement.py only ever evaluates
+      one unit's move in isolation and can't see, and per this rule
+      shouldn't guess at, another unit's not-yet-submitted move."""
     unit_defs = data_module.units()
     territories = data_module.territories()
     adjacency = data_module.adjacency()
@@ -433,10 +434,13 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
         def legal_landing(tid):
             dest = game_state.territories[tid]
             if territories[tid]['type'] == 'land':
-                # Own or allied land, contested or not -- unlike ground
-                # units' pass-through rules, landing here doesn't care
-                # about contested status at all as long as it's owned by
-                # you or an ally.
+                # Own or allied land, contested or not -- confirmed this
+                # session: allied land is fine to land on even while
+                # contested, same as it's always been. The real
+                # restriction is the sea/carrier one below (a contested,
+                # enemy-owned/occupied sea zone needs your own carrier,
+                # not just any presence) -- land was never actually part
+                # of that restriction.
                 return _is_ally_or_self(game_state, owner, dest.owner)
             # Sea: illegal outright if occupied by a non-ally (that
             # needs a combat move instead, same as ground units).

@@ -404,29 +404,41 @@ class TestAirMovement(unittest.TestCase):
         self.assertIn(3, dest, 'contested land you own is a legal landing spot for aircraft')
         self.assertIn(4, dest)  # own carrier's sea zone
 
-    def test_noncombat_air_landing_on_ally_land_legal_but_not_on_ally_carrier_zone(self):
-        # Allied LAND is a legal landing spot even contested -- landing
-        # there doesn't care about that. An ally's CARRIER is a
-        # different story: unlike land, a sea zone with only an ally's
-        # carrier is NOT a legal landing target -- landing on water
-        # specifically requires the mover's own carrier (present or
-        # pending deployment), never an ally's.
+    def test_noncombat_air_landing_on_ally_land_legal_even_if_contested(self):
+        # Confirmed this session: allied land is a legal landing spot
+        # regardless of contested status -- own contested land is fine
+        # too, naturally, since it's the mover's own. The real
+        # restriction lives on the sea/carrier side (see below), never
+        # on land.
         data = FakeData(
-            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'sea'}},
-            adjacency={1: [2, 3]},
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}},
+            adjacency={1: [2]},
         )
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 2: 'UE'},
             faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
             contested={2: {'NAA'}},  # ally's contested territory
-            units_by_territory={3: [enemy_unit(1, 'Aircraft Carrier', 'UE')]},
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
         self.assertIn(2, dest, "allied land is a legal landing spot even contested -- landing doesn't care")
-        self.assertNotIn(3, dest, "an ally's carrier is still not a legal landing target, only your own")
+
+    def test_noncombat_air_landing_still_requires_own_carrier_not_allys(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'sea'}},
+            adjacency={1: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA'},
+            faction_modes={'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Aircraft Carrier', 'UE')]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
+        self.assertNotIn(2, dest, "an ally's carrier is still not a legal landing target, only your own")
 
     def test_noncombat_air_landing_on_truly_open_water_is_illegal(self):
         # No carrier of any kind at territory 2, and none pending --
