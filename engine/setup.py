@@ -21,6 +21,8 @@ MPC income (engine/economy.py's compute_income, see data/rules.json's
 production.income_formula) once its territories are in place --
 ordinarily 31 MPC (25 base territory value + 3 Strategic Centers x 2).
 """
+import random
+
 from . import data
 from .economy import compute_income
 from .state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode, Phase
@@ -93,21 +95,44 @@ def _apply_promotions(scenario, faction, bought_at):
                 break
 
 
-def build_game_state(scenario_name, faction_modes, defensive_scenario_name='starting_setup_100ipc'):
+def build_game_state(scenario_name, faction_modes, defensive_scenario_name='starting_setup_100ipc',
+                      randomize_play_order=True, allow_combat_moves_first_turn=False,
+                      allow_noncombat_moves_first_turn=True, rng=None):
     """scenario_name: e.g. 'starting_setup_200ipc', used for every HUMAN/
     BOT faction. faction_modes: {faction_code: FactionMode}, one entry per
     faction in data.factions(). Returns a fresh GameState at global_turn 0
     with every territory's TerritoryState created (land territories'
     owner comes from territories.json; sea territories have no owner),
     populated with starting units for HUMAN/BOT/DEFENSIVE factions, and
-    active_faction set to the first HUMAN/BOT faction in turn order."""
-    gs = GameState(global_turn=0, phase=Phase.PURCHASE)
+    active_faction set to the first HUMAN/BOT faction in turn order.
+
+    game_start_settings, chosen once here at game creation:
+    - randomize_play_order (default True): shuffles the order factions
+      are inserted into GameState.factions -- GameState.active_factions()
+      cycles through them in that same order (dict insertion order),
+      and it's also what combat.contested_territory_rule's capture-claim
+      tie-break uses as "turn order" -- so this one shuffle drives both
+      consistently. Takes an explicit `rng` (a random.Random instance)
+      for deterministic tests/replays; defaults to a fresh, unseeded one.
+    - allow_combat_moves_first_turn (default False) / allow_noncombat_
+      moves_first_turn (default True): stored directly on GameState and
+      enforced every turn by GameEngine.advance_phase(), not just at
+      setup -- see GameState's own docstring comment on these fields."""
+    gs = GameState(
+        global_turn=0, phase=Phase.PURCHASE,
+        allow_combat_moves_first_turn=allow_combat_moves_first_turn,
+        allow_noncombat_moves_first_turn=allow_noncombat_moves_first_turn,
+    )
 
     for tid, t in data.territories().items():
         owner = t.get('faction') if t['type'] == 'land' else None
         gs.territories[tid] = TerritoryState(territory_id=tid, owner=owner)
 
-    for code in data.factions():
+    faction_codes = list(data.factions())
+    if randomize_play_order:
+        rng = rng or random.Random()
+        rng.shuffle(faction_codes)
+    for code in faction_codes:
         gs.factions[code] = FactionState(code=code, mode=faction_modes[code], treasury_mpc=0)
 
     for code, fstate in gs.factions.items():

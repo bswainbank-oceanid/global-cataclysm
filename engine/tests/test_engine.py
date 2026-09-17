@@ -2017,6 +2017,75 @@ class TestAdvancePhase(unittest.TestCase):
         self.assertEqual(gs.phase, Phase.ALLIANCES)
 
 
+class TestFirstTurnGameStartSettings(unittest.TestCase):
+    """game_start_settings: GameState.allow_combat_moves_first_turn /
+    allow_noncombat_moves_first_turn, enforced by advance_phase() only
+    for the active faction's own first turn (FactionState.turns_taken
+    == 0) -- never a later turn, and never for a faction that ISN'T
+    active_faction."""
+    def test_combat_move_is_skipped_on_a_first_turn_when_disallowed(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.PURCHASE)
+        gs.active_faction = 'NAA'
+        gs.allow_combat_moves_first_turn = False
+        engine = GameEngine(gs, data)
+        engine.advance_phase()
+        self.assertEqual(gs.phase, Phase.COMBAT_RESOLUTION, 'Combat Move skipped entirely')
+
+    def test_noncombat_move_is_skipped_on_a_first_turn_when_disallowed(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION)
+        gs.active_faction = 'NAA'
+        gs.allow_noncombat_moves_first_turn = False
+        engine = GameEngine(gs, data)
+        engine.advance_phase()
+        self.assertEqual(gs.phase, Phase.CAPTURE, 'Non-Combat Move skipped entirely')
+
+    def test_both_skipped_when_both_disallowed(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.PURCHASE)
+        gs.active_faction = 'NAA'
+        gs.allow_combat_moves_first_turn = False
+        gs.allow_noncombat_moves_first_turn = False
+        engine = GameEngine(gs, data)
+        engine.advance_phase()
+        self.assertEqual(gs.phase, Phase.COMBAT_RESOLUTION)
+        engine.advance_phase()
+        self.assertEqual(gs.phase, Phase.CAPTURE, 'both move phases skipped, Combat Resolution never skipped')
+
+    def test_not_skipped_by_default_settings(self):
+        # allow_combat_moves_first_turn defaults False but
+        # allow_noncombat_moves_first_turn defaults True -- Combat Move
+        # is skipped, Non-Combat Move is not.
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION)
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+        engine.advance_phase()
+        self.assertEqual(gs.phase, Phase.NONCOMBAT_MOVE, 'allowed by default')
+
+    def test_not_skipped_once_the_faction_has_had_a_prior_turn(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.PURCHASE)
+        gs.active_faction = 'NAA'
+        gs.allow_combat_moves_first_turn = False
+        gs.factions['NAA'].turns_taken = 1  # already had a turn -- this is its second
+        engine = GameEngine(gs, data)
+        engine.advance_phase()
+        self.assertEqual(gs.phase, Phase.COMBAT_MOVE, 'the setting only ever applies to a faction\'s first turn')
+
+    def test_advance_turn_increments_turns_taken(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 0, 'strategic_center': True}}, adjacency={})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
+        )
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+        self.assertEqual(gs.factions['NAA'].turns_taken, 0)
+        engine.advance_turn()
+        self.assertEqual(gs.factions['NAA'].turns_taken, 1)
+
+
 class TestAdvanceTurn(unittest.TestCase):
     def test_resets_the_finishing_factions_move_flags(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
@@ -2184,6 +2253,10 @@ class TestFullTurnLoopIntegration(unittest.TestCase):
             phase=Phase.PURCHASE, treasury={'NAA': 0, 'AAC': 0},
         )
         gs.active_faction = 'NAA'
+        # This test exercises the FULL 7-phase sequence every turn --
+        # game_start_settings' first-turn skip (default: no combat moves
+        # on a faction's own first turn) isn't what it's testing.
+        gs.allow_combat_moves_first_turn = True
         engine = GameEngine(gs, data)
 
         expected_order = ['NAA', 'AAC', 'NAA', 'AAC']
@@ -2216,6 +2289,9 @@ class TestFullTurnLoopIntegration(unittest.TestCase):
             phase=Phase.PURCHASE, units_by_territory={1: [mover]},
         )
         gs.active_faction = 'NAA'
+        # Turn 0 below submits a real (if empty) combat move and a real
+        # non-combat move for NAA -- needs both first-turn phases enabled.
+        gs.allow_combat_moves_first_turn = True
         engine = GameEngine(gs, data)
 
         # Turn 0 (NAA): move the unit via non-combat move.

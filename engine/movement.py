@@ -251,13 +251,28 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
     initial_budget = base_budget + (1 if started_in_water else 0)
 
     destinations = set()
+    paths = {}
     best_seen = {origin_id: initial_budget}
-    came_from = {}
-    # stack entries: (territory_id, moves_used_so_far, water_bonus_active, land_only_restricted)
-    stack = [(origin_id, 0, started_in_water, False)]
+    # stack entries: (territory_id, moves_used_so_far, water_bonus_active,
+    # land_only_restricted, path_so_far). path_so_far is carried directly
+    # per entry -- not reconstructed afterward from a shared parent map --
+    # because best_seen's budget-only pruning (see this function's own
+    # docstring) means a node can be VISITED again later via a cheaper,
+    # merely-passing-through route after it already qualified as a
+    # destination via a costlier one; a shared parent map would let that
+    # later visit silently overwrite the route that actually justified
+    # the earlier stop, producing a reconstructed path trace_combat_move
+    # would then reject as illegal (a bug found and fixed this session --
+    # legal_combat_move_paths could return a destination alongside a
+    # path that doesn't actually reach it legally). Carrying the path
+    # per stack entry instead means whatever gets recorded into `paths`
+    # is always the exact walk that was live at the moment the stop was
+    # confirmed, so it's always genuinely legal, even if not always the
+    # shortest of several equal-length options.
+    stack = [(origin_id, 0, started_in_water, False, [origin_id])]
 
     while stack:
-        current_id, moves_used, water_active, land_only = stack.pop()
+        current_id, moves_used, water_active, land_only, current_path = stack.pop()
         for neighbor_id in adjacency.get(current_id, []):
             neighbor_is_land = territories[neighbor_id]['type'] == 'land'
             if land_only and not neighbor_is_land:
@@ -271,7 +286,7 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
             if remaining <= best_seen.get(neighbor_id, -1):
                 continue  # already reached this territory with an equal-or-better remaining budget
             best_seen[neighbor_id] = remaining
-            came_from[neighbor_id] = current_id
+            new_path = current_path + [neighbor_id]
 
             if move_type == 'combat':
                 hop = _classify_combat_hop(neighbor_id, mover_faction, unit_type, is_land_unit, game_state, territories)
@@ -288,23 +303,28 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
             # override only applies when the hop wasn't neutral-blocked
             # (a bug found and fixed this session: `hop.stop or (land_only
             # and neighbor_is_land)` used to bypass _is_neutral entirely).
-            if hop.stop or (land_only and neighbor_is_land and not _is_neutral(neighbor_id, game_state)):
+            # That landing is also ALWAYS the final stop of the move --
+            # never continuable, even when the landing spot's own
+            # ordinary classification would otherwise permit passing
+            # through it (e.g. Mechanized Infantry landing on an empty
+            # foreign territory, which would normally let it blitz
+            # onward) -- so it's never pushed onward here either, a
+            # second bug found and fixed this session alongside the
+            # Neutral one, matching trace_combat_move's own
+            # (already-correct) 'must be the final stop' check.
+            if land_only:
+                if neighbor_is_land and not _is_neutral(neighbor_id, game_state):
+                    destinations.add(neighbor_id)
+                    paths[neighbor_id] = new_path
+                continue
+            if hop.stop:
                 destinations.add(neighbor_id)
+                paths[neighbor_id] = new_path
             if hop.pass_through:
-                stack.append((neighbor_id, new_moves_used, new_water_active, hop.pass_through == 'land_only'))
+                stack.append((neighbor_id, new_moves_used, new_water_active, hop.pass_through == 'land_only', new_path))
 
     if not with_paths:
         return destinations
-
-    paths = {}
-    for dest_id in destinations:
-        path = [dest_id]
-        node = dest_id
-        while node != origin_id:
-            node = came_from[node]
-            path.append(node)
-        path.reverse()
-        paths[dest_id] = path
     return destinations, paths
 
 

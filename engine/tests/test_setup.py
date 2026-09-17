@@ -1,3 +1,4 @@
+import random
 import unittest
 
 from engine import data
@@ -72,7 +73,10 @@ class TestSetup(unittest.TestCase):
     def test_active_faction_is_first_human_or_bot(self):
         modes = {c: FactionMode.HUMAN for c in data.factions()}
         modes['NAA'] = FactionMode.NEUTRAL
-        gs = build_game_state('starting_setup_200ipc', modes)
+        # randomize_play_order defaults True (game_start_settings) --
+        # disable it here since this test checks a specific, deterministic
+        # first-mover, not the randomization itself.
+        gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
         self.assertEqual(gs.active_faction, 'UE')
         self.assertNotIn('NAA', gs.active_factions())
 
@@ -84,6 +88,29 @@ class TestSetup(unittest.TestCase):
         gs = build_game_state('starting_setup_200ipc', modes)
         for fac in data.factions():
             self.assertEqual(gs.factions[fac].treasury_mpc, 31, f'{fac} starting treasury mismatch')
+
+    def test_randomize_play_order_shuffles_active_factions(self):
+        modes = {c: FactionMode.HUMAN for c in data.factions()}
+        unshuffled = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False).active_factions()
+        # A fixed seed makes this deterministic -- just needs to differ
+        # from the unshuffled (JSON insertion) order to prove the shuffle
+        # actually ran, not any particular resulting order.
+        shuffled = build_game_state(
+            'starting_setup_200ipc', modes, randomize_play_order=True, rng=random.Random(1),
+        ).active_factions()
+        self.assertEqual(set(shuffled), set(unshuffled))
+        self.assertNotEqual(shuffled, unshuffled)
+
+    def test_randomize_play_order_false_keeps_json_insertion_order(self):
+        modes = {c: FactionMode.HUMAN for c in data.factions()}
+        gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
+        self.assertEqual(gs.active_factions(), list(data.factions()))
+
+    def test_game_start_settings_default_to_no_combat_moves_yes_noncombat_moves_first_turn(self):
+        modes = {c: FactionMode.HUMAN for c in data.factions()}
+        gs = build_game_state('starting_setup_200ipc', modes)
+        self.assertFalse(gs.allow_combat_moves_first_turn)
+        self.assertTrue(gs.allow_noncombat_moves_first_turn)
 
 
 if __name__ == '__main__':

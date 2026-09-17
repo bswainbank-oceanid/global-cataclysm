@@ -3,8 +3,8 @@ import unittest
 
 from engine.state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode
 from engine.movement import (
-    legal_combat_move_destinations, legal_noncombat_move_destinations, legal_air_move_destinations,
-    find_emergency_landing, trace_combat_move,
+    legal_combat_move_destinations, legal_combat_move_paths, legal_noncombat_move_destinations,
+    legal_air_move_destinations, find_emergency_landing, trace_combat_move,
 )
 
 # Minimal unit_defs -- movement.py only ever reads combat_move/
@@ -246,6 +246,66 @@ class TestAmphibiousThroughOccupiedWater(unittest.TestCase):
         dest = legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data)
         self.assertIn(2, dest)
         self.assertIn(3, dest, 'friendly land is a legal landing spot when escaping contested water')
+
+    def test_amphibious_landing_is_never_continuable_even_onto_empty_foreign_land(self):
+        # Mech Inf: combat_move 2, +1 for touching water = 3 -- budget
+        # alone would allow a 3rd hop onto territory 4 (empty foreign
+        # land, which Mech Inf could normally blitz through) -- but a
+        # landing via the hostile-water exception must be the final stop
+        # of the move regardless, so 4 must NOT appear as a legal
+        # destination (matches trace_combat_move's own rule -- a bug
+        # found and fixed this session: _reachable_destinations used to
+        # keep exploring past such a landing whenever the landing spot's
+        # own ordinary classification permitted it).
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'sea'}, 3: {'type': 'land'}, 4: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2, 4], 4: [3]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 3: 'NAA', 4: 'AAC'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            contested={2: {'NAA', 'AAC'}},
+        )
+        dest = legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
+        self.assertIn(3, dest, 'the landing itself is still a legal stop')
+        self.assertNotIn(4, dest, 'cannot continue past an amphibious landing, even onto empty foreign land')
+
+    def test_reconstructed_path_survives_trace_combat_move_even_with_a_cheaper_alternate_route(self):
+        # A destination (4, own land) reachable BOTH via a genuine
+        # amphibious landing (1 -> 5 -> 2(hostile) -> 4, 3 hops) AND via
+        # a cheaper, merely-pass-through route that never itself
+        # qualifies as a stop (1 -> 3(open) -> 4, 2 hops, own land is
+        # always pass-only on its own merits). The BFS's budget-only
+        # pruning (see _reachable_destinations' docstring) means the
+        # cheaper route can arrive at 4 with a strictly better remaining
+        # budget than the qualifying one -- a bug found and fixed this
+        # session: legal_combat_move_paths used to reconstruct 4's route
+        # via whichever visit had the best remaining budget, REGARDLESS
+        # of whether that visit was the one that actually justified
+        # adding 4 to the destination set, so it could hand back a path
+        # trace_combat_move would then reject as illegal. Adjacency order
+        # here ([3, 5] before the hostile branch is even reached)
+        # deliberately lets the stack (LIFO) explore the hostile route
+        # first and the cheaper one second, so the overwrite would have
+        # been live if the bug were still present.
+        data = FakeData(
+            territories={
+                1: {'type': 'land'}, 5: {'type': 'land'}, 2: {'type': 'sea'},
+                3: {'type': 'sea'}, 4: {'type': 'land'},
+            },
+            adjacency={1: [3, 5], 5: [1, 2], 2: [5, 4], 3: [1, 4], 4: [2, 3]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 5: 'NAA', 4: 'NAA'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')]},
+        )
+        dest = legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
+        self.assertIn(4, dest)
+        paths = legal_combat_move_paths('Mechanized Infantry', 'NAA', 1, gs, data)
+        # Whatever path was recorded for 4 must actually be legal --
+        # this is the assertion that would have caught the bug.
+        trace_combat_move('Mechanized Infantry', 'NAA', paths[4], gs, data)
 
 
 class TestNeutralExclusion(unittest.TestCase):

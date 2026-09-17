@@ -8,6 +8,8 @@ TestPlayToCompletion exercises the same path with a small turn cap, for
 speed).
 
 Run: python -m engine.bots.run_game [--seed N] [--max-turns N]
+    [--no-randomize-play-order] [--allow-combat-moves-first-turn]
+    [--no-noncombat-moves-first-turn]
 """
 import argparse
 import random
@@ -25,13 +27,26 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--max-turns', type=int, default=500)
+    # game_start_settings (data/rules.json) -- randomize_play_order and
+    # allow_noncombat_moves_first_turn default on, allow_combat_moves_
+    # first_turn defaults off, matching engine.setup.build_game_state's
+    # own defaults.
+    parser.add_argument('--no-randomize-play-order', dest='randomize_play_order', action='store_false')
+    parser.add_argument('--allow-combat-moves-first-turn', action='store_true')
+    parser.add_argument('--no-noncombat-moves-first-turn', dest='allow_noncombat_moves_first_turn', action='store_false')
     args = parser.parse_args()
 
     modes = {code: FactionMode.NEUTRAL for code in data.factions()}
     modes['NAA'] = FactionMode.BOT
     modes['AAC'] = FactionMode.BOT
 
-    gs = build_game_state('starting_setup_200ipc', modes)
+    gs = build_game_state(
+        'starting_setup_200ipc', modes,
+        randomize_play_order=args.randomize_play_order,
+        allow_combat_moves_first_turn=args.allow_combat_moves_first_turn,
+        allow_noncombat_moves_first_turn=args.allow_noncombat_moves_first_turn,
+        rng=random.Random(args.seed) if args.seed is not None else None,
+    )
     stats = GameStats()
     engine = GameEngine(gs, stats=stats)
     seed_rng = random.Random(args.seed)

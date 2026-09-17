@@ -237,6 +237,13 @@ class FactionState:
     treasury_mpc: int = 0  # MPC: the game's currency, spent in the Purchase phase, earned at Deploy + Income
     alliance: Optional[str] = None  # stub, unused in v1 (strict free-for-all)
     eliminated: bool = False
+    # Incremented by GameEngine.advance_turn() each time THIS faction's own
+    # turn concludes -- 0 means it hasn't had any turn yet, i.e. its
+    # CURRENT turn (if active) is still its first. Consulted by
+    # advance_phase() against GameState.allow_combat_moves_first_turn/
+    # allow_noncombat_moves_first_turn (game_start_settings) to decide
+    # whether to skip those two phases for this turn.
+    turns_taken: int = 0
 
     def to_dict(self):
         return {
@@ -245,6 +252,7 @@ class FactionState:
             'treasury_mpc': self.treasury_mpc,
             'alliance': self.alliance,
             'eliminated': self.eliminated,
+            'turns_taken': self.turns_taken,
         }
 
     @staticmethod
@@ -255,6 +263,7 @@ class FactionState:
             treasury_mpc=d['treasury_mpc'],
             alliance=d['alliance'],
             eliminated=d['eliminated'],
+            turns_taken=d.get('turns_taken', 0),
         )
 
 
@@ -274,6 +283,17 @@ class GameState:
     # -- true once every remaining active faction is mutually allied with
     # every other, with nobody left non-allied to keep fighting.
     game_over: bool = False
+    # game_start_settings, chosen once when the game is created (see
+    # setup.build_game_state's randomize_play_order/allow_combat_moves_
+    # first_turn/allow_noncombat_moves_first_turn params -- randomize_play_
+    # order only affects the initial construction order of `factions`
+    # below, it isn't itself remembered as a flag). These two ARE
+    # remembered here since GameEngine.advance_phase() consults them on
+    # every single turn, for as long as the game runs: whether to skip
+    # the Combat Move / Non-Combat Move phases entirely for a faction
+    # currently on its own first turn (FactionState.turns_taken == 0).
+    allow_combat_moves_first_turn: bool = False
+    allow_noncombat_moves_first_turn: bool = True
 
     def new_unit_id(self):
         uid = self._next_unit_id
@@ -299,6 +319,8 @@ class GameState:
             'factions': {code: f.to_dict() for code, f in self.factions.items()},
             'next_unit_id': self._next_unit_id,
             'game_over': self.game_over,
+            'allow_combat_moves_first_turn': self.allow_combat_moves_first_turn,
+            'allow_noncombat_moves_first_turn': self.allow_noncombat_moves_first_turn,
         }
 
     @staticmethod
@@ -311,4 +333,6 @@ class GameState:
             factions={k: FactionState.from_dict(v) for k, v in d['factions'].items()},
             _next_unit_id=d['next_unit_id'],
             game_over=d.get('game_over', False),
+            allow_combat_moves_first_turn=d.get('allow_combat_moves_first_turn', False),
+            allow_noncombat_moves_first_turn=d.get('allow_noncombat_moves_first_turn', True),
         )

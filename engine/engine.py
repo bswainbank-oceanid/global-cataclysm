@@ -1135,10 +1135,36 @@ class GameEngine:
         current phase is done, before starting the next phase's calls.
         A no-op once Alliances is reached -- call advance_turn() instead
         to close out the faction's turn and move to the next faction's
-        Purchase phase."""
+        Purchase phase.
+
+        game_start_settings enforcement: if the active faction is
+        currently on its own first turn (FactionState.turns_taken == 0)
+        and GameState.allow_combat_moves_first_turn /
+        allow_noncombat_moves_first_turn is False, this steps STRAIGHT
+        PAST Combat Move and/or Non-Combat Move entirely -- GameState.phase
+        never becomes that phase at all this turn, so submit_combat_moves/
+        submit_noncombat_moves (both gated on the current phase matching)
+        already refuse to run without any extra check of their own.
+        Combat Resolution is never skipped this way -- it isn't a "move,"
+        just auto-resolving whatever's currently contested on the board,
+        regardless of whether this faction submitted a fresh combat move
+        this turn."""
         idx = _PHASE_ORDER.index(self.game_state.phase)
-        if idx < len(_PHASE_ORDER) - 1:
-            self.game_state.phase = _PHASE_ORDER[idx + 1]
+        idx += 1
+        while idx < len(_PHASE_ORDER) - 1 and self._phase_is_skipped_this_turn(_PHASE_ORDER[idx]):
+            idx += 1
+        if idx < len(_PHASE_ORDER):
+            self.game_state.phase = _PHASE_ORDER[idx]
+
+    def _phase_is_skipped_this_turn(self, phase):
+        faction = self.game_state.active_faction
+        if faction is None or self.game_state.factions[faction].turns_taken > 0:
+            return False  # not this faction's first turn -- game_start_settings only ever apply to the first
+        if phase == Phase.COMBAT_MOVE:
+            return not self.game_state.allow_combat_moves_first_turn
+        if phase == Phase.NONCOMBAT_MOVE:
+            return not self.game_state.allow_noncombat_moves_first_turn
+        return False
 
     def advance_turn(self):
         """Closes out the currently active faction's turn and opens the
@@ -1152,8 +1178,11 @@ class GameEngine:
         for the rest of the game) and clears it from every phase-
         confirmation guard set (_purchases_confirmed and friends --
         without this, a faction could only ever complete each phase
-        once, ever, ACROSS THE WHOLE GAME, not once per turn), then
-        advances active_faction to the next one in active_factions()
+        once, ever, ACROSS THE WHOLE GAME, not once per turn), increments
+        its FactionState.turns_taken (so game_start_settings' first-turn
+        combat/non-combat-move skip in advance_phase() only ever applies
+        once, to the turn that's now ending), then advances active_faction
+        to the next one in active_factions()
         (wrapping around, and naturally skipping anyone eliminated since
         this faction's turn began, since active_factions() is always
         recomputed fresh), increments global_turn, and resets phase back
@@ -1178,6 +1207,9 @@ class GameEngine:
             self._combat_resolved.discard(finishing)
             self._noncombat_moves_confirmed.discard(finishing)
             self._return_to_base_processed.discard(finishing)
+            # game_start_settings' first-turn check (FactionState.turns_taken
+            # == 0) is only ever true for THIS, its now-concluding turn.
+            self.game_state.factions[finishing].turns_taken += 1
 
         active = self.game_state.active_factions()
         if not active:
