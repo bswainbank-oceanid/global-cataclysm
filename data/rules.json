@@ -18,14 +18,48 @@
     "unit_diversity_rule": "each faction must purchase at least 6 of the 8 purchasable unit types in its starting setup; data/factions.json's per-faction 'focus' list guides which types are emphasized (by spend/quantity), not which types are excluded",
     "leftover_budget_rule": "spend the full per-faction budget; when there is a small remainder that can't buy a whole new unit, upgrade an existing Infantry to Mechanized Infantry to use it up"
   },
+  "turn_order_note": "One faction's full turn is these 7 phases in order; engine/state.py's Phase enum names them 1:1. Only active_powers() (mode HUMAN or BOT) actually cycle through them -- DEFENSIVE and NEUTRAL factions are skipped entirely as the ACTIVE faction (no Purchase, no moves, nothing), though DEFENSIVE still fights back normally as a defender when attacked (see power_modes). GameState.global_turn increments exactly once per active faction's turn, which is what combat.recovery_rule's `num_powers` means -- len(active_powers()), not a fixed count of all 6 factions. Rollback (phase_confirmation) only ever applies to Purchase, Combat Move, and Non-Combat Move -- the other four phases are either irreversible (dice already rolled) or fully automatic/derived, with no player choice left to undo.",
   "turn_order": [
-    "Purchase: spend budget, choose deployment locations. Units are decided now but do not appear on the board yet.",
-    "Combat Move: units move to attack; every combat move must result in an attack.",
-    "Combat Resolution: 1 air-superiority round (if triggered) + up to 3 rounds of main combat. See combat section below.",
-    "Non-Combat Move: units that did not combat-move (air units are exempt from this restriction, see movement section).",
-    "Capture Territory: air units alone cannot capture.",
-    "Deploy + Income: purchased units from phase 1 appear on the board now; collect income (based on territories controlled at this point; contested territories contribute to neither side) for next turn's budget; the global recovery/heal check runs now too, over the whole board (see combat.recovery_rule).",
-    "Alliances: propose/withdraw -- stubbed no-op for v1, see alliances section below."
+    {
+      "phase": "Purchase",
+      "summary": "Spend the faction's treasury_ipc budget and choose deploy locations. The units are decided now but don't appear on the board yet -- they sit in TerritoryState.pending_deployment until Deploy + Income.",
+      "see": ["production", "combat.contested_territory_rule", "phase_confirmation"],
+      "open_questions": [
+        "Do setup's naval-purchase constraints (coastal-territory-only, mandatory carrier escort, no sharing a sea zone with another faction) carry over to every ongoing turn's purchases, or were they setup-specific scaffolding?",
+        "Does deploying at a Strategic Center still auto-apply units.json's cheaper sc_cost on ongoing turns, same as at setup?",
+        "Can a purchase earmark a deploy location the faction doesn't yet own, betting on this same turn's Combat Move/Resolution capturing it before Deploy + Income runs? Or must every deploy target already be owned at purchase time?"
+      ]
+    },
+    {
+      "phase": "Combat Move",
+      "summary": "Units move to attack; every combat move must result in an attack -- relocating a unit into the target territory/sea zone is what makes it contested (see movement.combat_move_destination). No separate 'declare an attack from next door' step.",
+      "see": ["movement", "movement.carrier_air_operations.carrier_ride_along", "phase_confirmation"]
+    },
+    {
+      "phase": "Combat Resolution",
+      "summary": "Every declared sea battle resolves to completion first, then every declared land battle (combat.battle_resolution_pass_order) -- never interleaved. Each battle: an air-superiority round if triggered, then up to 3 main rounds. Not reversible once started -- no mid-battle retreat, dice already rolled.",
+      "see": ["combat", "combat.emergency_landing", "movement.carrier_air_operations.return_to_base_after_combat"]
+    },
+    {
+      "phase": "Non-Combat Move",
+      "summary": "Units that didn't combat-move this turn may reposition. Air units are exempt from the combat-move/non-combat-move exclusivity that binds everyone else -- they can always non-combat-move too, even after already attacking.",
+      "see": ["movement.noncombat_move_destination", "movement.air_landing_rule", "movement.carrier_air_operations", "movement.stranded_aircraft_rule", "phase_confirmation"]
+    },
+    {
+      "phase": "Capture Territory",
+      "summary": "Automatic, derived from this turn's Combat Move/Resolution outcomes -- a defender_eliminated land battle or a Mechanized Infantry empty-territory pass-through changes TerritoryState.owner now. Air units alone can never capture (no ground presence, nothing to hold the territory) -- no player choice here, nothing to roll back.",
+      "see": ["movement.empty_foreign_territory_rule", "combat.battle_resolution_pass_order"]
+    },
+    {
+      "phase": "Deploy + Income",
+      "summary": "Purchase's pending_deployment units actually appear on the board now. Income is collected for next turn's budget, then the global recovery/heal check runs over the WHOLE board (every faction's units, not just the active one's) -- see combat.recovery_rule. Automatic -- no player choice, nothing to roll back.",
+      "see": ["combat.recovery_rule", "production"]
+    },
+    {
+      "phase": "Alliances",
+      "summary": "Propose/withdraw -- entirely stubbed as a no-op for v1.",
+      "see": ["alliances"]
+    }
   ],
   "combat": {
     "rounds_per_battle": 3,
@@ -142,7 +176,9 @@
   },
   "production": {
     "per_turn_deploy_cap_formula": "value + (2 if strategic_center else 0)",
-    "cap_scope": "a pure unit-COUNT limit on newly-deployed units per territory per turn -- not IPC-weighted, and distinct from setup.territory_stacking_cap_formula (which only applies at initial setup). There is no cap at all on total units already present in a territory -- only on how many new ones can land there in a single turn."
+    "cap_scope": "a pure unit-COUNT limit on newly-deployed units per territory per turn -- not IPC-weighted, and distinct from setup.territory_stacking_cap_formula (which only applies at initial setup). There is no cap at all on total units already present in a territory -- only on how many new ones can land there in a single turn.",
+    "income_formula": "sum of (value + 2 if strategic_center) over every territory the faction currently controls that ISN'T contested, collected at Deploy + Income -- territories.json carries a value and strategic_center field on every land space (confirmed present on all 87). A contested territory contributes to neither side's income, per combat.contested_territory_rule. Sea zones have no value field and generate no income.",
+    "income_formula_status": "inferred from territories.json's data shape and the existing contested-territory rule, not yet independently confirmed with the user -- flag before relying on it in engine.py"
   },
   "promotion": {
     "xp_for_surviving_a_round": 1,
