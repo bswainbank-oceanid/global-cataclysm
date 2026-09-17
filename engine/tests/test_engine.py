@@ -1510,6 +1510,27 @@ class TestCaptureTerritory(unittest.TestCase):
         self.assertIsNone(gs.territories[1].contested_by)
 
     def test_allied_land_units_do_not_block_the_claim(self):
+        # NAA has its OWN land unit here too, so per "if you have one
+        # land unit, you can keep it," NAA wins even though its ally is
+        # also present -- an ally's presence never BLOCKS faction's own claim.
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        own_unit = make_unit('Infantry', 'NAA')
+        ally_unit = make_unit('Infantry', 'UE')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.CAPTURE,
+            contested={1: {'NAA', 'AAC', 'UE'}}, units_by_territory={1: [own_unit, ally_unit]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        engine.process_capture_territory('NAA')
+        self.assertEqual(gs.territories[1].owner, 'NAA', "an ally's land presence doesn't block faction's own claim")
+
+    def test_ally_claims_the_territory_when_faction_has_no_land_units_left(self):
+        # Confirmed this session: if faction's OWN land units were all
+        # eliminated but an ally's weren't, the ALLY claims it -- even
+        # though it's still faction's own Capture Territory phase doing
+        # the awarding.
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         ally_unit = make_unit('Infantry', 'UE')
         gs = make_state(
@@ -1520,7 +1541,47 @@ class TestCaptureTerritory(unittest.TestCase):
         gs.factions['UE'].alliance = 'pact'
         engine = GameEngine(gs, data)
         engine.process_capture_territory('NAA')
-        self.assertEqual(gs.territories[1].owner, 'NAA', "an ally's land presence doesn't block the claim")
+        self.assertEqual(gs.territories[1].owner, 'UE', "the ally claims it, not NAA")
+
+    def test_multiple_allies_present_greatest_land_cost_wins(self):
+        # UE has one Armor (cost 8); GPC has two Infantry (cost 4 each =
+        # 8 total)... make them clearly unequal: UE gets an Armor (8),
+        # GPC gets a single Infantry (4) -- UE should win.
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        ue_unit = make_unit('Armor', 'UE')
+        gpc_unit = make_unit('Infantry', 'GPC')
+        gs = make_state(
+            data, {1: 'AAC'},
+            {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN, 'GPC': PowerMode.HUMAN},
+            phase=Phase.CAPTURE, contested={1: {'NAA', 'AAC', 'UE', 'GPC'}},
+            units_by_territory={1: [ue_unit, gpc_unit]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        gs.factions['GPC'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        engine.process_capture_territory('NAA')
+        self.assertEqual(gs.territories[1].owner, 'UE', 'Armor (cost 8) beats a single Infantry (cost 4)')
+
+    def test_multiple_allies_tied_on_cost_turn_order_breaks_the_tie(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        ue_unit = make_unit('Infantry', 'UE')
+        gpc_unit = make_unit('Infantry', 'GPC')
+        gs = make_state(
+            data, {1: 'AAC'},
+            {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN, 'GPC': PowerMode.HUMAN},
+            phase=Phase.CAPTURE, contested={1: {'NAA', 'AAC', 'UE', 'GPC'}},
+            units_by_territory={1: [ue_unit, gpc_unit]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        gs.factions['GPC'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        engine.process_capture_territory('NAA')
+        # tied on cost (one Infantry each) -- UE was declared to
+        # make_state before GPC, so UE comes first in GameState.factions'
+        # iteration order and should win the tie.
+        self.assertEqual(gs.territories[1].owner, 'UE', 'tied on cost -- earlier turn order wins')
 
     def test_two_other_powers_still_contesting_leaves_ownership_alone(self):
         # Neither AAC nor UE is allied with NAA (or each other); both

@@ -852,23 +852,28 @@ class GameEngine:
         attacked, or merely passed through there at some point this
         turn -- see Combat Move's execution_notes: every foreign
         territory entered is marked contested, never captured outright,
-        even an undefended Mechanized Infantry blitz) and claims it for
-        `faction` if no LAND units belonging to a non-ally are currently
-        present there. That single check covers both documented cases at
-        once: an undefended blitz-through (nobody's land units were ever
-        there) and a battle faction won outright where the loser's only
-        survivors are air units (air can't hold ground, so it doesn't
-        block the claim).
+        even an undefended Mechanized Infantry blitz) and, if no LAND
+        units belonging to a non-ally are currently present there,
+        awards it to whichever of `faction`/its allies actually holds
+        the ground now (see _determine_capture_winner) -- covers an
+        undefended blitz-through, a battle faction (or an ally fighting
+        alongside it) won outright even if the loser's only survivors
+        are air units (air can't hold ground), and the case where
+        faction's OWN land units were all wiped out but an ally's
+        weren't (confirmed this session: the ally claims it, not
+        faction, even though it's faction's own Capture Territory phase
+        doing the awarding).
 
         If land units belonging to some OTHER, non-allied faction (or
         factions) are still there, ownership is left exactly as it
         stands -- even if the territory's registered owner has since
         been eliminated from the game entirely, as long as the contest
-        between two (or more) powers other than `faction` is still live,
-        nothing here resolves it in `faction`'s favor. Whichever power
-        actually ends up the sole remaining land claimant picks it up on
-        ITS OWN Capture Territory phase instead -- this only ever
-        settles `faction`'s own claim."""
+        between two (or more) powers other than `faction`/its allies is
+        still live, nothing here resolves it in anyone's favor.
+        Whichever power actually ends up the sole remaining land
+        claimant picks it up on ITS OWN Capture Territory phase instead
+        -- this only ever settles a contest `faction` itself is part of
+        (faction in contested_by)."""
         if faction not in self.game_state.active_powers():
             raise ValueError(f'{faction} is not an active power')
         if self.game_state.phase != Phase.CAPTURE:
@@ -881,14 +886,46 @@ class GameEngine:
                 continue
             if not t.contested_by or faction not in t.contested_by:
                 continue
+            land_units_present = [u for u in t.units if unit_defs[u.unit_type]['category'] == 'Land']
             non_allied_land_owners = {
-                u.owner for u in t.units
-                if unit_defs[u.unit_type]['category'] == 'Land' and not _is_ally_or_self(self.game_state, faction, u.owner)
+                u.owner for u in land_units_present if not _is_ally_or_self(self.game_state, faction, u.owner)
             }
             if non_allied_land_owners:
                 continue
-            t.owner = faction
+            t.owner = self._determine_capture_winner(faction, land_units_present, unit_defs)
             t.contested_by = None
+
+    def _determine_capture_winner(self, faction, land_units_present, unit_defs):
+        """Who actually gets `faction`'s claim, among `faction` and its
+        allies -- the only ones who CAN be in `land_units_present`,
+        since the caller already ruled out non-allied presence.
+        `faction` itself wins if it has even a single land unit here,
+        no matter how few ('if you have one land unit, you can keep
+        it'). Otherwise, among faction's allies who DO have land units
+        present, the one with the greatest TOTAL cost of its land units
+        here wins; ties broken by turn order (GameState.factions' fixed
+        iteration order -- earlier wins). If literally nobody -- not
+        faction, not any ally -- has land units present (faction simply
+        ran through an empty territory and kept moving), faction still
+        gets the claim by default, since it's the one whose Capture
+        Territory phase is processing it and no ally has any better
+        claim either."""
+        if any(u.owner == faction for u in land_units_present):
+            return faction
+
+        by_owner = {}
+        for u in land_units_present:
+            by_owner.setdefault(u.owner, []).append(u)
+        if not by_owner:
+            return faction
+
+        turn_order = list(self.game_state.factions.keys())
+
+        def sort_key(owner):
+            total_cost = sum(unit_defs[u.unit_type]['cost'] or 0 for u in by_owner[owner])
+            return (total_cost, -turn_order.index(owner))
+
+        return max(by_owner, key=sort_key)
 
     def process_elimination_check(self):
         """victory.elimination_rule: any HUMAN/BOT/DEFENSIVE faction
