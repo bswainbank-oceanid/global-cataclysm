@@ -39,6 +39,14 @@ def step_up_die(die):
     return DIE_SIZES[min(idx + 1, len(DIE_SIZES) - 1)]
 
 
+def _has_dig_in(base):
+    """True if this unit type's data (units.json's special_abilities list)
+    carries the 'Dig In' trait -- currently Infantry only, but driven by
+    data rather than a hardcoded unit_type check so any future unit type
+    tagged the same way picks it up automatically."""
+    return any(a.startswith('Dig In') for a in base.get('special_abilities', []))
+
+
 @dataclass
 class UnitInstance:
     """An individual, persistent service record -- not an anonymous stack
@@ -57,7 +65,7 @@ class UnitInstance:
     # currently riding one across a sea zone; None otherwise.
     transported_by: Optional[int] = None
 
-    def effective_stats(self, unit_defs, round1_bonus=False):
+    def effective_stats(self, unit_defs, round1_bonus=False, defending=False):
         """unit_defs: engine.data.units() (or an equivalent test fixture).
         Returns the unit's current attack_die/defense/hp/damage after
         applying the promotion bonus (die up one size max D12, +1
@@ -72,7 +80,19 @@ class UnitInstance:
         gets +2 defense, still capped at D12/10), but grants no HP and
         is never persisted here -- the caller (combat.py) re-derives it
         fresh every time it's relevant (round 1 of one specific battle
-        only), it's not a property of the unit itself."""
+        only), it's not a property of the unit itself.
+
+        defending: True if this unit is on the defending side of the
+        battle this call is for. Unlike round1_bonus, this isn't
+        situational -- it's just "is this unit currently defending,"
+        true or false for the unit's entire time in a battle (all
+        rounds, not just round 1) -- and unlike promotion, it isn't
+        persisted on the unit either, since a unit that's attacking in
+        one battle can be defending in the next. Units with the 'Dig In'
+        trait (units.json's special_abilities -- Infantry, currently)
+        get +1 defense (capped at 10) while defending, stacking
+        additively with promotion and round1_bonus same as those do with
+        each other."""
         base = unit_defs[self.unit_type]
         die = base['attack_die']
         defense = base['defense']
@@ -88,6 +108,8 @@ class UnitInstance:
                 die = step_up_die(die)
             if defense is not None:
                 defense = min(defense + 1, 10)
+        if defending and defense is not None and _has_dig_in(base):
+            defense = min(defense + 1, 10)
         return {
             'attack_die': die,
             'defense': defense,

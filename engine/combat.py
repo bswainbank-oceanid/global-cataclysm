@@ -100,12 +100,17 @@ def _alive(units):
     return [u for u in units if u.current_hp > 0]
 
 
-def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_type_weight, bomber_weight, pending_damage, enemy_round1_bonus=False):
+def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_type_weight, bomber_weight, pending_damage,
+                    enemy_round1_bonus=False, enemies_are_defenders=False):
     """Returns (target_or_None, is_hit, is_bypass_hit). `enemy_round1_bonus`:
     True if the enemies' side qualifies for one of combat.
     first_round_bonuses this round -- their defense (used below for both
     the clean-pool and bypass-tier checks) reflects it, same as an
-    existing promotion would. `pending_damage`
+    existing promotion would. `enemies_are_defenders`: True if `enemies`
+    is this battle's actual defending side (i.e. this call is the
+    attacker rolling) -- their defense also reflects Dig In if they have
+    it, for every round, not just round 1 (see UnitInstance.
+    effective_stats' `defending` parameter). `pending_damage`
     maps unit_id -> damage already applied to it earlier in THIS side's
     roll-through this round (not yet subtracted from current_hp) -- a
     unit whose pending damage has already reduced it to 0 or below is
@@ -135,7 +140,7 @@ def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_t
     if not standing:
         return None, False, False
 
-    defense_of = lambda e: e.effective_stats(unit_defs, round1_bonus=enemy_round1_bonus)['defense']
+    defense_of = lambda e: e.effective_stats(unit_defs, round1_bonus=enemy_round1_bonus, defending=enemies_are_defenders)['defense']
     clean_pool = [e for e in standing if defense_of(e) <= roll]
 
     if clean_pool:
@@ -167,7 +172,7 @@ def _resolution_sequence(units, unit_defs, type_order, round1_bonus=False):
 
 
 def _roll_side(rng, side_label, acting_units, enemy_units, unit_defs, target_cfg, round_number, current_global_turn,
-                acting_round1_bonus=False, enemy_round1_bonus=False):
+                acting_round1_bonus=False, enemy_round1_bonus=False, enemies_are_defenders=False):
     """Yields one UNIT_ROLL event per acting unit's die roll, applying
     damage progressively into a local pending_damage tally (not yet
     subtracted from real current_hp -- that happens for both sides
@@ -180,7 +185,10 @@ def _roll_side(rng, side_label, acting_units, enemy_units, unit_defs, target_cfg
     acting_round1_bonus / enemy_round1_bonus: whether this side, and the
     side it's rolling against, each currently qualify for one of
     combat.first_round_bonuses (only ever true together with round_number
-    == 1 -- see _fight_one_round, which computes these)."""
+    == 1 -- see _fight_one_round, which computes these). enemies_are_defenders:
+    forwarded to _select_target for the Dig In check -- true for every
+    round (not just round 1) whenever `enemy_units` is this battle's
+    actual defending side."""
     pending_damage = {}
     for unit in acting_units:
         unit.last_combat_global_turn = current_global_turn
@@ -191,6 +199,7 @@ def _roll_side(rng, side_label, acting_units, enemy_units, unit_defs, target_cfg
         target, is_hit, is_bypass = _select_target(
             rng, roll, die_max, unit.unit_type, enemy_units, unit_defs,
             target_cfg['same_type_weight'], target_cfg['bomber_attacker_weight'], pending_damage,
+            enemies_are_defenders=enemies_are_defenders,
             enemy_round1_bonus=enemy_round1_bonus,
         )
         damage = 0
@@ -264,10 +273,11 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
     defenders_by_id = {u.unit_id: u for u in defenders}
     attackers_by_id = {u.unit_id: u for u in attackers}
 
-    def run_side(side_label, acting, acting_bonus, enemies, enemies_bonus, enemies_by_id, hit_ids):
+    def run_side(side_label, acting, acting_bonus, enemies, enemies_bonus, enemies_by_id, hit_ids, enemies_are_defenders):
         pending = {}
         for event in _roll_side(rng, side_label, acting, enemies, unit_defs, target_cfg, round_number, current_global_turn,
-                                 acting_round1_bonus=acting_bonus, enemy_round1_bonus=enemies_bonus):
+                                 acting_round1_bonus=acting_bonus, enemy_round1_bonus=enemies_bonus,
+                                 enemies_are_defenders=enemies_are_defenders):
             yield event
             if event.hit:
                 hit_ids.add(event.unit_id)
@@ -276,8 +286,10 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
                     killed_by[event.unit_id] = enemies_by_id[event.target_unit_id]
         return pending
 
-    attacker_pending = yield from run_side('attacker', attacker_order, attacker_bonus, defenders, defender_bonus, defenders_by_id, attacker_hit_ids)
-    defender_pending = yield from run_side('defender', defender_order, defender_bonus, attackers, attacker_bonus, attackers_by_id, defender_hit_ids)
+    # The attacker's enemies (defenders) ARE this battle's defending side
+    # -- Dig In applies. The defender's enemies (attackers) are not.
+    attacker_pending = yield from run_side('attacker', attacker_order, attacker_bonus, defenders, defender_bonus, defenders_by_id, attacker_hit_ids, enemies_are_defenders=True)
+    defender_pending = yield from run_side('defender', defender_order, defender_bonus, attackers, attacker_bonus, attackers_by_id, defender_hit_ids, enemies_are_defenders=False)
 
     for unit_id, dmg in attacker_pending.items():
         defenders_by_id[unit_id].current_hp -= dmg

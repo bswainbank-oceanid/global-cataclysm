@@ -42,14 +42,17 @@ def combat_cfg():
 
 class TestHitAndDamageMath(unittest.TestCase):
     def test_normal_hit_deals_full_damage(self):
-        # Armor: D8, damage 4. A roll of 5 hits Infantry's defense (5)
-        # without being Armor's die-max (8), so damage isn't halved.
-        # Infantry (hp 2) dies to the hit, ending the battle after round
-        # 1 -- attacker's roll, then defender's (a guaranteed miss: D6
-        # can't reach Armor's defense of 7), 2 scripted rolls is enough.
+        # Armor: D8, damage 4. Infantry defends with Dig In (+1 defense,
+        # always, per combat.first_round_bonuses' sibling rule), so its
+        # effective defense here is 6, not the base 5 -- a roll of 6
+        # hits it cleanly without being Armor's die-max (8), so damage
+        # isn't halved. Infantry (hp 2) dies to the hit, ending the
+        # battle after round 1 -- attacker's roll, then defender's (a
+        # guaranteed miss: D6 can't reach Armor's defense of 7), 2
+        # scripted rolls is enough.
         attacker = make(1, 'Armor', 'NAA')  # D8, damage 4, defense 7
-        defender = make(2, 'Infantry', 'AAC')  # defense 5, hp 2
-        events = drain([attacker], [defender], 'land', ScriptedRNG([5, 1]))
+        defender = make(2, 'Infantry', 'AAC')  # defense 5 (+1 Dig In while defending = 6), hp 2
+        events = drain([attacker], [defender], 'land', ScriptedRNG([6, 1]))
         roll_events = [e for e in events if e.kind == EventKind.UNIT_ROLL]
         e = roll_events[0]
         self.assertEqual(e.side, 'attacker')
@@ -293,20 +296,22 @@ class TestFirstRoundCombatBonus(unittest.TestCase):
         ))
 
     def test_defender_bonus_raises_defense_and_can_turn_a_hit_into_a_miss(self):
-        # Infantry defense 5 normally; a roll of 5 would hit. With the
-        # round-1 defender bonus (+1 defense, capped at 10) it becomes 6,
-        # and 5 is neither >= 6 nor the attacker's die-max (6), so this
-        # is a genuine miss, not even a bypass.
-        attacker = make(1, 'Infantry', 'NAA')
-        defender = make(2, 'Infantry', 'AAC')
-        events = self._run_round(1, attacker, defender, rolls=[5, 1], round1_bonus_side='defender')
+        # Armor (no Dig In, unlike Infantry -- kept out of this pair
+        # specifically to isolate the round-1 bonus from that unrelated,
+        # always-on rule) has defense 7 normally; a roll of 7 would hit.
+        # With the round-1 defender bonus (+1 defense, capped at 10) it
+        # becomes 8, and 7 is neither >= 8 nor the attacker's die-max
+        # (8), so this is a genuine miss, not even a bypass.
+        attacker = make(1, 'Armor', 'NAA')
+        defender = make(2, 'Armor', 'AAC')
+        events = self._run_round(1, attacker, defender, rolls=[7, 1], round1_bonus_side='defender')
         attacker_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
         self.assertFalse(attacker_roll.hit, 'the round-1 defender bonus should have turned this into a miss')
 
     def test_bonus_does_not_apply_outside_round_1(self):
-        attacker = make(1, 'Infantry', 'NAA')
-        defender = make(2, 'Infantry', 'AAC')
-        events = self._run_round(2, attacker, defender, rolls=[5, 1], round1_bonus_side='defender')
+        attacker = make(1, 'Armor', 'NAA')
+        defender = make(2, 'Armor', 'AAC')
+        events = self._run_round(2, attacker, defender, rolls=[7, 1], round1_bonus_side='defender')
         attacker_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
         self.assertTrue(attacker_roll.hit, 'round 2 should see the defender back at its normal, unboosted defense')
 
@@ -337,11 +342,71 @@ class TestFirstRoundCombatBonus(unittest.TestCase):
         # _fight_one_round helper the other tests above use.
         attacker = make(1, 'Infantry', 'NAA', hp=2)
         defender = make(2, 'Infantry', 'AAC', hp=2)
-        events = drain([attacker], [defender], 'land', ScriptedRNG([5, 1]), round1_bonus_side='attacker')
+        # Defender gets Dig In while defending (+1 defense, always) --
+        # effective defense 6, not the base 5 -- so the roll needs to
+        # clear that to register as a clean hit here.
+        events = drain([attacker], [defender], 'land', ScriptedRNG([6, 1]), round1_bonus_side='attacker')
         round1_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker' and e.round_number == 1)
         self.assertEqual(round1_roll.die, 'D8', "round1_bonus_side should reach round 1 through resolve_battle's real call chain")
         end = next(e for e in events if e.kind == EventKind.BATTLE_END)
         self.assertEqual(end.outcome, 'defender_eliminated')
+
+
+class TestDigIn(unittest.TestCase):
+    """Infantry's 'Dig In' trait (units.json's special_abilities): +1
+    defense while defending, every round -- not just round 1, and unlike
+    combat.first_round_bonuses, unconditional and entirely intrinsic to
+    combat.py (no engine.py trigger determination needed). Driven by
+    UnitInstance.effective_stats' `defending` flag, which is data-sourced
+    from special_abilities rather than a hardcoded unit-type check."""
+
+    def test_infantry_gets_plus_one_defense_only_while_defending(self):
+        inf = make(1, 'Infantry', 'NAA')
+        self.assertEqual(inf.effective_stats(UNIT_DEFS, defending=True)['defense'], 6)
+        self.assertEqual(inf.effective_stats(UNIT_DEFS, defending=False)['defense'], 5, 'no Dig In while attacking')
+
+    def test_non_infantry_unaffected_by_the_defending_flag(self):
+        armor = make(1, 'Armor', 'NAA')
+        self.assertEqual(armor.effective_stats(UNIT_DEFS, defending=True)['defense'], 7, "Armor has no Dig In trait")
+
+    def test_stacks_with_promotion_and_the_round1_bonus(self):
+        # base 5, +1 promotion, +1 round1_bonus, +1 Dig In = 8.
+        inf = make(1, 'Infantry', 'NAA', promoted=True)
+        self.assertEqual(inf.effective_stats(UNIT_DEFS, round1_bonus=True, defending=True)['defense'], 8)
+
+    def test_applies_in_every_round_not_just_round_1(self):
+        # Armor (no Dig In) attacking Infantry: a roll of 5 would hit
+        # Infantry's base defense (5) but not its Dig In-boosted defense
+        # (6) -- confirmed a miss across round 1, 2, AND 3, unlike
+        # combat.first_round_bonuses which only ever applies in round 1.
+        attacker = make(1, 'Armor', 'NAA')
+        defender = make(2, 'Infantry', 'AAC')
+        for round_number in (1, 2, 3):
+            events = list(_fight_one_round(
+                ScriptedRNG([5, 1]), round_number, [attacker], [defender], UNIT_DEFS, combat_cfg(),
+                RULES['combat']['resolution_order']['land'], 0,
+            ))
+            attacker_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
+            self.assertFalse(attacker_roll.hit, f'round {round_number}: Dig In should apply regardless of round number')
+
+    def test_resolve_battle_applies_dig_in_to_the_real_defending_side_only(self):
+        # Infantry vs Infantry: whichever one is DEFENDING gets Dig In,
+        # not both automatically and not the attacker -- exercised
+        # through the real resolve_battle roll sequence rather than the
+        # effective_stats unit test above.
+        attacker = make(1, 'Infantry', 'NAA', hp=2)
+        defender = make(2, 'Infantry', 'AAC', hp=2)
+        # Attacker rolls 5 against the defender's Dig-In-boosted defense
+        # (6) -- a miss. Defender then rolls 5 back against the
+        # ATTACKER's plain, un-dug-in defense (5, since it's not
+        # defending) -- a clean hit, killing the attacker (hp 2, damage 2).
+        events = drain([attacker], [defender], 'land', ScriptedRNG([5, 5]))
+        attacker_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
+        defender_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'defender')
+        self.assertFalse(attacker_roll.hit, "the defender's Dig In should have blocked this")
+        self.assertTrue(defender_roll.hit, "the attacker isn't defending, so it gets no Dig In of its own")
+        end = next(e for e in events if e.kind == EventKind.BATTLE_END)
+        self.assertEqual(end.outcome, 'attacker_eliminated')
 
 
 if __name__ == '__main__':
