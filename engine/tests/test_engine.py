@@ -1836,5 +1836,263 @@ class TestGameEndCheck(unittest.TestCase):
             engine.process_game_end_check('NAA')
 
 
+class TestAdvancePhase(unittest.TestCase):
+    def test_steps_through_the_full_sequence_and_then_stops(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.PURCHASE)
+        engine = GameEngine(gs, data)
+        expected = [
+            Phase.COMBAT_MOVE, Phase.COMBAT_RESOLUTION, Phase.NONCOMBAT_MOVE,
+            Phase.CAPTURE, Phase.DEPLOY_INCOME, Phase.ALLIANCES,
+        ]
+        for phase in expected:
+            engine.advance_phase()
+            self.assertEqual(gs.phase, phase)
+        engine.advance_phase()  # one more call past the end -- stays put
+        self.assertEqual(gs.phase, Phase.ALLIANCES)
+
+
+class TestAdvanceTurn(unittest.TestCase):
+    def test_resets_the_finishing_factions_move_flags(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        mover = make_unit('Infantry', 'NAA')
+        mover.has_moved_combat = True
+        mover.has_moved_noncombat = True
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES,
+            units_by_territory={1: [mover]},
+        )
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+        engine.advance_turn()
+        self.assertFalse(mover.has_moved_combat)
+        self.assertFalse(mover.has_moved_noncombat)
+
+    def test_clears_phase_confirmation_guards_so_the_next_turn_works(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+        # Simulate NAA having already confirmed every phase this turn.
+        engine._purchases_confirmed.add('NAA')
+        engine._combat_moves_confirmed.add('NAA')
+        engine._combat_resolved.add('NAA')
+        engine._noncombat_moves_confirmed.add('NAA')
+        engine._return_to_base_processed.add('NAA')
+        engine.advance_turn()
+        self.assertNotIn('NAA', engine._purchases_confirmed)
+        self.assertNotIn('NAA', engine._combat_moves_confirmed)
+        self.assertNotIn('NAA', engine._combat_resolved)
+        self.assertNotIn('NAA', engine._noncombat_moves_confirmed)
+        self.assertNotIn('NAA', engine._return_to_base_processed)
+        # And NAA can genuinely submit purchases again, once it's active again.
+        gs.active_faction = 'NAA'
+        engine.submit_purchases('NAA', [])  # should not raise
+
+    def test_cycles_to_the_next_active_power_and_wraps_around(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.ALLIANCES,
+        )
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+        engine.advance_turn()
+        self.assertEqual(gs.active_faction, 'AAC')
+        gs.phase = Phase.ALLIANCES
+        engine.advance_turn()
+        self.assertEqual(gs.active_faction, 'UE')
+        gs.phase = Phase.ALLIANCES
+        engine.advance_turn()
+        self.assertEqual(gs.active_faction, 'NAA', 'wraps back around to the first')
+
+    def test_skips_a_faction_eliminated_since_its_turn_began(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.ALLIANCES,
+        )
+        gs.active_faction = 'NAA'
+        gs.factions['AAC'].eliminated = True  # eliminated during NAA's own turn
+        engine = GameEngine(gs, data)
+        engine.advance_turn()
+        self.assertEqual(gs.active_faction, 'UE', 'AAC is skipped -- no longer an active power')
+
+    def test_increments_global_turn(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES, global_turn=5)
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+        engine.advance_turn()
+        self.assertEqual(gs.global_turn, 6)
+
+    def test_resets_phase_to_purchase(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+        engine.advance_turn()
+        self.assertEqual(gs.phase, Phase.PURCHASE)
+
+    def test_sets_game_over_when_no_active_powers_remain(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs.active_faction = 'NAA'
+        gs.factions['NAA'].eliminated = True  # the only active power, gone
+        engine = GameEngine(gs, data)
+        engine.advance_turn()
+        self.assertTrue(gs.game_over)
+        self.assertIsNone(gs.active_faction)
+
+    def test_raises_if_the_game_is_already_over(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs.game_over = True
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.advance_turn()
+
+    def test_raises_if_not_at_the_alliances_phase(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.advance_turn()
+
+
+class TestFullTurnLoopIntegration(unittest.TestCase):
+    """Drives several complete turns across multiple factions through
+    the real public API -- no bot decision-making (Step 5), just empty/
+    trivial orders -- to prove the orchestration (advance_phase,
+    advance_turn, and every phase method chained together in sequence)
+    actually holds up over multiple turns, which none of the more
+    targeted tests above exercise all at once."""
+
+    def _run_one_turn(self, engine, gs, faction):
+        self.assertEqual(gs.active_faction, faction)
+        self.assertEqual(gs.phase, Phase.PURCHASE)
+        engine.submit_purchases(faction, [])
+        engine.confirm_purchases(faction)
+        engine.advance_phase()
+
+        self.assertEqual(gs.phase, Phase.COMBAT_MOVE)
+        engine.submit_combat_moves(faction, [])
+        engine.confirm_combat_moves(faction)
+        engine.advance_phase()
+
+        self.assertEqual(gs.phase, Phase.COMBAT_RESOLUTION)
+        engine.resolve_combat(faction)
+        engine.advance_phase()
+
+        self.assertEqual(gs.phase, Phase.NONCOMBAT_MOVE)
+        engine.process_return_to_base(faction)
+        engine.submit_noncombat_moves(faction, [])
+        engine.confirm_noncombat_moves(faction)
+        engine.advance_phase()
+
+        self.assertEqual(gs.phase, Phase.CAPTURE)
+        engine.process_capture_territory(faction)
+        engine.process_elimination_check()
+        engine.advance_phase()
+
+        self.assertEqual(gs.phase, Phase.DEPLOY_INCOME)
+        engine.deploy_and_collect_income(faction)
+        engine.advance_phase()
+
+        self.assertEqual(gs.phase, Phase.ALLIANCES)
+        engine.process_game_end_check(faction)
+        engine.advance_turn()
+
+    def test_four_full_turns_across_two_factions(self):
+        # Each faction needs >=2 Strategic Centers to survive
+        # process_elimination_check (part of the standard turn loop) --
+        # 1 SC would eliminate them ("<=1" is the elimination rule).
+        data = FakeData(
+            territories={
+                1: {'type': 'land', 'value': 3, 'strategic_center': True},
+                2: {'type': 'land', 'value': 2, 'strategic_center': True},
+                3: {'type': 'land', 'value': 0, 'strategic_center': True},
+                4: {'type': 'land', 'value': 0, 'strategic_center': True},
+            },
+            adjacency={},
+        )
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC', 3: 'NAA', 4: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            phase=Phase.PURCHASE, treasury={'NAA': 0, 'AAC': 0},
+        )
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+
+        expected_order = ['NAA', 'AAC', 'NAA', 'AAC']
+        for turn, faction in enumerate(expected_order):
+            self.assertEqual(gs.global_turn, turn)
+            self._run_one_turn(engine, gs, faction)
+
+        self.assertEqual(gs.global_turn, 4)
+        self.assertEqual(gs.active_faction, 'NAA')
+        # Income collected twice each (turns 0&2 for NAA, 1&3 for AAC):
+        # NAA's two territories are worth 3+2(SC)=5 and 0+2(SC)=2 -> 7/turn.
+        # AAC's are 2+2(SC)=4 and 0+2(SC)=2 -> 6/turn.
+        self.assertEqual(gs.factions['NAA'].treasury_mpc, 14)
+        self.assertEqual(gs.factions['AAC'].treasury_mpc, 12)
+        self.assertFalse(gs.game_over)
+
+    def test_a_units_move_flags_reset_by_the_time_its_faction_acts_again(self):
+        # NAA needs >=2 SCs and AAC needs >=1 (2 to be safe) to both
+        # survive process_elimination_check, part of the standard loop.
+        data = FakeData(
+            territories={
+                1: {'type': 'land', 'value': 0, 'strategic_center': True}, 2: {'type': 'land', 'value': 0, 'strategic_center': True},
+                3: {'type': 'land', 'value': 0, 'strategic_center': True}, 4: {'type': 'land', 'value': 0, 'strategic_center': True},
+            },
+            adjacency={1: [2], 2: [1]},
+        )
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'NAA', 3: 'AAC', 4: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            phase=Phase.PURCHASE, units_by_territory={1: [mover]},
+        )
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+
+        # Turn 0 (NAA): move the unit via non-combat move.
+        engine.submit_purchases('NAA', [])
+        engine.confirm_purchases('NAA')
+        engine.advance_phase()
+        engine.submit_combat_moves('NAA', [])
+        engine.confirm_combat_moves('NAA')
+        engine.advance_phase()
+        engine.resolve_combat('NAA')
+        engine.advance_phase()
+        engine.process_return_to_base('NAA')
+        engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
+        engine.confirm_noncombat_moves('NAA')
+        self.assertTrue(mover.has_moved_noncombat)
+        engine.advance_phase()
+        engine.process_capture_territory('NAA')
+        engine.process_elimination_check()
+        engine.advance_phase()
+        engine.deploy_and_collect_income('NAA')
+        engine.advance_phase()
+        engine.process_game_end_check('NAA')
+        engine.advance_turn()
+
+        # Turn 1 (AAC): nothing to do with NAA's unit.
+        self._run_one_turn(engine, gs, 'AAC')
+
+        # Turn 2 (NAA again): the SAME unit should be able to move once more.
+        self.assertFalse(mover.has_moved_noncombat, 'reset by advance_turn once NAA\'s turn closed')
+        engine.submit_purchases('NAA', [])
+        engine.confirm_purchases('NAA')
+        engine.advance_phase()
+        engine.submit_combat_moves('NAA', [])
+        engine.confirm_combat_moves('NAA')
+        engine.advance_phase()
+        engine.resolve_combat('NAA')
+        engine.advance_phase()
+        engine.process_return_to_base('NAA')
+        engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 1)])  # should not raise
+        engine.confirm_noncombat_moves('NAA')
+        self.assertIn(mover, gs.territories[1].units)
+
+
 if __name__ == '__main__':
     unittest.main()

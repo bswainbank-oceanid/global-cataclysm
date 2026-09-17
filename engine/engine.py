@@ -39,9 +39,21 @@ allied with every other -- nobody non-allied left to keep fighting --
 but first gives the faction whose turn is ending one last chance to
 withdraw from its alliance instead, which keeps the game going; that's
 the only alliance-withdrawal action implemented anywhere in the engine,
-the rest of alliances remaining a v1 stub. Nothing here yet transitions
-GameState.phase itself between phases; callers currently set it directly
-(see the tests).
+the rest of alliances remaining a v1 stub.
+
+Orchestration: advance_phase() steps GameState.phase through the fixed
+7-phase sequence; advance_turn() (call once, right after
+process_game_end_check, at the end of the Alliances phase) closes out
+the active faction's turn -- resetting ITS units' has_moved_combat/
+has_moved_noncombat flags and clearing it from every phase-confirmation
+guard set, both of which nothing else in the engine ever does, so
+skipping this is what used to make a second turn for any faction
+impossible -- then advances active_faction to the next one in
+active_powers() (wrapping around, dynamically skipping anyone eliminated
+since), bumps global_turn, and resets phase to PURCHASE. A driver loop
+is expected to call the phase methods in turn_order's order for
+active_faction each turn, calling advance_phase() between them and
+advance_turn() at the end, and to stop once GameState.game_over is set.
 
 Rollback (phase_confirmation): submit_purchases/submit_combat_moves/
 submit_noncombat_moves all take the COMPLETE desired order list every
@@ -68,6 +80,12 @@ from .movement import (
     legal_noncombat_move_destinations, trace_combat_move,
 )
 from .state import Phase, PowerMode, UnitInstance
+
+# turn_order's fixed 7-phase sequence for one faction's full turn.
+_PHASE_ORDER = [
+    Phase.PURCHASE, Phase.COMBAT_MOVE, Phase.COMBAT_RESOLUTION, Phase.NONCOMBAT_MOVE,
+    Phase.CAPTURE, Phase.DEPLOY_INCOME, Phase.ALLIANCES,
+]
 
 
 @dataclass
@@ -1024,3 +1042,66 @@ class GameEngine:
 
         self.game_state.game_over = self.would_game_end()
         return self.game_state.game_over
+
+    def advance_phase(self):
+        """Moves GameState.phase to the next one in turn_order's fixed
+        7-phase sequence (Purchase -> Combat Move -> Combat Resolution
+        -> Non-Combat Move -> Capture Territory -> Deploy + Income ->
+        Alliances). Call this once the active faction's work for the
+        current phase is done, before starting the next phase's calls.
+        A no-op once Alliances is reached -- call advance_turn() instead
+        to close out the faction's turn and move to the next faction's
+        Purchase phase."""
+        idx = _PHASE_ORDER.index(self.game_state.phase)
+        if idx < len(_PHASE_ORDER) - 1:
+            self.game_state.phase = _PHASE_ORDER[idx + 1]
+
+    def advance_turn(self):
+        """Closes out the currently active faction's turn and opens the
+        next one's -- call this once, after process_game_end_check has
+        run for the current active_faction (whose full turn, all 7
+        phases, is now done).
+
+        Resets that faction's own units' has_moved_combat/
+        has_moved_noncombat flags (nothing else in the engine ever does
+        -- without this, a unit that moved once could never move again
+        for the rest of the game) and clears it from every phase-
+        confirmation guard set (_purchases_confirmed and friends --
+        without this, a faction could only ever complete each phase
+        once, ever, ACROSS THE WHOLE GAME, not once per turn), then
+        advances active_faction to the next one in active_powers()
+        (wrapping around, and naturally skipping anyone eliminated since
+        this faction's turn began, since active_powers() is always
+        recomputed fresh), increments global_turn, and resets phase back
+        to PURCHASE.
+
+        Raises ValueError if the game is already over or this isn't
+        called at the end of the Alliances phase."""
+        if self.game_state.game_over:
+            raise ValueError('the game is already over')
+        if self.game_state.phase != Phase.ALLIANCES:
+            raise ValueError('advance_turn is only valid at the end of the Alliances phase')
+
+        finishing = self.game_state.active_faction
+        if finishing is not None:
+            for t in self.game_state.territories.values():
+                for u in t.units:
+                    if u.owner == finishing:
+                        u.has_moved_combat = False
+                        u.has_moved_noncombat = False
+            self._purchases_confirmed.discard(finishing)
+            self._combat_moves_confirmed.discard(finishing)
+            self._combat_resolved.discard(finishing)
+            self._noncombat_moves_confirmed.discard(finishing)
+            self._return_to_base_processed.discard(finishing)
+
+        active = self.game_state.active_powers()
+        if not active:
+            self.game_state.active_faction = None
+            self.game_state.game_over = True
+            return
+
+        next_index = (active.index(finishing) + 1) % len(active) if finishing in active else 0
+        self.game_state.active_faction = active[next_index]
+        self.game_state.global_turn += 1
+        self.game_state.phase = Phase.PURCHASE
