@@ -209,6 +209,15 @@ class TerritoryState:
     # Units bought this turn's purchase phase, not yet on the board --
     # placed onto `units` during the deploy phase.
     pending_deployment: list = field(default_factory=list)  # list[UnitInstance]
+    # combat.first_round_bonuses' "former-ally territory reclaim" case:
+    # the faction code that gets the first-round attack bonus the next
+    # time IT specifically attacks this territory -- set by
+    # GameEngine.withdraw_from_alliance when a betrayed ally's own
+    # territory is left occupied by the withdrawing faction's units.
+    # Consumed (cleared) only when that named faction actually attacks
+    # here, whatever the outcome -- a different faction attacking first
+    # leaves it untouched, waiting for the intended recipient.
+    reclaim_bonus_for: Optional[str] = None
 
     def to_dict(self):
         return {
@@ -217,6 +226,7 @@ class TerritoryState:
             'units': [u.to_dict() for u in self.units],
             'contested_by': sorted(self.contested_by) if self.contested_by else None,
             'pending_deployment': [u.to_dict() for u in self.pending_deployment],
+            'reclaim_bonus_for': self.reclaim_bonus_for,
         }
 
     @staticmethod
@@ -227,6 +237,7 @@ class TerritoryState:
             units=[UnitInstance.from_dict(u) for u in d['units']],
             contested_by=set(d['contested_by']) if d.get('contested_by') else None,
             pending_deployment=[UnitInstance.from_dict(u) for u in d['pending_deployment']],
+            reclaim_bonus_for=d.get('reclaim_bonus_for'),
         )
 
 
@@ -235,7 +246,7 @@ class FactionState:
     code: str
     mode: FactionMode
     treasury_mpc: int = 0  # MPC: the game's currency, spent in the Purchase phase, earned at Deploy + Income
-    alliance: Optional[str] = None  # stub, unused in v1 (strict free-for-all)
+    alliance: Optional[str] = None  # a shared, GameEngine-generated tag -- two factions are allied iff this is set and equal
     eliminated: bool = False
     # Incremented by GameEngine.advance_turn() each time THIS faction's own
     # turn concludes -- 0 means it hasn't had any turn yet, i.e. its
@@ -244,6 +255,14 @@ class FactionState:
     # allow_noncombat_moves_first_turn (game_start_settings) to decide
     # whether to skip those two phases for this turn.
     turns_taken: int = 0
+    # game_start_settings.can_rejoin_alliances: every faction code that
+    # was a fellow member of an alliance this faction has WITHDRAWN
+    # from -- maintained symmetrically (both sides updated together) by
+    # GameEngine.withdraw_from_alliance. When can_rejoin_alliances is
+    # False, this faction can never again share an alliance with anyone
+    # in this set (checked against the WHOLE prospective alliance, not
+    # just the direct inviter, at invite_to_alliance time).
+    former_allies: set = field(default_factory=set)
 
     def to_dict(self):
         return {
@@ -253,6 +272,7 @@ class FactionState:
             'alliance': self.alliance,
             'eliminated': self.eliminated,
             'turns_taken': self.turns_taken,
+            'former_allies': sorted(self.former_allies),
         }
 
     @staticmethod
@@ -264,6 +284,7 @@ class FactionState:
             alliance=d['alliance'],
             eliminated=d['eliminated'],
             turns_taken=d.get('turns_taken', 0),
+            former_allies=set(d.get('former_allies', [])),
         )
 
 
@@ -294,6 +315,19 @@ class GameState:
     # currently on its own first turn (FactionState.turns_taken == 0).
     allow_combat_moves_first_turn: bool = False
     allow_noncombat_moves_first_turn: bool = True
+    # game_start_settings, the alliance system (this session). Remembered
+    # here, unlike randomize_play_order, since GameEngine consults them
+    # on every faction's Alliances phase for as long as the game runs --
+    # see setup.build_game_state's matching params and
+    # engine.engine.GameEngine.invite_to_alliance/withdraw_from_alliance.
+    max_alliance_size: int = 2  # 1-5; an alliance, including the inviter, may never exceed this many members
+    can_withdraw_from_alliances: bool = True
+    can_rejoin_alliances: bool = False
+    # GameEngine._new_alliance_tag()'s counter -- purely an internal
+    # correlation id for FactionState.alliance, never itself
+    # game-meaningful (not shown to a player, not compared to anything
+    # but itself).
+    _next_alliance_id: int = 1
 
     def new_unit_id(self):
         uid = self._next_unit_id
@@ -321,6 +355,10 @@ class GameState:
             'game_over': self.game_over,
             'allow_combat_moves_first_turn': self.allow_combat_moves_first_turn,
             'allow_noncombat_moves_first_turn': self.allow_noncombat_moves_first_turn,
+            'max_alliance_size': self.max_alliance_size,
+            'can_withdraw_from_alliances': self.can_withdraw_from_alliances,
+            'can_rejoin_alliances': self.can_rejoin_alliances,
+            'next_alliance_id': self._next_alliance_id,
         }
 
     @staticmethod
@@ -335,4 +373,8 @@ class GameState:
             game_over=d.get('game_over', False),
             allow_combat_moves_first_turn=d.get('allow_combat_moves_first_turn', False),
             allow_noncombat_moves_first_turn=d.get('allow_noncombat_moves_first_turn', True),
+            max_alliance_size=d.get('max_alliance_size', 2),
+            can_withdraw_from_alliances=d.get('can_withdraw_from_alliances', True),
+            can_rejoin_alliances=d.get('can_rejoin_alliances', False),
+            _next_alliance_id=d.get('next_alliance_id', 1),
         )

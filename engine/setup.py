@@ -97,7 +97,8 @@ def _apply_promotions(scenario, faction, bought_at):
 
 def build_game_state(scenario_name, faction_modes, defensive_scenario_name='starting_setup_100ipc',
                       randomize_play_order=True, allow_combat_moves_first_turn=False,
-                      allow_noncombat_moves_first_turn=True, rng=None):
+                      allow_noncombat_moves_first_turn=True, max_alliance_size=2,
+                      can_withdraw_from_alliances=True, can_rejoin_alliances=False, rng=None):
     """scenario_name: e.g. 'starting_setup_200ipc', used for every HUMAN/
     BOT faction. faction_modes: {faction_code: FactionMode}, one entry per
     faction in data.factions(). Returns a fresh GameState at global_turn 0
@@ -117,11 +118,19 @@ def build_game_state(scenario_name, faction_modes, defensive_scenario_name='star
     - allow_combat_moves_first_turn (default False) / allow_noncombat_
       moves_first_turn (default True): stored directly on GameState and
       enforced every turn by GameEngine.advance_phase(), not just at
-      setup -- see GameState's own docstring comment on these fields."""
+      setup -- see GameState's own docstring comment on these fields.
+    - max_alliance_size (default 2, 1-5) / can_withdraw_from_alliances
+      (default True) / can_rejoin_alliances (default False): stored
+      directly on GameState and enforced every Alliances phase by
+      GameEngine.invite_to_alliance/withdraw_from_alliance -- not
+      validated here (a value outside 1-5 is trusted, not rejected)."""
     gs = GameState(
         global_turn=0, phase=Phase.PURCHASE,
         allow_combat_moves_first_turn=allow_combat_moves_first_turn,
         allow_noncombat_moves_first_turn=allow_noncombat_moves_first_turn,
+        max_alliance_size=max_alliance_size,
+        can_withdraw_from_alliances=can_withdraw_from_alliances,
+        can_rejoin_alliances=can_rejoin_alliances,
     )
 
     for tid, t in data.territories().items():

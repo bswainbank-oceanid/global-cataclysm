@@ -138,6 +138,7 @@ class GameEngine:
         self._staged_noncombat_moves = {}  # faction_code -> [NonCombatMoveOrder, ...]
         self._noncombat_moves_confirmed = set()
         self._return_to_base_processed = set()  # faction_codes that have already run process_return_to_base this turn
+        self._alliance_action_taken = set()  # faction_codes that have already invited or withdrawn this turn (the Alliances phase's "one of two things")
 
     def _purchase_sources(self, deploy_at, faction):
         """Ordered list of territory_ids whose capacity/cost apply to a
@@ -632,6 +633,15 @@ class GameEngine:
         (combat.emergency_landing). Returns a list of BattleResult, one
         per battle, in the order resolved.
 
+        combat.first_round_bonuses' former-ally-territory-reclaim case:
+        if this territory's TerritoryState.reclaim_bonus_for is `faction`
+        (set by an earlier withdraw_from_alliance, when this territory,
+        belonging to `faction`, was left occupied by the withdrawing
+        faction), `faction`'s attack here gets the round-1 bonus, and
+        the flag is cleared -- one-time, regardless of outcome. Left
+        untouched if it names some OTHER faction (a third party fighting
+        here first doesn't consume the betrayed ally's bonus).
+
         Not reversible (phase_confirmation.scope: dice have already been
         rolled) -- there's no staging here, this is the real thing the
         moment it's called. Can only be called once per faction per turn
@@ -651,10 +661,15 @@ class GameEngine:
         results = []
         for territory_id, battle_type in self.declared_battles(faction):
             attacker_units, defender_units = self.gather_battle_units(territory_id, faction)
+            t = self.game_state.territories[territory_id]
+            round1_bonus_side = 'attacker' if t.reclaim_bonus_for == faction else None
             events = list(resolve_battle(
                 attacker_units, defender_units, battle_type, rng,
                 self.game_state.global_turn, unit_defs, rules,
+                round1_bonus_side=round1_bonus_side,
             ))
+            if round1_bonus_side is not None:
+                t.reclaim_bonus_for = None
             result = BattleResult.from_events(events)
             self._record_combat_stats(events, attacker_units, defender_units, battle_type)
             self._apply_battle_outcome(territory_id, battle_type, faction, result, rng)
@@ -1103,6 +1118,138 @@ class GameEngine:
                 for t in self.game_state.territories.values():
                     t.units = [u for u in t.units if u.owner != code]
 
+    def _alliance_members(self, faction):
+        """{faction} ∪ every other faction currently sharing its
+        alliance tag -- just {faction} alone if it isn't allied at all.
+        Pure query."""
+        tag = self.game_state.factions[faction].alliance
+        if tag is None:
+            return {faction}
+        return {code for code, f in self.game_state.factions.items() if f.alliance == tag}
+
+    def _new_alliance_tag(self):
+        tag = f'ALLIANCE_{self.game_state._next_alliance_id}'
+        self.game_state._next_alliance_id += 1
+        return tag
+
+    def invite_to_alliance(self, faction, target, target_accepts):
+        """Alliances phase, one of the two things `faction` may
+        optionally do this turn (the other is withdraw_from_alliance;
+        never both -- see _alliance_action_taken). `target` immediately
+        decides (alliances.invite_immediate_decision) -- `target_accepts`
+        is supplied by the caller, exactly like every other order this
+        engine takes a decision as an input rather than making one
+        itself; whichever bot/human logic controls `target` is
+        responsible for it, consulted synchronously before this call.
+
+        Raises ValueError if the invite could never be validly accepted
+        at all -- wrong phase, `faction` already took its one alliance
+        action this turn, `target` is `faction` itself or not a valid
+        ally-eligible active faction, `target` is already in an alliance
+        (must withdraw first, on its own separate turn), accepting would
+        exceed game_start_settings.max_alliance_size, or -- when
+        can_rejoin_alliances is False -- `target` has a former_allies
+        conflict with anyone already in `faction`'s alliance. A
+        `target_accepts=False` decline is NOT an error (nothing changes,
+        but the one-action-per-turn slot is still spent); returns
+        `target_accepts` either way."""
+        if faction not in self.game_state.active_factions():
+            raise ValueError(f'{faction} is not an active faction')
+        if self.game_state.phase != Phase.ALLIANCES:
+            raise ValueError('invite_to_alliance is only valid during the Alliances phase')
+        if faction in self._alliance_action_taken:
+            raise ValueError(f'{faction} has already taken its one alliance action this turn')
+        if target == faction:
+            raise ValueError('a faction cannot invite itself')
+        if target not in self.game_state.active_factions():
+            raise ValueError(f'{target} is not an active faction and cannot be invited')
+        if self.game_state.factions[target].alliance is not None:
+            raise ValueError(f'{target} is already in an alliance -- it must withdraw first')
+
+        prospective_members = self._alliance_members(faction) | {target}
+        if len(prospective_members) > self.game_state.max_alliance_size:
+            raise ValueError(
+                f'accepting would make an alliance of {len(prospective_members)}, '
+                f'exceeding max_alliance_size ({self.game_state.max_alliance_size})'
+            )
+        if not self.game_state.can_rejoin_alliances:
+            banned = self.game_state.factions[target].former_allies & prospective_members
+            if banned:
+                raise ValueError(
+                    f"{target} can no longer ally with {sorted(banned)} (can_rejoin_alliances is False)"
+                )
+
+        self._alliance_action_taken.add(faction)
+        if not target_accepts:
+            return False
+
+        tag = self.game_state.factions[faction].alliance or self._new_alliance_tag()
+        self.game_state.factions[faction].alliance = tag
+        self.game_state.factions[target].alliance = tag
+        return True
+
+    def _faction_has_units_on_an_allied_sc(self, faction):
+        """True if `faction` currently has at least one unit physically
+        present on a Strategic Center owned by one of its OWN allies
+        (not itself) -- the design doc's SC lock on withdrawal."""
+        terrs = self.data.territories()
+        for tid, t in self.game_state.territories.items():
+            if terrs[tid]['type'] != 'land' or not terrs[tid].get('strategic_center'):
+                continue
+            if t.owner is None or t.owner == faction:
+                continue
+            if not _is_ally_or_self(self.game_state, faction, t.owner):
+                continue
+            if any(u.owner == faction for u in t.units):
+                return True
+        return False
+
+    def withdraw_from_alliance(self, faction):
+        """Alliances phase, the other of the two things `faction` may
+        optionally do this turn (see invite_to_alliance) -- there is no
+        separate 'last chance' version of this at game-end time; this
+        IS the only withdrawal action, and it's this faction's one
+        regular turn choice, same as any other turn. Leaves the CURRENT
+        alliance entirely -- no longer allied with any of its former
+        members (rule 4) -- records former_allies symmetrically for
+        game_start_settings.can_rejoin_alliances, and, for each land
+        territory a former ally owns that `faction` is still physically
+        occupying, marks it contested and queues combat.
+        first_round_bonuses' former-ally-reclaim bonus for that ally.
+
+        Raises ValueError if the phase/turn/action-slot guards fail, if
+        game_start_settings.can_withdraw_from_alliances is False,
+        `faction` has no alliance to leave, or `faction` currently has a
+        unit on an ally's Strategic Center (the design doc's SC lock)."""
+        if faction not in self.game_state.active_factions():
+            raise ValueError(f'{faction} is not an active faction')
+        if self.game_state.phase != Phase.ALLIANCES:
+            raise ValueError('withdraw_from_alliance is only valid during the Alliances phase')
+        if faction in self._alliance_action_taken:
+            raise ValueError(f'{faction} has already taken its one alliance action this turn')
+        if not self.game_state.can_withdraw_from_alliances:
+            raise ValueError('withdrawing from alliances is disabled (can_withdraw_from_alliances is False)')
+        fstate = self.game_state.factions[faction]
+        if fstate.alliance is None:
+            raise ValueError(f'{faction} is not currently in an alliance')
+        if self._faction_has_units_on_an_allied_sc(faction):
+            raise ValueError(f"{faction} cannot withdraw while it has units on an ally's Strategic Center")
+
+        self._alliance_action_taken.add(faction)
+        former_members = self._alliance_members(faction) - {faction}
+        for other in former_members:
+            fstate.former_allies.add(other)
+            self.game_state.factions[other].former_allies.add(faction)
+        fstate.alliance = None
+
+        terrs = self.data.territories()
+        for tid, t in self.game_state.territories.items():
+            if terrs[tid]['type'] != 'land' or t.owner not in former_members:
+                continue
+            if any(u.owner == faction for u in t.units):
+                t.contested_by = (t.contested_by or set()) | {faction, t.owner}
+                t.reclaim_bonus_for = t.owner
+
     def would_game_end(self):
         """Pure query, no mutation: victory.game_end_rule -- would the
         game be over right now, as-is? True once every remaining active
@@ -1121,31 +1268,22 @@ class GameEngine:
         alliances = {self.game_state.factions[code].alliance for code in active}
         return len(alliances) == 1 and None not in alliances
 
-    def process_game_end_check(self, faction, withdraw_from_alliance=False):
+    def process_game_end_check(self, faction):
         """victory.game_end_rule, checked once at the very end of
-        `faction`'s full turn -- after the (stubbed) Alliances phase,
-        the last of the 7 turn_order phases. Before the game is declared
-        over, `faction` gets one last chance to withdraw from its
-        alliance (withdraw_from_alliance=True clears
-        FactionState.alliance for `faction` specifically) -- doing so
-        keeps the game going if that alliance was the only thing making
-        would_game_end() true. This is the ONLY alliance-withdrawal
-        action implemented anywhere in the engine; full join/withdraw
-        mechanics otherwise remain a v1 stub (see alliances.status).
-
-        Sets GameState.game_over to match the result (would_game_end(),
-        evaluated AFTER applying the withdrawal, if any) and returns it.
-        Automatic in that it takes no staging/rollback of its own
-        (phase_confirmation.scope), but unlike every other automatic
-        phase call it DOES take a single yes/no player choice, since
-        that choice is the entire point of the 'last chance' rule."""
+        `faction`'s full turn -- after the Alliances phase, the last of
+        the 7 turn_order phases. Pure query+set: sets GameState.game_over
+        to match would_game_end() and returns it. NOT a separate
+        decision point -- whatever alliance action `faction` took this
+        turn (invite_to_alliance, withdraw_from_alliance, or neither) is
+        its one regular Alliances-phase choice, already applied earlier
+        in this same phase; there is no additional 'last chance' window
+        here to avoid the game ending. A driver wanting to keep the game
+        going must have `faction` call withdraw_from_alliance itself,
+        during its regular turn, before this runs."""
         if faction not in self.game_state.active_factions():
             raise ValueError(f'{faction} is not an active faction')
         if self.game_state.phase != Phase.ALLIANCES:
             raise ValueError('process_game_end_check is only valid during the Alliances phase')
-
-        if withdraw_from_alliance:
-            self.game_state.factions[faction].alliance = None
 
         self.game_state.game_over = self.would_game_end()
         return self.game_state.game_over
@@ -1230,6 +1368,7 @@ class GameEngine:
             self._combat_resolved.discard(finishing)
             self._noncombat_moves_confirmed.discard(finishing)
             self._return_to_base_processed.discard(finishing)
+            self._alliance_action_taken.discard(finishing)
             # game_start_settings' first-turn check (FactionState.turns_taken
             # == 0) is only ever true for THIS, its now-concluding turn.
             self.game_state.factions[finishing].turns_taken += 1

@@ -2,7 +2,10 @@
   "_comment": "Constants and formulas that were previously hardcoded (differently, in several places) across ad hoc scripts. Consolidated here so the whole pipeline and any future game engine reads the same numbers. Expanded to cover the full ruleset (turn order, movement, faction modes, alliances, victory) after discovering data/rules.json was only a partial distillation of reference/Global Cataclysm Design Doc.odt -- see docs/GAME_ARCHITECTURE.md for how this maps onto the engine.",
   "setup": {
     "territory_mpc_per_faction": 25,
-    "territory_value_range": [0, 5],
+    "territory_value_range": [
+      0,
+      5
+    ],
     "strategic_centers_per_faction": 3,
     "strategic_center_value_bonus": 2,
     "starting_unit_budget_mpc": 200,
@@ -11,7 +14,9 @@
     "stacking_cap_scope": "a starting-setup purchase limit only (not an in-game limit): every unit purchased at a territory counts against that territory's cap, including naval units and any air unit riding an Aircraft Carrier's escort, even though those deploy to a sea zone rather than the land territory itself. See production.per_turn_deploy_cap_formula for the separate, ongoing (post-setup) rule.",
     "naval_purchase_rule": "naval units may only be purchased at a coastal territory (has >=1 adjacent sea zone) and deploy to that sea zone, not the land territory",
     "no_shared_sea_zones_rule": "no two factions may deploy naval units (or carrier-based aircraft) to the same sea zone in the starting setup",
-    "excluded_naval_zones": [43],
+    "excluded_naval_zones": [
+      43
+    ],
     "excluded_naval_zones_note": "sea zone id 43 (Caspian Sea) never hosts a naval deployment, default or override, in any starting-setup scenario. The underlying reason (landlocked, no real naval access) is permanent, not setup-only -- every bot's purchase policy also treats this list as off-limits for the rest of the game, not just at setup (see bots.purchase_policy and engine.bots.policy.excluded_naval_purchase_zones); this is a bot-policy choice, not an engine-level restriction, so a human player is not blocked from it.",
     "carrier_escort_rule": "every purchased Aircraft Carrier must have at least 1 escorting Fighter or Bomber, which deploys to the carrier's own sea zone instead of a land territory",
     "mandatory_land_unit_rule": "every land territory with a foreign-faction land neighbor must have at least 1 land unit (Infantry, Mechanized Infantry, or Armor) at setup -- does not need to be specifically Infantry",
@@ -25,7 +30,10 @@
     "allow_noncombat_moves_first_turn": "default True. Same mechanism as allow_combat_moves_first_turn, for Non-Combat Move -- advance_phase() skips straight from Combat Resolution to Capture Territory when False and it's the active faction's first turn.",
     "combat_resolution_never_skipped": "Combat Resolution itself is NEVER skipped by either setting -- it isn't a 'move,' just auto-resolving whatever's currently contested on the board (declared_battles), regardless of whether the active faction submitted a fresh combat move this turn. A faction on its own combat-move-disabled first turn can still be attacked by someone else beforehand and have units of its own already sitting in a contested territory (e.g. an ally's earlier fight) -- Combat Resolution still runs for that.",
     "driver_implication": "a driver loop must be PHASE-AWARE, not a fixed 7-call sequence -- check GameState.phase before calling into a given phase's action (e.g. only call the Combat Move handler if GameState.phase == Phase.COMBAT_MOVE), since advance_phase() may have already skipped past it. See engine/bots/driver.py's play_to_completion for a worked example.",
-    "status": "implemented -- see engine.setup.build_game_state (randomize_play_order/rng params) and engine.engine.GameEngine.advance_phase/_phase_is_skipped_this_turn/advance_turn (FactionState.turns_taken)"
+    "status": "implemented -- see engine.setup.build_game_state (randomize_play_order/rng params) and engine.engine.GameEngine.advance_phase/_phase_is_skipped_this_turn/advance_turn (FactionState.turns_taken)",
+    "max_alliance_size": "default 2 (range 1-5). Stored on GameState, read by GameEngine.invite_to_alliance -- the PROSPECTIVE alliance size (current members of the inviting faction's alliance, plus the invitee) must not exceed this. Not range-validated by engine.setup.build_game_state (a caller-trusted value).",
+    "can_withdraw_from_alliances": "default True. Stored on GameState, read by GameEngine.withdraw_from_alliance -- when False, withdrawing raises ValueError (a faction that joins an alliance under this setting can never leave it, short of elimination).",
+    "can_rejoin_alliances": "default False. Stored on GameState, read by GameEngine.invite_to_alliance -- when False, FactionState.former_allies (populated by withdraw_from_alliance) blocks a withdrawn faction from ever again sharing an alliance with any of its former co-members; see alliances.rejoin_ban."
   },
   "orchestration": {
     "advance_phase": "GameEngine.advance_phase() steps GameState.phase to the next one in this fixed 7-phase sequence -- call it once the active faction's work for the current phase is done, before starting the next phase's calls. A no-op once Alliances is reached. Can skip Combat Move and/or Non-Combat Move entirely for the active faction's own first turn -- see game_start_settings.",
@@ -37,7 +45,12 @@
     {
       "phase": "Purchase",
       "summary": "Spend the faction's treasury_mpc budget and choose deploy locations. The units are decided now but don't appear on the board yet -- they sit in TerritoryState.pending_deployment until Deploy + Income.",
-      "see": ["purchase", "production", "combat.contested_territory_rule", "phase_confirmation"]
+      "see": [
+        "purchase",
+        "production",
+        "combat.contested_territory_rule",
+        "phase_confirmation"
+      ]
     },
     {
       "phase": "Combat Move",
@@ -49,7 +62,11 @@
         "Air units supply a 2-entry [origin, destination] path (no hop-by-hop legality or capture concerns) and validate against movement.legal_air_move_destinations instead of trace_combat_move; an air combat move always marks the destination contested, never captures (air alone can't capture).",
         "Moving an Aircraft Carrier sweeps along embarked aircraft too (carrier_air_operations.carrier_ride_along) -- they become real combatants in the resulting battle for free, since gather_battle_units only cares about physical presence."
       ],
-      "see": ["movement", "movement.carrier_air_operations.carrier_ride_along", "phase_confirmation"]
+      "see": [
+        "movement",
+        "movement.carrier_air_operations.carrier_ride_along",
+        "phase_confirmation"
+      ]
     },
     {
       "phase": "Combat Resolution",
@@ -61,7 +78,12 @@
         "round1_bonus_side is NOT YET determined here -- resolve_combat always calls combat.resolve_battle() with the default (no bonus). Figuring out whether a given battle actually qualifies as a pure amphibious assault or a sea-deploy surprise (combat.first_round_bonuses) needs move/deploy history this phase doesn't track yet -- a deferred refinement, not an oversight.",
         "Sea battles run combat.emergency_landing's check after every battle regardless of outcome: any surviving DEFENDING aircraft left without their own faction's carrier get find_emergency_landing's one-hop search, scoped per-owner since defenders can be pooled across several factions and each only cares about its own carrier. Attacking aircraft are untouched (defender only, per that rule)."
       ],
-      "see": ["combat", "combat.emergency_landing", "combat.multi_party_battles", "movement.carrier_air_operations.return_to_base_after_combat"]
+      "see": [
+        "combat",
+        "combat.emergency_landing",
+        "combat.multi_party_battles",
+        "movement.carrier_air_operations.return_to_base_after_combat"
+      ]
     },
     {
       "phase": "Non-Combat Move",
@@ -71,7 +93,13 @@
         "Orders carry just a destination, not a path like CombatMoveOrder does -- there's no capture/blitz concept for a non-combat move, so only the endpoint matters; legal_noncombat_move_destinations/legal_air_move_destinations already do their own BFS internally.",
         "carrier_air_operations is now fully wired in for this phase: process_return_to_base runs first (an automated, non-staged step -- see that entry), and carrier_ride_along fires automatically whenever a NonCombatMoveOrder moves an Aircraft Carrier. movement.stranded_aircraft_rule then runs as confirm_noncombat_moves' last step. carrier_ride_along for a COMBAT move (a carrier attacking with embarked aircraft as combatants) is still not implemented -- see that entry's status."
       ],
-      "see": ["movement.noncombat_move_destination", "movement.air_landing_rule", "movement.carrier_air_operations", "movement.stranded_aircraft_rule", "phase_confirmation"]
+      "see": [
+        "movement.noncombat_move_destination",
+        "movement.air_landing_rule",
+        "movement.carrier_air_operations",
+        "movement.stranded_aircraft_rule",
+        "phase_confirmation"
+      ]
     },
     {
       "phase": "Capture Territory",
@@ -82,17 +110,29 @@
         "turn_order_definition": "GameState.factions' fixed iteration order (inferred, not independently confirmed with the user -- flag before relying on it if the actual intended meaning turns out to be something more dynamic, like 'whichever ally's turn comes up next in the rotation from this point')",
         "status": "implemented -- see engine.engine.GameEngine._determine_capture_winner"
       },
-      "see": ["movement.combat_move_destination", "movement.empty_foreign_territory_rule", "combat.contested_territory_rule", "combat.battle_resolution_pass_order"]
+      "see": [
+        "movement.combat_move_destination",
+        "movement.empty_foreign_territory_rule",
+        "combat.contested_territory_rule",
+        "combat.battle_resolution_pass_order"
+      ]
     },
     {
       "phase": "Deploy + Income",
       "summary": "Purchase's pending_deployment units actually appear on the board now (applying purchase's carrierless-air and lost-contested-purchase fallbacks, and marking a hostile sea deploy contested). Income is collected for next turn's budget, then the global recovery/heal check runs over the WHOLE board (every faction's units, not just the active one's) -- see combat.recovery_rule. Automatic -- no player choice, nothing to roll back.",
-      "see": ["combat.recovery_rule", "production", "purchase"]
+      "see": [
+        "combat.recovery_rule",
+        "production",
+        "purchase"
+      ]
     },
     {
       "phase": "Alliances",
-      "summary": "Propose/withdraw -- entirely stubbed as a no-op for v1, EXCEPT for the one narrow withdrawal action victory.game_end_rule's last-chance check offers at the very end of this phase (see that entry) -- there's still no general join/propose/withdraw mechanic beyond it.",
-      "see": ["alliances", "victory.game_end_rule"]
+      "summary": "A faction may optionally invite_to_alliance or withdraw_from_alliance -- one action per faction per turn (see alliances.alliances_phase_action). No longer a no-op stub: fully implemented, including the Strategic-Center withdrawal lock, the rejoin ban, and the former-ally reclaim bonus setup. There is no special end-of-game withdrawal window here -- victory.game_end_rule's check runs AFTER this phase's regular action, see alliances.withdraw_from_alliance.no_special_end_of_game_window.",
+      "see": [
+        "alliances",
+        "victory.game_end_rule"
+      ]
     }
   ],
   "combat": {
@@ -114,8 +154,20 @@
     "hit_rule": "attack die roll >= target's defense is a hit; the max value on the die always hits, even against a target whose defense exceeds the roll",
     "damage_rule": "a hit deals damage equal to the attacker's damage rating. A target normally reachable by the roll (defense <= roll) is always preferred and takes full damage, even if the roll happens to be the die's max value. The max-die-always-hits bypass -- reaching a target whose defense exceeds the roll -- is only used once no normally-reachable target remains, and even then is restricted to the single next-highest defense tier above the roll (see target_selection.fallback_rule; a tougher tier still is never reached), and that bypass hit specifically deals half damage (rounded down): the cost of forcing a hit on an otherwise-unhittable target, not a tax on rolling well.",
     "resolution_order": {
-      "land": ["Infantry", "Mechanized Infantry", "Armor", "Fighter", "Bomber"],
-      "sea": ["Submarine", "Fighter", "Bomber", "Cruiser", "Aircraft Carrier"],
+      "land": [
+        "Infantry",
+        "Mechanized Infantry",
+        "Armor",
+        "Fighter",
+        "Bomber"
+      ],
+      "sea": [
+        "Submarine",
+        "Fighter",
+        "Bomber",
+        "Cruiser",
+        "Aircraft Carrier"
+      ],
       "note": "within a round, each side resolves its own units grouped by type in this fixed order, then by attack die size ascending within a type (promotions can give same-type units different dice). Same order applies to attacker and defender."
     },
     "target_selection": {
@@ -132,7 +184,10 @@
     },
     "casualty_resolution": "attacker rolls all attacks first (defending casualties noted, not removed), then defender rolls all attacks (both sides' casualties removed together)",
     "progressive_elimination_note": "within one side's own ordered roll-through (per resolution_order), damage accumulates progressively against the other side -- a unit-type group resolving later in that same side's sequence can find its preferred targets already reduced to 0 HP by an earlier group in the sequence. Actual removal from the board for BOTH sides happens together only after both attacker and defender have finished rolling for the round.",
-    "battle_resolution_pass_order": ["sea", "land"],
+    "battle_resolution_pass_order": [
+      "sea",
+      "land"
+    ],
     "battle_resolution_pass_note": "global across the whole map for a turn's combat resolution step -- every declared sea battle resolves to completion first, then every declared land battle; never interleaved per battle pair. This is what allows surviving transports/escorts from an already-resolved naval battle to continue their combat move into the adjacent land battle before it resolves.",
     "promotion_check_timing": "after_every_round",
     "promotion_check_note": "promotion is checked after every round of combat, including the air-superiority round -- a mid-battle promotion (die size up, +1 defense) affects that same battle's remaining rounds.",
@@ -165,7 +220,7 @@
           "name": "former-ally territory reclaim",
           "recipient": "attacker, the betrayed former ally",
           "trigger": "an alliance breaks and one member is left occupying territory that used to belong to the other; the original owner gets the bonus retaking it",
-          "status": "TODO -- not designed beyond this note. Depends on alliance mechanics (join/withdraw/betrayal) that are entirely out of scope for v1 (see alliances.status); revisit once those exist."
+          "status": "implemented -- see alliances.withdraw_from_alliance's reclaim_setup and TerritoryState.reclaim_bonus_for; GameEngine.resolve_combat reads/consumes it."
         }
       ]
     },
@@ -245,14 +300,49 @@
     "service_record_note": "every unit is tracked as an individual, persistent record (stable unit_id), not an anonymous stack count -- its XP, promotion status, and current damage/HP all persist on that specific unit across turns and battles."
   },
   "faction_modes": {
-    "modes": ["HUMAN", "BOT", "DEFENSIVE", "NEUTRAL"],
+    "modes": [
+      "HUMAN",
+      "BOT",
+      "DEFENSIVE",
+      "NEUTRAL"
+    ],
     "human_bot": "functionally identical to the engine -- both get full turns through the same order-submission API, full budget/production; differ only in who/what submits orders",
     "defensive": "seeded via the 100-IPC/no-SC scenario ruleset (see data/scenarios/starting_setup_100ipc.json). Never receives a turn: no purchases, no movement, no reinforcement, can't join alliances. Its territory IS capturable and its starting units DO fight back normally as an ordinary defender when attacked.",
     "neutral": "zero units, zero turns. Its territory is a hard exclusion from every other faction's legal move/attack targets -- not a combatant, an impassable region."
   },
   "alliances": {
-    "status": "partially implemented for v1: FactionState.alliance is a plain membership tag (two factions are allied if it's set and equal) that MOVEMENT rules actively consult -- own-or-allied territory/units count as friendly throughout the movement section above. What's still out of scope: the alliance MECHANICS themselves -- no join/withdraw flow, no betrayal/contested-on-betrayal, no allied combat bonus, no allied-defense-together in combat resolution. Something (a scenario setup, a test, or a future engine.py API) has to set FactionState.alliance directly; there's no in-game action that changes it yet.",
-    "design_doc_reference": "2 or 3 factions can join in alliances depending on game settings. Can withdraw from an alliance OR invite 1 faction to join at turn end; invited faction immediately accepts or rejects. Can't withdraw while you have units in an allied Strategic Center. Occupied former-ally territories become contested; the former ally gets a combat bonus in the first round of combat to reclaim them. Allies can move through each other's territories without claiming them; their units don't fight each other. Allies defend together. NOTE: the design doc's 'the attacker chooses which non-aligned faction they're attacking' is SUPERSEDED for this engine -- see combat.multi_party_battles, decided this session: there's no picking a single target among several non-allied factions present, all of them defend together as one pooled side."
+    "status": "implemented -- see engine.engine.GameEngine.invite_to_alliance/withdraw_from_alliance, engine.state.GameState's max_alliance_size/can_withdraw_from_alliances/can_rejoin_alliances, FactionState.alliance/former_allies, TerritoryState.reclaim_bonus_for.",
+    "membership": "FactionState.alliance is a plain membership tag (two factions are allied if it's set and equal) -- MOVEMENT and CAPTURE rules already consult it: own-or-allied territory/units count as friendly throughout movement, and combat.multi_party_battles pools allied defenders together. A faction can only be in one alliance at a time (rule 5) -- invite_to_alliance refuses to invite a target that's already in an alliance; it must withdraw first.",
+    "game_start_settings_used": [
+      "max_alliance_size",
+      "can_withdraw_from_alliances",
+      "can_rejoin_alliances"
+    ],
+    "alliances_phase_action": "During the Alliances phase (the 7th and last turn_order phase), a faction may optionally do ONE of two things this turn: invite_to_alliance (propose to a specific target faction) or withdraw_from_alliance (leave its current alliance). GameEngine._alliance_action_taken enforces the one-action-per-turn limit, reset each turn in advance_turn(). Doing neither is always legal (a no-op turn).",
+    "invite_to_alliance": {
+      "flow": "faction invites target; target_accepts is decided immediately by the caller (rule 6 -- 'when invited to join an alliance, a faction immediately decides to join or not'; the engine has no separate pending-invite state -- a driver/bot/human resolves the accept/reject decision itself and passes the result straight into invite_to_alliance's target_accepts argument).",
+      "on_accept": "joining an alliance means becoming aligned with ALL of its current members (rule 3), not just the inviter -- if faction is already in an alliance, target joins that same tag (everyone faction was already allied with); if neither is yet allied, a brand-new alliance tag is generated (GameState._next_alliance_id, e.g. 'ALLIANCE_1').",
+      "validation": [
+        "faction and target must both be active (HUMAN/BOT) factions -- NEUTRAL/DEFENSIVE can't be invited (DEFENSIVE is explicitly documented elsewhere as unable to join alliances; NEUTRAL never takes any turn action at all).",
+        "a faction cannot invite itself.",
+        "target must not already be in an alliance (must withdraw first).",
+        "the PROSPECTIVE alliance (faction's current members, plus target) must not exceed max_alliance_size (1-5, default 2).",
+        "if can_rejoin_alliances is False (the default), target must not share a former_allies ban with anyone in the prospective alliance -- see rejoin_ban below.",
+        "must be faction's turn, Alliances phase, and faction's one alliance action for the turn not yet spent."
+      ]
+    },
+    "withdraw_from_alliance": {
+      "effect": "faction leaves its CURRENT alliance entirely -- no longer allied with any of its former members (rule 4), not just the one it might name.",
+      "sc_lock": "refuses (ValueError) if faction currently has any unit sitting on an allied Strategic Center it doesn't own -- the design doc's 'can't withdraw while you have units in an allied Strategic Center.' A unit on faction's OWN Strategic Center never blocks this.",
+      "disabled_by_setting": "refuses (ValueError) if game_start_settings.can_withdraw_from_alliances is False.",
+      "former_allies_tracking": "for each former co-member, records the pair symmetrically in both factions' former_allies sets (used by the rejoin ban below).",
+      "reclaim_setup": "for every LAND territory owned by a former ally that faction is still physically occupying (units present) at the moment of withdrawal, marks it contested (t.contested_by |= {faction, owner}) and sets t.reclaim_bonus_for = owner -- see combat.first_round_bonuses' 'former-ally territory reclaim' case for how that bonus is consumed.",
+      "no_special_end_of_game_window": "there is NO separate 'last chance' withdrawal at game end -- victory.game_end_rule's check (GameEngine.process_game_end_check) is a pure query, run AFTER the Alliances phase's regular action has already happened. A faction wanting to withdraw to avoid the game ending from would_game_end()'s all-remaining-factions-allied condition must call withdraw_from_alliance itself, as its one regular Alliances-phase choice, same as any other turn -- confirmed this session after an earlier draft mistakenly built a bypass-the-guard special case into process_game_end_check; that was removed."
+    },
+    "rejoin_ban": "Default (can_rejoin_alliances=False): a faction that withdrew can never again share an alliance with anyone who was a co-member of that alliance AT THE MOMENT it withdrew -- a PAIRWISE ban recorded in former_allies, not a blanket 'never ally with anyone again' rule and not scoped to only the exact former alliance tag (a later alliance under a different tag containing any banned pair is still refused). invite_to_alliance checks the ban against the WHOLE prospective alliance (every current member plus the invitee), not just the two factions directly involved in the invite -- so a 3-faction alliance can't be reassembled piecemeal by inviting the banned faction back into an alliance with a different member it never personally withdrew from. When can_rejoin_alliances is True, former_allies is still recorded but never checked.",
+    "reclaim_bonus": "See combat.first_round_bonuses' 'former-ally territory reclaim' case -- now implemented. TerritoryState.reclaim_bonus_for names the one faction (the betrayed former owner) who gets the round-1 attack bonus the NEXT time it specifically attacks that territory; resolve_combat reads it before each battle and clears it only when the named faction is the one attacking (a different attacker going first leaves it queued).",
+    "design_doc_reference": "2 or 3 factions can join in alliances depending on game settings. Can withdraw from an alliance OR invite 1 faction to join at turn end; invited faction immediately accepts or rejects. Can't withdraw while you have units in an allied Strategic Center. Occupied former-ally territories become contested; the former ally gets a combat bonus in the first round of combat to reclaim them. Allies can move through each other's territories without claiming them; their units don't fight each other. Allies defend together. NOTE: the design doc's 'the attacker chooses which non-aligned faction they're attacking' is SUPERSEDED for this engine -- see combat.multi_party_battles, decided earlier this session: there's no picking a single target among several non-allied factions present, all of them defend together as one pooled side.",
+    "not_yet_built": "Bot/AI decision-making for WHEN to invite/accept/withdraw is explicitly deferred -- the user asked for 'the engine, first' for this feature; RandomBot and any human UI still need their own alliance-phase policy layered on top of these engine calls."
   },
   "victory": {
     "elimination_rule": "a faction is eliminated when it controls <=1 Strategic Center (original or captured); contested SCs still count as controlled (ownership only ever changes via Capture Territory, so a still-contested SC's registered owner hasn't lost it yet). Remove all remaining units from the board on elimination. Implemented -- see engine.engine.GameEngine.process_elimination_check, meant to run right after Capture Territory each turn (automatic, no player choice, nothing to roll back). It's GameState.active_factions() excluding eliminated factions -- which every phase method already gates on, and which combat.recovery_rule's num_factions is derived from -- that actually enforces 'gets no more turns,' not anything phase-specific. NEUTRAL is exempt (never had turns to lose); DEFENSIVE can still be eliminated (its units are cleared, even though it never took turns either).",
