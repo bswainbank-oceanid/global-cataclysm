@@ -1,5 +1,8 @@
+import random
 import unittest
 
+from engine import data as real_data
+from engine.combat import BattleResult
 from engine.engine import GameEngine, PurchaseOrder, CombatMoveOrder
 from engine.state import GameState, TerritoryState, FactionState, UnitInstance, PowerMode, Phase
 
@@ -35,6 +38,14 @@ class FakeData:
 
     def territories(self):
         return self._territories
+
+    def rules(self):
+        # combat.resolve_battle needs the real ruleset (resolution
+        # order, target-selection weighting, promotion thresholds,
+        # air-superiority trigger) -- only territories/adjacency/units
+        # are faked for movement/purchase test control, not the combat
+        # rules themselves.
+        return real_data.rules()
 
     def adjacency(self):
         return self._adjacency
@@ -697,6 +708,246 @@ class TestCombatMoveRollback(unittest.TestCase):
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_combat_moves('NAA', [CombatMoveOrder(1, [1, 2])])
+
+
+class ScriptedRNG:
+    """Test double for combat resolution: randint() pops scripted rolls
+    in order; choices()/choice() always pick the first candidate,
+    ignoring weights -- deterministic outcomes without needing to
+    re-verify combat.py's own hit/damage math (already covered in
+    test_combat.py)."""
+    def __init__(self, rolls):
+        self.rolls = list(rolls)
+
+    def randint(self, a, b):
+        return self.rolls.pop(0)
+
+    def choices(self, population, weights=None, k=1):
+        return [population[0]]
+
+    def choice(self, population):
+        return population[0]
+
+
+class TestDeclaredBattlesAndGathering(unittest.TestCase):
+    def test_declared_battles_returns_sea_before_land(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'sea'}}, adjacency={},
+        )
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}, 3: {'NAA', 'AAC'}},
+            units_by_territory={1: [make_unit('Infantry', 'NAA')], 3: [make_unit('Cruiser', 'NAA')]},
+        )
+        engine = GameEngine(gs, data)
+        battles = engine.declared_battles('NAA')
+        self.assertEqual(battles, [(3, 'sea'), (1, 'land')])
+
+    def test_excludes_uncontested_territories(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            units_by_territory={1: [make_unit('Infantry', 'NAA')]},
+        )
+        engine = GameEngine(gs, data)
+        self.assertEqual(engine.declared_battles('NAA'), [])
+
+    def test_excludes_territories_without_the_factions_own_units(self):
+        # Contested, but by two OTHER factions entirely -- NAA has no
+        # units there, so it's not NAA's battle to fight this turn.
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            phase=Phase.COMBAT_RESOLUTION, contested={1: {'UE', 'AAC'}},
+            units_by_territory={1: [make_unit('Infantry', 'AAC')]},
+        )
+        engine = GameEngine(gs, data)
+        self.assertEqual(engine.declared_battles('NAA'), [])
+
+    def test_gather_battle_units_pools_multiple_non_allied_defending_factions(self):
+        attacker = make_unit('Infantry', 'NAA')
+        defender_aac = make_unit('Infantry', 'AAC')
+        defender_ue = make_unit('Armor', 'UE')
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            phase=Phase.COMBAT_RESOLUTION, contested={1: {'NAA', 'AAC', 'UE'}},
+            units_by_territory={1: [attacker, defender_aac, defender_ue]},
+        )
+        engine = GameEngine(gs, data)
+        attacker_units, defender_units = engine.gather_battle_units(1, 'NAA')
+        self.assertEqual(attacker_units, [attacker])
+        self.assertEqual({u.unit_id for u in defender_units}, {defender_aac.unit_id, defender_ue.unit_id})
+
+    def test_gather_battle_units_excludes_allied_units_from_defender_pool(self):
+        attacker = make_unit('Infantry', 'NAA')
+        ally_unit = make_unit('Infantry', 'UE')
+        enemy_unit = make_unit('Armor', 'AAC')
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN},
+            phase=Phase.COMBAT_RESOLUTION, contested={1: {'NAA', 'AAC', 'UE'}},
+            units_by_territory={1: [attacker, ally_unit, enemy_unit]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        attacker_units, defender_units = engine.gather_battle_units(1, 'NAA')
+        self.assertEqual(attacker_units, [attacker])
+        self.assertEqual(defender_units, [enemy_unit])
+
+
+class TestResolveCombatEndToEnd(unittest.TestCase):
+    def test_attacker_wins_removes_defender_and_clears_contested(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        attacker = make_unit('Infantry', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        engine = GameEngine(gs, data)
+        # Infantry: D6, defense 5, damage 2, hp 2 -- attacker's roll of 6
+        # cleanly kills the hp-2 defender in one hit; defender's roll of
+        # 1 misses back.
+        results = engine.resolve_combat('NAA', rng=ScriptedRNG([6, 1]))
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].outcome, 'defender_eliminated')
+        self.assertIn(attacker, gs.territories[1].units)
+        self.assertNotIn(defender, gs.territories[1].units)
+        self.assertIsNone(gs.territories[1].contested_by)
+
+    def test_defender_wins_removes_attacker_and_clears_contested(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        attacker = make_unit('Infantry', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        engine = GameEngine(gs, data)
+        results = engine.resolve_combat('NAA', rng=ScriptedRNG([1, 6]))
+        self.assertEqual(results[0].outcome, 'attacker_eliminated')
+        self.assertNotIn(attacker, gs.territories[1].units)
+        self.assertIn(defender, gs.territories[1].units)
+        self.assertIsNone(gs.territories[1].contested_by)
+
+    def test_contested_outcome_keeps_contested_by_set(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        attacker = make_unit('Armor', 'NAA')
+        defender = make_unit('Armor', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        engine = GameEngine(gs, data)
+        # Armor: D8, defense 7 -- a roll of 3 misses cleanly every round
+        # for both sides (below defense, not the die max) -- 3 rounds x
+        # 2 rolls = 6 scripted misses, nobody dies.
+        results = engine.resolve_combat('NAA', rng=ScriptedRNG([3, 3, 3, 3, 3, 3]))
+        self.assertEqual(results[0].outcome, 'contested')
+        self.assertIn(attacker, gs.territories[1].units)
+        self.assertIn(defender, gs.territories[1].units)
+        self.assertEqual(gs.territories[1].contested_by, {'NAA', 'AAC'})
+
+    def test_wrong_phase_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.resolve_combat('NAA')
+
+    def test_already_resolved_this_turn_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION)
+        engine = GameEngine(gs, data)
+        engine.resolve_combat('NAA')
+        with self.assertRaises(ValueError):
+            engine.resolve_combat('NAA')
+
+    def test_non_active_faction_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.NEUTRAL}, phase=Phase.COMBAT_RESOLUTION)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.resolve_combat('NAA')
+
+
+class TestEmergencyLandingConsequence(unittest.TestCase):
+    """Exercises _apply_battle_outcome/_resolve_stranded_defender_aircraft
+    directly against a hand-built BattleResult -- keeps this focused on
+    the engine-level consequence logic without re-driving combat.py's
+    own dice math (covered in test_combat.py)."""
+
+    def test_surviving_defender_aircraft_relocated_when_own_carrier_destroyed(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'sea'}}, adjacency={2: [1]})
+        carrier = make_unit('Aircraft Carrier', 'AAC')
+        fighter = make_unit('Fighter', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            units_by_territory={2: [fighter]},  # carrier already removed by _apply_battle_outcome's dead-unit cleanup
+        )
+        result = BattleResult(
+            outcome='contested', rounds_fought=3,
+            surviving_attacker_ids=[], surviving_defender_ids=[fighter.unit_id],
+            eliminated_attacker_ids=[], eliminated_defender_ids=[carrier.unit_id],
+        )
+        engine = GameEngine(gs, data)
+        engine._apply_battle_outcome(2, 'sea', 'NAA', result, random.Random(1))
+        self.assertNotIn(fighter, gs.territories[2].units)
+        self.assertIn(fighter, gs.territories[1].units, "AAC's own land is the only qualifying emergency landing spot")
+
+    def test_surviving_defender_aircraft_stays_when_own_carrier_survives(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'sea'}}, adjacency={2: [1]})
+        carrier = make_unit('Aircraft Carrier', 'AAC')
+        fighter = make_unit('Fighter', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            units_by_territory={2: [carrier, fighter]},
+        )
+        result = BattleResult(
+            outcome='contested', rounds_fought=3,
+            surviving_attacker_ids=[], surviving_defender_ids=[carrier.unit_id, fighter.unit_id],
+            eliminated_attacker_ids=[], eliminated_defender_ids=[],
+        )
+        engine = GameEngine(gs, data)
+        engine._apply_battle_outcome(2, 'sea', 'NAA', result, random.Random(1))
+        self.assertIn(fighter, gs.territories[2].units, "the carrier survived -- no emergency landing needed")
+
+    def test_attacker_aircraft_unaffected_by_emergency_landing(self):
+        # Attacker's own carrier destroyed -- defender-only mechanic, so
+        # the attacker's surviving Fighter should be left exactly where it is.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'sea'}}, adjacency={2: [1]})
+        attacker_carrier = make_unit('Aircraft Carrier', 'NAA')
+        attacker_fighter = make_unit('Fighter', 'NAA')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            units_by_territory={2: [attacker_fighter]},
+        )
+        result = BattleResult(
+            outcome='contested', rounds_fought=3,
+            surviving_attacker_ids=[attacker_fighter.unit_id], surviving_defender_ids=[],
+            eliminated_attacker_ids=[attacker_carrier.unit_id], eliminated_defender_ids=[],
+        )
+        engine = GameEngine(gs, data)
+        engine._apply_battle_outcome(2, 'sea', 'NAA', result, random.Random(1))
+        self.assertIn(attacker_fighter, gs.territories[2].units)
+
+    def test_land_battle_never_triggers_emergency_landing_check(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        survivor = make_unit('Fighter', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            units_by_territory={1: [survivor]},
+        )
+        result = BattleResult(
+            outcome='contested', rounds_fought=3,
+            surviving_attacker_ids=[], surviving_defender_ids=[survivor.unit_id],
+            eliminated_attacker_ids=[], eliminated_defender_ids=[],
+        )
+        engine = GameEngine(gs, data)
+        engine._apply_battle_outcome(1, 'land', 'NAA', result, random.Random(1))
+        self.assertIn(survivor, gs.territories[1].units)
 
 
 if __name__ == '__main__':

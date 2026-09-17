@@ -1,10 +1,10 @@
 """
 GameEngine: the phased order-submission API wrapping a GameState,
 exposed identically to human and bot callers (see docs/GAME_ARCHITECTURE.md's
-build plan, Step 4). Purchase, Deploy + Income, and Combat Move are
-implemented so far -- Purchase covers data/rules.json's full `purchase`
-section (location targeting, the start-of-turn ownership snapshot,
-SC-discounted cost, the SC-first-then-most-remaining-capacity
+build plan, Step 4). Purchase, Deploy + Income, Combat Move, and Combat
+Resolution are implemented so far -- Purchase covers data/rules.json's
+full `purchase` section (location targeting, the start-of-turn ownership
+snapshot, SC-discounted cost, the SC-first-then-most-remaining-capacity
 multi-territory allocation with spillover, naval/land location
 restrictions, and the contested-land Infantry-only restriction);
 Deploy + Income covers placing pending_deployment onto the board (with
@@ -14,8 +14,12 @@ global recovery/heal sweep; Combat Move covers relocating units along a
 validated path, immediate ownership capture for undefended land (both a
 Mechanized Infantry blitz's intermediate stops and any unit's
 uncontested final stop), and marking an attacked/joined destination
-contested. Combat Resolution, Non-Combat Move, and Capture Territory are
-not yet implemented -- notably, nothing here yet transitions
+contested; Combat Resolution gathers each declared battle's units per
+combat.multi_party_battles (the active faction's own units as attacker,
+every non-allied faction present pooled as defender), drives
+combat.resolve_battle() to completion, cleans up the dead, and runs the
+sea-battle emergency-landing check. Non-Combat Move and Capture Territory
+are not yet implemented -- notably, nothing here yet transitions
 GameState.phase itself between phases; callers currently set it directly
 (see the tests).
 
@@ -27,15 +31,19 @@ submit_* again with a corrected list; nothing is written to GameState
 until confirm_purchases()/confirm_combat_moves() is called, which is
 irreversible for that faction's turn (submit_* and confirm_* both then
 refuse further calls for that faction, for that phase). Deploy + Income
-has no such staging -- it's automatic and irreversible by nature (see
-turn_order's Deploy + Income entry), so it's just one direct call.
+and Combat Resolution have no such staging -- both are automatic/
+irreversible by nature (see turn_order's entries for each; Combat
+Resolution specifically because dice have already been rolled), so
+they're each just one direct call.
 """
 import copy
+import random
 from dataclasses import dataclass
 
 from . import data as _default_data
+from .combat import BattleResult, resolve_battle
 from .economy import compute_income
-from .movement import _is_ally_or_self, legal_air_move_destinations, trace_combat_move
+from .movement import _is_ally_or_self, find_emergency_landing, legal_air_move_destinations, trace_combat_move
 from .state import Phase, UnitInstance
 
 
@@ -68,6 +76,7 @@ class GameEngine:
         self._purchases_confirmed = set()
         self._staged_combat_moves = {}  # faction_code -> [CombatMoveOrder, ...]
         self._combat_moves_confirmed = set()
+        self._combat_resolved = set()  # faction_codes that have already run resolve_combat this turn
 
     def _purchase_sources(self, deploy_at, faction):
         """Ordered list of territory_ids whose capacity/cost apply to a
@@ -453,3 +462,118 @@ class GameEngine:
         self._execute_combat_moves(orders, faction, self.game_state)
         self._combat_moves_confirmed.add(faction)
         self._staged_combat_moves.pop(faction, None)
+
+    def declared_battles(self, faction):
+        """Every battle `faction`'s own Combat Resolution phase must
+        fight this turn: every territory that's currently marked
+        contested AND where `faction` has at least one unit present --
+        covers both a fresh attack declared this turn and a standing
+        multi-turn stalemate `faction` is still part of (combat.
+        multi_party_battles.attacker_always_solo: a faction's units only
+        ever fight during THAT faction's own Combat Resolution, never
+        pooled with another faction's). Returns [(territory_id,
+        battle_type), ...] in combat.battle_resolution_pass_order (every
+        sea battle before any land battle)."""
+        terrs = self.data.territories()
+        battles = []
+        for tid, t in self.game_state.territories.items():
+            if not t.contested_by:
+                continue
+            if not any(u.owner == faction for u in t.units):
+                continue
+            battles.append((tid, 'sea' if terrs[tid]['type'] == 'sea' else 'land'))
+        pass_order = {'sea': 0, 'land': 1}
+        battles.sort(key=lambda b: pass_order[b[1]])
+        return battles
+
+    def gather_battle_units(self, territory_id, faction):
+        """(attacker_units, defender_units) for a battle at
+        `territory_id` from `faction`'s perspective, per combat.
+        multi_party_battles: attacker_units is exactly faction's own
+        units there; defender_units is every OTHER unit there whose
+        owner isn't an ally of faction, pooled into one list regardless
+        of how many distinct factions that covers. A pure query -- takes
+        no action, so a future interactive UI can call this directly to
+        set up its own combat.resolve_battle() generator instead of
+        going through the auto-play resolve_combat() below."""
+        t = self.game_state.territories[territory_id]
+        attacker_units = [u for u in t.units if u.owner == faction]
+        defender_units = [u for u in t.units if u.owner != faction and not _is_ally_or_self(self.game_state, faction, u.owner)]
+        return attacker_units, defender_units
+
+    def resolve_combat(self, faction, rng=None):
+        """Auto-plays every one of `faction`'s declared_battles this
+        turn, sea then land, applying every consequence as each one
+        finishes -- dead units removed, contested_by cleared once a
+        battle is decisively won or wiped out (left set if the 3-round
+        cap left both sides still standing -- see combat.
+        contested_territory_rule, refought next time declared_battles
+        picks it up again), and the sea-battle emergency-landing check
+        (combat.emergency_landing). Returns a list of BattleResult, one
+        per battle, in the order resolved.
+
+        Not reversible (phase_confirmation.scope: dice have already been
+        rolled) -- there's no staging here, this is the real thing the
+        moment it's called. Can only be called once per faction per turn
+        (a second call would otherwise re-fight any still-contested
+        standoff a second time within the same phase)."""
+        if faction not in self.game_state.active_powers():
+            raise ValueError(f'{faction} is not an active power')
+        if self.game_state.phase != Phase.COMBAT_RESOLUTION:
+            raise ValueError('resolve_combat is only valid during the Combat Resolution phase')
+        if faction in self._combat_resolved:
+            raise ValueError(f'{faction} has already resolved combat this turn')
+        self._combat_resolved.add(faction)
+
+        rng = rng or random.Random()
+        unit_defs = self.data.units()
+        rules = self.data.rules()
+        results = []
+        for territory_id, battle_type in self.declared_battles(faction):
+            attacker_units, defender_units = self.gather_battle_units(territory_id, faction)
+            events = list(resolve_battle(
+                attacker_units, defender_units, battle_type, rng,
+                self.game_state.global_turn, unit_defs, rules,
+            ))
+            result = BattleResult.from_events(events)
+            self._apply_battle_outcome(territory_id, battle_type, faction, result, rng)
+            results.append(result)
+        return results
+
+    def _apply_battle_outcome(self, territory_id, battle_type, faction, result, rng):
+        t = self.game_state.territories[territory_id]
+        dead_ids = set(result.eliminated_attacker_ids) | set(result.eliminated_defender_ids)
+        t.units = [u for u in t.units if u.unit_id not in dead_ids]
+
+        if battle_type == 'sea':
+            self._resolve_stranded_defender_aircraft(territory_id, result, rng)
+
+        if result.outcome == 'contested':
+            return  # unresolved -- stays contested, refought next time declared_battles picks it up
+        # Decisive (attacker_eliminated / defender_eliminated / mutual_elimination) -- the fight itself is over.
+        # The ownership flip for a won attack is Capture Territory's job
+        # (not yet built), derived later from the board state this
+        # leaves behind -- not applied here.
+        t.contested_by = None
+
+    def _resolve_stranded_defender_aircraft(self, territory_id, result, rng):
+        """combat.emergency_landing: once a sea battle concludes, any
+        SURVIVING defending aircraft left without their own faction's
+        carrier get a one-hop emergency landing search -- scoped
+        per-owner, since defenders can be pooled across several
+        factions (combat.multi_party_battles) and each only cares about
+        ITS OWN carrier surviving. Attacking aircraft have no equivalent
+        rescue (defender only) -- untouched here."""
+        t = self.game_state.territories[territory_id]
+        unit_defs = self.data.units()
+        surviving_defender_ids = set(result.surviving_defender_ids)
+        defenders_here = [u for u in t.units if u.unit_id in surviving_defender_ids]
+        owners_with_surviving_carrier = {u.owner for u in defenders_here if u.unit_type == 'Aircraft Carrier'}
+        for u in defenders_here:
+            if unit_defs[u.unit_type]['category'] != 'Air' or u.owner in owners_with_surviving_carrier:
+                continue
+            landing = find_emergency_landing(territory_id, u.owner, self.game_state, self.data, rng)
+            t.units.remove(u)
+            if landing is not None:
+                self.game_state.territories[landing].units.append(u)
+            # else: no adjacent own carrier, own land, or allied land -- lost
