@@ -408,8 +408,25 @@ class GameEngine:
         through ground the first wave just took). Raises ValueError on
         the first illegal order. Used identically by submit_combat_moves
         (against a throwaway deep copy, purely to validate) and
-        confirm_combat_moves (against the real GameState)."""
+        confirm_combat_moves (against the real GameState).
+
+        carrier_air_operations.carrier_ride_along, the combat-move case:
+        an Aircraft Carrier's combat move sweeps along every one of
+        faction's air units co-located in its origin -- EXCEPT any that
+        have their own explicit order somewhere in this same `orders`
+        list (precomputed once below), regardless of whether that
+        order comes before or after the carrier's in submission order.
+        Unlike the non-combat case, there's no valid "chaining" reading
+        here (a plane can't meaningfully attack on its own AND then
+        also ride into a second attack the same phase), so an
+        unconditional exclusion is the right model, not physical-
+        presence-at-the-moment-of-the-move alone. A swept rider is
+        simply relocated to the carrier's destination and marked
+        has_moved_combat -- nothing else is needed to make it an actual
+        combatant, since Combat Resolution's gather_battle_units already
+        includes anyone physically present, however they got there."""
         unit_defs = self.data.units()
+        units_with_own_order = {o.unit_id for o in orders}
         for order in orders:
             if len(order.path) < 2:
                 raise ValueError(f'unit {order.unit_id}: a combat move path needs at least an origin and a destination')
@@ -444,6 +461,13 @@ class GameEngine:
                 self._mark_contested_by_attack(dest_state, faction, game_state)  # air alone can't capture, only attack
             else:
                 trace = trace_combat_move(unit.unit_type, faction, order.path, game_state, self.data)
+                riders = []
+                if unit.unit_type == 'Aircraft Carrier':
+                    riders = [
+                        u for u in origin_state.units
+                        if u.owner == faction and u.unit_id not in units_with_own_order
+                        and unit_defs[u.unit_type]['category'] == 'Air'
+                    ]
                 origin_state.units.remove(unit)
                 for captured_tid in trace.captured_en_route:
                     game_state.territories[captured_tid].owner = faction
@@ -453,6 +477,16 @@ class GameEngine:
                     self._mark_contested_by_attack(dest_state, faction, game_state)
                 # 'safe_landing': already friendly -- no ownership or contested change
                 dest_state.units.append(unit)
+
+                for rider in riders:
+                    # Same return-to-base bookkeeping an air unit's own
+                    # combat move gets -- a swept rider is just as
+                    # eligible to snap back to this carrier afterward.
+                    rider.combat_move_origin = origin_id
+                    rider.based_on_carrier = unit.unit_id
+                    origin_state.units.remove(rider)
+                    dest_state.units.append(rider)
+                    rider.has_moved_combat = True
 
             unit.has_moved_combat = True
 

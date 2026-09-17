@@ -665,6 +665,115 @@ class TestCombatMoveExecution(unittest.TestCase):
         self.assertEqual(gs.territories[3].contested_by, {'NAA', 'AAC'})
 
 
+class TestCombatMoveCarrierRideAlong(unittest.TestCase):
+    def test_default_ride_along_with_no_order_of_its_own(self):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
+        carrier = make_unit('Aircraft Carrier', 'NAA')
+        rider = make_unit('Fighter', 'NAA')
+        defender = make_unit('Cruiser', 'AAC')
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [carrier, rider], 2: [defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(carrier.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        self.assertIn(carrier, gs.territories[2].units)
+        self.assertIn(rider, gs.territories[2].units, 'a co-located rider with no order of its own flies into the attack too')
+        self.assertTrue(rider.has_moved_combat)
+        self.assertEqual(gs.territories[2].contested_by, {'NAA', 'AAC'})
+
+    def test_swept_rider_becomes_a_real_combatant_via_gather_battle_units(self):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
+        carrier = make_unit('Aircraft Carrier', 'NAA')
+        rider = make_unit('Fighter', 'NAA')
+        defender = make_unit('Cruiser', 'AAC')
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [carrier, rider], 2: [defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(carrier.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        attacker_units, defender_units = engine.gather_battle_units(2, 'NAA')
+        self.assertIn(rider, attacker_units, 'presence alone is enough -- gather_battle_units needed no changes')
+
+    def test_rider_gets_return_to_base_bookkeeping(self):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
+        carrier = make_unit('Aircraft Carrier', 'NAA')
+        rider = make_unit('Fighter', 'NAA')
+        defender = make_unit('Cruiser', 'AAC')
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [carrier, rider], 2: [defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(carrier.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        self.assertEqual(rider.combat_move_origin, 1)
+        self.assertEqual(rider.based_on_carrier, carrier.unit_id)
+
+    def test_own_order_excludes_a_rider_regardless_of_submission_order(self):
+        # Rider has its OWN attack target, different from the carrier's --
+        # tested with the rider's order BOTH before and after the
+        # carrier's in the submitted list, since combat move has no
+        # valid "chaining" reading (unlike non-combat) and must exclude
+        # it either way.
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'sea'}, 3: {'type': 'land'}},
+            adjacency={1: [2, 3]},
+        )
+        for rider_order_first in (True, False):
+            with self.subTest(rider_order_first=rider_order_first):
+                carrier = make_unit('Aircraft Carrier', 'NAA')
+                rider = make_unit('Fighter', 'NAA')
+                sea_defender = make_unit('Cruiser', 'AAC')
+                land_defender = make_unit('Infantry', 'AAC')
+                gs = make_state(
+                    data, {3: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+                    units_by_territory={1: [carrier, rider], 2: [sea_defender], 3: [land_defender]},
+                )
+                engine = GameEngine(gs, data)
+                rider_order = CombatMoveOrder(rider.unit_id, [1, 3])
+                carrier_order = CombatMoveOrder(carrier.unit_id, [1, 2])
+                orders = [rider_order, carrier_order] if rider_order_first else [carrier_order, rider_order]
+                engine.submit_combat_moves('NAA', orders)
+                engine.confirm_combat_moves('NAA')
+                self.assertIn(rider, gs.territories[3].units, "the rider's own attack should stick")
+                self.assertNotIn(rider, gs.territories[2].units, "not swept along despite being co-located when it started")
+                self.assertIn(carrier, gs.territories[2].units)
+
+    def test_only_air_units_are_swept_not_sea_or_land(self):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
+        carrier = make_unit('Aircraft Carrier', 'NAA')
+        escort = make_unit('Cruiser', 'NAA')
+        defender = make_unit('Cruiser', 'AAC')
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [carrier, escort], 2: [defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(carrier.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        self.assertIn(escort, gs.territories[1].units, 'a co-located Cruiser is not a rider -- ride-along is air-only')
+
+    def test_only_same_faction_riders_are_swept(self):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'sea'}}, adjacency={1: [2]})
+        carrier = make_unit('Aircraft Carrier', 'NAA')
+        ally_rider = make_unit('Fighter', 'UE')
+        defender = make_unit('Cruiser', 'AAC')
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [carrier, ally_rider], 2: [defender]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(carrier.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        self.assertIn(ally_rider, gs.territories[1].units, "an ally's aircraft isn't NAA's to sweep along")
+
+
 class TestCombatMoveRollback(unittest.TestCase):
     def test_resubmitting_replaces_the_staged_list(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
