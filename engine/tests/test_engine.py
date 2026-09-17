@@ -1,14 +1,21 @@
 import unittest
 
 from engine.engine import GameEngine, PurchaseOrder
-from engine.state import GameState, TerritoryState, FactionState, PowerMode, Phase
+from engine.state import GameState, TerritoryState, FactionState, UnitInstance, PowerMode, Phase
 
 UNIT_DEFS = {
-    'Infantry': {'category': 'Land', 'cost': 4, 'sc_cost': 3, 'hp': 2, 'purchasable': True},
-    'Armor': {'category': 'Land', 'cost': 8, 'sc_cost': 6, 'hp': 4, 'purchasable': True},
-    'Cruiser': {'category': 'Sea', 'cost': 11, 'sc_cost': 8, 'hp': 5, 'purchasable': True},
-    'Fighter': {'category': 'Air', 'cost': 10, 'sc_cost': 7, 'hp': 2, 'purchasable': True},
-    'Transport': {'category': 'Sea', 'cost': None, 'sc_cost': None, 'hp': 1, 'purchasable': False},
+    'Infantry': {'category': 'Land', 'cost': 4, 'sc_cost': 3, 'hp': 2, 'purchasable': True,
+                 'attack_die': 'D6', 'defense': 5, 'damage': 2, 'combat_move': 1, 'non_combat_move': 2},
+    'Armor': {'category': 'Land', 'cost': 8, 'sc_cost': 6, 'hp': 4, 'purchasable': True,
+              'attack_die': 'D8', 'defense': 7, 'damage': 4, 'combat_move': 1, 'non_combat_move': 2},
+    'Cruiser': {'category': 'Sea', 'cost': 11, 'sc_cost': 8, 'hp': 5, 'purchasable': True,
+                'attack_die': 'D10', 'defense': 7, 'damage': 3, 'combat_move': 2, 'non_combat_move': 2},
+    'Fighter': {'category': 'Air', 'cost': 10, 'sc_cost': 7, 'hp': 2, 'purchasable': True,
+                'attack_die': 'D8', 'defense': 8, 'damage': 3, 'combat_move': 2, 'non_combat_move': 3},
+    'Aircraft Carrier': {'category': 'Sea', 'cost': 14, 'sc_cost': 10, 'hp': 6, 'purchasable': True,
+                          'attack_die': None, 'defense': 6, 'damage': None, 'combat_move': 2, 'non_combat_move': 2},
+    'Transport': {'category': 'Sea', 'cost': None, 'sc_cost': None, 'hp': 1, 'purchasable': False,
+                  'attack_die': None, 'defense': 6, 'damage': None, 'combat_move': '+1*', 'non_combat_move': '+1*'},
 }
 
 
@@ -31,16 +38,28 @@ class FakeData:
         return self._adjacency
 
 
-def make_state(data, territory_owners, faction_modes, treasury=None, contested=None):
-    gs = GameState(phase=Phase.PURCHASE)
+def make_state(data, territory_owners, faction_modes, treasury=None, contested=None,
+                units_by_territory=None, pending_by_territory=None, phase=Phase.PURCHASE, global_turn=0):
+    gs = GameState(phase=phase, global_turn=global_turn)
     for code, mode in faction_modes.items():
         gs.factions[code] = FactionState(code=code, mode=mode, treasury_mpc=(treasury or {}).get(code, 1000))
     for tid in data.territories():
         gs.territories[tid] = TerritoryState(
             territory_id=tid, owner=territory_owners.get(tid),
             contested_by=(contested or {}).get(tid),
+            units=(units_by_territory or {}).get(tid, []),
+            pending_deployment=(pending_by_territory or {}).get(tid, []),
         )
     return gs
+
+
+_next_uid = [1000]
+
+
+def make_unit(unit_type, owner, purchased_at=None, hp=None):
+    _next_uid[0] += 1
+    hp = UNIT_DEFS[unit_type]['hp'] if hp is None else hp
+    return UnitInstance(unit_id=_next_uid[0], unit_type=unit_type, owner=owner, current_hp=hp, purchased_at=purchased_at)
 
 
 class TestLandPurchase(unittest.TestCase):
@@ -250,6 +269,235 @@ class TestRollbackAndConfirmation(unittest.TestCase):
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, 1)])
+
+
+class TestDeployPending(unittest.TestCase):
+    def test_land_deploy_to_still_owned_territory(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1)]},
+        )
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(len(gs.territories[1].units), 1)
+        self.assertEqual(len(gs.territories[1].pending_deployment), 0)
+
+    def test_wrong_phase_is_rejected(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.PURCHASE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.deploy_and_collect_income('NAA')
+
+
+class TestContestedPurchaseLostFallback(unittest.TestCase):
+    def test_falls_back_to_adjacent_controlled_territory(self):
+        # territory 1 (pending Infantry, now owned by AAC -- lost this
+        # turn) -- territory 2 (still owned by NAA) -- territory 3 (sea).
+        data = FakeData(
+            territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 3}, 3: {'type': 'sea'}},
+            adjacency={1: [2, 3]},
+        )
+        gs = make_state(
+            data, {1: 'AAC', 2: 'NAA'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            phase=Phase.DEPLOY_INCOME,
+            pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1)]},
+        )
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(len(gs.territories[2].units), 1)
+        self.assertEqual(len(gs.territories[1].units), 0)
+
+    def test_falls_back_to_adjacent_sea_when_no_controlled_land(self):
+        data = FakeData(
+            territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 3}, 3: {'type': 'sea'}},
+            adjacency={1: [2, 3]},
+        )
+        gs = make_state(
+            data, {1: 'AAC', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            phase=Phase.DEPLOY_INCOME,
+            pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1)]},
+        )
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(len(gs.territories[3].units), 1)
+
+    def test_lost_outright_when_no_adjacent_controlled_or_sea(self):
+        data = FakeData(
+            territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 3}},
+            adjacency={1: [2]},
+        )
+        gs = make_state(
+            data, {1: 'AAC', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            phase=Phase.DEPLOY_INCOME,
+            pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1)]},
+        )
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(len(gs.territories[2].units), 0)
+        self.assertEqual(len(gs.territories[1].units), 0)
+
+    def test_still_owned_territory_is_unaffected(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            contested={1: {'NAA', 'AAC'}},  # still contested but NOT lost
+            pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1)]},
+        )
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(len(gs.territories[1].units), 1, 'still-owned (even if contested) territory needs no fallback')
+
+
+class TestCarrierlessAirDeployFallback(unittest.TestCase):
+    def test_redirects_to_purchasing_land_when_no_carrier_anywhere(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            pending_by_territory={2: [make_unit('Fighter', 'NAA', purchased_at=1)]},
+        )
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(len(gs.territories[1].units), 1)
+        self.assertEqual(len(gs.territories[2].units), 0)
+
+    def test_stays_at_sea_when_own_carrier_already_present(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            units_by_territory={2: [make_unit('Aircraft Carrier', 'NAA')]},
+            pending_by_territory={2: [make_unit('Fighter', 'NAA', purchased_at=1)]},
+        )
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(len(gs.territories[2].units), 2)  # carrier + fighter
+
+    def test_stays_at_sea_when_own_carrier_arrives_in_the_same_batch(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            pending_by_territory={2: [make_unit('Fighter', 'NAA', purchased_at=1), make_unit('Aircraft Carrier', 'NAA', purchased_at=1)]},
+        )
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(len(gs.territories[2].units), 2)
+
+    def test_allied_carrier_does_not_count(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            units_by_territory={2: [make_unit('Aircraft Carrier', 'UE')]},
+            pending_by_territory={2: [make_unit('Fighter', 'NAA', purchased_at=1)]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(len(gs.territories[1].units), 1, "an ally's carrier shouldn't satisfy the carrierless fallback")
+
+
+class TestHostileSeaDeployCreatesContested(unittest.TestCase):
+    def test_deploying_into_enemy_occupied_zone_creates_contested(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            units_by_territory={2: [make_unit('Cruiser', 'AAC')]},
+            pending_by_territory={2: [make_unit('Cruiser', 'NAA', purchased_at=1)]},
+        )
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(gs.territories[2].contested_by, {'NAA', 'AAC'})
+
+    def test_deploying_into_allied_occupied_zone_stays_uncontested(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            units_by_territory={2: [make_unit('Cruiser', 'UE')]},
+            pending_by_territory={2: [make_unit('Cruiser', 'NAA', purchased_at=1)]},
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertIsNone(gs.territories[2].contested_by)
+
+    def test_deploying_into_empty_zone_stays_uncontested(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
+            pending_by_territory={2: [make_unit('Cruiser', 'NAA', purchased_at=1)]},
+        )
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertIsNone(gs.territories[2].contested_by)
+
+
+class TestIncomeCollection(unittest.TestCase):
+    def test_income_added_to_treasury(self):
+        data = FakeData(
+            territories={1: {'type': 'land', 'value': 3}, 2: {'type': 'land', 'value': 2, 'strategic_center': True}},
+            adjacency={},
+        )
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': PowerMode.HUMAN}, treasury={'NAA': 10}, phase=Phase.DEPLOY_INCOME)
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(gs.factions['NAA'].treasury_mpc, 10 + 3 + (2 + 2))
+
+    def test_contested_territory_contributes_no_income(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': PowerMode.HUMAN}, treasury={'NAA': 10}, phase=Phase.DEPLOY_INCOME,
+            contested={1: {'NAA', 'AAC'}},
+        )
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(gs.factions['NAA'].treasury_mpc, 10)
+
+
+class TestGlobalRecoverySweep(unittest.TestCase):
+    def test_unit_heals_after_a_full_round_has_elapsed(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 5}}, adjacency={})
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            phase=Phase.DEPLOY_INCOME, global_turn=2,
+        )
+        # 2 active powers -- damaged on global_turn 0, so a full round
+        # (2 turns) has elapsed by global_turn 2.
+        damaged = make_unit('Armor', 'AAC', hp=1)
+        damaged.last_combat_global_turn = 0
+        gs.territories[2].units.append(damaged)
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(damaged.current_hp, UNIT_DEFS['Armor']['hp'])
+
+    def test_unit_does_not_heal_before_a_full_round_has_elapsed(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 5}}, adjacency={})
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            phase=Phase.DEPLOY_INCOME, global_turn=1,
+        )
+        damaged = make_unit('Armor', 'AAC', hp=1)
+        damaged.last_combat_global_turn = 0
+        gs.territories[2].units.append(damaged)
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(damaged.current_hp, 1, 'only 1 turn elapsed, not a full round (2 active powers)')
+
+    def test_recovery_sweeps_the_whole_board_not_just_the_active_faction(self):
+        # The unit healed above belongs to AAC, not the acting faction
+        # NAA -- confirming the sweep really is global.
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 5}}, adjacency={})
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN},
+            phase=Phase.DEPLOY_INCOME, global_turn=2,
+        )
+        damaged = make_unit('Armor', 'AAC', hp=1)
+        damaged.last_combat_global_turn = 0
+        gs.territories[2].units.append(damaged)
+        engine = GameEngine(gs, data)
+        engine.deploy_and_collect_income('NAA')
+        self.assertGreater(damaged.current_hp, 1)
 
 
 if __name__ == '__main__':

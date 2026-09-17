@@ -83,6 +83,17 @@ class UnitInstance:
     # what actually sets, clears, and acts on this field; movement.py's
     # reachability queries don't read or write it.
     based_on_carrier: Optional[int] = None
+    # The LAND territory whose deploy capacity/cost actually paid for
+    # this unit (engine.GameEngine.confirm_purchases sets this) -- for a
+    # direct land purchase this is just the deploy target itself, but
+    # for a sea deployment drawn from multiple adjacent territories via
+    # spillover (purchase.multi_adjacent_allocation_order), different
+    # units from the very same order can have different values here.
+    # Needed at Deploy + Income for purchase.carrierless_air_deploy_fallback
+    # (which land space to fall back to) and
+    # purchase.contested_purchase_lost_during_turn_fallback (both
+    # reference "the purchasing land space").
+    purchased_at: Optional[int] = None
 
     def effective_stats(self, unit_defs, round1_bonus=False, defending=False, air_superiority=False):
         """unit_defs: engine.data.units() (or an equivalent test fixture).
@@ -170,6 +181,7 @@ class UnitInstance:
             'last_combat_global_turn': self.last_combat_global_turn,
             'transported_by': self.transported_by,
             'based_on_carrier': self.based_on_carrier,
+            'purchased_at': self.purchased_at,
         }
 
     @staticmethod

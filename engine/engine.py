@@ -1,13 +1,19 @@
 """
 GameEngine: the phased order-submission API wrapping a GameState,
 exposed identically to human and bot callers (see docs/GAME_ARCHITECTURE.md's
-build plan, Step 4). Only the Purchase phase is implemented so far --
-covering data/rules.json's full `purchase` section (location targeting,
-the start-of-turn ownership snapshot, SC-discounted cost, the SC-first-
-then-most-remaining-capacity multi-territory allocation with spillover,
-naval/land location restrictions, and the contested-land Infantry-only
-restriction). Combat Move, Combat Resolution, Non-Combat Move, Capture
-Territory, and Deploy + Income are not yet implemented.
+build plan, Step 4). Purchase and Deploy + Income are implemented so
+far -- Purchase covers data/rules.json's full `purchase` section
+(location targeting, the start-of-turn ownership snapshot, SC-discounted
+cost, the SC-first-then-most-remaining-capacity multi-territory
+allocation with spillover, naval/land location restrictions, and the
+contested-land Infantry-only restriction); Deploy + Income covers
+placing pending_deployment onto the board (with the carrierless-air and
+lost-contested-purchase fallbacks, and hostile-sea-zone deploys becoming
+contested), income collection, and the global recovery/heal sweep.
+Combat Move, Combat Resolution, Non-Combat Move, and Capture Territory
+are not yet implemented -- notably, nothing here yet transitions
+GameState.phase itself between phases; callers currently set it
+directly (see the tests).
 
 Rollback (phase_confirmation): submit_purchases takes the COMPLETE
 desired order list every call, wholesale-replacing any previously staged
@@ -17,10 +23,15 @@ with a corrected list; nothing is written to GameState (treasury_mpc,
 pending_deployment) until confirm_purchases() is called, which is
 irreversible for that faction's turn (submit_purchases and
 confirm_purchases both then refuse further calls for that faction).
+Deploy + Income has no such staging -- it's automatic and irreversible
+by nature (see turn_order's Deploy + Income entry), so it's just one
+direct call.
 """
 from dataclasses import dataclass
 
 from . import data as _default_data
+from .economy import compute_income
+from .movement import _is_ally_or_self
 from .state import Phase, UnitInstance
 
 
@@ -76,17 +87,25 @@ class GameEngine:
         tracking capacity consumed per source territory across the
         WHOLE list (so two orders competing for the same sea zone's
         adjacent territories are charged correctly in submission order).
-        Returns total_cost in MPC. Raises ValueError on the first
-        illegal order; nothing from `orders` is applied to GameState by
-        this method regardless -- it's a pure check, used identically by
-        submit_purchases (validate only) and confirm_purchases (re-run
-        just before placing units, since it's cheap and keeps the
-        placement logic from silently drifting out of sync with
-        validation)."""
+        Returns (total_cost, allocations), where `allocations` is a list
+        parallel to `orders`, each entry a list of (source_territory_id,
+        qty) pairs recording exactly which territory's capacity/cost
+        paid for how many of that order's units -- more than one pair
+        when a single order spills over across multiple adjacent
+        territories (purchase.multi_adjacent_allocation_order). Raises
+        ValueError on the first illegal order; nothing from `orders` is
+        applied to GameState by this method regardless -- it's a pure
+        check, used identically by submit_purchases (validate only,
+        discards allocations) and confirm_purchases (re-run just before
+        placing units, since it's cheap and keeps placement -- which
+        needs the allocation detail to tag each UnitInstance.
+        purchased_at correctly -- from silently drifting out of sync
+        with validation)."""
         unit_defs = self.data.units()
         terrs = self.data.territories()
         consumed = {}
         total_cost = 0
+        allocations = []
 
         for order in orders:
             if order.qty <= 0:
@@ -113,6 +132,7 @@ class GameEngine:
                 raise ValueError(f'{faction} has no owned territory to charge a purchase at {deploy_at} against')
 
             remaining = order.qty
+            order_alloc = []
             for source in sources:
                 if remaining <= 0:
                     break
@@ -123,13 +143,15 @@ class GameEngine:
                 consumed[source] = consumed.get(source, 0) + take
                 total_cost += take * self._unit_cost(order.unit_type, source)
                 remaining -= take
+                order_alloc.append((source, take))
             if remaining > 0:
                 raise ValueError(
                     f'not enough deploy capacity for {order.qty}x {order.unit_type} at {deploy_at} '
                     f'(short by {remaining} across every eligible territory)'
                 )
+            allocations.append(order_alloc)
 
-        return total_cost
+        return total_cost, allocations
 
     def submit_purchases(self, faction, orders):
         """Validates and stages `orders` (a list of PurchaseOrder) as
@@ -146,7 +168,7 @@ class GameEngine:
         if faction in self._purchases_confirmed:
             raise ValueError(f'{faction} has already confirmed purchases this turn')
 
-        total_cost = self._resolve_and_cost(orders, faction)
+        total_cost, _ = self._resolve_and_cost(orders, faction)
         if total_cost > self.game_state.factions[faction].treasury_mpc:
             raise ValueError(
                 f'{faction} purchase totals {total_cost} MPC, only '
@@ -162,29 +184,149 @@ class GameEngine:
         treasury_mpc and places each order's units into its deploy_at
         territory's pending_deployment (not yet on the board; actually
         appearing there, plus the carrierless-air and lost-contested-
-        purchase fallbacks, is Deploy + Income's job, not yet
-        implemented). Irreversible: submit_purchases and
-        confirm_purchases both refuse further calls for this faction
-        this turn afterward."""
+        purchase fallbacks, is deploy_and_collect_income's job).
+        Irreversible: submit_purchases and confirm_purchases both refuse
+        further calls for this faction this turn afterward."""
         if faction not in self.game_state.active_powers():
             raise ValueError(f'{faction} is not an active power')
         if faction in self._purchases_confirmed:
             raise ValueError(f'{faction} has already confirmed purchases this turn')
 
         orders = self._staged_purchases.get(faction, [])
-        total_cost = self._resolve_and_cost(orders, faction)
+        total_cost, allocations = self._resolve_and_cost(orders, faction)
         unit_defs = self.data.units()
 
-        for order in orders:
-            for _ in range(order.qty):
-                instance = UnitInstance(
-                    unit_id=self.game_state.new_unit_id(),
-                    unit_type=order.unit_type,
-                    owner=faction,
-                    current_hp=unit_defs[order.unit_type]['hp'],
-                )
-                self.game_state.territories[order.deploy_at].pending_deployment.append(instance)
+        for order, order_alloc in zip(orders, allocations):
+            for source_tid, qty in order_alloc:
+                for _ in range(qty):
+                    instance = UnitInstance(
+                        unit_id=self.game_state.new_unit_id(),
+                        unit_type=order.unit_type,
+                        owner=faction,
+                        current_hp=unit_defs[order.unit_type]['hp'],
+                        purchased_at=source_tid,
+                    )
+                    self.game_state.territories[order.deploy_at].pending_deployment.append(instance)
 
         self.game_state.factions[faction].treasury_mpc -= total_cost
         self._purchases_confirmed.add(faction)
         self._staged_purchases.pop(faction, None)
+
+    def deploy_and_collect_income(self, faction):
+        """The Deploy + Income phase for `faction`'s own turn: places
+        its pending_deployment units onto the board (applying the
+        carrierless-air and lost-contested-purchase fallbacks below),
+        collects its income, then runs the global recovery/heal check
+        over the WHOLE board -- every faction's units, not just this
+        one (combat.recovery_rule). Automatic: no player choice, no
+        rollback, and unlike Purchase this isn't gated on
+        _purchases_confirmed -- a faction that never bought anything
+        this turn still collects income and still triggers the global
+        recovery sweep."""
+        if faction not in self.game_state.active_powers():
+            raise ValueError(f'{faction} is not an active power')
+        if self.game_state.phase != Phase.DEPLOY_INCOME:
+            raise ValueError('deploy_and_collect_income is only valid during the Deploy + Income phase')
+
+        self._deploy_pending_units(faction)
+        self.game_state.factions[faction].treasury_mpc += compute_income(faction, self.game_state, self.data)
+        self._run_recovery_check()
+
+    def _deploy_pending_units(self, faction):
+        """Moves every pending_deployment unit owned by `faction`,
+        across every territory, onto the actual board -- land targets
+        go straight to TerritoryState.units unless the territory was
+        lost this turn (purchase.contested_purchase_lost_during_turn_fallback),
+        sea targets additionally check purchase.carrierless_air_deploy_fallback
+        and purchase.hostile_sea_deploy_creates_contested."""
+        terrs = self.data.territories()
+        for tid in list(self.game_state.territories.keys()):
+            t = self.game_state.territories[tid]
+            pending = [u for u in t.pending_deployment if u.owner == faction]
+            if not pending:
+                continue
+            t.pending_deployment = [u for u in t.pending_deployment if u.owner != faction]
+
+            if terrs[tid]['type'] == 'sea':
+                self._deploy_to_sea(tid, pending, faction)
+            else:
+                self._deploy_to_land(tid, pending, faction)
+
+    def _deploy_to_land(self, tid, pending, faction):
+        t = self.game_state.territories[tid]
+        if t.owner == faction:
+            t.units.extend(pending)
+            return
+        # Lost during the turn (only ever Infantry -- the only unit
+        # type contested_land_deploy_restriction lets into a contested
+        # territory in the first place) -- purchase.
+        # contested_purchase_lost_during_turn_fallback's chain.
+        fallback = self._find_fallback_for_lost_purchase(tid, faction)
+        if fallback is not None:
+            self.game_state.territories[fallback].units.extend(pending)
+        # else: no adjacent controlled territory or sea zone -- lost outright, never placed.
+
+    def _find_fallback_for_lost_purchase(self, tid, faction):
+        """(1) an adjacent territory `faction` still controls; (2) if
+        none, an adjacent sea zone; (3) if neither, None (the units are
+        lost). No tie-break order is specified for multiple qualifying
+        options, so this picks deterministically -- the lowest
+        territory_id -- among whichever tier applies."""
+        terrs = self.data.territories()
+        neighbors = self.data.adjacency().get(tid, [])
+        controlled_land = sorted(
+            n for n in neighbors if terrs[n]['type'] == 'land' and self.game_state.territories[n].owner == faction
+        )
+        if controlled_land:
+            return controlled_land[0]
+        sea = sorted(n for n in neighbors if terrs[n]['type'] == 'sea')
+        return sea[0] if sea else None
+
+    def _deploy_to_sea(self, tid, pending, faction):
+        unit_defs = self.data.units()
+        t = self.game_state.territories[tid]
+
+        # Carrierless air fallback: an Air-category unit whose sea zone
+        # has no OWN Aircraft Carrier -- neither already present nor
+        # arriving in this same batch -- redirects to the land territory
+        # that actually funded it (UnitInstance.purchased_at), same
+        # own-carrier-only standard as everywhere else carriers matter
+        # (an ally's carrier doesn't count).
+        has_own_carrier = any(u.unit_type == 'Aircraft Carrier' and u.owner == faction for u in t.units) or \
+            any(u.unit_type == 'Aircraft Carrier' for u in pending)
+
+        to_place_here = []
+        for u in pending:
+            if unit_defs[u.unit_type]['category'] == 'Air' and not has_own_carrier:
+                self.game_state.territories[u.purchased_at].units.append(u)
+            else:
+                to_place_here.append(u)
+        t.units.extend(to_place_here)
+
+        # Hostile sea deploy creates contested, immediately, as a direct
+        # result of the deployment (purchase.hostile_sea_deploy_creates_contested)
+        # -- only if something of ours actually landed here (a fully
+        # redirected air-only order leaves the zone untouched).
+        if not to_place_here:
+            return
+        other_owners = {u.owner for u in t.units if u.owner != faction}
+        non_allies = {o for o in other_owners if not _is_ally_or_self(self.game_state, faction, o)}
+        if non_allies:
+            t.contested_by = (t.contested_by or set()) | {faction} | non_allies
+
+    def _run_recovery_check(self):
+        """combat.recovery_rule, run at every faction's Deploy + Income:
+        any unit on the WHOLE board heals to full HP once a full round
+        has elapsed since it last took part in combat --
+        current_global_turn - last_combat_global_turn >= num_powers,
+        where num_powers is len(active_powers()) (turn_order_note)."""
+        unit_defs = self.data.units()
+        num_powers = len(self.game_state.active_powers())
+        if num_powers == 0:
+            return
+        for t in self.game_state.territories.values():
+            for u in t.units:
+                if u.last_combat_global_turn is None:
+                    continue
+                if self.game_state.global_turn - u.last_combat_global_turn >= num_powers:
+                    u.current_hp = u.effective_stats(unit_defs)['max_hp']
