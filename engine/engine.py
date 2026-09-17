@@ -697,13 +697,47 @@ class GameEngine:
         if battle_type == 'sea':
             self._resolve_stranded_defender_aircraft(territory_id, result, rng)
 
-        if result.outcome == 'contested':
-            return  # unresolved -- stays contested, refought next time declared_battles picks it up
-        # Decisive (attacker_eliminated / defender_eliminated / mutual_elimination) -- the fight itself is over.
-        # The ownership flip for a won attack is Capture Territory's job
-        # (not yet built), derived later from the board state this
-        # leaves behind -- not applied here.
-        t.contested_by = None
+        if not self._attacking_coalition_has_ground_or_naval_presence(t, faction):
+            # combat.contested_territory_rule's claiming update: if
+            # `faction` and its current allies have no LAND or SEA unit
+            # left here at all -- air alone can't hold a claim, the same
+            # standard Capture Territory already applies ("air can't
+            # capture") -- the contest is over immediately, whatever the
+            # battle's own outcome was: a decisive loss, a mutual wipe,
+            # or even a 3-round stalemate where the attacker's own
+            # ground/naval force didn't survive it while the defender's
+            # did. No longer contested also means no longer a legal
+            # non-combat-move destination for anyone else (a clean,
+            # non-allied foreign territory never is).
+            t.contested_by = None
+            return
+
+        if battle_type == 'sea' and result.outcome != 'contested':
+            # Sea has no Capture Territory equivalent to later resolve a
+            # decisive win into an ownership change -- once the fight
+            # itself is over (not a 3-round stalemate still to refight),
+            # there's nothing left here to track.
+            t.contested_by = None
+            return
+
+        # Land, attacker's coalition still has ground/naval presence:
+        # leave contested_by exactly as it is, whatever result.outcome
+        # was (including a decisive win) -- Capture Territory, not here,
+        # is what actually resolves a won attack into an ownership
+        # change, and it makes that call from the board state this
+        # leaves behind (its own non-allied-land-units check), not from
+        # this battle's outcome label.
+
+    def _attacking_coalition_has_ground_or_naval_presence(self, territory_state, faction):
+        """True if `faction` or any of its current allies still has at
+        least one LAND or SEA unit (Air excluded -- air alone can't hold
+        a claim, same standard as Capture Territory) physically present
+        in `territory_state`, right after a battle there resolves."""
+        unit_defs = self.data.units()
+        return any(
+            _is_ally_or_self(self.game_state, faction, u.owner) and unit_defs[u.unit_type]['category'] in ('Land', 'Sea')
+            for u in territory_state.units
+        )
 
     def _resolve_stranded_defender_aircraft(self, territory_id, result, rng):
         """combat.emergency_landing: once a sea battle concludes, any

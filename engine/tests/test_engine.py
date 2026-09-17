@@ -920,7 +920,13 @@ class TestDeclaredBattlesAndGathering(unittest.TestCase):
 
 
 class TestResolveCombatEndToEnd(unittest.TestCase):
-    def test_attacker_wins_removes_defender_and_clears_contested(self):
+    def test_attacker_wins_removes_defender_and_stays_contested_pending_capture(self):
+        # A decisive win leaves the attacker's own surviving unit right
+        # there -- contested_by must STAY set (not clear) so Capture
+        # Territory (a later phase) can actually see and resolve the
+        # claim; only an attacker coalition with NO land/sea presence
+        # left clears it immediately (see
+        # test_defender_wins_removes_attacker_and_clears_contested).
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         attacker = make_unit('Infantry', 'NAA')
         defender = make_unit('Infantry', 'AAC')
@@ -937,7 +943,7 @@ class TestResolveCombatEndToEnd(unittest.TestCase):
         self.assertEqual(results[0].outcome, 'defender_eliminated')
         self.assertIn(attacker, gs.territories[1].units)
         self.assertNotIn(defender, gs.territories[1].units)
-        self.assertIsNone(gs.territories[1].contested_by)
+        self.assertEqual(gs.territories[1].contested_by, {'NAA', 'AAC'})
 
     def test_defender_wins_removes_attacker_and_clears_contested(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
@@ -972,6 +978,70 @@ class TestResolveCombatEndToEnd(unittest.TestCase):
         self.assertIn(defender, gs.territories[1].units)
         self.assertEqual(gs.territories[1].contested_by, {'NAA', 'AAC'})
 
+    def test_attacker_eliminated_but_an_ally_present_stays_contested(self):
+        # NAA's own unit dies, but its ally UE has a unit right there too
+        # (untouched by this battle -- combat.multi_party_battles: an
+        # ally's units never fight in `faction`'s own resolve_combat
+        # call) -- the attacking COALITION still has land presence via
+        # the ally, so contested_by must stay set, not clear.
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        attacker = make_unit('Infantry', 'NAA')
+        ally_unit = make_unit('Infantry', 'UE')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, ally_unit, defender]},
+        )
+        gs.factions['NAA'].alliance = 'PACT'
+        gs.factions['UE'].alliance = 'PACT'
+        engine = GameEngine(gs, data)
+        results = engine.resolve_combat('NAA', rng=ScriptedRNG([1, 6]))
+        self.assertEqual(results[0].outcome, 'attacker_eliminated')
+        self.assertNotIn(attacker, gs.territories[1].units)
+        self.assertIn(ally_unit, gs.territories[1].units)
+        self.assertEqual(gs.territories[1].contested_by, {'NAA', 'AAC'})
+
+    def test_sea_decisive_win_clears_contested_even_with_attacker_presence(self):
+        # Sea has no Capture Territory equivalent to later resolve a
+        # decisive win into an ownership change -- unlike land, contested_by
+        # clears here even though the attacker's own Cruiser survives.
+        data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
+        attacker = make_unit('Cruiser', 'NAA')
+        defender = make_unit('Cruiser', 'AAC')
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        engine = GameEngine(gs, data)
+        # Cruiser: D10, defense 7, damage 3, hp 5 -- needs 2 clean hits to
+        # kill; script attacker hitting twice (rounds 1-2) and missing
+        # defender every round.
+        results = engine.resolve_combat('NAA', rng=ScriptedRNG([10, 3, 10, 3]))
+        self.assertEqual(results[0].outcome, 'defender_eliminated')
+        self.assertIn(attacker, gs.territories[1].units)
+        self.assertIsNone(gs.territories[1].contested_by)
+
+    def test_air_only_survivors_clear_contested_even_on_a_decisive_win(self):
+        # Attacker wins decisively (defender wiped) but only a Fighter
+        # survives on the attacker's side -- air alone can't hold a
+        # claim (same standard as Capture Territory), so contested_by
+        # clears immediately even though the battle was won outright.
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        attacker_air = make_unit('Fighter', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker_air, defender]},
+        )
+        engine = GameEngine(gs, data)
+        # Fighter: D8, damage 3, hp 2 -- one clean hit kills the hp-2
+        # defender; defender's Infantry (D6) misses back.
+        results = engine.resolve_combat('NAA', rng=ScriptedRNG([8, 1]))
+        self.assertEqual(results[0].outcome, 'defender_eliminated')
+        self.assertIn(attacker_air, gs.territories[1].units)
+        self.assertIsNone(gs.territories[1].contested_by)
+
     def test_wrong_phase_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE)
@@ -993,6 +1063,101 @@ class TestResolveCombatEndToEnd(unittest.TestCase):
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.resolve_combat('NAA')
+
+
+class TestCombatResolutionThenCaptureTerritory(unittest.TestCase):
+    """End-to-end through the real phase sequence (Combat Move -> Combat
+    Resolution -> Capture Territory) -- catches an actual bug found this
+    session: _apply_battle_outcome used to unconditionally clear
+    contested_by after any decisive result, which meant
+    process_capture_territory's own `faction not in t.contested_by`
+    check silently skipped every decisive win, and ownership never
+    flipped at all. Fixed by only clearing contested_by immediately when
+    the attacking coalition has no land/sea presence left (see
+    TestResolveCombatEndToEnd); otherwise Capture Territory is left to
+    resolve it from the board state, as it always could."""
+    def test_decisive_attack_on_an_undefended_territory_actually_captures_it(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}},
+            adjacency={1: [2], 2: [1]},
+        )
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.COMBAT_MOVE, units_by_territory={1: [mover]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(mover.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+
+        gs.phase = Phase.COMBAT_RESOLUTION
+        engine.resolve_combat('NAA')
+        self.assertEqual(gs.territories[2].contested_by, {'NAA', 'AAC'}, 'still pending Capture Territory')
+        self.assertEqual(gs.territories[2].owner, 'AAC', 'ownership does not flip until Capture Territory')
+
+        gs.phase = Phase.CAPTURE
+        engine.process_capture_territory('NAA')
+        self.assertEqual(gs.territories[2].owner, 'NAA')
+        self.assertIsNone(gs.territories[2].contested_by)
+
+    def test_decisive_defeat_leaves_the_territory_uncontested_and_unclaimed(self):
+        # Mirror case: NAA attacks and loses outright (its own unit and
+        # any ally wiped) -- contested_by must clear immediately (this
+        # session's new rule), and Capture Territory then has nothing to
+        # process for NAA there at all.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}},
+            adjacency={1: [2], 2: [1]},
+        )
+        mover = make_unit('Infantry', 'NAA', hp=1)
+        defender = make_unit('Armor', 'AAC')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.COMBAT_MOVE, units_by_territory={1: [mover], 2: [defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(mover.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+
+        gs.phase = Phase.COMBAT_RESOLUTION
+        # Armor (D8, damage 4) one-shots the hp-1 Infantry; Infantry's
+        # D6 roll of 1 misses back.
+        engine.resolve_combat('NAA', rng=ScriptedRNG([1, 8]))
+        self.assertIsNone(gs.territories[2].contested_by)
+
+        gs.phase = Phase.CAPTURE
+        engine.process_capture_territory('NAA')
+        self.assertEqual(gs.territories[2].owner, 'AAC', 'the defender held -- nothing for NAA to claim')
+
+    def test_uncontested_after_a_wiped_attack_is_no_longer_a_legal_reinforcement_target(self):
+        # Once contested_by clears (attacker+allies wiped), the
+        # territory reverts to a clean, non-allied foreign one -- never
+        # a legal non-combat-move destination, per
+        # movement.noncombat_move_destination -- even for another of
+        # NAA's own units that never took part in the battle.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        mover = make_unit('Infantry', 'NAA', hp=1)
+        defender = make_unit('Armor', 'AAC')
+        reinforcement = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC', 3: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.COMBAT_MOVE, units_by_territory={1: [mover], 2: [defender], 3: [reinforcement]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(mover.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+
+        gs.phase = Phase.COMBAT_RESOLUTION
+        engine.resolve_combat('NAA', rng=ScriptedRNG([1, 8]))
+        self.assertIsNone(gs.territories[2].contested_by)
+
+        gs.phase = Phase.NONCOMBAT_MOVE
+        engine.process_return_to_base('NAA')
+        with self.assertRaises(ValueError):
+            engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(reinforcement.unit_id, 2)])
 
 
 class TestEmergencyLandingConsequence(unittest.TestCase):
