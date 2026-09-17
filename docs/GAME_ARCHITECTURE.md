@@ -163,8 +163,17 @@ the same JSON, not a parallel editing path.
   implemented and tested (`engine/`), along with a random bot
   (`engine/bots/`) that drives full games through the same public API a
   human UI would use, and a `GameStats` observer
-  (`engine/stats.py`) for per-turn/per-game reporting. Alliances remain a
-  v1 stub (no join/propose/withdraw beyond the one game-end-avoidance
-  case) — not yet marked done for that reason.
+  (`engine/stats.py`) for per-turn/per-game reporting. The Alliance
+  System (invite/accept/withdraw, the Strategic-Center withdrawal lock,
+  the rejoin ban, the former-ally reclaim combat bonus, an elimination-
+  aware max-alliance-size cap, and bot decision policy for all of it) is
+  now fully implemented too — not yet marked done because two of
+  combat.first_round_bonuses' three cases (amphibious landing, sea-deploy
+  ambush) still have their trigger-detection undone in engine.py: the
+  bonus mechanism itself works (`combat.resolve_battle`'s
+  `round1_bonus_side` param), but `GameEngine.resolve_combat` never
+  determines whether a given real battle actually qualifies as either
+  case, so neither ever fires yet (the third case, former-ally reclaim,
+  is fully wired end-to-end).
 - ⬜ Godot client / map rendering / wraparound camera.
 - ⬜ Backend / persistence / multiplayer.
