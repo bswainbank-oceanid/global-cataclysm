@@ -15,6 +15,27 @@ deaths that happened while it was physically occupying a sea territory
 (engine.combat's battle_type == 'sea') -- there's no separate Transport
 UnitInstance to check (see movement.py's module docstring); the land
 unit's own current location at the moment of death is the signal.
+
+"Rounds contested" (per capture) counts how many separate times combat
+was RESOLVED for that territory (GameEngine.resolve_combat's per-battle
+loop, win, loss, or 3-round stalemate alike) while it stayed
+continuously contested, right up to the capture -- not the up-to-3
+sub-battle dice-rolling rounds within any one of those resolutions.
+Reset to 0 whenever a territory stops being contested for any other
+reason too (e.g. the attacking coalition losing all presence -- see
+combat.contested_territory_rule's claiming_update), so a later, separate
+contest over the same ground starts counting fresh.
+
+"Cumulative MPC" is the running total of income actually COLLECTED
+during play (every Deploy + Income phase, GameEngine.deploy_and_collect_
+income) -- it does NOT include a faction's one-time starting treasury
+from game setup, since GameStats has no visibility into that (it's only
+ever attached to a GameEngine, constructed after setup.build_game_state
+has already run). "Final MPC" is simply GameState.factions[code].
+treasury_mpc read at report time, i.e. whatever's left after all that
+income and all Purchase-phase spending -- report() takes an optional
+`game_state` to read it from; omit it and the Treasury section is left
+out entirely.
 """
 from dataclasses import dataclass, field
 
@@ -27,11 +48,21 @@ class GameStats:
     deaths: dict = field(default_factory=dict)             # (faction, unit_type) -> count
     transport_deaths: dict = field(default_factory=dict)   # (faction, unit_type) -> count, subset of deaths
     kills: dict = field(default_factory=dict)              # (faction, unit_type) -> count
+    cumulative_mpc: dict = field(default_factory=dict)     # faction -> total income ever collected
+    _contest_rounds: dict = field(default_factory=dict)    # territory_id -> battle-resolution count since last uncontested (internal bookkeeping, not reported directly)
 
     def record_capture(self, turn, faction, territory_id, previous_owner):
+        rounds_contested = self._contest_rounds.pop(territory_id, 0)
         self.captures.append({
-            'turn': turn, 'faction': faction, 'territory_id': territory_id, 'previous_owner': previous_owner,
+            'turn': turn, 'faction': faction, 'territory_id': territory_id,
+            'previous_owner': previous_owner, 'rounds_contested': rounds_contested,
         })
+
+    def record_battle_resolved(self, territory_id):
+        self._contest_rounds[territory_id] = self._contest_rounds.get(territory_id, 0) + 1
+
+    def record_contest_ended_without_capture(self, territory_id):
+        self._contest_rounds.pop(territory_id, None)
 
     def record_deploy(self, faction, unit_type, qty=1):
         key = (faction, unit_type)
@@ -51,16 +82,24 @@ class GameStats:
         key = (faction, unit_type)
         self.kills[key] = self.kills.get(key, 0) + 1
 
-    def report(self):
-        """A plain-text summary: the capture log in turn order, then one
-        line per (faction, unit_type) that appears in any of the four
-        counters, with the transport-death count called out alongside
-        ordinary deaths when it's nonzero."""
+    def record_income(self, faction, amount):
+        self.cumulative_mpc[faction] = self.cumulative_mpc.get(faction, 0) + amount
+
+    def report(self, game_state=None):
+        """A plain-text summary: the capture log in turn order (each
+        line noting how many rounds that territory was contested before
+        it changed hands), then one line per (faction, unit_type) that
+        appears in any of the four unit counters, then -- only if
+        `game_state` is given -- a Treasury section with each faction's
+        cumulative and final MPC."""
         lines = ['=== Territory Captures ===']
         if self.captures:
             for c in self.captures:
                 prev = c['previous_owner'] or 'unowned'
-                lines.append(f"Turn {c['turn']}: {c['faction']} captured territory {c['territory_id']} (from {prev})")
+                lines.append(
+                    f"Turn {c['turn']}: {c['faction']} captured territory {c['territory_id']} "
+                    f"(from {prev}, contested for {c['rounds_contested']} round(s))"
+                )
         else:
             lines.append('(none)')
 
@@ -79,5 +118,13 @@ class GameStats:
             lines.append(line)
         if not keys:
             lines.append('(none)')
+
+        if game_state is not None:
+            lines.append('')
+            lines.append('=== Treasury ===')
+            for code in game_state.factions:
+                final_mpc = game_state.factions[code].treasury_mpc
+                cumulative = self.cumulative_mpc.get(code, 0)
+                lines.append(f'{code}: final MPC={final_mpc} cumulative MPC={cumulative}')
 
         return '\n'.join(lines)

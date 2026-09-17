@@ -5,6 +5,7 @@ from engine import data as real_data
 from engine.combat import BattleResult
 from engine.engine import GameEngine, PurchaseOrder, CombatMoveOrder, NonCombatMoveOrder
 from engine.state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode, Phase
+from engine.stats import GameStats
 
 UNIT_DEFS = {
     'Infantry': {'category': 'Land', 'cost': 4, 'sc_cost': 3, 'hp': 2, 'purchasable': True,
@@ -1158,6 +1159,88 @@ class TestCombatResolutionThenCaptureTerritory(unittest.TestCase):
         engine.process_return_to_base('NAA')
         with self.assertRaises(ValueError):
             engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(reinforcement.unit_id, 2)])
+
+    def test_rounds_contested_counts_battle_resolutions_up_to_the_capture(self):
+        # AAC is DEFENSIVE (has units, defends normally, but never takes
+        # its own active turn) so NAA is the only active faction and
+        # simply keeps cycling back to itself -- lets this test drive
+        # two separate Combat Resolution calls against the SAME
+        # territory (a 3-round stalemate, then a decisive win) without
+        # needing to also play out AAC's turns in between.
+        data = FakeData(
+            territories={1: {'type': 'land', 'value': 0}, 2: {'type': 'land', 'value': 0}},
+            adjacency={1: [2], 2: [1]},
+        )
+        mover = make_unit('Armor', 'NAA')
+        defender = make_unit('Armor', 'AAC')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.DEFENSIVE},
+            phase=Phase.COMBAT_MOVE, units_by_territory={1: [mover], 2: [defender]},
+        )
+        gs.active_faction = 'NAA'
+        stats = GameStats()
+        engine = GameEngine(gs, data, stats=stats)
+
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(mover.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        gs.phase = Phase.COMBAT_RESOLUTION
+        # Round 1: Armor D8/defense7 -- a roll of 3 misses cleanly every
+        # time for both sides -- 3-round stalemate, nobody dies.
+        engine.resolve_combat('NAA', rng=ScriptedRNG([3, 3, 3, 3, 3, 3]))
+        self.assertEqual(gs.territories[2].contested_by, {'NAA', 'AAC'})
+
+        gs.phase = Phase.NONCOMBAT_MOVE
+        engine.process_return_to_base('NAA')
+        engine.submit_noncombat_moves('NAA', [])
+        engine.confirm_noncombat_moves('NAA')
+        gs.phase = Phase.CAPTURE
+        engine.process_capture_territory('NAA')  # AAC's Armor still standing -- skipped, stays contested
+        self.assertEqual(gs.territories[2].contested_by, {'NAA', 'AAC'})
+        gs.phase = Phase.DEPLOY_INCOME
+        engine.deploy_and_collect_income('NAA')
+        gs.phase = Phase.ALLIANCES
+        # Not calling process_game_end_check here -- AAC being DEFENSIVE
+        # (not HUMAN/BOT) means it's the only active faction, and
+        # would_game_end() treats "1 active faction left" as game over,
+        # which isn't what this test is about.
+        engine.advance_turn()
+
+        self.assertEqual(gs.active_faction, 'NAA')  # AAC never takes an active turn
+        self.assertEqual(gs.phase, Phase.PURCHASE)
+        engine.submit_purchases('NAA', [])
+        engine.confirm_purchases('NAA')
+        gs.phase = Phase.COMBAT_MOVE
+        engine.submit_combat_moves('NAA', [])  # mover is already there -- no new order needed
+        engine.confirm_combat_moves('NAA')
+        gs.phase = Phase.COMBAT_RESOLUTION
+        # Round 2: attacker rolls the die max (8, always hits) and kills
+        # the hp-4 defender in one hit; defender misses back (3).
+        engine.resolve_combat('NAA', rng=ScriptedRNG([8, 3]))
+        gs.phase = Phase.CAPTURE
+        engine.process_capture_territory('NAA')
+
+        self.assertEqual(gs.territories[2].owner, 'NAA')
+        self.assertEqual(len(stats.captures), 1)
+        self.assertEqual(stats.captures[0]['rounds_contested'], 2)
+
+    def test_cumulative_mpc_accumulates_across_deploy_income_calls(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 3}}, adjacency={})
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.DEPLOY_INCOME, treasury={'NAA': 10},
+        )
+        stats = GameStats()
+        engine = GameEngine(gs, data, stats=stats)
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(stats.cumulative_mpc['NAA'], 3)
+        self.assertEqual(gs.factions['NAA'].treasury_mpc, 13)
+
+        gs.factions['NAA'].turns_taken += 1  # unrelated to income, just keeping state sane between two calls
+        engine.deploy_and_collect_income('NAA')
+        self.assertEqual(stats.cumulative_mpc['NAA'], 6, 'accumulates rather than overwriting')
+        self.assertEqual(gs.factions['NAA'].treasury_mpc, 16)
+
+        report = stats.report(game_state=gs)
+        self.assertIn('NAA: final MPC=16 cumulative MPC=6', report)
 
 
 class TestEmergencyLandingConsequence(unittest.TestCase):

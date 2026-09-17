@@ -61,7 +61,7 @@ def main():
     if not gs.game_over:
         print(f'(stopped at the {args.max_turns}-turn safety cap, not a decisive finish)')
     print()
-    print(stats.report())
+    print(stats.report(game_state=gs))
 
 
 if __name__ == '__main__':

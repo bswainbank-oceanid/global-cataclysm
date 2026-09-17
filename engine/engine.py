@@ -319,7 +319,10 @@ class GameEngine:
             raise ValueError('deploy_and_collect_income is only valid during the Deploy + Income phase')
 
         self._deploy_pending_units(faction)
-        self.game_state.factions[faction].treasury_mpc += compute_income(faction, self.game_state, self.data)
+        income = compute_income(faction, self.game_state, self.data)
+        self.game_state.factions[faction].treasury_mpc += income
+        if self.stats is not None:
+            self.stats.record_income(faction, income)
         self._run_recovery_check()
 
     def _deploy_pending_units(self, faction):
@@ -697,6 +700,14 @@ class GameEngine:
         if battle_type == 'sea':
             self._resolve_stranded_defender_aircraft(territory_id, result, rng)
 
+        if self.stats is not None:
+            # stats.rounds_contested: this counts as one more round of
+            # contest over this territory, regardless of the outcome --
+            # consumed by process_capture_territory's record_capture if
+            # a capture eventually resolves it, or cleared below/there if
+            # the contest ends some other way.
+            self.stats.record_battle_resolved(territory_id)
+
         if not self._attacking_coalition_has_ground_or_naval_presence(t, faction):
             # combat.contested_territory_rule's claiming update: if
             # `faction` and its current allies have no LAND or SEA unit
@@ -710,6 +721,8 @@ class GameEngine:
             # non-combat-move destination for anyone else (a clean,
             # non-allied foreign territory never is).
             t.contested_by = None
+            if self.stats is not None:
+                self.stats.record_contest_ended_without_capture(territory_id)
             return
 
         if battle_type == 'sea' and result.outcome != 'contested':
@@ -718,6 +731,8 @@ class GameEngine:
             # itself is over (not a 3-round stalemate still to refight),
             # there's nothing left here to track.
             t.contested_by = None
+            if self.stats is not None:
+                self.stats.record_contest_ended_without_capture(territory_id)
             return
 
         # Land, attacker's coalition still has ground/naval presence:
@@ -1002,8 +1017,16 @@ class GameEngine:
             previous_owner = t.owner
             t.owner = self._determine_capture_winner(faction, land_units_present, unit_defs)
             t.contested_by = None
-            if self.stats is not None and previous_owner != t.owner:
-                self.stats.record_capture(self.game_state.global_turn, t.owner, tid, previous_owner)
+            if self.stats is not None:
+                if previous_owner != t.owner:
+                    self.stats.record_capture(self.game_state.global_turn, t.owner, tid, previous_owner)
+                else:
+                    # Same owner reclaims/reaffirms its own ground -- not
+                    # a capture (no report entry), but the contest is
+                    # still over, so the rounds-contested counter must
+                    # be cleared here too, same as record_capture would
+                    # have consumed it.
+                    self.stats.record_contest_ended_without_capture(tid)
 
     def _determine_capture_winner(self, faction, land_units_present, unit_defs):
         """Who actually gets `faction`'s claim, among `faction` and its
