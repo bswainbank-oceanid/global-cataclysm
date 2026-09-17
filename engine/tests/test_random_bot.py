@@ -102,6 +102,60 @@ class TestCombatMovePhase(unittest.TestCase):
 
         self.assertIn(mover.unit_id, [u.unit_id for u in gs.territories[6].units])
 
+    def test_amphibious_attack_preferred_over_a_merely_safe_landing(self):
+        # 2 (NAA infantry) -> 3 (sea, hostile) -> either 5 (NAA's OWN
+        # land -- a safe landing, i.e. a retreat) or 9 (AAC-occupied
+        # land -- an actual attack). Both are equally close (2 hops) and
+        # 5 has the lower id, so the plain closest/lowest-id tie-break
+        # would normally pick 5 first -- the bot must never retreat to
+        # safety when an attack option exists, so it picks 9 instead.
+        data = FakeData(
+            territories={
+                2: {'type': 'land', 'value': 2},
+                3: {'type': 'sea'},
+                5: {'type': 'land', 'value': 1},
+                9: {'type': 'land', 'value': 1},
+            },
+            adjacency={2: [3], 3: [2, 5, 9], 5: [3], 9: [3]},
+        )
+        gs = make_state(
+            data, {2: 'NAA', 5: 'NAA', 9: 'AAC'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            phase=Phase.COMBAT_MOVE,
+        )
+        mover = make_unit('Infantry', 'NAA')
+        gs.territories[2].units.append(mover)
+        gs.territories[3].units.append(make_unit('Cruiser', 'AAC'))
+        gs.territories[9].units.append(make_unit('Infantry', 'AAC'))
+        engine = GameEngine(gs, data)
+        bot = RandomBot(engine, 'NAA')
+        bot.take_combat_move_phase()
+
+        self.assertIn(mover.unit_id, [u.unit_id for u in gs.territories[9].units], 'must press the attack, not retreat to friendly land')
+
+    def test_falls_back_to_safe_landing_when_no_attack_option_exists(self):
+        # Same shape, but this time the only land beyond the hostile
+        # water is NAA's own (5) -- no attack option anywhere, so the
+        # safe landing is the correct fallback, not a failure to move.
+        data = FakeData(
+            territories={
+                2: {'type': 'land', 'value': 2},
+                3: {'type': 'sea'},
+                5: {'type': 'land', 'value': 1},
+            },
+            adjacency={2: [3], 3: [2, 5], 5: [3]},
+        )
+        gs = make_state(
+            data, {2: 'NAA', 5: 'NAA'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT}, phase=Phase.COMBAT_MOVE,
+        )
+        mover = make_unit('Infantry', 'NAA')
+        gs.territories[2].units.append(mover)
+        gs.territories[3].units.append(make_unit('Cruiser', 'AAC'))
+        engine = GameEngine(gs, data)
+        bot = RandomBot(engine, 'NAA')
+        bot.take_combat_move_phase()
+
+        self.assertIn(mover.unit_id, [u.unit_id for u in gs.territories[5].units])
+
 
 class TestNonCombatMovePhase(unittest.TestCase):
     def test_moves_toward_nearest_enemy_owned_territory(self):

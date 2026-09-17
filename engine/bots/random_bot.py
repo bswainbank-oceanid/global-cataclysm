@@ -20,11 +20,23 @@ Behavior, as specified by the user this session:
   yet, make the first legal combat move found. "First" is defined here
   as closest (fewest hops), ties broken by lowest territory_id -- a
   fixed, reproducible order, since the spec doesn't define "first" more
-  precisely than that. A land unit whose legal destinations span both
-  LAND and SEA (only possible mid-transit through hostile water, per
-  movement.py's amphibious STOP_AND_PASS_LAND_ONLY exception) prefers
-  LAND outright before falling back to the closest/lowest-id rule
-  ("transported land units should seek land conflicts").
+  precisely than that. The bot never retreats from a contested area via
+  combat move -- in this engine that's only ever possible for a land
+  unit mid-transit through hostile/contested water (movement.py's
+  amphibious STOP_AND_PASS_LAND_ONLY exception is the sole way a combat
+  move can legally end on safe, friendly territory; every other legal
+  stop is already an attack, a capture, or joining a fight). For such a
+  unit, the preference order is: an amphibious ATTACK (a land
+  destination that's actually an attack/capture/join, not just a safe
+  landing) first, falling back to merely getting onto allied land only
+  if no attack option exists this turn, falling back further to simply
+  joining the naval battle in the sea zone itself only if no land option
+  exists at all ("transported land units should seek land conflicts,"
+  always trying to combat-move OUT of a sea battle rather than settling
+  for it). Sea units have no retreat option to begin with -- every legal
+  combat-move stop for one is already an attack or joining one (open,
+  uncontested water is never itself a legal stop), so any legal
+  destination already fights to the end by construction.
 - Non-Combat Move: for each of the bot's own units that hasn't moved
   this turn, move toward the nearest enemy-OWNED land territory (read as
   ownership, matching how the rest of the ruleset uses "enemy
@@ -44,7 +56,7 @@ import random
 from ..engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from ..movement import (
     _is_ally_or_self, graph_distances, legal_air_move_destinations,
-    legal_combat_move_paths, legal_noncombat_move_paths,
+    legal_combat_move_paths, legal_noncombat_move_paths, trace_combat_move,
 )
 from ..state import FactionMode
 
@@ -170,6 +182,20 @@ class RandomBot:
         self._submit_incrementally(orders, self.engine.submit_combat_moves, self.engine.confirm_combat_moves)
 
     def _first_combat_move_path(self, unit, origin_id, category, game_state):
+        """The bot never retreats from a contested area via combat move
+        -- in practice this only ever comes up for a land unit mid-transit
+        through hostile/contested water (movement.py's amphibious
+        STOP_AND_PASS_LAND_ONLY exception is the ONLY way a combat move
+        can ever legally end on safe, friendly territory at all; every
+        other legal combat-move stop is inherently an attack, a capture,
+        or joining a fight already in progress, by construction). For a
+        land unit in that situation, prefer an amphibious ATTACK (a land
+        destination classified 'attack'/'capture'/'join_contest') over
+        merely landing safely on allied territory to escape the water --
+        the safe landing is only ever the fallback when no attack option
+        exists this turn -- and prefer any land destination at all over
+        just stopping in the hostile sea zone itself (always try to
+        combat move OUT of a sea battle)."""
         if category == 'Air':
             legal = legal_air_move_destinations(
                 unit.unit_type, self.faction, origin_id, 'combat', game_state, self.engine.data,
@@ -181,12 +207,26 @@ class RandomBot:
         paths = legal_combat_move_paths(unit.unit_type, self.faction, origin_id, game_state, self.engine.data)
         if not paths:
             return None
-        if category == 'Land':
-            terrs = self.engine.data.territories()
-            land_dests = [d for d in paths if terrs[d]['type'] == 'land']
-            candidates = land_dests or list(paths)
-        else:
-            candidates = list(paths)
+
+        if category != 'Land':
+            # Sea units never have a retreat option to begin with -- every
+            # legal combat-move stop for a naval unit is already an attack
+            # or joining one (open, uncontested water is never itself a
+            # legal stop) -- so any legal destination already fights to
+            # the end by construction.
+            dest = min(paths, key=lambda d: (len(paths[d]), d))
+            return paths[dest]
+
+        terrs = self.engine.data.territories()
+        attack_dests, safe_landing_dests, sea_dests = [], [], []
+        for dest_id, path in paths.items():
+            if terrs[dest_id]['type'] != 'land':
+                sea_dests.append(dest_id)
+                continue
+            trace = trace_combat_move(unit.unit_type, self.faction, path, game_state, self.engine.data)
+            (safe_landing_dests if trace.final_kind == 'safe_landing' else attack_dests).append(dest_id)
+
+        candidates = attack_dests or safe_landing_dests or sea_dests
         dest = min(candidates, key=lambda d: (len(paths[d]), d))
         return paths[dest]
 
