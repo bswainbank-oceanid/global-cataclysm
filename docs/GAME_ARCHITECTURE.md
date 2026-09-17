@@ -157,6 +157,14 @@ the same JSON, not a parallel editing path.
   (`tools/compute_adjacency.py`).
 - ✅ Territory shape/polygon extraction (`tools/extract_territory_shapes.py`
   → `data/territory_shapes.json`).
-- ⬜ Rules engine (standalone module).
+- ⬜ Rules engine (standalone module) — Purchase, Deploy + Income, Combat
+  Move, Combat Resolution, Non-Combat Move, Capture Territory, power
+  elimination, game-end detection, and full turn/phase orchestration are
+  implemented and tested (`engine/`), along with a random bot
+  (`engine/bots/`) that drives full games through the same public API a
+  human UI would use, and a `GameStats` observer
+  (`engine/stats.py`) for per-turn/per-game reporting. Alliances remain a
+  v1 stub (no join/propose/withdraw beyond the one game-end-avoidance
+  case) — not yet marked done for that reason.
 - ⬜ Godot client / map rendering / wraparound camera.
 - ⬜ Backend / persistence / multiplayer.

@@ -3,9 +3,20 @@ Legal-move computation: given a unit's current position, what territories/
 sea zones can it legally reach this turn? Answers reachability queries
 only -- it does not execute a move or apply consequences (capture,
 becoming Transport cargo, the sea-battle-before-land-battle dependency
-for an amphibious landing), which is engine.py's job once built. Every
-rule here matches data/rules.json's movement section exactly; see that
-file for the prose version of each rule this implements.
+for an amphibious landing), which is engine.py's job. Every rule here
+matches data/rules.json's movement section exactly; see that file for
+the prose version of each rule this implements.
+
+Alongside the destination-set queries (legal_combat_move_destinations,
+legal_noncombat_move_destinations), the *_paths variants
+(legal_combat_move_paths, legal_noncombat_move_paths) return the actual
+route to each destination, not just the endpoint -- for any caller that
+needs to construct a real move (CombatMoveOrder.path requires a full
+route) rather than only check legality, e.g. a bot choosing among its
+options or a future UI drawing the path a unit would take.
+graph_distances is a separate, plain-adjacency BFS with no move-legality
+awareness at all -- "how far is X from Y" in the abstract, for a bot
+picking a general direction to advance in.
 
 Two move types, with different destination rules:
 - combat: the destination becomes an attack (or joins one already in
@@ -43,6 +54,28 @@ unit is "in a Transport"; nothing here ever calls legal_*_move_
 destinations with unit_type='Transport'.
 """
 from .state import PowerMode
+
+
+def graph_distances(origin_id, data_module):
+    """Pure adjacency-graph hop distance from origin_id to every other
+    territory -- ignores move budget, ownership, and legality entirely.
+    A general graph utility (not move/combat aware), for callers that
+    need "how far is X from Y" in the abstract -- e.g. a bot deciding
+    which direction to advance, or a future UI showing range rings.
+    Plain BFS, unweighted (every edge is one hop)."""
+    adjacency = data_module.adjacency()
+    distances = {origin_id: 0}
+    frontier = [origin_id]
+    while frontier:
+        next_frontier = []
+        for current_id in frontier:
+            for neighbor_id in adjacency.get(current_id, []):
+                if neighbor_id in distances:
+                    continue
+                distances[neighbor_id] = distances[current_id] + 1
+                next_frontier.append(neighbor_id)
+        frontier = next_frontier
+    return distances
 
 
 def _base_move(unit_type, move_type, unit_defs):
@@ -182,7 +215,7 @@ def _classify_noncombat_hop(dest_id, mover_faction, game_state, territories):
     return STOP_AND_PASS
 
 
-def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game_state, data_module):
+def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game_state, data_module, with_paths=False):
     """Core BFS shared by combat/noncombat reachability. Tracks, per
     territory, the best (largest) remaining-budget-on-arrival seen so
     far, and only explores a neighbor when arriving with a strictly
@@ -194,7 +227,16 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
     path and, with a better budget, via a land-only-restricted one could
     in principle have the unrestricted path's further options pruned
     away. Narrow edge case, and fails conservatively -- toward missing a
-    legal destination, never toward allowing an illegal one.)"""
+    legal destination, never toward allowing an illegal one.)
+
+    with_paths: if True, also reconstructs the actual route to each
+    destination (from the same parent pointers the pruning above already
+    needs to maintain) and returns (destinations, {destination:
+    [origin_id, ..., destination]}) instead of just destinations. Ties
+    (more than one equal-length legal route) resolve to whichever path
+    the traversal happened to accept last -- any one of them is an
+    equally legal route, since _classify_combat_hop/_classify_noncombat_hop
+    were satisfied at every hop along it."""
     unit_defs = data_module.units()
     territories = data_module.territories()
     adjacency = data_module.adjacency()
@@ -210,6 +252,7 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
 
     destinations = set()
     best_seen = {origin_id: initial_budget}
+    came_from = {}
     # stack entries: (territory_id, moves_used_so_far, water_bonus_active, land_only_restricted)
     stack = [(origin_id, 0, started_in_water, False)]
 
@@ -228,6 +271,7 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
             if remaining <= best_seen.get(neighbor_id, -1):
                 continue  # already reached this territory with an equal-or-better remaining budget
             best_seen[neighbor_id] = remaining
+            came_from[neighbor_id] = current_id
 
             if move_type == 'combat':
                 hop = _classify_combat_hop(neighbor_id, mover_faction, unit_type, is_land_unit, game_state, territories)
@@ -244,7 +288,19 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
             if hop.pass_through:
                 stack.append((neighbor_id, new_moves_used, new_water_active, hop.pass_through == 'land_only'))
 
-    return destinations
+    if not with_paths:
+        return destinations
+
+    paths = {}
+    for dest_id in destinations:
+        path = [dest_id]
+        node = dest_id
+        while node != origin_id:
+            node = came_from[node]
+            path.append(node)
+        path.reverse()
+        paths[dest_id] = path
+    return destinations, paths
 
 
 def legal_combat_move_destinations(unit_type, owner, origin_id, game_state, data_module):
@@ -254,6 +310,18 @@ def legal_combat_move_destinations(unit_type, owner, origin_id, game_state, data
     entirely and aren't subject to the land/sea pass-through rules
     here)."""
     return _reachable_destinations(origin_id, owner, unit_type, 'combat', game_state, data_module)
+
+
+def legal_combat_move_paths(unit_type, owner, origin_id, game_state, data_module):
+    """Like legal_combat_move_destinations, but returns {destination_id:
+    [origin_id, ..., destination_id]} -- the actual route to each legal
+    destination, not just which ones are reachable. Needed anywhere a
+    caller must actually construct a move (CombatMoveOrder.path requires
+    the full route, not just an endpoint) rather than only check
+    legality -- a bot choosing among its options, or a future interactive
+    UI drawing the route a unit would take."""
+    _, paths = _reachable_destinations(origin_id, owner, unit_type, 'combat', game_state, data_module, with_paths=True)
+    return paths
 
 
 class CombatMoveTrace:
@@ -396,6 +464,17 @@ def legal_noncombat_move_destinations(unit_type, owner, origin_id, game_state, d
     """Territories/sea zones `owner`'s `unit_type` unit, currently at
     `origin_id`, could legally end a non-combat move at."""
     return _reachable_destinations(origin_id, owner, unit_type, 'noncombat', game_state, data_module)
+
+
+def legal_noncombat_move_paths(unit_type, owner, origin_id, game_state, data_module):
+    """Like legal_noncombat_move_destinations, but returns {destination_id:
+    [origin_id, ..., destination_id]}. A non-combat move never captures
+    anything en route, so unlike the combat-move case the path itself
+    has no rules consequence -- this exists purely for callers (a bot, a
+    UI) that want to show/pick a concrete route rather than just an
+    endpoint."""
+    _, paths = _reachable_destinations(origin_id, owner, unit_type, 'noncombat', game_state, data_module, with_paths=True)
+    return paths
 
 
 def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_state, data_module):

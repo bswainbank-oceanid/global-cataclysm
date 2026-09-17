@@ -73,7 +73,7 @@ import random
 from dataclasses import dataclass
 
 from . import data as _default_data
-from .combat import BattleResult, resolve_battle
+from .combat import BattleResult, EventKind, resolve_battle
 from .economy import compute_income
 from .movement import (
     _is_ally_or_self, find_emergency_landing, legal_air_move_destinations,
@@ -121,9 +121,15 @@ class NonCombatMoveOrder:
 
 
 class GameEngine:
-    def __init__(self, game_state, data_module=None):
+    def __init__(self, game_state, data_module=None, stats=None):
         self.game_state = game_state
         self.data = data_module or _default_data
+        # Optional stats.GameStats observer -- if given, deploys,
+        # captures, promotions, deaths, and kills are reported into it as
+        # they happen (see stats.py's module docstring). None (the
+        # default) means no observation at all; every other behavior
+        # here is identical either way.
+        self.stats = stats
         self._staged_purchases = {}  # faction_code -> [PurchaseOrder, ...]
         self._purchases_confirmed = set()
         self._staged_combat_moves = {}  # faction_code -> [CombatMoveOrder, ...]
@@ -340,6 +346,7 @@ class GameEngine:
         t = self.game_state.territories[tid]
         if t.owner == faction:
             t.units.extend(pending)
+            self._record_deploys(faction, pending)
             return
         # Lost during the turn (only ever Infantry -- the only unit
         # type contested_land_deploy_restriction lets into a contested
@@ -348,7 +355,14 @@ class GameEngine:
         fallback = self._find_fallback_for_lost_purchase(tid, faction)
         if fallback is not None:
             self.game_state.territories[fallback].units.extend(pending)
+            self._record_deploys(faction, pending)
         # else: no adjacent controlled territory or sea zone -- lost outright, never placed.
+
+    def _record_deploys(self, faction, units):
+        if self.stats is None:
+            return
+        for u in units:
+            self.stats.record_deploy(faction, u.unit_type)
 
     def _find_fallback_for_lost_purchase(self, tid, faction):
         """(1) an adjacent territory `faction` still controls; (2) if
@@ -386,6 +400,7 @@ class GameEngine:
             else:
                 to_place_here.append(u)
         t.units.extend(to_place_here)
+        self._record_deploys(faction, pending)  # both the redirected-to-land and placed-here units actually landed on the board
 
         # Hostile sea deploy creates contested, immediately, as a direct
         # result of the deployment (purchase.hostile_sea_deploy_creates_contested)
@@ -638,9 +653,41 @@ class GameEngine:
                 self.game_state.global_turn, unit_defs, rules,
             ))
             result = BattleResult.from_events(events)
+            self._record_combat_stats(events, attacker_units, defender_units, battle_type)
             self._apply_battle_outcome(territory_id, battle_type, faction, result, rng)
             results.append(result)
         return results
+
+    def _record_combat_stats(self, events, attacker_units, defender_units, battle_type):
+        """Promotions and kills come straight off the event stream
+        (PROMOTION events, and any UNIT_ROLL hit that drops its target's
+        target_hp_after to <=0 -- the same "killing blow" signal
+        combat._fight_one_round uses internally for its own killed_by XP
+        bonus, just re-derived here from the public events rather than
+        threaded through as a return value). Deaths come off the final
+        BATTLE_END event's eliminated_*_ids -- battle_type == 'sea' plus
+        the dead unit's own category == 'Land' is what "died in transport
+        form" means (see stats.py's module docstring)."""
+        if self.stats is None:
+            return
+        unit_defs = self.data.units()
+        by_id = {u.unit_id: u for u in attacker_units + defender_units}
+        for event in events:
+            if event.kind == EventKind.UNIT_ROLL and event.hit and event.target_hp_after is not None and event.target_hp_after <= 0:
+                killer = by_id.get(event.unit_id)
+                if killer is not None:
+                    self.stats.record_kill(killer.owner, killer.unit_type)
+            elif event.kind == EventKind.PROMOTION:
+                unit = by_id.get(event.promoted_unit_id)
+                if unit is not None:
+                    self.stats.record_promotion(unit.owner, unit.unit_type)
+            elif event.kind == EventKind.BATTLE_END:
+                for uid in (event.eliminated_attacker_ids or []) + (event.eliminated_defender_ids or []):
+                    unit = by_id.get(uid)
+                    if unit is None:
+                        continue
+                    in_transport = battle_type == 'sea' and unit_defs[unit.unit_type]['category'] == 'Land'
+                    self.stats.record_death(unit.owner, unit.unit_type, in_transport=in_transport)
 
     def _apply_battle_outcome(self, territory_id, battle_type, faction, result, rng):
         t = self.game_state.territories[territory_id]
@@ -918,8 +965,11 @@ class GameEngine:
             }
             if non_allied_land_owners:
                 continue
+            previous_owner = t.owner
             t.owner = self._determine_capture_winner(faction, land_units_present, unit_defs)
             t.contested_by = None
+            if self.stats is not None and previous_owner != t.owner:
+                self.stats.record_capture(self.game_state.global_turn, t.owner, tid, previous_owner)
 
     def _determine_capture_winner(self, faction, land_units_present, unit_defs):
         """Who actually gets `faction`'s claim, among `faction` and its
