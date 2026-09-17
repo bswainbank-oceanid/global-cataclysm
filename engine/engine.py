@@ -31,7 +31,15 @@ still live. process_elimination_check (victory.elimination_rule, meant
 to run right after Capture Territory) sweeps every faction's Strategic
 Center count and eliminates -- clears remaining units, and excludes from
 GameState.active_powers() forever after, which is what actually enforces
-"no more turns" -- anyone down to 1 or 0. Nothing here yet transitions
+"no more turns" -- anyone down to 1 or 0. process_game_end_check
+(victory.game_end_rule, meant to run once at the very end of a
+faction's full turn, after the stubbed Alliances phase) sets
+GameState.game_over once every remaining active power is mutually
+allied with every other -- nobody non-allied left to keep fighting --
+but first gives the faction whose turn is ending one last chance to
+withdraw from its alliance instead, which keeps the game going; that's
+the only alliance-withdrawal action implemented anywhere in the engine,
+the rest of alliances remaining a v1 stub. Nothing here yet transitions
 GameState.phase itself between phases; callers currently set it directly
 (see the tests).
 
@@ -969,3 +977,50 @@ class GameEngine:
                 fstate.eliminated = True
                 for t in self.game_state.territories.values():
                     t.units = [u for u in t.units if u.owner != code]
+
+    def would_game_end(self):
+        """Pure query, no mutation: victory.game_end_rule -- would the
+        game be over right now, as-is? True once every remaining active
+        power (GameState.active_powers()) is mutually allied with every
+        other -- since FactionState.alliance is a single tag per
+        faction, that's exactly equivalent to all of them sharing the
+        same one non-None value (trivially true too with 1 or 0 active
+        powers left -- nobody remains to still be at war with). A caller
+        (a UI) uses this to decide whether it's even worth asking the
+        current player about process_game_end_check's one-last-chance
+        withdrawal -- nothing to prompt for if the game wasn't about to
+        end anyway."""
+        active = self.game_state.active_powers()
+        if len(active) <= 1:
+            return True
+        alliances = {self.game_state.factions[code].alliance for code in active}
+        return len(alliances) == 1 and None not in alliances
+
+    def process_game_end_check(self, faction, withdraw_from_alliance=False):
+        """victory.game_end_rule, checked once at the very end of
+        `faction`'s full turn -- after the (stubbed) Alliances phase,
+        the last of the 7 turn_order phases. Before the game is declared
+        over, `faction` gets one last chance to withdraw from its
+        alliance (withdraw_from_alliance=True clears
+        FactionState.alliance for `faction` specifically) -- doing so
+        keeps the game going if that alliance was the only thing making
+        would_game_end() true. This is the ONLY alliance-withdrawal
+        action implemented anywhere in the engine; full join/withdraw
+        mechanics otherwise remain a v1 stub (see alliances.status).
+
+        Sets GameState.game_over to match the result (would_game_end(),
+        evaluated AFTER applying the withdrawal, if any) and returns it.
+        Automatic in that it takes no staging/rollback of its own
+        (phase_confirmation.scope), but unlike every other automatic
+        phase call it DOES take a single yes/no player choice, since
+        that choice is the entire point of the 'last chance' rule."""
+        if faction not in self.game_state.active_powers():
+            raise ValueError(f'{faction} is not an active power')
+        if self.game_state.phase != Phase.ALLIANCES:
+            raise ValueError('process_game_end_check is only valid during the Alliances phase')
+
+        if withdraw_from_alliance:
+            self.game_state.factions[faction].alliance = None
+
+        self.game_state.game_over = self.would_game_end()
+        return self.game_state.game_over

@@ -77,8 +77,8 @@
     },
     {
       "phase": "Alliances",
-      "summary": "Propose/withdraw -- entirely stubbed as a no-op for v1.",
-      "see": ["alliances"]
+      "summary": "Propose/withdraw -- entirely stubbed as a no-op for v1, EXCEPT for the one narrow withdrawal action victory.game_end_rule's last-chance check offers at the very end of this phase (see that entry) -- there's still no general join/propose/withdraw mechanic beyond it.",
+      "see": ["alliances", "victory.game_end_rule"]
     }
   ],
   "combat": {
@@ -241,7 +241,12 @@
   },
   "victory": {
     "elimination_rule": "a power is eliminated when it controls <=1 Strategic Center (original or captured); contested SCs still count as controlled (ownership only ever changes via Capture Territory, so a still-contested SC's registered owner hasn't lost it yet). Remove all remaining units from the board on elimination. Implemented -- see engine.engine.GameEngine.process_elimination_check, meant to run right after Capture Territory each turn (automatic, no player choice, nothing to roll back). It's GameState.active_powers() excluding eliminated factions -- which every phase method already gates on, and which combat.recovery_rule's num_powers is derived from -- that actually enforces 'gets no more turns,' not anything phase-specific. NEUTRAL is exempt (never had turns to lose); DEFENSIVE can still be eliminated (its units are cleared, even though it never took turns either).",
-    "game_end_rule": "the game ends when there are no unallied powers remaining -- not yet implemented (depends on alliance mechanics, which are themselves still a v1 stub -- see alliances.status)."
+    "game_end_rule": {
+      "rule": "the game ends when there are no unallied powers remaining -- every remaining active power (GameState.active_powers(), i.e. HUMAN/BOT and not yet eliminated) must be mutually allied with every other. Since FactionState.alliance is a single tag per faction, that's exactly equivalent to all of them sharing the same one non-None alliance value (or trivially true with 1 or 0 active powers left).",
+      "timing": "checked once, at the very end of the ACTIVE faction's full turn -- after the (still otherwise-stubbed) Alliances phase, the last of the 7 turn_order phases.",
+      "last_chance_withdrawal": "before the game is actually declared over, the faction whose turn is ending gets one last chance to withdraw from its alliance -- doing so keeps the game going if that alliance was the only thing making it end. This is the ONLY alliance-withdrawal action implemented anywhere in the engine; full join/propose/withdraw mechanics otherwise remain a v1 stub (see alliances.status).",
+      "status": "implemented -- see engine.engine.GameEngine.would_game_end (pure query) and process_game_end_check (applies the withdrawal if requested, then sets GameState.game_over to match)."
+    }
   },
   "map": {
     "reference_image_width_px": 3500,

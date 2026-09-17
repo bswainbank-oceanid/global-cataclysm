@@ -269,6 +269,11 @@ class GameState:
     territories: dict = field(default_factory=dict)  # dict[int, TerritoryState]
     factions: dict = field(default_factory=dict)  # dict[str, FactionState]
     _next_unit_id: int = 1
+    # victory.game_end_rule: set by GameEngine.process_game_end_check,
+    # checked once per turn at the very end (after the Alliances phase)
+    # -- true once every remaining active power is mutually allied with
+    # every other, with nobody left non-allied to keep fighting.
+    game_over: bool = False
 
     def new_unit_id(self):
         uid = self._next_unit_id
@@ -293,6 +298,7 @@ class GameState:
             'territories': {str(tid): t.to_dict() for tid, t in self.territories.items()},
             'factions': {code: f.to_dict() for code, f in self.factions.items()},
             'next_unit_id': self._next_unit_id,
+            'game_over': self.game_over,
         }
 
     @staticmethod
@@ -304,4 +310,5 @@ class GameState:
             territories={int(k): TerritoryState.from_dict(v) for k, v in d['territories'].items()},
             factions={k: FactionState.from_dict(v) for k, v in d['factions'].items()},
             _next_unit_id=d['next_unit_id'],
+            game_over=d.get('game_over', False),
         )

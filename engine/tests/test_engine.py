@@ -1743,5 +1743,98 @@ class TestEliminationCheck(unittest.TestCase):
             engine.process_elimination_check()
 
 
+class TestGameEndCheck(unittest.TestCase):
+    def test_would_game_end_true_with_a_single_active_power(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        engine = GameEngine(gs, data)
+        self.assertTrue(engine.would_game_end())
+
+    def test_would_game_end_true_when_all_active_powers_share_an_alliance(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        self.assertTrue(engine.would_game_end())
+
+    def test_would_game_end_false_when_non_allied_powers_remain(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        engine = GameEngine(gs, data)
+        self.assertFalse(engine.would_game_end())
+
+    def test_would_game_end_false_with_two_allied_and_one_outsider(self):
+        # NAA+UE share an alliance, but AAC doesn't -- not EVERYONE is
+        # mutually allied, so there's still someone to fight.
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES,
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        self.assertFalse(engine.would_game_end())
+
+    def test_eliminated_and_neutral_factions_dont_count(self):
+        # AAC is eliminated, PAF is Neutral -- neither ever takes turns,
+        # so with NAA and UE (allied) as the only ACTIVE powers left,
+        # the game should still be considered over.
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN, 'PAF': PowerMode.NEUTRAL},
+            phase=Phase.ALLIANCES,
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        gs.factions['AAC'].eliminated = True
+        engine = GameEngine(gs, data)
+        self.assertTrue(engine.would_game_end())
+
+    def test_process_game_end_check_sets_game_over(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        result = engine.process_game_end_check('NAA')
+        self.assertTrue(result)
+        self.assertTrue(gs.game_over)
+
+    def test_withdrawing_keeps_the_game_going(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'UE': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        result = engine.process_game_end_check('NAA', withdraw_from_alliance=True)
+        self.assertFalse(result)
+        self.assertFalse(gs.game_over)
+        self.assertIsNone(gs.factions['NAA'].alliance)
+        self.assertEqual(gs.factions['UE'].alliance, 'pact', "withdrawal only affects the faction whose turn it is")
+
+    def test_withdrawing_when_the_game_wasnt_going_to_end_anyway(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN, 'AAC': PowerMode.HUMAN}, phase=Phase.ALLIANCES)
+        engine = GameEngine(gs, data)
+        result = engine.process_game_end_check('NAA', withdraw_from_alliance=True)
+        self.assertFalse(result)
+        self.assertFalse(gs.game_over)
+
+    def test_wrong_phase_is_rejected(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.HUMAN}, phase=Phase.CAPTURE)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.process_game_end_check('NAA')
+
+    def test_non_active_faction_is_rejected(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': PowerMode.NEUTRAL}, phase=Phase.ALLIANCES)
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.process_game_end_check('NAA')
+
+
 if __name__ == '__main__':
     unittest.main()
