@@ -1204,9 +1204,14 @@ class GameEngine:
         if not target_accepts:
             return False
 
-        tag = self.game_state.factions[faction].alliance or self._new_alliance_tag()
+        existing_tag = self.game_state.factions[faction].alliance
+        tag = existing_tag or self._new_alliance_tag()
         self.game_state.factions[faction].alliance = tag
         self.game_state.factions[target].alliance = tag
+        if self.stats is not None:
+            self.stats.record_alliance_joined(
+                self.game_state.global_turn, faction, target, tag, new_alliance=(existing_tag is None),
+            )
         return True
 
     def _faction_has_units_on_an_allied_sc(self, faction):
@@ -1257,11 +1262,14 @@ class GameEngine:
             raise ValueError(f"{faction} cannot withdraw while it has units on an ally's Strategic Center")
 
         self._alliance_action_taken.add(faction)
+        former_tag = fstate.alliance
         former_members = self._alliance_members(faction) - {faction}
         for other in former_members:
             fstate.former_allies.add(other)
             self.game_state.factions[other].former_allies.add(faction)
         fstate.alliance = None
+        if self.stats is not None:
+            self.stats.record_alliance_withdrawal(self.game_state.global_turn, faction, former_tag, former_members)
 
         terrs = self.data.territories()
         for tid, t in self.game_state.territories.items():

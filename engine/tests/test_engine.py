@@ -2241,6 +2241,50 @@ class TestInviteToAlliance(unittest.TestCase):
         with self.assertRaises(ValueError):
             engine.invite_to_alliance('NAA', 'UE', target_accepts=True)
 
+    def test_records_a_new_alliance_forming_in_stats(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES, global_turn=7,
+        )
+        stats = GameStats()
+        engine = GameEngine(gs, data, stats=stats)
+        engine.invite_to_alliance('NAA', 'UE', target_accepts=True)
+
+        self.assertEqual(len(stats.alliance_changes), 1)
+        change = stats.alliance_changes[0]
+        self.assertEqual(change['turn'], 7)
+        self.assertEqual(change['kind'], 'joined')
+        self.assertTrue(change['new_alliance'])
+        self.assertEqual(change['faction'], 'NAA')
+        self.assertEqual(change['target'], 'UE')
+
+    def test_records_joining_an_existing_alliance_as_not_new(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {},
+            {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES,
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        gs.max_alliance_size = 3
+        stats = GameStats()
+        engine = GameEngine(gs, data, stats=stats)
+        engine.invite_to_alliance('NAA', 'AAC', target_accepts=True)
+        self.assertFalse(stats.alliance_changes[0]['new_alliance'])
+
+    def test_declined_invite_is_not_recorded_in_stats(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES,
+        )
+        stats = GameStats()
+        engine = GameEngine(gs, data, stats=stats)
+        engine.invite_to_alliance('NAA', 'UE', target_accepts=False)
+        self.assertEqual(stats.alliance_changes, [])
+
     def test_one_alliance_action_per_turn(self):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
@@ -2440,6 +2484,80 @@ class TestWithdrawFromAlliance(unittest.TestCase):
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.withdraw_from_alliance('NAA')
+
+    def test_records_a_withdrawal_in_stats(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES, global_turn=12,
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        gs.factions['AAC'].alliance = 'pact'
+        stats = GameStats()
+        engine = GameEngine(gs, data, stats=stats)
+        engine.withdraw_from_alliance('NAA')
+
+        self.assertEqual(len(stats.alliance_changes), 1)
+        change = stats.alliance_changes[0]
+        self.assertEqual(change['turn'], 12)
+        self.assertEqual(change['kind'], 'withdrew')
+        self.assertEqual(change['faction'], 'NAA')
+        self.assertEqual(change['tag'], 'pact')
+        self.assertEqual(change['former_members'], ['AAC', 'UE'])
+
+
+class TestGameStatsAllianceReporting(unittest.TestCase):
+    def test_report_lists_alliance_policies_when_game_state_given(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs.factions['NAA'].alliance_strategy = 'aggressive'
+        gs.factions['NAA'].alliance_behavior = 'treacherous'
+        gs.factions['UE'].alliance_strategy = 'passive'
+        gs.factions['UE'].alliance_behavior = 'loyal'
+        stats = GameStats()
+        report = stats.report(gs)
+        self.assertIn('=== Alliance Policies ===', report)
+        self.assertIn('NAA: strategy=aggressive behavior=treacherous', report)
+        self.assertIn('UE: strategy=passive behavior=loyal', report)
+
+    def test_report_omits_alliance_policies_without_game_state(self):
+        stats = GameStats()
+        report = stats.report()
+        self.assertNotIn('=== Alliance Policies ===', report)
+
+    def test_report_formats_a_new_alliance_forming(self):
+        stats = GameStats()
+        stats.record_alliance_joined(3, 'NAA', 'UE', 'ALLIANCE_1', new_alliance=True)
+        report = stats.report()
+        self.assertIn('Turn 3: NAA and UE formed a new alliance (ALLIANCE_1)', report)
+
+    def test_report_formats_joining_an_existing_alliance(self):
+        stats = GameStats()
+        stats.record_alliance_joined(5, 'NAA', 'AAC', 'pact', new_alliance=False)
+        report = stats.report()
+        self.assertIn("Turn 5: AAC joined NAA's alliance (pact)", report)
+
+    def test_report_formats_a_withdrawal(self):
+        stats = GameStats()
+        stats.record_alliance_withdrawal(9, 'NAA', 'pact', {'UE', 'AAC'})
+        report = stats.report()
+        self.assertIn('Turn 9: NAA withdrew from alliance (pact) -- was allied with AAC, UE', report)
+
+    def test_report_formats_a_withdrawal_with_no_remaining_members(self):
+        # A faction's only ally can have already withdrawn earlier,
+        # leaving it a solo holdout under a now-empty tag (FactionState.
+        # alliance isn't auto-cleared when membership drops to 1) --
+        # seen in an actual driven game this session.
+        stats = GameStats()
+        stats.record_alliance_withdrawal(11, 'NAA', 'ALLIANCE_2', set())
+        report = stats.report()
+        self.assertIn('Turn 11: NAA withdrew from its now-empty alliance (ALLIANCE_2)', report)
+
+    def test_report_shows_none_when_no_alliance_changes(self):
+        stats = GameStats()
+        report = stats.report()
+        self.assertIn('=== Alliance Changes ===\n(none)', report)
 
 
 class TestReclaimBonusInCombat(unittest.TestCase):

@@ -36,6 +36,13 @@ treasury_mpc read at report time, i.e. whatever's left after all that
 income and all Purchase-phase spending -- report() takes an optional
 `game_state` to read it from; omit it and the Treasury section is left
 out entirely.
+
+"Alliance changes" logs every actual membership change (GameEngine.
+invite_to_alliance succeeding with target_accepts=True, or
+withdraw_from_alliance succeeding) -- not a declined invite, since
+nothing changes then. Alliance Policies and Alliance Changes both need
+`game_state`/turn numbers only available once attached to a live
+GameEngine, same as Treasury -- see report()'s `game_state` param.
 """
 from dataclasses import dataclass, field
 
@@ -49,6 +56,7 @@ class GameStats:
     transport_deaths: dict = field(default_factory=dict)   # (faction, unit_type) -> count, subset of deaths
     kills: dict = field(default_factory=dict)              # (faction, unit_type) -> count
     cumulative_mpc: dict = field(default_factory=dict)     # faction -> total income ever collected
+    alliance_changes: list = field(default_factory=list)   # [{turn, kind: 'joined'|'withdrew', ...}], in turn order
     _contest_rounds: dict = field(default_factory=dict)    # territory_id -> battle-resolution count since last uncontested (internal bookkeeping, not reported directly)
 
     def record_capture(self, turn, faction, territory_id, previous_owner):
@@ -85,13 +93,32 @@ class GameStats:
     def record_income(self, faction, amount):
         self.cumulative_mpc[faction] = self.cumulative_mpc.get(faction, 0) + amount
 
+    def record_alliance_joined(self, turn, faction, target, tag, new_alliance):
+        """`faction` invited `target`, who accepted. `new_alliance` is
+        True when neither was previously allied (a fresh alliance formed
+        by the two of them), False when `target` merely joined
+        `faction`'s existing alliance -- report() phrases these
+        differently."""
+        self.alliance_changes.append({
+            'turn': turn, 'kind': 'joined', 'faction': faction, 'target': target,
+            'tag': tag, 'new_alliance': new_alliance,
+        })
+
+    def record_alliance_withdrawal(self, turn, faction, tag, former_members):
+        self.alliance_changes.append({
+            'turn': turn, 'kind': 'withdrew', 'faction': faction, 'tag': tag,
+            'former_members': sorted(former_members),
+        })
+
     def report(self, game_state=None):
         """A plain-text summary: the capture log in turn order (each
         line noting how many rounds that territory was contested before
         it changed hands), then one line per (faction, unit_type) that
         appears in any of the four unit counters, then -- only if
         `game_state` is given -- a Treasury section with each faction's
-        cumulative and final MPC."""
+        cumulative and final MPC, an Alliance Policies section with each
+        faction's alliance_strategy/alliance_behavior, and an Alliance
+        Changes section (the join/withdraw log, in turn order)."""
         lines = ['=== Territory Captures ===']
         if self.captures:
             for c in self.captures:
@@ -126,5 +153,33 @@ class GameStats:
                 final_mpc = game_state.factions[code].treasury_mpc
                 cumulative = self.cumulative_mpc.get(code, 0)
                 lines.append(f'{code}: final MPC={final_mpc} cumulative MPC={cumulative}')
+
+            lines.append('')
+            lines.append('=== Alliance Policies ===')
+            for code, f in game_state.factions.items():
+                if f.alliance_strategy is None and f.alliance_behavior is None:
+                    continue
+                lines.append(f"{code}: strategy={f.alliance_strategy or 'n/a'} behavior={f.alliance_behavior or 'n/a'}")
+
+        lines.append('')
+        lines.append('=== Alliance Changes ===')
+        if self.alliance_changes:
+            for c in self.alliance_changes:
+                if c['kind'] == 'joined':
+                    if c['new_alliance']:
+                        lines.append(f"Turn {c['turn']}: {c['faction']} and {c['target']} formed a new alliance ({c['tag']})")
+                    else:
+                        lines.append(f"Turn {c['turn']}: {c['target']} joined {c['faction']}'s alliance ({c['tag']})")
+                elif c['former_members']:
+                    members = ', '.join(c['former_members'])
+                    lines.append(f"Turn {c['turn']}: {c['faction']} withdrew from alliance ({c['tag']}) -- was allied with {members}")
+                else:
+                    # every other member of this alliance tag had already
+                    # withdrawn earlier -- faction was its last, solo
+                    # holdout (FactionState.alliance isn't auto-cleared
+                    # when a tag's membership drops to 1).
+                    lines.append(f"Turn {c['turn']}: {c['faction']} withdrew from its now-empty alliance ({c['tag']})")
+        else:
+            lines.append('(none)')
 
         return '\n'.join(lines)
