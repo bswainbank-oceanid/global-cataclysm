@@ -1132,6 +1132,23 @@ class GameEngine:
         self.game_state._next_alliance_id += 1
         return tag
 
+    def _effective_max_alliance_size(self):
+        """game_start_settings.max_alliance_size is a ceiling chosen at
+        setup, but it can never actually allow an alliance of every
+        remaining active faction -- that would mean the alliance forming
+        IS the game ending (would_game_end()'s all-active-mutually-allied
+        condition), which invite_to_alliance must never trigger as a side
+        effect of a normal invite. So the size actually enforced is
+        min(max_alliance_size, len(active_factions()) - 1), recomputed
+        fresh from the CURRENT active-faction count every time this is
+        called -- not just once at setup. As factions are eliminated over
+        the course of the game this shrinks, progressively restricting
+        what NEW alliances can form or grow into -- confirmed this
+        session. It never dissolves an existing alliance that's already
+        larger than the current value; only invite_to_alliance's
+        validation below consults this at all."""
+        return min(self.game_state.max_alliance_size, len(self.game_state.active_factions()) - 1)
+
     def invite_to_alliance(self, faction, target, target_accepts):
         """Alliances phase, one of the two things `faction` may
         optionally do this turn (the other is withdraw_from_alliance;
@@ -1147,7 +1164,9 @@ class GameEngine:
         action this turn, `target` is `faction` itself or not a valid
         ally-eligible active faction, `target` is already in an alliance
         (must withdraw first, on its own separate turn), accepting would
-        exceed game_start_settings.max_alliance_size, or -- when
+        exceed _effective_max_alliance_size() (game_start_settings.
+        max_alliance_size, further capped by the CURRENT number of
+        active factions -- see that method), or -- when
         can_rejoin_alliances is False -- `target` has a former_allies
         conflict with anyone already in `faction`'s alliance. A
         `target_accepts=False` decline is NOT an error (nothing changes,
@@ -1167,10 +1186,12 @@ class GameEngine:
             raise ValueError(f'{target} is already in an alliance -- it must withdraw first')
 
         prospective_members = self._alliance_members(faction) | {target}
-        if len(prospective_members) > self.game_state.max_alliance_size:
+        effective_max = self._effective_max_alliance_size()
+        if len(prospective_members) > effective_max:
             raise ValueError(
                 f'accepting would make an alliance of {len(prospective_members)}, '
-                f'exceeding max_alliance_size ({self.game_state.max_alliance_size})'
+                f'exceeding the effective max_alliance_size ({effective_max}, '
+                f'capped by {len(self.game_state.active_factions())} currently active factions)'
             )
         if not self.game_state.can_rejoin_alliances:
             banned = self.game_state.factions[target].former_allies & prospective_members

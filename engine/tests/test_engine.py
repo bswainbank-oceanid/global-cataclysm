@@ -2097,8 +2097,15 @@ class TestGameEndCheck(unittest.TestCase):
 
 class TestInviteToAlliance(unittest.TestCase):
     def test_creates_a_new_alliance_when_inviter_has_none(self):
+        # A bystander faction (PAF) is required here: with only 2 active
+        # factions, _effective_max_alliance_size() would cap out at 1
+        # (active_count - 1), since an alliance can never include every
+        # remaining active faction -- see TestEffectiveMaxAllianceSize.
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES,
+        )
         engine = GameEngine(gs, data)
         accepted = engine.invite_to_alliance('NAA', 'UE', target_accepts=True)
         self.assertTrue(accepted)
@@ -2106,9 +2113,14 @@ class TestInviteToAlliance(unittest.TestCase):
         self.assertEqual(gs.factions['NAA'].alliance, gs.factions['UE'].alliance)
 
     def test_adds_to_an_existing_alliance(self):
+        # A 2nd bystander (GPC) alongside AAC: 4 active factions gives an
+        # effective cap of min(3, 4-1) = 3, matching the prospective
+        # 3-member alliance below -- see test_creates_a_new_alliance_when_
+        # inviter_has_none's comment.
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
-            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            data, {},
+            {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
             phase=Phase.ALLIANCES,
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -2121,7 +2133,10 @@ class TestInviteToAlliance(unittest.TestCase):
 
     def test_decline_leaves_state_unchanged(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES,
+        )
         engine = GameEngine(gs, data)
         accepted = engine.invite_to_alliance('NAA', 'UE', target_accepts=False)
         self.assertFalse(accepted)
@@ -2185,7 +2200,10 @@ class TestInviteToAlliance(unittest.TestCase):
 
     def test_rejoin_allowed_when_setting_is_true(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES,
+        )
         gs.factions['NAA'].former_allies.add('UE')
         gs.factions['UE'].former_allies.add('NAA')
         gs.can_rejoin_alliances = True
@@ -2198,10 +2216,13 @@ class TestInviteToAlliance(unittest.TestCase):
         # and withdrew -- UE can't join NAA's alliance even though UE
         # was never directly allied with NAA, because GPC (a current
         # member of the alliance UE would be joining) is in UE's
-        # former_allies.
+        # former_allies. A 4th faction (PAF) bystander keeps the
+        # effective size cap (min(3, active-1)) from being what actually
+        # blocks this invite, so it's really the rejoin ban being tested.
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
-            data, {}, {'NAA': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN},
+            data, {},
+            {'NAA': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
             phase=Phase.ALLIANCES,
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -2230,6 +2251,85 @@ class TestInviteToAlliance(unittest.TestCase):
         engine.invite_to_alliance('NAA', 'UE', target_accepts=True)
         with self.assertRaises(ValueError):
             engine.invite_to_alliance('NAA', 'AAC', target_accepts=True)
+
+
+class TestEffectiveMaxAllianceSize(unittest.TestCase):
+    """game_start_settings.max_alliance_size is only a ceiling --
+    GameEngine._effective_max_alliance_size() further caps it to
+    (active faction count - 1), so an alliance can never include every
+    remaining active faction (that would make forming it identical to
+    ending the game -- see would_game_end()). Recomputed fresh from the
+    CURRENT active-faction count on every invite, so eliminations over
+    the course of the game progressively tighten it -- but never
+    dissolve an alliance that's already bigger than the new value."""
+
+    def test_capped_by_active_faction_count_when_lower_than_the_configured_setting(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES,
+        )
+        gs.max_alliance_size = 5  # configured ceiling higher than 3 active factions - 1
+        engine = GameEngine(gs, data)
+        self.assertEqual(engine._effective_max_alliance_size(), 2)
+
+    def test_capped_by_the_configured_setting_when_lower_than_active_faction_count(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {},
+            {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES,
+        )
+        gs.max_alliance_size = 2  # lower than 4 active factions - 1 = 3
+        engine = GameEngine(gs, data)
+        self.assertEqual(engine._effective_max_alliance_size(), 2)
+
+    def test_shrinks_as_factions_are_eliminated(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {},
+            {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES,
+        )
+        gs.max_alliance_size = 5
+        engine = GameEngine(gs, data)
+        self.assertEqual(engine._effective_max_alliance_size(), 3)  # 4 active - 1
+        gs.factions['GPC'].eliminated = True
+        self.assertEqual(engine._effective_max_alliance_size(), 2)  # now 3 active - 1
+
+    def test_elimination_does_not_dissolve_an_existing_larger_alliance(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {},
+            {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES,
+        )
+        gs.max_alliance_size = 3
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        gs.factions['AAC'].alliance = 'pact'  # a 3-member alliance, formed while the cap allowed it
+        engine = GameEngine(gs, data)
+
+        gs.factions['GPC'].eliminated = True  # 3 active factions remain -- cap is now 2, below the alliance's size
+        self.assertEqual(engine._effective_max_alliance_size(), 2)
+        self.assertEqual(gs.factions['NAA'].alliance, 'pact')
+        self.assertEqual(gs.factions['UE'].alliance, 'pact')
+        self.assertEqual(gs.factions['AAC'].alliance, 'pact')
+
+    def test_elimination_blocks_a_new_invite_the_configured_setting_would_otherwise_allow(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {},
+            {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES,
+        )
+        gs.max_alliance_size = 3
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        gs.factions['AAC'].eliminated = True  # 3 active factions remain -- effective cap drops to 2
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.invite_to_alliance('NAA', 'GPC', target_accepts=True)  # would make a 3rd member
 
 
 class TestWithdrawFromAlliance(unittest.TestCase):

@@ -18,8 +18,11 @@ inviter's.
 
 Four strategies (game_start setting, per bot, fixed for the whole game):
 - aggressive: always invites a random eligible faction (capped by
-  max_alliance_size), and always accepts an invitation -- wants the
-  largest possible alliance, confirmed this session to grow via either path.
+  GameEngine._effective_max_alliance_size() -- game_start_settings.
+  max_alliance_size, further capped by the CURRENT number of active
+  factions, so this shrinks as factions are eliminated, confirmed this
+  session), and always accepts an invitation -- wants the largest
+  possible alliance, confirmed this session to grow via either path.
 - passive: never invites; always accepts.
 - counterweight: invites only to match the CURRENT LARGEST other alliance
   on the board, never inviting past that size, and does nothing at all
@@ -120,7 +123,7 @@ def choose_invite_target(engine, faction, rng):
         return None
 
     own_size = len(engine._alliance_members(faction))
-    if own_size + 1 > gs.max_alliance_size:
+    if own_size + 1 > engine._effective_max_alliance_size():
         return None
 
     if strategy == 'counterweight':

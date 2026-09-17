@@ -121,11 +121,17 @@ def build_game_state(scenario_name, faction_modes, defensive_scenario_name='star
       moves_first_turn (default True): stored directly on GameState and
       enforced every turn by GameEngine.advance_phase(), not just at
       setup -- see GameState's own docstring comment on these fields.
-    - max_alliance_size (default 2, 1-5) / can_withdraw_from_alliances
+    - max_alliance_size (default 2) / can_withdraw_from_alliances
       (default True) / can_rejoin_alliances (default False): stored
       directly on GameState and enforced every Alliances phase by
       GameEngine.invite_to_alliance/withdraw_from_alliance -- not
-      validated here (a value outside 1-5 is trusted, not rejected).
+      validated here (trusted, not range-checked against the number of
+      factions in play). max_alliance_size is only ever a CEILING:
+      GameEngine._effective_max_alliance_size() further caps it to
+      (active faction count - 1), recomputed fresh on every invite as
+      factions are eliminated over the game, not just once here at
+      setup -- so passing something like 5 in a 3-faction game is
+      harmless, not an error; the effective cap starts at 2 either way.
 
     alliance_strategies / alliance_behaviors: optional {faction_code: str}
     -- per-BOT game-start settings (engine.bots.alliance_policy), each

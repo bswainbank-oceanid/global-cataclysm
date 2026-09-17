@@ -79,16 +79,26 @@ class TestChooseInviteTarget(unittest.TestCase):
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
 
     def test_aggressive_has_no_eligible_targets(self):
+        # UE and AAC are both already allied elsewhere (single-member
+        # alliance tags -- not naturally reachable via invite, but valid
+        # hand-built state for isolating this check). A 3rd bystander
+        # (AAC) keeps active_count at 3 (effective cap 2, not the
+        # binding constraint here) so it's really the "everyone else is
+        # ineligible" branch being exercised, not the size cap.
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            alliances={'UE': 'other'},  # UE already allied elsewhere -- ineligible
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            alliances={'UE': 'other', 'AAC': 'other2'},
             strategies={'NAA': 'aggressive'},
         )
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
 
     def test_counterweight_does_nothing_when_no_other_alliance_exists(self):
+        # A 3rd bystander (AAC) keeps the effective size cap (2) from
+        # preempting the intended check -- with only 2 active factions
+        # the cap alone would already force None before ever reaching
+        # the "no other alliance" branch.
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
             strategies={'NAA': 'counterweight'},
         )
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
@@ -288,8 +298,14 @@ class TestRandomBotAllianceIntegration(unittest.TestCase):
         self.assertIsNone(gs.factions['NAA'].alliance)
 
     def test_take_alliance_phase_aggressive_forms_an_alliance_with_an_accepting_target(self):
+        # A 3rd bystander (AAC) is needed: with only 2 active factions
+        # the effective size cap would be 1, blocking any alliance from
+        # forming at all -- see TestEffectiveMaxAllianceSize. AAC is
+        # already (nominally) allied elsewhere so it can't itself be
+        # picked as the random invite target, keeping this deterministic.
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            alliances={'AAC': 'other'},
             strategies={'NAA': 'aggressive', 'UE': 'passive'},  # UE always accepts
         )
         bot = RandomBot(engine, 'NAA', rng=random.Random(1))

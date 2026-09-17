@@ -344,7 +344,16 @@ class GameState:
     # on every faction's Alliances phase for as long as the game runs --
     # see setup.build_game_state's matching params and
     # engine.engine.GameEngine.invite_to_alliance/withdraw_from_alliance.
-    max_alliance_size: int = 2  # 1-5; an alliance, including the inviter, may never exceed this many members
+    # The CONFIGURED ceiling, chosen at setup -- but not the effective one:
+    # GameEngine.invite_to_alliance never actually enforces this value
+    # directly, only GameEngine._effective_max_alliance_size(), which is
+    # this further capped by (len(active_factions()) - 1), recomputed
+    # fresh on every invite -- an alliance can never include literally
+    # every faction still in the game. That shrinks as factions are
+    # eliminated over the course of the game, progressively restricting
+    # what NEW alliances can form or grow into, but never dissolves an
+    # existing alliance that's already larger than the current value.
+    max_alliance_size: int = 2
     can_withdraw_from_alliances: bool = True
     can_rejoin_alliances: bool = False
     # GameEngine._new_alliance_tag()'s counter -- purely an internal
