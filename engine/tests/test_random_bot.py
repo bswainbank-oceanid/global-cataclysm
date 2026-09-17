@@ -387,6 +387,37 @@ class TestPlayToCompletion(unittest.TestCase):
         self.assertTrue(any(k[0] == first_faction for k in stats.deployed), 'purchased units must actually deploy, not just sit pending')
         self.assertIn(first_faction, stats.cumulative_mpc, 'income must actually be collected on the first turn')
 
+    def test_same_full_seed_reproduces_an_identical_game(self):
+        # A real bug this session: GameEngine.resolve_combat used to
+        # fall back to a brand-new, UNSEEDED random.Random() on every
+        # single call when no rng was passed -- so even a fully-seeded
+        # setup (build_game_state's rng + every bot's own seeded rng)
+        # still produced a DIFFERENT game every run, since combat dice
+        # (the single biggest driver of who wins/loses/gets eliminated)
+        # were never actually part of the seed. Fixed by giving
+        # GameEngine a persistent combat_rng, used by resolve_combat
+        # whenever a call doesn't pass its own override. This test plays
+        # the SAME fully-seeded setup twice and requires byte-identical
+        # results -- turn count, every capture, and final unit stats.
+        def play_once():
+            modes = {code: FactionMode.BOT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+            gs = build_game_state(
+                'starting_setup_200ipc', modes, max_alliance_size=3,
+                alliance_strategies={c: 'random' for c in modes},
+                alliance_behaviors={c: 'random' for c in modes},
+                rng=__import__('random').Random(99),
+            )
+            stats = GameStats()
+            engine = GameEngine(gs, stats=stats, combat_rng=__import__('random').Random(1234))
+            bots = {c: RandomBot(engine, c, rng=__import__('random').Random(hash(c) % 9973)) for c in modes}
+            turns = play_to_completion(engine, bots, max_turns=60)
+            return turns, stats.report(gs)
+
+        turns1, report1 = play_once()
+        turns2, report2 = play_once()
+        self.assertEqual(turns1, turns2)
+        self.assertEqual(report1, report2)
+
 
 if __name__ == '__main__':
     unittest.main()

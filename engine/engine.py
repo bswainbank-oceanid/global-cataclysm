@@ -121,7 +121,7 @@ class NonCombatMoveOrder:
 
 
 class GameEngine:
-    def __init__(self, game_state, data_module=None, stats=None):
+    def __init__(self, game_state, data_module=None, stats=None, combat_rng=None):
         self.game_state = game_state
         self.data = data_module or _default_data
         # Optional stats.GameStats observer -- if given, deploys,
@@ -130,6 +130,18 @@ class GameEngine:
         # default) means no observation at all; every other behavior
         # here is identical either way.
         self.stats = stats
+        # resolve_combat's dice source when a call doesn't pass its own
+        # `rng` (a per-call override, mainly for tests -- ScriptedRNG).
+        # Created ONCE here and reused across the WHOLE game -- a real
+        # bug until this session: resolve_combat used to fall back to a
+        # brand-new, unseeded random.Random() on every single call, so
+        # even a fully-seeded setup (build_game_state's rng, every bot's
+        # own rng) still produced a different game every run, since
+        # combat dice -- the single biggest driver of outcomes -- were
+        # never actually part of that seed. Pass an explicit
+        # random.Random(seed) here for a genuinely reproducible game;
+        # omit it for an unseeded (OS-entropy) one, same as before.
+        self._combat_rng = combat_rng or random.Random()
         self._staged_purchases = {}  # faction_code -> [PurchaseOrder, ...]
         self._purchases_confirmed = set()
         self._staged_combat_moves = {}  # faction_code -> [CombatMoveOrder, ...]
@@ -646,7 +658,11 @@ class GameEngine:
         rolled) -- there's no staging here, this is the real thing the
         moment it's called. Can only be called once per faction per turn
         (a second call would otherwise re-fight any still-contested
-        standoff a second time within the same phase)."""
+        standoff a second time within the same phase).
+
+        `rng` overrides self._combat_rng for just this one call (tests
+        use this with a ScriptedRNG); leave it out to draw from the
+        engine's own persistent combat_rng stream instead."""
         if faction not in self.game_state.active_factions():
             raise ValueError(f'{faction} is not an active faction')
         if self.game_state.phase != Phase.COMBAT_RESOLUTION:
@@ -655,7 +671,7 @@ class GameEngine:
             raise ValueError(f'{faction} has already resolved combat this turn')
         self._combat_resolved.add(faction)
 
-        rng = rng or random.Random()
+        rng = rng or self._combat_rng
         unit_defs = self.data.units()
         rules = self.data.rules()
         results = []

@@ -48,8 +48,13 @@ def main():
         rng=random.Random(args.seed) if args.seed is not None else None,
     )
     stats = GameStats()
-    engine = GameEngine(gs, stats=stats)
     seed_rng = random.Random(args.seed)
+    # combat_rng: resolve_combat's dice source for the whole game -- must
+    # be explicitly seeded here (from the SAME seed_rng chain as the
+    # bots below) or combat outcomes are drawn from OS entropy and
+    # --seed doesn't actually make the game reproducible (a real bug
+    # this session -- see GameEngine.__init__'s own docstring comment).
+    engine = GameEngine(gs, stats=stats, combat_rng=random.Random(seed_rng.random()))
     bots = {
         'NAA': RandomBot(engine, 'NAA', rng=random.Random(seed_rng.random())),
         'AAC': RandomBot(engine, 'AAC', rng=random.Random(seed_rng.random())),
