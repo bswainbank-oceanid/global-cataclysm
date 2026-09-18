@@ -1369,6 +1369,88 @@ class TestTrueTerritoryLoss(unittest.TestCase):
         self.assertIsNone(gs.territories[1].contested_by)
         self.assertEqual(len(stats.captures), 0)
 
+    def test_betrayal_exception_a_failed_counter_attack_does_not_transfer_ownership(self):
+        # Confirmed by the user this session: "having troops on enemy
+        # lands is an exception to transferring ownership... the
+        # contestation can only be cleared during the betrayer's [own]
+        # claim territory phase." NAA is the original owner (betrayed by
+        # AAC's alliance withdrawal), fighting to reclaim its own
+        # territory -- a single failed attempt must NOT hand it to AAC.
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        naa_unit = make_unit('Infantry', 'NAA')  # dies this round
+        aac_unit = make_unit('Infantry', 'AAC')  # survives -- the betrayer, occupying
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [naa_unit, aac_unit]},
+        )
+        gs.territories[1].reclaim_bonus_for = 'NAA'
+        engine = GameEngine(gs, data)
+        # NAA gets the round-1 attacker bonus here too (reclaim_bonus_for
+        # == NAA) -- its own roll of 1 misses regardless either way.
+        # AAC needs the D6 die-max roll (6, an auto-hit bypass) to kill
+        # NAA's boosted-defense Infantry outright despite that bonus --
+        # the point of this test is what happens to OWNERSHIP once NAA
+        # still loses, not whether the bonus can be overcome.
+        engine.resolve_combat('NAA', rng=ScriptedRNG([1, 6]))
+        self.assertEqual(gs.territories[1].owner, 'NAA', 'ownership must not transfer to the betrayer')
+        self.assertEqual(gs.territories[1].contested_by, {'NAA', 'AAC'}, 'left completely untouched -- still open for another attempt')
+        self.assertEqual(gs.territories[1].reclaim_bonus_for, 'NAA', 'the reclaim bonus is still queued for next time')
+
+    def test_betrayal_exception_the_betrayers_own_failed_attack_ends_the_contest_normally(self):
+        # Mirror case: AAC (the betrayer) attacks and its own attempt
+        # fails outright -- NAA never lost this territory to begin with
+        # (t.owner was never AAC's), so this is just an ordinary failed
+        # attack ending the contest -- but the reclaim situation is also
+        # genuinely over at that point (NAA holds it free and clear), so
+        # reclaim_bonus_for clears here too, not just via
+        # process_capture_territory.
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        aac_unit = make_unit('Infantry', 'AAC', hp=1)  # dies
+        naa_unit = make_unit('Infantry', 'NAA')  # survives
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [aac_unit, naa_unit]},
+        )
+        gs.territories[1].reclaim_bonus_for = 'NAA'
+        engine = GameEngine(gs, data)
+        # AAC (attacker) rolls 1 -- misses; NAA (defender) rolls 5 --
+        # a clean hit, kills AAC's hp-1 Infantry.
+        engine.resolve_combat('AAC', rng=ScriptedRNG([1, 5]))
+        self.assertEqual(gs.territories[1].owner, 'NAA')
+        self.assertIsNone(gs.territories[1].contested_by)
+        self.assertIsNone(gs.territories[1].reclaim_bonus_for, 'the reclaim contest is genuinely over -- NAA holds it free and clear')
+
+    def test_betrayers_own_capture_territory_phase_finally_claims_it(self):
+        # NAA never managed any presence here -- AAC's own Capture
+        # Territory phase is the only place this can actually resolve in
+        # AAC's favor, per the user.
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        aac_unit = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [aac_unit]},
+        )
+        gs.territories[1].reclaim_bonus_for = 'NAA'
+        engine = GameEngine(gs, data)
+        engine.process_capture_territory('AAC')
+        self.assertEqual(gs.territories[1].owner, 'AAC')
+        self.assertIsNone(gs.territories[1].contested_by)
+        self.assertIsNone(gs.territories[1].reclaim_bonus_for)
+
+    def test_original_owner_reclaims_it_via_their_own_capture_territory_phase(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        naa_unit = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [naa_unit]},
+        )
+        gs.territories[1].reclaim_bonus_for = 'NAA'
+        engine = GameEngine(gs, data)
+        engine.process_capture_territory('NAA')
+        self.assertEqual(gs.territories[1].owner, 'NAA')
+        self.assertIsNone(gs.territories[1].contested_by)
+        self.assertIsNone(gs.territories[1].reclaim_bonus_for, 'the reclaim is done, even though ownership technically never changed')
+
 
 class TestEmergencyLandingConsequence(unittest.TestCase):
     """Exercises _apply_battle_outcome/_resolve_stranded_defender_aircraft
@@ -2688,7 +2770,14 @@ class TestGameStatsAllianceReporting(unittest.TestCase):
 
 
 class TestReclaimBonusInCombat(unittest.TestCase):
-    def test_reclaim_bonus_applies_and_is_consumed(self):
+    def test_reclaim_bonus_is_not_consumed_by_a_single_attempt(self):
+        # Confirmed this session: the reclaim bonus (and the territory
+        # itself) stays live across repeated attempts -- a betrayer must
+        # not get to claim the ground just because the original owner's
+        # FIRST counter-attack didn't finish the job. Only
+        # process_capture_territory (or the betrayer's own attack
+        # failing outright, in _apply_battle_outcome) ever clears it --
+        # see TestTrueTerritoryLossBetrayalException.
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         attacker = make_unit('Infantry', 'NAA')
         defender = make_unit('Infantry', 'AAC')
@@ -2699,7 +2788,32 @@ class TestReclaimBonusInCombat(unittest.TestCase):
         gs.territories[1].reclaim_bonus_for = 'NAA'
         engine = GameEngine(gs, data)
         engine.resolve_combat('NAA', rng=ScriptedRNG([6, 1]))
-        self.assertIsNone(gs.territories[1].reclaim_bonus_for, "consumed on the named faction's first attempt")
+        self.assertEqual(gs.territories[1].reclaim_bonus_for, 'NAA', 'stays queued for another attempt, not cleared here')
+
+    def test_reclaim_bonus_also_applies_when_defending_not_just_attacking(self):
+        # The betrayer (AAC) attacks NAA's freshly marched-in Infantry,
+        # sitting in what's still nominally NAA's own territory -- NAA
+        # gets the round-1 bonus as DEFENDER this time, confirmed this
+        # session ("gets the first round combat bonus on attack and
+        # defense in the territory").
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        naa_defender = make_unit('Infantry', 'NAA')  # the reclaim-bonus recipient, now defending
+        aac_attacker = make_unit('Infantry', 'AAC')  # the betrayer, attacking
+        gs = make_state(
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [naa_defender, aac_attacker]},
+        )
+        gs.territories[1].reclaim_bonus_for = 'NAA'
+        engine = GameEngine(gs, data)
+        # AAC (attacker) rolls 5 -- would cleanly hit (5 <= 5) NAA's
+        # unboosted defense-5 Infantry, but misses the round-1-boosted
+        # defense-6 defender. NAA's own roll (1) is a safe miss either
+        # way. Nobody dies in round 1, so pad the rest to the 3-round cap.
+        engine.resolve_combat('AAC', rng=ScriptedRNG([5, 1, 1, 1, 1, 1]))
+        self.assertIn(
+            naa_defender.unit_id, [u.unit_id for u in gs.territories[1].units],
+            'the round-1 defense bonus should have saved the defending original owner',
+        )
 
     def test_reclaim_bonus_left_untouched_for_a_different_attacker(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})

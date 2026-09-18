@@ -658,16 +658,23 @@ class GameEngine:
         per battle, in the order resolved.
 
         combat.first_round_bonuses: all three cases resolved here, in
-        priority order (a battle only ever gets one), each one-time --
-        consumed/cleared the moment it applies, regardless of outcome:
-        1. Former-ally-territory-reclaim (land only): if this territory's
-           TerritoryState.reclaim_bonus_for is `faction` (set by an
-           earlier withdraw_from_alliance, when this territory, belonging
-           to `faction`, was left occupied by the withdrawing faction),
-           `faction`'s attack gets the round-1 bonus, and the flag is
-           cleared. Left untouched if it names some OTHER faction (a
-           third party fighting here first doesn't consume the betrayed
-           ally's bonus).
+        priority order (a battle only ever gets one):
+        1. Former-ally-territory-reclaim (land only, RECURRING -- confirmed
+           this session, a change from this bonus's original one-shot
+           design): if this territory's TerritoryState.reclaim_bonus_for
+           names `faction` (set by an earlier withdraw_from_alliance, when
+           this territory, belonging to `faction`, was left occupied by
+           the withdrawing faction), `faction` gets the round-1 bonus
+           EVERY qualifying battle here for as long as the flag stays
+           set -- as ATTACKER on `faction`'s own turn, or as DEFENDER on
+           anyone else's turn if `faction` still has units here (e.g. the
+           betrayer attacking `faction`'s freshly marched-in Infantry).
+           NOT cleared here anymore -- only process_capture_territory
+           clears it, once the contest is actually resolved one way or
+           the other (see combat.true_territory_loss's betrayal
+           exception in _apply_battle_outcome, which keeps this contest
+           alive across `faction`'s repeated attempts instead of handing
+           the territory away the first time one fails).
         2. Sea-deploy-ambush (sea only): if `faction` is in this
            territory's TerritoryState.ambush_bonus_for (set by an earlier
            _deploy_to_sea, when `faction` already had units in a sea zone
@@ -717,7 +724,8 @@ class GameEngine:
             round1_bonus_side = None
             if t.reclaim_bonus_for == faction:
                 round1_bonus_side = 'attacker'
-                t.reclaim_bonus_for = None
+            elif t.reclaim_bonus_for is not None and any(u.owner == t.reclaim_bonus_for for u in defender_units):
+                round1_bonus_side = 'defender'
             elif faction in t.ambush_bonus_for:
                 round1_bonus_side = 'attacker'
                 t.ambush_bonus_for.discard(faction)
@@ -805,19 +813,44 @@ class GameEngine:
             # confirmed by the user: "the clearest path to being
             # eliminated on your turn is an enemy contesting your SC...
             # your forces might lose... this can lead to a true loss of
-            # territory." If `faction` was this territory's registered
-            # OWNER and just lost it outright (no ally needed -- unlike
-            # the ally-claims-it path in process_capture_territory, which
-            # never even runs here, see below), the surviving non-allied
-            # side must actually take ownership, right now, at the end
-            # of combat resolution -- process_capture_territory would
-            # never catch this on its own: it only ever scans territories
-            # `faction` is STILL listed in contested_by for, and that's
-            # exactly what's being cleared immediately below.
+            # territory."
+            #
+            # EXCEPT for an alliance-betrayal reclaim in progress
+            # (TerritoryState.reclaim_bonus_for == faction, set by an
+            # earlier withdraw_from_alliance): confirmed by the user --
+            # "having troops on enemy lands is an exception to
+            # transferring ownership... the contestation can only be
+            # cleared during the betrayer's [own] claim territory phase.
+            # Until then, the original owner can marshal infantry there,
+            # [and] do both combat and non-combat moves into the
+            # territory." So a single failed counter-attack must NOT hand
+            # the territory to the betrayer -- contested_by is left
+            # completely untouched here (still naming both sides), so
+            # `faction` keeps getting fresh chances (with the reclaim
+            # bonus, see resolve_combat) on later turns, and the betrayer
+            # can only actually finish claiming it via the ordinary
+            # process_capture_territory path on the betrayer's OWN turn,
+            # same as any other territory that faction has zero presence
+            # in when that runs.
+            if battle_type == 'land' and t.reclaim_bonus_for == faction:
+                return
+
             new_owner = None
             if battle_type == 'land' and t.owner == faction:
                 new_owner = self._true_territory_loss_winner(t, faction)
             t.contested_by = None
+            # If `faction` here is the BETRAYER, and its own attack on
+            # the original owner's counter-defense just failed outright
+            # (t.owner was never flipped to it in the first place, so
+            # neither branch above fires), the reclaim contest has still
+            # genuinely ended -- the original owner keeps the territory
+            # free and clear. Whatever pending reclaim_bonus_for this
+            # territory had is no longer meaningful either way once
+            # contested_by clears here, so it's cleared alongside it --
+            # process_capture_territory clears it in the two cases THAT
+            # resolves the contest instead; this covers the third, where
+            # combat resolution itself is what ends it.
+            t.reclaim_bonus_for = None
             if new_owner is not None:
                 previous_owner = t.owner
                 t.owner = new_owner
@@ -1152,6 +1185,13 @@ class GameEngine:
             previous_owner = t.owner
             t.owner = self._determine_capture_winner(faction, land_units_present, unit_defs)
             t.contested_by = None
+            # combat.true_territory_loss's betrayal exception: this is
+            # one of the two ways an alliance-reclaim contest actually
+            # concludes (the other is inside _apply_battle_outcome, when
+            # the betrayer's own attack fails outright) -- whoever just
+            # won the ground here, the pending reclaim is no longer
+            # meaningful either way.
+            t.reclaim_bonus_for = None
             if self.stats is not None:
                 if previous_owner != t.owner:
                     self.stats.record_capture(self.game_state.global_turn, t.owner, tid, previous_owner)
@@ -1362,6 +1402,15 @@ class GameEngine:
         territory a former ally owns that `faction` is still physically
         occupying, marks it contested and queues combat.
         first_round_bonuses' former-ally-reclaim bonus for that ally.
+        That bonus -- and the territory itself -- now stays live for the
+        betrayed ally across repeated attempts (combat.
+        true_territory_loss's betrayal exception, confirmed this
+        session): `faction`, the betrayer, can't just claim it by
+        default the moment the original owner's first counter-attack
+        fails; it's only actually settled once `faction`'s own Capture
+        Territory phase finds the original owner with zero presence left
+        there (or the original owner reclaims it outright first, on its
+        own Capture Territory phase).
 
         Raises ValueError if the phase/turn/action-slot guards fail, if
         game_start_settings.can_withdraw_from_alliances is False,
