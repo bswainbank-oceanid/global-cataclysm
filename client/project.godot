@@ -20,6 +20,7 @@ GameData="*res://scripts/game_data.gd"
 GameStore="*res://scripts/game_store.gd"
 Dbg="*res://scripts/dbg.gd"
 Net="*res://scripts/net_client.gd"
+Stepper="*res://scripts/turn_stepper.gd"
 
 [display]
 

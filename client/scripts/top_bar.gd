@@ -20,6 +20,7 @@ func _ready() -> void:
 
 func _rebuild() -> void:
 	for c in _row.get_children():
+		_row.remove_child(c)  # detach now: a queued free would leave stale and new panels laid out together for a frame
 		c.queue_free()
 	_row.add_child(_title_block())
 	for code in GameStore.seated_factions():

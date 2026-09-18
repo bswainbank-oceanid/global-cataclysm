@@ -8,6 +8,7 @@ extends VBoxContainer
 var _detail: VBoxContainer
 var _log: RichTextLabel
 var _selected := -1
+var _next: Button
 
 
 func _ready() -> void:
@@ -25,6 +26,29 @@ func _ready() -> void:
 	_detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_detail)
 	add_child(upper)
+
+	_next = Button.new()
+	_next.custom_minimum_size = Vector2(0, 46)
+	_next.focus_mode = Control.FOCUS_NONE
+	_next.add_theme_font_size_override("font_size", 15)
+	_next.add_theme_color_override("font_color", HudStyle.GOLD)
+	_next.add_theme_color_override("font_hover_color", Color.WHITE)
+	_next.add_theme_color_override("font_disabled_color", HudStyle.TEXT_DIM)
+	_next.add_theme_stylebox_override("normal", HudStyle.box(HudStyle.GOLD, Color(0.16, 0.14, 0.05), 2))
+	_next.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.24, 0.2, 0.06), 2))
+	_next.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, Color(0.3, 0.25, 0.08), 2))
+	_next.add_theme_stylebox_override("disabled", HudStyle.box(HudStyle.EDGE, HudStyle.BG, 1))
+	var key := InputEventKey.new()
+	key.keycode = KEY_SPACE
+	var sc := Shortcut.new()
+	sc.events = [key]
+	_next.shortcut = sc
+	_next.shortcut_in_tooltip = false
+	_next.tooltip_text = "Step to the next phase (Space)"
+	_next.pressed.connect(Stepper.advance)
+	add_child(_next)
+	Stepper.changed.connect(_sync_next)
+	_sync_next()
 
 	var lower := PanelContainer.new()
 	lower.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -45,16 +69,25 @@ func _ready() -> void:
 	show_space(-1)
 
 
+func _sync_next() -> void:
+	_next.text = Stepper.button_text
+	_next.disabled = not Stepper.button_enabled
+
+
 func log_line(text: String) -> void:
 	_log.append_text(text + "\n")
 
 
 func log_events(header: String, events: Array) -> void:
 	log_line("[color=#ffd23f]%s[/color]" % header)
+	var shown := 0
 	for e in events:
 		var line := EventText.describe(e)
 		if line != "":
 			log_line(line)
+			shown += 1
+	if shown == 0:
+		log_line("[color=#7f8ea0]  (no action)[/color]")
 
 
 func show_space(tid: int) -> void:

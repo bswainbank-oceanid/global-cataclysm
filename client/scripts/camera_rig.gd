@@ -18,7 +18,13 @@ const ZOOM_SMOOTHING := 14.0
 const INERTIA_DAMPING := 5.0
 
 var target_zoom := 1.0
-var _anchor := Vector2.ZERO    # viewport-px point the zoom is anchored to
+## True while the view is fit to the whole map (zoomed all the way out). In that
+## state the zoom FOLLOWS min_zoom() as the viewport is resized, rather than
+## ratcheting up to any transient size (layout briefly reports odd sizes while
+## panels settle, and a ratchet would leave the view permanently zoomed in).
+var _follow_min := true
+var _anchor := Vector2.ZERO    # viewport-px point a USER zoom (wheel/pinch) is anchored to
+var _user_zoom := false        # true while a wheel/pinch zoom is still animating
 var _dragging := false
 var _drag_travel := 0.0
 var _velocity := Vector2.ZERO  # world px/sec, inertia after a drag is released
@@ -42,6 +48,7 @@ func screen_to_world(p: Vector2) -> Vector2:
 
 func jump_to(world_pos: Vector2, z: float) -> void:
 	target_zoom = clampf(z, min_zoom(), MAX_ZOOM)
+	_follow_min = target_zoom <= min_zoom() + 0.0005
 	zoom = Vector2(target_zoom, target_zoom)
 	position = world_pos
 	_velocity = Vector2.ZERO
@@ -50,6 +57,11 @@ func jump_to(world_pos: Vector2, z: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Scripted screenshot runs ignore the real mouse/trackpad, so stray input
+	# on the dev machine can't perturb a verification; only input the harness
+	# itself injects (Dbg.injecting) is honoured.
+	if Dbg.args.has("shot") and not Dbg.injecting:
+		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		mouse_screen = mb.position
@@ -85,7 +97,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _zoom_at(screen_pos: Vector2, factor: float) -> void:
 	_anchor = screen_pos
+	_user_zoom = true
 	target_zoom = clampf(target_zoom * factor, min_zoom(), MAX_ZOOM)
+	_follow_min = target_zoom <= min_zoom() + 0.0005
 
 
 func _process(delta: float) -> void:
@@ -102,14 +116,20 @@ func _process(delta: float) -> void:
 
 	if not is_equal_approx(zoom.x, target_zoom):
 		var vp_center := get_viewport_rect().size * 0.5
+		# Only a user zoom is anchored at the cursor. Every other zoom change
+		# (the fit-to-map minimum following a viewport resize) anchors on the
+		# view centre, so a panel resizing never slides the map sideways.
+		var anchor := _anchor if _user_zoom else vp_center
 		var old_z := zoom.x
-		var world_at_anchor := position + (_anchor - vp_center) / old_z
+		var world_at_anchor := position + (anchor - vp_center) / old_z
 		var new_z := lerpf(old_z, target_zoom, 1.0 - exp(-ZOOM_SMOOTHING * delta))
 		if absf(new_z - target_zoom) < 0.0005:
 			new_z = target_zoom
 		zoom = Vector2(new_z, new_z)
-		position = world_at_anchor - (_anchor - vp_center) / new_z
+		position = world_at_anchor - (anchor - vp_center) / new_z
 		zoom_changed.emit(new_z)
+		if new_z == target_zoom:
+			_user_zoom = false
 
 	if not _dragging and _velocity.length() > 4.0:
 		position += _velocity * delta
@@ -119,6 +139,8 @@ func _process(delta: float) -> void:
 
 func _constrain() -> void:
 	var lo := min_zoom()
+	if _follow_min:
+		target_zoom = lo  # smooth zoom-out (or a resize) eases toward the fit
 	if zoom.x < lo:
 		zoom = Vector2(lo, lo)
 		target_zoom = maxf(target_zoom, lo)

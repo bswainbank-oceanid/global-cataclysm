@@ -9,7 +9,8 @@ extends Node
 ##   --state=<abs path.json> load a GameState dict into GameStore
 ##   --badges=flag|strip|category   unit badge style
 ##   --server[=ws://host:port]  connect to the game server (joins as NAA)
-##   --autoplay=<n>          answer the first n your_turn prompts with do-nothing
+##   --steps=<n>             press the Next button n times (needs --server)
+##   --autoplay=<n>          answer the first n of your prompts, revealing each bot turn in full
 ##   --wheel=x,y,steps       inject mouse-wheel steps at a screen point (+ = zoom in)
 ##   --drag=x1,y1,x2,y2      inject a left-button drag between two screen points
 ##   --click=x,y             inject a left click at a screen point
@@ -17,6 +18,7 @@ extends Node
 ## Other scripts read `Dbg.args` for the scene-setup ones.
 
 var args := {}
+var injecting := false    # true while main.gd is injecting scripted input
 var scene_ready := false  # main.gd sets this once scripted setup/input has finished
 
 

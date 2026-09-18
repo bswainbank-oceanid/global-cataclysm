@@ -68,12 +68,8 @@ func _ready() -> void:
 	_hover_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	map_area.add_child(_hover_label)
 
-	Net.bot_turn.connect(func(m: Dictionary):
-		_side.log_events("%s's turn" % m["faction"], m["events"]))
-	Net.combat_events.connect(func(m: Dictionary):
-		_side.log_events("Your battles", m["events"]))
-	Net.server_error.connect(func(t: String): _side.log_line("[color=#ff7060]server: %s[/color]" % t))
-	Net.game_over.connect(func(): _side.log_line("[b]Game over[/b]"))
+	Stepper.log_line.connect(_side.log_line)
+	Stepper.log_events.connect(_side.log_events)
 
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -101,18 +97,14 @@ func _start_view() -> void:
 	if Dbg.args.has("select"):
 		_side.show_space(int(Dbg.args["select"]))
 	if Dbg.args.has("server"):
-		Net.autoplay_prompts = int(Dbg.args.get("autoplay", "0"))
 		var url: String = Dbg.args["server"]
 		Net.start("" if url == "true" else url)
-		if Net.autoplay_prompts > 0:
-			var done := false
-			Net.autoplay_finished.connect(func(): done = true)
-			var waited := 0.0
-			while not done and waited < 30.0:  # never hang a scripted run
-				await get_tree().process_frame
-				waited += get_process_delta_time()
+		if Dbg.args.has("autoplay"):
+			await Stepper.autoplay(int(Dbg.args["autoplay"]))
+		elif Dbg.args.has("steps"):
+			await Stepper.press(int(Dbg.args["steps"]))
 		else:
-			await get_tree().create_timer(2.0).timeout
+			await Stepper.wait_ready()
 	await _scripted_input()
 	Dbg.scene_ready = true
 
@@ -121,6 +113,12 @@ func _start_view() -> void:
 ## SubViewportContainer exactly as a user's would), for Dbg's --wheel/
 ## --drag/--click. Used only for scripted verification runs.
 func _scripted_input() -> void:
+	Dbg.injecting = true
+	await _inject_all()
+	Dbg.injecting = false
+
+
+func _inject_all() -> void:
 	if Dbg.args.has("wheel"):
 		var w: PackedStringArray = Dbg.args["wheel"].split(",")
 		var pos := Vector2(float(w[0]), float(w[1]))

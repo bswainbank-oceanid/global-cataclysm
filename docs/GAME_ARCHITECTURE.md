@@ -330,8 +330,12 @@ the same JSON, not a parallel editing path.
   `GameStore`, the single seam every view reads from. NOT built yet: the
   per-phase human decision UIs (purchase, combat/non-combat move,
   alliances, invite response), bot-turn/combat playback, and touch/tablet
-  polish -- the client currently only observes (`--autoplay N` answers
-  prompts with do-nothing for scripted runs).
+  polish -- until those exist, a **Next button** (or Space) steps the
+  scenario one phase per press: it answers the human's prompt with the
+  do-nothing decision for that phase, and reveals a bot's turn one of its
+  seven phases per press (`TurnStepper` queues server messages; the server
+  sends no mid-bot-turn snapshots, so the map/HUD numbers update when the
+  bot's turn closes). `--steps N` / `--autoplay N` drive it in scripted runs.
   Run: `python tools/sync_client_data.py` (copies reference data into the
   gitignored `client/data`, `client/assets`), `python -m server.app`, then
   `godot --path client -- --server`. Scripted UI verification without a
