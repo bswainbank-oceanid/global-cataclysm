@@ -758,11 +758,25 @@ class GameEngine:
             raise ValueError(f'{faction} has already confirmed combat moves this turn')
 
         orders = self._staged_combat_moves.get(faction, [])
+        unit_info = self._unit_info(o.unit_id for o in orders) if self.turn_log is not None else None
         self._execute_combat_moves(orders, faction, self.game_state)
         self._combat_moves_confirmed.add(faction)
         self._staged_combat_moves.pop(faction, None)
         if self.turn_log is not None:
-            self.turn_log.record_combat_move(faction, orders)
+            self.turn_log.record_combat_move(faction, orders, unit_info)
+
+    def _unit_info(self, unit_ids):
+        """{unit_id: (unit_type, territory_id)} for each of `unit_ids`
+        currently on the board -- captured BEFORE a move list executes, for
+        TurnLog's per-order "where did it start" record. Ids that aren't on
+        the board (an invalid order) are simply absent."""
+        wanted = set(unit_ids)
+        info = {}
+        for tid, t in self.game_state.territories.items():
+            for u in t.units:
+                if u.unit_id in wanted:
+                    info[u.unit_id] = (u.unit_type, tid)
+        return info
 
     def declared_battles(self, faction):
         """Every battle `faction`'s own Combat Resolution phase must
@@ -1275,12 +1289,13 @@ class GameEngine:
             raise ValueError(f'{faction} has already confirmed non-combat moves this turn')
 
         orders = self._staged_noncombat_moves.get(faction, [])
+        unit_info = self._unit_info(o.unit_id for o in orders) if self.turn_log is not None else None
         self._execute_noncombat_moves(orders, faction, self.game_state)
         self._apply_stranded_aircraft_check(faction)
         self._noncombat_moves_confirmed.add(faction)
         self._staged_noncombat_moves.pop(faction, None)
         if self.turn_log is not None:
-            self.turn_log.record_noncombat_move(faction, orders)
+            self.turn_log.record_noncombat_move(faction, orders, unit_info)
 
     def _apply_stranded_aircraft_check(self, faction):
         """movement.stranded_aircraft_rule: run once, at the end of the

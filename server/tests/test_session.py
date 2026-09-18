@@ -321,10 +321,40 @@ class TestHumanCombatPlayback(unittest.TestCase):
         combat_msgs = [m for m in messages if m['type'] == 'combat_events']
         self.assertEqual(len(combat_msgs), 1)
         self.assertEqual(combat_msgs[0]['faction'], 'NAA')
-        kinds = {e['event_kind'] for e in combat_msgs[0]['events']}
+        kinds = {e['event_kind'] for e in combat_msgs[0]['events'] if e['kind'] == 'battle_event'}
         self.assertIn('UNIT_ROLL', kinds)
-        # Only battle events -- not this same turn's purchase/deploy/income.
-        self.assertTrue(all(e['kind'] == 'battle_event' for e in combat_msgs[0]['events']))
+        # Only battle events/summaries -- not this same turn's purchase/deploy/income.
+        self.assertTrue(all(e['kind'] in ('battle_event', 'battle_summary') for e in combat_msgs[0]['events']))
+        self.assertTrue(any(e['kind'] == 'battle_summary' for e in combat_msgs[0]['events']))
+
+
+class TestTurnEventsForAHumansAutomaticPhases(unittest.TestCase):
+    """A human's Capture Territory and Deploy + Income phases run on the
+    server with no prompt, so their results are reported as "turn_events"
+    right before the next prompt -- otherwise a client would only see them
+    as a changed "state" at the very end of the turn."""
+
+    def test_deploy_and_income_are_reported_before_the_alliances_prompt(self):
+        session = _solo_session()
+        gs = session.engine.game_state
+        owned = next(tid for tid, t in gs.territories.items() if t.owner == 'NAA')
+        session.handle_message({
+            'type': 'purchase', 'faction': 'NAA',
+            'orders': [{'unit_type': 'Infantry', 'qty': 1, 'deploy_at': owned}],
+        })
+        messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
+        types = [m['type'] for m in messages]
+        self.assertEqual(types, ['turn_events', 'your_turn'])
+        self.assertEqual(messages[1]['phase'], 'ALLIANCES')
+        kinds = {e['kind'] for e in messages[0]['events']}
+        self.assertIn('unit_deployed', kinds)
+        self.assertIn('income_collected', kinds)
+        self.assertNotIn('purchase', kinds, "the human's own decisions aren't echoed back")
+
+    def test_no_turn_events_when_nothing_automatic_happened_yet(self):
+        session = _solo_session()
+        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        self.assertNotIn('turn_events', [m['type'] for m in messages])
 
 
 def _make_a_neighbor_hostile(engine, faction, enemy_faction):

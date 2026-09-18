@@ -160,10 +160,17 @@ connection on this game -- everyone sees the same board, no fog of war):
         reconnecting target gets if it hasn't answered yet.
     {"type": "combat_events", "faction": "NAA", "events": [...]}
         Only the battle_event entries (turn_log.TurnLog.record_battle_
-        events' shape) from a HUMAN faction's own Combat Resolution --
-        not mixed with its purchase/move/capture events, which the human
-        already knows (it just chose them, and "state"/its own earlier
-        replies already cover them).
+        events' shape) plus one battle_summary per battle (both sides'
+        participants and casualties) from a HUMAN faction's own Combat
+        Resolution -- not mixed with its purchase/move events, which the
+        human already knows (it just chose them).
+    {"type": "turn_events", "faction": "NAA", "events": [...]}
+        The human's own Capture Territory / Deploy + Income results
+        (territory_captured, unit_deployed, income_collected,
+        faction_eliminated) -- phases the server drains automatically, so
+        without this a client would only see their effects as a changed
+        "state" at the end of the turn. Sent, when non-empty, right before
+        whatever prompt follows.
     {"type": "bot_turn", "faction": "AAC", "events": [...]}
         EVERY turn_log.TurnLog event from one bot's entire turn, in
         order -- purchase decided, combat moves decided, every battle's
@@ -193,6 +200,14 @@ session) -- the server never paces delivery itself.
 from engine.bots.alliance_policy import accepts_invite
 from engine.engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from engine.state import FactionMode, Phase
+
+# turn_log event kinds a HUMAN's own drained (automatic) phases produce, and
+# which message reports them: Combat Resolution's battles ("combat_events",
+# roll-by-roll plus one battle_summary per battle), and Capture Territory /
+# Deploy + Income ("turn_events"). The human's OWN purchase/move decisions
+# aren't echoed back -- it just submitted them.
+_BATTLE_KINDS = ('battle_event', 'battle_summary')
+_AUTOMATIC_PHASE_KINDS = ('territory_captured', 'unit_deployed', 'income_collected', 'faction_eliminated')
 
 # Phases where GameState.active_faction (a HUMAN one) is waiting on this
 # module for a real decision -- see connect()/_decision_prompt.
@@ -465,10 +480,14 @@ class GameSession:
         start = len(self.turn_log.events)
         finished = self._drain_phases(faction, bot=None)
 
-        combat_events = [e for e in self.turn_log.events[start:] if e['kind'] == 'battle_event']
+        new_events = self.turn_log.events[start:]
+        combat_events = [e for e in new_events if e['kind'] in _BATTLE_KINDS]
+        turn_events = [e for e in new_events if e['kind'] in _AUTOMATIC_PHASE_KINDS]
         messages = []
         if combat_events:
             messages.append({'type': 'combat_events', 'faction': faction, 'events': combat_events})
+        if turn_events:
+            messages.append({'type': 'turn_events', 'faction': faction, 'events': turn_events})
         if not finished:
             messages.append(self._decision_prompt(faction))
             return messages

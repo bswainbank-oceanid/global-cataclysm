@@ -168,7 +168,7 @@ the same JSON, not a parallel editing path.
   (`tools/compute_adjacency.py`).
 - ✅ Territory shape/polygon extraction (`tools/extract_territory_shapes.py`
   → `data/territory_shapes.json`).
-- ✅ Rules engine (standalone module, `engine/`, 449 tests) — Purchase
+- ✅ Rules engine (standalone module, `engine/`, 451 tests) — Purchase
   (including the carrierless-air and contested-purchase-lost deploy
   fallbacks), Deploy + Income, Combat Move, Combat Resolution, Non-Combat
   Move, Capture Territory, faction elimination, game-end detection, and
@@ -193,7 +193,7 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 51 tests) — first vertical slice,
+- ⬜ WebSocket server (`server/`, 53 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
   (NAA the only HUMAN faction, AAC a BOT, everyone else NEUTRAL). Every one
   of the 7 `turn_order` phases is now a real client decision (Combat
@@ -335,7 +335,14 @@ the same JSON, not a parallel editing path.
   do-nothing decision for that phase, and reveals a bot's turn one of its
   seven phases per press (`TurnStepper` queues server messages; the server
   sends no mid-bot-turn snapshots, so the map/HUD numbers update when the
-  bot's turn closes). `--steps N` / `--autoplay N` drive it in scripted runs.
+  bot's turn closes). The human's automatic phases are stepped too: the
+  server reports them as `combat_events` (roll-by-roll plus one
+  `battle_summary` per battle: both sides' participants and casualties) and
+  a new `turn_events` (capture / deploy / income), and the stepper reveals
+  the phases that passed between prompts as steps of their own. The engine's
+  `TurnLog` records each move order's unit type and origin (`from`) so the
+  log can say "3x Armor: Panama > Costa Rica". `--steps N` / `--autoplay N`
+  drive it in scripted runs.
   Run: `python tools/sync_client_data.py` (copies reference data into the
   gitignored `client/data`, `client/assets`), `python -m server.app`, then
   `godot --path client -- --server`. Scripted UI verification without a

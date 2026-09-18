@@ -17,7 +17,7 @@ func _ready() -> void:
 
 	var upper := PanelContainer.new()
 	upper.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	upper.size_flags_stretch_ratio = 1.3
+	upper.size_flags_stretch_ratio = 0.5  # the log is the busier pane while stepping
 	upper.add_theme_stylebox_override("panel", HudStyle.box())
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -52,6 +52,7 @@ func _ready() -> void:
 
 	var lower := PanelContainer.new()
 	lower.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	lower.size_flags_stretch_ratio = 1.5
 	lower.add_theme_stylebox_override("panel", HudStyle.box())
 	var lv := VBoxContainer.new()
 	lower.add_child(lv)
@@ -61,6 +62,7 @@ func _ready() -> void:
 	_log.bbcode_enabled = true
 	_log.scroll_following = true
 	_log.add_theme_font_size_override("normal_font_size", 12)
+	_log.add_theme_font_size_override("bold_font_size", 12)  # default bold is larger, which made battle headings tower over the text
 	_log.add_theme_color_override("default_color", HudStyle.TEXT)
 	lv.add_child(_log)
 	add_child(lower)

@@ -1,6 +1,6 @@
 import unittest
 
-from engine.engine import GameEngine, PurchaseOrder, CombatMoveOrder
+from engine.engine import GameEngine, PurchaseOrder, CombatMoveOrder, NonCombatMoveOrder
 from engine.state import FactionMode, Phase
 from engine.turn_log import TurnLog
 from engine.tests.test_engine import FakeData, ScriptedRNG, make_state, make_unit
@@ -81,7 +81,25 @@ class TestTurnLogEngineIntegration(unittest.TestCase):
         engine.confirm_combat_moves('NAA')
         self.assertEqual(log.events, [{
             'kind': 'combat_move', 'faction': 'NAA',
-            'orders': [{'unit_id': mover.unit_id, 'path': [1, 2]}],
+            'orders': [{'unit_id': mover.unit_id, 'path': [1, 2], 'unit_type': 'Infantry', 'from': 1}],
+        }])
+
+    def test_confirm_noncombat_moves_logs_each_units_type_and_origin(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={1: [mover]},
+        )
+        log = TurnLog()
+        engine = GameEngine(gs, data, turn_log=log)
+        engine.process_return_to_base('NAA')
+        engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(mover.unit_id, 2)])
+        engine.confirm_noncombat_moves('NAA')
+        # 'from' is where the unit stood BEFORE the order ran, not its destination.
+        self.assertEqual(log.events, [{
+            'kind': 'noncombat_move', 'faction': 'NAA',
+            'orders': [{'unit_id': mover.unit_id, 'destination': 2, 'unit_type': 'Infantry', 'from': 1}],
         }])
 
     def test_resolve_combat_logs_roll_by_roll_events(self):
@@ -117,6 +135,29 @@ class TestTurnLogEngineIntegration(unittest.TestCase):
         end_event = next(e for e in log.events if e.get('event_kind') == 'BATTLE_END')
         self.assertEqual(end_event['outcome'], 'defender_eliminated')
         self.assertIn(defender.unit_id, end_event['eliminated_defender_ids'])
+
+    def test_resolve_combat_logs_a_battle_summary_with_participants_and_casualties(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        attacker = make_unit('Infantry', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        log = TurnLog()
+        engine = GameEngine(gs, data, turn_log=log)
+        engine.resolve_combat('NAA', rng=ScriptedRNG([6, 1]))
+        summary = next(e for e in log.events if e['kind'] == 'battle_summary')
+        self.assertEqual(summary['territory_id'], 1)
+        self.assertEqual(summary['battle_type'], 'land')
+        self.assertEqual(summary['outcome'], 'defender_eliminated')
+        self.assertEqual(summary['attackers'], [{'unit_id': attacker.unit_id, 'unit_type': 'Infantry', 'owner': 'NAA'}])
+        self.assertEqual(summary['defenders'], [{'unit_id': defender.unit_id, 'unit_type': 'Infantry', 'owner': 'AAC'}])
+        self.assertEqual(summary['eliminated_attackers'], [])
+        self.assertEqual(summary['eliminated_defenders'], [{'unit_id': defender.unit_id, 'unit_type': 'Infantry', 'owner': 'AAC'}])
+        # The summary follows its battle's roll-by-roll events.
+        last_battle_event = max(i for i, e in enumerate(log.events) if e['kind'] == 'battle_event')
+        self.assertEqual(log.events.index(summary), last_battle_event + 1)
 
     def test_true_territory_loss_capture_is_logged(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
@@ -202,3 +243,4 @@ class TestTurnLogEngineIntegration(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

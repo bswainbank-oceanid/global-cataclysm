@@ -40,17 +40,32 @@ class TurnLog:
             'orders': [{'unit_type': o.unit_type, 'qty': o.qty, 'deploy_at': o.deploy_at} for o in orders],
         })
 
-    def record_combat_move(self, faction, orders):
+    def record_combat_move(self, faction, orders, unit_info=None):
+        """`unit_info`: {unit_id: (unit_type, origin_territory_id)} as of
+        BEFORE the orders executed (the engine captures it at confirm time),
+        so a client can say "3x Armor moved Panama -> Costa Rica" without
+        having to reconstruct where a unit was from an earlier snapshot.
+        Each order gains 'unit_type' and 'from' when its unit is in it. Air
+        units carried along as carrier ride-along have no order of their own
+        and so don't appear here."""
         self.events.append({
             'kind': 'combat_move', 'faction': faction,
-            'orders': [{'unit_id': o.unit_id, 'path': list(o.path)} for o in orders],
+            'orders': [self._order_entry(o, unit_info, {'path': list(o.path)}) for o in orders],
         })
 
-    def record_noncombat_move(self, faction, orders):
+    def record_noncombat_move(self, faction, orders, unit_info=None):
+        """Same `unit_info` contract as record_combat_move."""
         self.events.append({
             'kind': 'noncombat_move', 'faction': faction,
-            'orders': [{'unit_id': o.unit_id, 'destination': o.destination} for o in orders],
+            'orders': [self._order_entry(o, unit_info, {'destination': o.destination}) for o in orders],
         })
+
+    @staticmethod
+    def _order_entry(order, unit_info, extra):
+        entry = {'unit_id': order.unit_id, **extra}
+        if unit_info and order.unit_id in unit_info:
+            entry['unit_type'], entry['from'] = unit_info[order.unit_id]
+        return entry
 
     def record_battle_events(self, territory_id, battle_type, events, attacker_units, defender_units):
         """`events`: the raw list[combat.BattleEvent] resolve_battle
@@ -92,6 +107,32 @@ class TurnLog:
             # already the whole story worth narrating for these -- no
             # extra fields to add.
             self.events.append(entry)
+
+        end = next((e for e in events if e.kind == EventKind.BATTLE_END), None)
+        if end is not None:
+            self._record_battle_summary(territory_id, battle_type, end, attacker_units, defender_units)
+
+    def _record_battle_summary(self, territory_id, battle_type, end, attacker_units, defender_units):
+        """One event per battle, after its roll-by-roll events: who fought on
+        each side (unit type + owner) and who was eliminated, so a client can
+        report participants and casualties without replaying the rolls.
+        resolve_battle works on copies of the lists it's given, so
+        `attacker_units`/`defender_units` still hold EVERY participant here,
+        including the ones `end` lists as eliminated."""
+        by_id = {u.unit_id: u for u in attacker_units + defender_units}
+
+        def entry(unit_id):
+            u = by_id[unit_id]
+            return {'unit_id': unit_id, 'unit_type': u.unit_type, 'owner': u.owner}
+
+        self.events.append({
+            'kind': 'battle_summary', 'territory_id': territory_id, 'battle_type': battle_type,
+            'outcome': end.outcome,
+            'attackers': [entry(u.unit_id) for u in attacker_units],
+            'defenders': [entry(u.unit_id) for u in defender_units],
+            'eliminated_attackers': [entry(i) for i in end.eliminated_attacker_ids],
+            'eliminated_defenders': [entry(i) for i in end.eliminated_defender_ids],
+        })
 
     def record_capture(self, turn, faction, territory_id, previous_owner):
         self.events.append({
