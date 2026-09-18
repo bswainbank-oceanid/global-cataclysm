@@ -120,39 +120,16 @@ class RandomBot:
         self.engine.confirm_purchases(self.faction)
 
     def _purchase_target_pools(self):
-        """(sc_targets, other_targets): every territory `faction` could
-        legally purchase at (per GameEngine._purchase_sources -- a land
-        territory it owns, or a sea zone adjacent to at least one of its
-        owned land territories), split by whether a Strategic Center's
-        capacity/cost is actually in play there. A sea target counts as
-        an SC target if ANY of its eligible sources
-        (_purchase_sources -- SC-first) is a Strategic Center.
-        policy.excluded_naval_purchase_zones are dropped from both pools
-        entirely -- every bot's purchase policy, not just this one's."""
-        terrs = self.engine.data.territories()
-        adjacency = self.engine.data.adjacency()
-        gs = self.engine.game_state
-
-        owned_land = [tid for tid, t in gs.territories.items() if terrs[tid]['type'] == 'land' and t.owner == self.faction]
-        sc_targets = {tid for tid in owned_land if terrs[tid].get('strategic_center')}
-        other_targets = set(owned_land) - sc_targets
-
-        sea_candidates = set()
-        for tid in owned_land:
-            for n in adjacency.get(tid, []):
-                if terrs[n]['type'] == 'sea':
-                    sea_candidates.add(n)
-        for sea_tid in sea_candidates:
-            sources = self.engine._purchase_sources(sea_tid, self.faction)
-            if any(terrs[s].get('strategic_center') for s in sources):
-                sc_targets.add(sea_tid)
-            else:
-                other_targets.add(sea_tid)
-
+        """(sc_targets, other_targets): GameEngine.legal_purchase_targets
+        (moved there this session -- any caller, not just a bot, can use
+        it now), with policy.excluded_naval_purchase_zones dropped from
+        both pools -- every bot's purchase policy, not just this one's
+        (the engine itself still allows purchasing there; see that
+        function's own docstring)."""
+        sc_targets, other_targets = self.engine.legal_purchase_targets(self.faction)
         excluded = excluded_naval_purchase_zones(self.engine.data)
-        sc_targets -= excluded
-        other_targets -= excluded
-
+        sc_targets = set(sc_targets) - excluded
+        other_targets = set(other_targets) - excluded
         return list(sc_targets), list(other_targets)
 
     def _random_fill_purchases(self, orders, targets, budget_cap, max_consecutive_failures=25):

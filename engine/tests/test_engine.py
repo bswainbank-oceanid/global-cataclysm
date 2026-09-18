@@ -76,6 +76,41 @@ def make_unit(unit_type, owner, purchased_at=None, hp=None):
     return UnitInstance(unit_id=_next_uid[0], unit_type=unit_type, owner=owner, current_hp=hp, purchased_at=purchased_at)
 
 
+class TestLegalPurchaseTargets(unittest.TestCase):
+    """Moved here from engine.bots.random_bot.RandomBot's own former
+    private copy this session -- any caller (a UI wanting to show legal
+    choices, not just a bot) can use it now."""
+
+    def test_owned_land_split_by_strategic_center(self):
+        data = FakeData(
+            territories={1: {'type': 'land', 'strategic_center': True}, 2: {'type': 'land'}}, adjacency={},
+        )
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN})
+        engine = GameEngine(gs, data)
+        sc_targets, other_targets = engine.legal_purchase_targets('NAA')
+        self.assertEqual(set(sc_targets), {1})
+        self.assertEqual(set(other_targets), {2})
+
+    def test_sea_zone_adjacent_to_owned_sc_counts_as_an_sc_target(self):
+        data = FakeData(
+            territories={1: {'type': 'land', 'value': 2, 'strategic_center': True}, 2: {'type': 'sea'}},
+            adjacency={1: [2], 2: [1]},
+        )
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
+        engine = GameEngine(gs, data)
+        sc_targets, other_targets = engine.legal_purchase_targets('NAA')
+        self.assertEqual(set(sc_targets), {1, 2})
+        self.assertEqual(other_targets, [])
+
+    def test_unowned_and_unreachable_territories_are_excluded(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={})
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN})
+        engine = GameEngine(gs, data)
+        sc_targets, other_targets = engine.legal_purchase_targets('NAA')
+        self.assertEqual(set(other_targets), {1})
+        self.assertNotIn(2, other_targets)
+
+
 class TestLandPurchase(unittest.TestCase):
     def test_buy_within_capacity_and_confirm(self):
         # territory 1: land, value 2, owned by NAA -- cap 2.

@@ -9,10 +9,14 @@ just that faction's connection(s), no "to" key means every connection on
 this game (everyone sees the same board).
 
 First vertical slice, per docs/GAME_ARCHITECTURE.md: ONE hardcoded game
-(NAA the only HUMAN faction, every other faction NEUTRAL -- see
-_build_demo_session), built fresh each time this process starts. Not yet:
-multiple simultaneous games, persistence, real auth (a "join" message is
-trusted at face value for now).
+(NAA the only HUMAN faction, AAC a BOT faction, every other faction
+NEUTRAL -- see _build_demo_session), built fresh each time this process
+starts, with randomize_play_order=False so NAA -- the only HUMAN, the
+only faction any client can "join" as -- always goes first (a known
+simplification: this module doesn't yet handle a client connecting mid-
+game to a scenario that opens on a bot's turn). Not yet: multiple
+simultaneous games, persistence, real auth (a "join" message is trusted
+at face value for now).
 
 Run: python -m server.app [--host HOST] [--port PORT]
 A minimal scripted client for manual testing: python -m server.test_client
@@ -21,13 +25,16 @@ import argparse
 import asyncio
 import json
 import logging
+import random
 
 import websockets
 
 from engine import data as data_module
+from engine.bots.random_bot import RandomBot
 from engine.engine import GameEngine
 from engine.setup import build_game_state
 from engine.state import FactionMode
+from engine.turn_log import TurnLog
 from .session import GameSession
 
 logger = logging.getLogger('server')
@@ -36,9 +43,12 @@ logger = logging.getLogger('server')
 def _build_demo_session():
     modes = {code: FactionMode.NEUTRAL for code in data_module.factions()}
     modes['NAA'] = FactionMode.HUMAN
-    gs = build_game_state('starting_setup_200ipc', modes)
-    engine = GameEngine(gs, data_module)
-    return GameSession(engine)
+    modes['AAC'] = FactionMode.BOT
+    gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
+    turn_log = TurnLog()
+    engine = GameEngine(gs, data_module, turn_log=turn_log)
+    bots = {'AAC': RandomBot(engine, 'AAC', rng=random.Random())}
+    return GameSession(engine, turn_log, bots)
 
 
 class Server:

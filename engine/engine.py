@@ -121,7 +121,7 @@ class NonCombatMoveOrder:
 
 
 class GameEngine:
-    def __init__(self, game_state, data_module=None, stats=None, combat_rng=None):
+    def __init__(self, game_state, data_module=None, stats=None, combat_rng=None, turn_log=None):
         self.game_state = game_state
         self.data = data_module or _default_data
         # Optional stats.GameStats observer -- if given, deploys,
@@ -130,6 +130,14 @@ class GameEngine:
         # default) means no observation at all; every other behavior
         # here is identical either way.
         self.stats = stats
+        # Optional turn_log.TurnLog observer -- an ORDERED narration (not
+        # an aggregate, unlike stats above) of purchase/move orders,
+        # roll-by-roll combat events, captures, deploys, income, and
+        # alliance actions, for a caller (server/session.py) that wants
+        # to replay what happened -- a bot's whole turn, or a human's own
+        # Combat Resolution -- back to a human audience at their own
+        # pace. See turn_log.py's own module docstring.
+        self.turn_log = turn_log
         # resolve_combat's dice source when a call doesn't pass its own
         # `rng` (a per-call override, mainly for tests -- ScriptedRNG).
         # Created ONCE here and reused across the WHOLE game -- a real
@@ -175,6 +183,40 @@ class GameEngine:
             cap = terr['value'] + (2 if is_sc else 0)
             return (0 if is_sc else 1, -cap, tid)
         return sorted(owned_land, key=sort_key)
+
+    def legal_purchase_targets(self, faction):
+        """(sc_targets, other_targets): every territory `faction` could
+        legally purchase at (per _purchase_sources -- a land territory it
+        owns, or a sea zone adjacent to at least one of its owned land
+        territories), split by whether a Strategic Center's capacity/cost
+        is actually in play there. A sea target counts as an SC target if
+        ANY of its eligible sources (_purchase_sources -- SC-first) is a
+        Strategic Center. A pure query -- takes no action, so any caller
+        (a UI wanting to show legal choices before the player composes an
+        order, or a bot deciding where to shop) can use it; RandomBot
+        used to have its own private copy of exactly this logic before it
+        moved here this session."""
+        terrs = self.data.territories()
+        adjacency = self.data.adjacency()
+        gs = self.game_state
+
+        owned_land = [tid for tid, t in gs.territories.items() if terrs[tid]['type'] == 'land' and t.owner == faction]
+        sc_targets = {tid for tid in owned_land if terrs[tid].get('strategic_center')}
+        other_targets = set(owned_land) - sc_targets
+
+        sea_candidates = set()
+        for tid in owned_land:
+            for n in adjacency.get(tid, []):
+                if terrs[n]['type'] == 'sea':
+                    sea_candidates.add(n)
+        for sea_tid in sea_candidates:
+            sources = self._purchase_sources(sea_tid, faction)
+            if any(terrs[s].get('strategic_center') for s in sources):
+                sc_targets.add(sea_tid)
+            else:
+                other_targets.add(sea_tid)
+
+        return list(sc_targets), list(other_targets)
 
     def _deploy_cap(self, territory_id):
         terr = self.data.territories()[territory_id]
@@ -314,6 +356,8 @@ class GameEngine:
         self.game_state.factions[faction].treasury_mpc -= total_cost
         self._purchases_confirmed.add(faction)
         self._staged_purchases.pop(faction, None)
+        if self.turn_log is not None:
+            self.turn_log.record_purchase(faction, orders, total_cost)
 
     def deploy_and_collect_income(self, faction):
         """The Deploy + Income phase for `faction`'s own turn: places
@@ -336,6 +380,8 @@ class GameEngine:
         self.game_state.factions[faction].treasury_mpc += income
         if self.stats is not None:
             self.stats.record_income(faction, income)
+        if self.turn_log is not None:
+            self.turn_log.record_income(faction, income)
         self._run_recovery_check()
 
     def _deploy_pending_units(self, faction):
@@ -362,7 +408,7 @@ class GameEngine:
         t = self.game_state.territories[tid]
         if t.owner == faction:
             t.units.extend(pending)
-            self._record_deploys(faction, pending)
+            self._record_deploys(faction, tid, pending)
             return
         # Lost during the turn (only ever Infantry -- the only unit
         # type contested_land_deploy_restriction lets into a contested
@@ -371,14 +417,19 @@ class GameEngine:
         fallback = self._find_fallback_for_lost_purchase(tid, faction)
         if fallback is not None:
             self.game_state.territories[fallback].units.extend(pending)
-            self._record_deploys(faction, pending)
+            self._record_deploys(faction, fallback, pending)
         # else: no adjacent controlled territory or sea zone -- lost outright, never placed.
 
-    def _record_deploys(self, faction, units):
-        if self.stats is None:
-            return
-        for u in units:
-            self.stats.record_deploy(faction, u.unit_type)
+    def _record_deploys(self, faction, territory_id, units):
+        if self.stats is not None:
+            for u in units:
+                self.stats.record_deploy(faction, u.unit_type)
+        if self.turn_log is not None:
+            by_type = {}
+            for u in units:
+                by_type[u.unit_type] = by_type.get(u.unit_type, 0) + 1
+            for unit_type, qty in by_type.items():
+                self.turn_log.record_deploy(faction, territory_id, unit_type, qty)
 
     def _find_fallback_for_lost_purchase(self, tid, faction):
         """(1) an adjacent territory `faction` still controls; (2) if
@@ -410,13 +461,22 @@ class GameEngine:
             any(u.unit_type == 'Aircraft Carrier' for u in pending)
 
         to_place_here = []
+        redirected_by_land = {}
         for u in pending:
             if unit_defs[u.unit_type]['category'] == 'Air' and not has_own_carrier:
                 self.game_state.territories[u.purchased_at].units.append(u)
+                redirected_by_land.setdefault(u.purchased_at, []).append(u)
             else:
                 to_place_here.append(u)
         t.units.extend(to_place_here)
-        self._record_deploys(faction, pending)  # both the redirected-to-land and placed-here units actually landed on the board
+        # Both the redirected-to-land and placed-here units actually
+        # landed on the board -- recorded separately since they may not
+        # share a single territory_id (each redirected unit goes back to
+        # its OWN purchasing land space, not necessarily all the same one).
+        if to_place_here:
+            self._record_deploys(faction, tid, to_place_here)
+        for land_tid, units in redirected_by_land.items():
+            self._record_deploys(faction, land_tid, units)
 
         # Hostile sea deploy creates contested, immediately, as a direct
         # result of the deployment (purchase.hostile_sea_deploy_creates_contested)
@@ -607,6 +667,8 @@ class GameEngine:
         self._execute_combat_moves(orders, faction, self.game_state)
         self._combat_moves_confirmed.add(faction)
         self._staged_combat_moves.pop(faction, None)
+        if self.turn_log is not None:
+            self.turn_log.record_combat_move(faction, orders)
 
     def declared_battles(self, faction):
         """Every battle `faction`'s own Combat Resolution phase must
@@ -741,6 +803,8 @@ class GameEngine:
             ))
             result = BattleResult.from_events(events)
             self._record_combat_stats(events, attacker_units, defender_units, battle_type)
+            if self.turn_log is not None:
+                self.turn_log.record_battle_events(territory_id, battle_type, events, attacker_units, defender_units)
             self._apply_battle_outcome(territory_id, battle_type, faction, result, rng)
             results.append(result)
         return results
@@ -856,6 +920,8 @@ class GameEngine:
                 t.owner = new_owner
                 if self.stats is not None:
                     self.stats.record_capture(self.game_state.global_turn, new_owner, territory_id, previous_owner)
+                if self.turn_log is not None:
+                    self.turn_log.record_capture(self.game_state.global_turn, new_owner, territory_id, previous_owner)
             elif self.stats is not None:
                 self.stats.record_contest_ended_without_capture(territory_id)
             return
@@ -1119,6 +1185,8 @@ class GameEngine:
         self._apply_stranded_aircraft_check(faction)
         self._noncombat_moves_confirmed.add(faction)
         self._staged_noncombat_moves.pop(faction, None)
+        if self.turn_log is not None:
+            self.turn_log.record_noncombat_move(faction, orders)
 
     def _apply_stranded_aircraft_check(self, faction):
         """movement.stranded_aircraft_rule: run once, at the end of the
@@ -1202,6 +1270,8 @@ class GameEngine:
                     # be cleared here too, same as record_capture would
                     # have consumed it.
                     self.stats.record_contest_ended_without_capture(tid)
+            if self.turn_log is not None and previous_owner != t.owner:
+                self.turn_log.record_capture(self.game_state.global_turn, t.owner, tid, previous_owner)
 
     def _determine_capture_winner(self, faction, land_units_present, unit_defs):
         """Who actually gets `faction`'s claim, among `faction` and its
@@ -1277,6 +1347,8 @@ class GameEngine:
                 fstate.eliminated = True
                 for t in self.game_state.territories.values():
                     t.units = [u for u in t.units if u.owner != code]
+                if self.turn_log is not None:
+                    self.turn_log.record_elimination(code)
 
     def _alliance_members(self, faction):
         """{faction} ∪ every other faction currently sharing its
@@ -1372,6 +1444,10 @@ class GameEngine:
             self.stats.record_alliance_joined(
                 self.game_state.global_turn, faction, target, tag, new_alliance=(existing_tag is None),
             )
+        if self.turn_log is not None:
+            self.turn_log.record_alliance_joined(
+                self.game_state.global_turn, faction, target, tag, new_alliance=(existing_tag is None),
+            )
         return True
 
     def _faction_has_units_on_an_allied_sc(self, faction):
@@ -1439,6 +1515,8 @@ class GameEngine:
         fstate.alliance = None
         if self.stats is not None:
             self.stats.record_alliance_withdrawal(self.game_state.global_turn, faction, former_tag, former_members)
+        if self.turn_log is not None:
+            self.turn_log.record_alliance_withdrawal(self.game_state.global_turn, faction, former_tag, former_members)
 
         terrs = self.data.territories()
         for tid, t in self.game_state.territories.items():

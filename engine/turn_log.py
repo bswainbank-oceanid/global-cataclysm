@@ -1,0 +1,124 @@
+"""
+TurnLog: an optional, append-only, ORDERED narration of a game, for a
+caller (server/session.py, in practice) that wants to replay what
+happened -- a bot's whole turn, run start-to-finish by the engine in one
+go rather than interactively, or a human's own Combat Resolution (no
+player choice in HOW it plays out, but they still submitted the attack
+and want to watch it land) -- back to a human audience at whatever pace
+they choose. Distinct from stats.GameStats, which is a whole-game
+AGGREGATE report (running tallies, built for an end-of-game summary) --
+this instead keeps every individual roll, order, and outcome in the
+exact order it happened, never summarized or discarded. Like GameStats,
+TurnLog is purely an observer -- GameEngine, when constructed with a
+TurnLog instance (the `turn_log` kwarg), appends to it as each fact
+becomes known; nothing here drives or affects the game itself, and a
+GameEngine with no turn_log sink behaves identically to before this
+module existed.
+
+Never reset by GameEngine itself -- events simply accumulate for the
+life of the TurnLog. A caller wanting "just this stretch of play" (one
+bot's turn, or one Combat Resolution call) should record
+len(turn_log.events) beforehand and slice from there afterward (see
+server/session.py).
+
+Every event is a plain JSON-ready dict (no dataclass/Enum -- same
+convention as stats.GameStats.captures/alliance_changes) with at least a
+"kind" key; see each record_* method for that kind's other fields.
+"""
+from dataclasses import dataclass, field
+
+from .combat import EventKind
+
+
+@dataclass
+class TurnLog:
+    events: list = field(default_factory=list)
+
+    def record_purchase(self, faction, orders, total_cost):
+        self.events.append({
+            'kind': 'purchase', 'faction': faction, 'total_cost': total_cost,
+            'orders': [{'unit_type': o.unit_type, 'qty': o.qty, 'deploy_at': o.deploy_at} for o in orders],
+        })
+
+    def record_combat_move(self, faction, orders):
+        self.events.append({
+            'kind': 'combat_move', 'faction': faction,
+            'orders': [{'unit_id': o.unit_id, 'path': list(o.path)} for o in orders],
+        })
+
+    def record_noncombat_move(self, faction, orders):
+        self.events.append({
+            'kind': 'noncombat_move', 'faction': faction,
+            'orders': [{'unit_id': o.unit_id, 'destination': o.destination} for o in orders],
+        })
+
+    def record_battle_events(self, territory_id, battle_type, events, attacker_units, defender_units):
+        """`events`: the raw list[combat.BattleEvent] resolve_battle
+        yielded for this one battle -- forwarded here almost verbatim
+        (EventKind -> its .value string, dataclass -> plain dict), so a
+        client can replay the exact same round-by-round, roll-by-roll
+        sequence the engine itself just resolved, whether this battle
+        belongs to a bot's whole-turn playback or a human's own Combat
+        Resolution phase. `attacker_units`/`defender_units` supply the
+        OWNER each unit_id belongs to (a BattleEvent only carries
+        unit_type, not owner)."""
+        owner_by_id = {u.unit_id: u.owner for u in attacker_units + defender_units}
+        for e in events:
+            entry = {
+                'kind': 'battle_event', 'territory_id': territory_id, 'battle_type': battle_type,
+                'event_kind': e.kind.value, 'round_number': e.round_number,
+            }
+            if e.kind == EventKind.UNIT_ROLL:
+                entry.update(
+                    side=e.side, unit_id=e.unit_id, unit_type=e.unit_type,
+                    owner=owner_by_id.get(e.unit_id), die=e.die, roll=e.roll, hit=e.hit,
+                    bypass_hit=e.bypass_hit, target_unit_id=e.target_unit_id,
+                    target_owner=owner_by_id.get(e.target_unit_id), damage=e.damage,
+                    target_hp_after=e.target_hp_after,
+                )
+            elif e.kind == EventKind.PROMOTION:
+                entry.update(
+                    promoted_unit_id=e.promoted_unit_id, promoted_side=e.promoted_side,
+                    owner=owner_by_id.get(e.promoted_unit_id),
+                )
+            elif e.kind == EventKind.BATTLE_END:
+                entry.update(
+                    outcome=e.outcome,
+                    surviving_attacker_ids=e.surviving_attacker_ids, surviving_defender_ids=e.surviving_defender_ids,
+                    eliminated_attacker_ids=e.eliminated_attacker_ids, eliminated_defender_ids=e.eliminated_defender_ids,
+                )
+            # AIR_SUPERIORITY_START / ROUND_START / ROUND_CASUALTIES: the
+            # kind/round_number/territory_id/battle_type header above is
+            # already the whole story worth narrating for these -- no
+            # extra fields to add.
+            self.events.append(entry)
+
+    def record_capture(self, turn, faction, territory_id, previous_owner):
+        self.events.append({
+            'kind': 'territory_captured', 'turn': turn, 'faction': faction,
+            'territory_id': territory_id, 'previous_owner': previous_owner,
+        })
+
+    def record_deploy(self, faction, territory_id, unit_type, qty):
+        self.events.append({
+            'kind': 'unit_deployed', 'faction': faction, 'territory_id': territory_id,
+            'unit_type': unit_type, 'qty': qty,
+        })
+
+    def record_income(self, faction, amount):
+        self.events.append({'kind': 'income_collected', 'faction': faction, 'amount': amount})
+
+    def record_elimination(self, faction):
+        self.events.append({'kind': 'faction_eliminated', 'faction': faction})
+
+    def record_alliance_joined(self, turn, faction, target, tag, new_alliance):
+        self.events.append({
+            'kind': 'alliance_joined', 'turn': turn, 'faction': faction, 'target': target,
+            'tag': tag, 'new_alliance': new_alliance,
+        })
+
+    def record_alliance_withdrawal(self, turn, faction, tag, former_members):
+        self.events.append({
+            'kind': 'alliance_withdrawal', 'turn': turn, 'faction': faction,
+            'tag': tag, 'former_members': sorted(former_members),
+        })

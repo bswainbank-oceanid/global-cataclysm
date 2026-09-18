@@ -193,20 +193,39 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 13 tests) — first vertical slice only,
+- ⬜ WebSocket server (`server/`, 19 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
-  (NAA the only HUMAN faction, everyone else NEUTRAL), `server/session.py`
-  handles the Purchase phase as a real client decision (join/
-  submit_purchases/confirm_purchases messages) and auto-drives every other
-  phase through to the next decision point or game-over, the same way
-  `engine/bots/driver.py` auto-drives a bot's non-decision phases.
-  `server/app.py` is the actual asyncio/`websockets` I/O, deliberately
-  thin — every real decision lives in `GameSession`, unit-tested directly
-  with no socket ever opened; `server/test_client.py` is a small scripted
-  client for manual end-to-end verification against a running server
+  (NAA the only HUMAN faction, AAC a BOT, everyone else NEUTRAL),
+  `server/session.py` handles the Purchase phase as a real client
+  decision (join/submit_purchases/confirm_purchases messages, with
+  legal_purchase_targets included so a client knows its choices before
+  composing an order) and auto-drives every other phase through to the
+  next decision point or game-over, the same single-while-loop shape
+  `engine/bots/driver.py` uses for a bot's non-decision phases.
+  Bot turns and combat resolution are narrated, not just applied silently:
+  `engine.turn_log.TurnLog` (a new engine-level observer, alongside
+  `stats.GameStats` but an ORDERED per-event log rather than a whole-game
+  aggregate — every purchase/move order, every roll-by-roll combat event
+  already yielded by `combat.resolve_battle`, every capture/deploy/
+  income/alliance action) captures everything as it happens; whenever a
+  BOT faction's turn comes up next, the server plays the bot's entire
+  turn out immediately (a bot never waits for input) and ships the whole
+  turn's events as one `bot_turn` message, and a HUMAN's own Combat
+  Resolution (no player choice in HOW it resolves, only in whether to
+  attack) sends just its battle events as `combat_events` — both using
+  the identical event shape, so one client-side playback UI handles
+  either. Pacing is entirely client-side (decided this session): the
+  server ships the complete event list in one message and never paces
+  delivery itself. `server/app.py` is the actual asyncio/`websockets`
+  I/O, deliberately thin — every real decision lives in `GameSession`,
+  unit-tested directly with no socket ever opened; `server/test_client.py`
+  is a small scripted client (with its own toy playback-pacing loop) for
+  manual end-to-end verification against a running server
   (`python -m server.app`, then `python -m server.test_client`). Not yet:
-  Combat Move/Non-Combat Move/Alliances as real decision points (submitted
-  empty for now), multiple simultaneous games, persistence, or real
+  Combat Move/Non-Combat Move/Alliances as real HUMAN decision points
+  (submitted empty for a human turn for now — AAC, the one bot, makes
+  real decisions for all of these) and the legal-move-query messages that
+  would need; multiple simultaneous games, persistence, or real
   auth/session management (a "join" message is trusted at face value).
   This is the project's first external dependency (`websockets`,
   `requirements.txt`) — `engine/` and `tools/` remain stdlib-only.
