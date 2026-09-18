@@ -77,7 +77,7 @@ from .combat import BattleResult, EventKind, resolve_battle
 from .economy import compute_income
 from .movement import (
     _is_ally_or_self, find_emergency_landing, legal_air_move_destinations,
-    legal_noncombat_move_destinations, trace_combat_move,
+    legal_combat_move_paths, legal_noncombat_move_destinations, trace_combat_move,
 )
 from .state import Phase, FactionMode, UnitInstance
 
@@ -530,6 +530,46 @@ class GameEngine:
         if dest_state.owner and not _is_ally_or_self(game_state, faction, dest_state.owner):
             defenders.add(dest_state.owner)
         dest_state.contested_by = (dest_state.contested_by or set()) | {faction} | defenders
+
+    def legal_combat_move_options(self, faction):
+        """{unit_id: {'unit_type': ..., 'territory_id': origin_id,
+        'destinations': {destination_id: path, ...}}} for every one of
+        `faction`'s own units, anywhere on the board, that hasn't already
+        combat-moved this turn (UnitInstance.has_moved_combat) -- known
+        at the start of Combat Move, before any order is submitted (a
+        later order in the same submission CAN change what's legal for a
+        unit considered after it -- _execute_combat_moves' own docstring
+        -- so this is a snapshot as of right now, not a guarantee that
+        stays valid after the caller's own earlier picks; submit_combat_
+        moves is still the authority). `path` always includes both
+        endpoints (`[origin_id, destination_id]` at minimum), same shape
+        CombatMoveOrder.path expects -- for an Air unit that's always
+        exactly 2 entries (no hop-by-hop legality for air), for a Land or
+        Sea unit it may be longer (an uncontested Mechanized Infantry
+        blitz, or a multi-hop path generally). A pure query -- takes no
+        action; a unit with zero legal destinations (nothing to attack,
+        nowhere to go) is simply omitted, not included with an empty
+        dict. No bot-only policy exclusions applied here (e.g. RandomBot
+        never moves an SC-garrisoning Infantry) -- those are strategy
+        choices, not engine-level illegality; see engine.bots.random_bot
+        for that layer."""
+        terrs = self.data.territories()
+        unit_defs = self.data.units()
+        options = {}
+        for tid, t in self.game_state.territories.items():
+            for u in t.units:
+                if u.owner != faction or u.has_moved_combat:
+                    continue
+                category = unit_defs[u.unit_type]['category']
+                if category == 'Air':
+                    legal = legal_air_move_destinations(u.unit_type, faction, tid, 'combat', self.game_state, self.data)
+                    destinations = {dest: [tid, dest] for dest in legal}
+                else:
+                    destinations = legal_combat_move_paths(u.unit_type, faction, tid, self.game_state, self.data)
+                if not destinations:
+                    continue
+                options[u.unit_id] = {'unit_type': u.unit_type, 'territory_id': tid, 'destinations': destinations}
+        return options
 
     def _execute_combat_moves(self, orders, faction, game_state):
         """Runs `orders` against `game_state`, relocating each unit

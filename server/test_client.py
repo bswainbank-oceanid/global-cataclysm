@@ -1,16 +1,21 @@
 """
 A minimal scripted WebSocket client -- joins as NAA against server.app's
-demo game (NAA human, AAC bot), sends one complete "purchase" order list
-(client-composed, one shot -- see server/session.py's own docstring on
-why there's no separate stage/confirm round trip), then prints every
-message the server sends back -- including AAC's whole bot turn, played
-back event by event with a short pause between each, as a stand-in for a
-real client's own playback-speed control (decided this session: pacing
-is entirely a client-side concern once it has the full event list -- the
-server never paces delivery itself). Not a test in the unittest sense
-(nothing here is asserted); it's a manual sanity check that the actual
-network loop works end to end, since server/tests/test_session.py
-deliberately never opens a real socket.
+demo game (NAA human, AAC bot), then drives two full NAA turns: a first
+"purchase" (client-composed, one shot -- see server/session.py's own
+docstring on why there's no separate stage/confirm round trip) followed
+by a second turn's "purchase" and, since allow_combat_moves_first_turn
+only skips Combat Move on a faction's very own first turn (turns_taken
+== 0), a real "combat_move" decision on that second turn too -- picking
+whatever legal option the server's "your_turn" offered (an attack if one
+exists, otherwise an empty order list). Prints every message the server
+sends back -- including AAC's whole bot turn, played back event by event
+with a short pause between each, as a stand-in for a real client's own
+playback-speed control (decided this session: pacing is entirely a
+client-side concern once it has the full event list -- the server never
+paces delivery itself). Not a test in the unittest sense (nothing here
+is asserted); it's a manual sanity check that the actual network loop
+works end to end, since server/tests/test_session.py deliberately never
+opens a real socket.
 
 Run the server first in one terminal: python -m server.app
 Then, in another terminal:            python -m server.test_client
@@ -62,6 +67,31 @@ async def _play_events(events, label):
     print('--- end ---')
 
 
+async def _respond_to_your_turn(ws, msg, turn_number):
+    """Composes and sends whatever this "your_turn" needs, client-side, the
+    same way a real UI would: a purchase order list for PURCHASE (buys
+    nothing on the first pass), or a combat-move order list for COMBAT_MOVE
+    -- picking the first legal destination offered for the first unit that
+    has one, to demonstrate a real attack, or an empty list if none exist."""
+    faction = msg['faction']
+    phase = msg['phase']
+    if phase == 'PURCHASE':
+        print(f'NAA turn {turn_number}: purchasing nothing')
+        await ws.send(json.dumps({'type': 'purchase', 'faction': faction, 'orders': []}))
+    elif phase == 'COMBAT_MOVE':
+        options = msg['legal_combat_moves']
+        orders = []
+        for unit_id_str, entry in options.items():
+            if entry['destinations']:
+                dest, path = next(iter(entry['destinations'].items()))
+                orders.append({'unit_id': int(unit_id_str), 'path': path})
+                break
+        print(f'NAA turn {turn_number}: combat move orders: {orders or "(none)"}')
+        await ws.send(json.dumps({'type': 'combat_move', 'faction': faction, 'orders': orders}))
+    else:
+        raise AssertionError(f'unexpected your_turn phase: {phase}')
+
+
 async def main(uri):
     async with websockets.connect(uri) as ws:
         await ws.send(json.dumps({'type': 'join', 'faction': 'NAA'}))
@@ -69,25 +99,28 @@ async def main(uri):
         state = json.loads(await ws.recv())
         print('<-', state['type'])
         your_turn = json.loads(await ws.recv())
-        print('<-', your_turn)
+        print('<-', your_turn['type'], your_turn.get('phase'))
 
         gs = state['game_state']
-        owned = next(tid for tid, t in gs['territories'].items() if t['owner'] == 'NAA')
         treasury = gs['factions']['NAA']['treasury_mpc']
-        print(f'NAA owns territory {owned}, treasury {treasury} MPC')
+        print(f'NAA treasury: {treasury} MPC')
 
-        await ws.send(json.dumps({
-            'type': 'purchase', 'faction': 'NAA',
-            'orders': [{'unit_type': 'Infantry', 'qty': 1, 'deploy_at': int(owned)}],
-        }))
+        turn_number = 1
+        await _respond_to_your_turn(ws, your_turn, turn_number)
         while True:
             msg = json.loads(await ws.recv())
             if msg['type'] in ('bot_turn', 'combat_events'):
                 await _play_events(msg['events'], f"{msg['type']} ({msg.get('faction', '?')})")
                 continue
-            print('<-', msg['type'], {k: v for k, v in msg.items() if k not in ('game_state', 'events')})
-            if msg['type'] in ('your_turn', 'game_over'):
+            print('<-', msg['type'], {k: v for k, v in msg.items() if k not in ('game_state', 'events', 'legal_combat_moves')})
+            if msg['type'] == 'game_over':
                 break
+            if msg['type'] == 'your_turn':
+                if msg['phase'] == 'PURCHASE':
+                    turn_number += 1
+                if turn_number > 2:
+                    break
+                await _respond_to_your_turn(ws, msg, turn_number)
 
 
 if __name__ == '__main__':

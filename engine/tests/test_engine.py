@@ -111,6 +111,65 @@ class TestLegalPurchaseTargets(unittest.TestCase):
         self.assertNotIn(2, other_targets)
 
 
+class TestLegalCombatMoveOptions(unittest.TestCase):
+    """GameEngine.legal_combat_move_options -- the "known at turn start,
+    client picks from these" query this session's server work (Combat
+    Move as a real human decision point) is built on."""
+
+    def test_a_unit_with_a_legal_attack_is_included(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+                         units_by_territory={1: [mover]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_combat_move_options('NAA')
+        self.assertIn(mover.unit_id, options)
+        entry = options[mover.unit_id]
+        self.assertEqual(entry['unit_type'], 'Infantry')
+        self.assertEqual(entry['territory_id'], 1)
+        self.assertEqual(entry['destinations'], {2: [1, 2]})
+
+    def test_a_unit_that_already_moved_is_excluded(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        mover = make_unit('Infantry', 'NAA')
+        mover.has_moved_combat = True
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+                         units_by_territory={1: [mover]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_combat_move_options('NAA')
+        self.assertNotIn(mover.unit_id, options)
+
+    def test_a_unit_with_no_legal_destination_is_excluded(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})  # no neighbors at all
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, units_by_territory={1: [mover]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_combat_move_options('NAA')
+        self.assertEqual(options, {})
+
+    def test_another_factions_units_are_excluded(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        mover = make_unit('Infantry', 'AAC')
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+                         units_by_territory={2: [mover]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_combat_move_options('NAA')
+        self.assertEqual(options, {})
+
+    def test_air_unit_destinations_are_two_entry_paths(self):
+        # Air can't capture, so an air combat move needs an actual
+        # non-ally-occupied (or already contested) destination -- an
+        # empty foreign territory is never a legal air attack target.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        flyer = make_unit('Fighter', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+                         units_by_territory={1: [flyer], 2: [defender]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_combat_move_options('NAA')
+        self.assertEqual(options[flyer.unit_id]['destinations'], {2: [1, 2]})
+
+
 class TestLandPurchase(unittest.TestCase):
     def test_buy_within_capacity_and_confirm(self):
         # territory 1: land, value 2, owned by NAA -- cap 2.

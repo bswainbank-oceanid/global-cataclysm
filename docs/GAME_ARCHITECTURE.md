@@ -168,7 +168,7 @@ the same JSON, not a parallel editing path.
   (`tools/compute_adjacency.py`).
 - ✅ Territory shape/polygon extraction (`tools/extract_territory_shapes.py`
   → `data/territory_shapes.json`).
-- ✅ Rules engine (standalone module, `engine/`, 381 tests) — Purchase
+- ✅ Rules engine (standalone module, `engine/`, 404 tests) — Purchase
   (including the carrierless-air and contested-purchase-lost deploy
   fallbacks), Deploy + Income, Combat Move, Combat Resolution, Non-Combat
   Move, Capture Territory, faction elimination, game-end detection, and
@@ -193,21 +193,32 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 18 tests) — first vertical slice,
+- ⬜ WebSocket server (`server/`, 24 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
-  (NAA the only HUMAN faction, AAC a BOT, everyone else NEUTRAL),
-  `server/session.py` handles the Purchase phase as a real client
-  decision -- a single one-shot `purchase` message carrying the
-  COMPLETE, final order list (decided this session: the client owns
-  territory selection and MPC budget tracking itself, so a separate
-  stage-then-confirm round trip has nothing left to teach it -- `your_turn`
-  still includes `legal_purchase_targets`, territory-level only, so the
-  client knows where it can buy before composing an order; unit
-  types/costs are the client's own `units.json` copy's job, same as
-  rendering needs anyway) -- and auto-drives every other phase through to
-  the next decision point or game-over, the same single-while-loop shape
-  `engine/bots/driver.py` uses for a bot's non-decision phases. The same
-  one-shot shape is the plan for Combat Move/Non-Combat Move once they
+  (NAA the only HUMAN faction, AAC a BOT, everyone else NEUTRAL). Purchase
+  and Combat Move are both real client decisions now, same one-shot shape
+  for each: a single `purchase` or `combat_move` message carrying the
+  COMPLETE, final order list (decided this session for Purchase: the
+  client owns territory selection and MPC budget tracking itself, so a
+  separate stage-then-confirm round trip has nothing left to teach it --
+  `your_turn` still includes `legal_purchase_targets`, territory-level
+  only, so the client knows where it can buy before composing an order;
+  unit types/costs are the client's own `units.json` copy's job, same as
+  rendering needs anyway. For Combat Move, decided this session: "the
+  legal combat move options for each unit is known at turn start" --
+  `GameEngine.legal_combat_move_options` computes, per unit that hasn't
+  moved yet, every legal destination and the path to it, sent in the same
+  `your_turn` message as `legal_combat_moves`; the client picks from those
+  and sends the complete order list in one `combat_move` message, no
+  server-side per-unit round trip). `your_turn` is one phase-aware message
+  type either way -- the client tells Purchase and Combat Move apart by
+  `phase` and reads whichever `legal_*` key is present. Every other phase
+  auto-drives through to the next decision point or game-over, the same
+  single-while-loop shape `engine/bots/driver.py` uses for a bot's
+  non-decision phases -- `server/session.py`'s `_drain_phases` mirrors it
+  directly, stopping early (only for a human) right at Combat Move to
+  await that decision, and resuming from there once it arrives. The same
+  one-shot shape is the plan for Non-Combat Move/Alliances once they
   become real human decision points too.
   Bot turns and combat resolution are narrated, not just applied silently:
   `engine.turn_log.TurnLog` (a new engine-level observer, alongside
@@ -228,12 +239,14 @@ the same JSON, not a parallel editing path.
   unit-tested directly with no socket ever opened; `server/test_client.py`
   is a small scripted client (with its own toy playback-pacing loop) for
   manual end-to-end verification against a running server
-  (`python -m server.app`, then `python -m server.test_client`). Not yet:
-  Combat Move/Non-Combat Move/Alliances as real HUMAN decision points
-  (submitted empty for a human turn for now — AAC, the one bot, makes
-  real decisions for all of these) and the legal-move-query messages that
-  would need; multiple simultaneous games, persistence, or real
-  auth/session management (a "join" message is trusted at face value).
+  (`python -m server.app`, then `python -m server.test_client`, which now
+  drives two NAA turns so a real `combat_move` decision gets exercised,
+  not just `purchase`). Not yet: Non-Combat Move/Alliances as real HUMAN
+  decision points (submitted empty/no-op for a human turn for now — AAC,
+  the one bot, makes real decisions for all of these) and the legal-move-
+  query messages that would need; multiple simultaneous games,
+  persistence, or real auth/session management (a "join" message is
+  trusted at face value).
   This is the project's first external dependency (`websockets`,
   `requirements.txt`) — `engine/` and `tools/` remain stdlib-only.
 - ⬜ Godot client / map rendering / wraparound camera.

@@ -9,8 +9,8 @@ from engine.turn_log import TurnLog
 from server.session import GameSession
 
 
-def _session(modes, bot_factions=()):
-    gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
+def _session(modes, bot_factions=(), **build_kwargs):
+    gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False, **build_kwargs)
     turn_log = TurnLog()
     engine = GameEngine(gs, None, turn_log=turn_log)
     bots = {code: RandomBot(engine, code, rng=random.Random(1)) for code in bot_factions}
@@ -45,6 +45,16 @@ def _human_and_bot_session():
     modes['NAA'] = FactionMode.HUMAN
     modes['AAC'] = FactionMode.BOT
     return _session(modes, bot_factions=['AAC'])
+
+
+def _two_human_session_with_combat_moves_allowed():
+    """Same as _two_human_session, but with game_start_settings.
+    allow_combat_moves_first_turn=True so Combat Move is a real decision
+    point from NAA's very first turn, not just its second onward."""
+    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes['NAA'] = FactionMode.HUMAN
+    modes['UE'] = FactionMode.HUMAN
+    return _session(modes, allow_combat_moves_first_turn=True)
 
 
 class TestConnect(unittest.TestCase):
@@ -195,21 +205,26 @@ class TestBotTurnPlayback(unittest.TestCase):
             self.assertNotEqual(event.get('faction'), 'NAA')
 
     def test_second_purchase_by_the_human_plays_another_bot_turn(self):
+        # game_start_settings.allow_combat_moves_first_turn defaults
+        # False, so NAA's FIRST turn skips Combat Move entirely (straight
+        # through to AAC's bot turn) -- by NAA's SECOND turn that no
+        # longer applies, so a real Combat Move decision is needed too.
         session = _human_and_bot_session()
         session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
-        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({'type': 'combat_move', 'faction': 'NAA', 'orders': []})
         types = [m['type'] for m in messages]
         self.assertIn('bot_turn', types)
 
 
 class TestHumanCombatPlayback(unittest.TestCase):
-    """No message type lets a human submit a real attack yet (Combat
-    Move is auto-submitted empty for a human -- see this module's own
-    docstring), so the only way a HUMAN'S OWN Combat Resolution produces
-    battle events today is a standing contest already in place before
-    their turn starts (an enemy attacked on an earlier turn). This
-    proves the underlying combat_events mechanism itself works
-    correctly for a human's turn, same as it does for a bot's."""
+    """A standing contest already in place before a human's turn starts
+    (an enemy attacked on an earlier turn, not this same turn's own
+    Combat Move) also produces battle events on THIS faction's Combat
+    Resolution -- proving the underlying combat_events mechanism works
+    for a human's turn from either source (a fresh attack via
+    TestCombatMovePlayback below, or an old stalemate like this one),
+    not just a bot's."""
 
     def test_a_standing_contest_on_the_humans_own_turn_is_surfaced_as_combat_events(self):
         session = _solo_session()
@@ -234,6 +249,99 @@ class TestHumanCombatPlayback(unittest.TestCase):
         self.assertIn('UNIT_ROLL', kinds)
         # Only battle events -- not this same turn's purchase/deploy/income.
         self.assertTrue(all(e['kind'] == 'battle_event' for e in combat_msgs[0]['events']))
+
+
+def _make_a_neighbor_hostile(engine, faction, enemy_faction):
+    """Reassigns a real adjacent LAND territory of one of `faction`'s own
+    owned territories to `enemy_faction`, with one defending Infantry --
+    a deterministic, reachable attack target using the REAL map's
+    adjacency graph (so any path computed against it is genuinely legal),
+    regardless of where the scenario's active factions actually happen to
+    sit continent-wise. Returns (attacker_unit, target_territory_id)."""
+    terrs = engine.data.territories()
+    adjacency = engine.data.adjacency()
+    gs = engine.game_state
+    for tid, t in gs.territories.items():
+        if t.owner != faction:
+            continue
+        attacker = next((u for u in t.units if u.owner == faction), None)
+        if attacker is None:
+            continue
+        neighbor = next((n for n in adjacency.get(tid, []) if terrs[n]['type'] == 'land'), None)
+        if neighbor is None:
+            continue
+        gs.territories[neighbor].owner = enemy_faction
+        gs.territories[neighbor].units.append(
+            UnitInstance(unit_id=77777, unit_type='Infantry', owner=enemy_faction, current_hp=2)
+        )
+        return attacker, neighbor
+    raise AssertionError(f'no owned territory of {faction} with both a unit and a land neighbor was found')
+
+
+class TestCombatMovePlayback(unittest.TestCase):
+    """Combat Move as a real human decision point: "the legal combat
+    move options for each unit is known at turn start. The client can
+    pick from those options and send to server" (this session)."""
+
+    def test_your_turn_for_combat_move_includes_legal_options(self):
+        session = _two_human_session_with_combat_moves_allowed()
+        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        prompt = next(m for m in messages if m['type'] == 'your_turn')
+        self.assertEqual(prompt['phase'], 'COMBAT_MOVE')
+        self.assertIn('legal_combat_moves', prompt)
+        self.assertNotIn('legal_purchase_targets', prompt)
+
+    def test_reconnecting_mid_turn_at_combat_move_gets_the_same_prompt(self):
+        session = _two_human_session_with_combat_moves_allowed()
+        session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        messages = session.connect('NAA')
+        prompt = next(m for m in messages if m['type'] == 'your_turn')
+        self.assertEqual(prompt['phase'], 'COMBAT_MOVE')
+
+    def test_combat_move_out_of_turn_is_rejected(self):
+        session = _two_human_session_with_combat_moves_allowed()
+        messages = session.handle_message({'type': 'combat_move', 'faction': 'UE', 'orders': []})
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_malformed_combat_move_order_is_rejected(self):
+        session = _two_human_session_with_combat_moves_allowed()
+        session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({
+            'type': 'combat_move', 'faction': 'NAA', 'orders': [{'unit_id': 1}],  # missing path
+        })
+        self.assertEqual(messages[0]['type'], 'error')
+        self.assertIn('malformed order', messages[0]['message'])
+
+    def test_illegal_combat_move_is_rejected_by_the_real_engine(self):
+        session = _two_human_session_with_combat_moves_allowed()
+        session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({
+            'type': 'combat_move', 'faction': 'NAA',
+            'orders': [{'unit_id': 999999, 'path': [1, 2]}],  # no such unit
+        })
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_picking_a_legal_option_actually_attacks_and_continues_the_turn(self):
+        session = _two_human_session_with_combat_moves_allowed()
+        gs = session.engine.game_state
+        attacker, target = _make_a_neighbor_hostile(session.engine, 'NAA', 'UE')
+
+        session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        options = session.engine.legal_combat_move_options('NAA')
+        self.assertIn(attacker.unit_id, options, "the freshly-hostile neighbor should be a legal attack target")
+        path = options[attacker.unit_id]['destinations'][target]
+
+        messages = session.handle_message({
+            'type': 'combat_move', 'faction': 'NAA', 'orders': [{'unit_id': attacker.unit_id, 'path': path}],
+        })
+        # The attack landed (contested), and the turn continued all the
+        # way through Combat Resolution -- reported as combat_events --
+        # to wherever NAA's turn ends up next.
+        self.assertIn('NAA', gs.territories[target].contested_by)
+        types = [m['type'] for m in messages]
+        self.assertIn('combat_events', types)
+        combat_msgs = [m for m in messages if m['type'] == 'combat_events']
+        self.assertEqual(combat_msgs[0]['faction'], 'NAA')
 
 
 if __name__ == '__main__':
