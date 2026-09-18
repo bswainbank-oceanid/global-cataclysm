@@ -170,6 +170,102 @@ class TestLegalCombatMoveOptions(unittest.TestCase):
         self.assertEqual(options[flyer.unit_id]['destinations'], {2: [1, 2]})
 
 
+class TestLegalNoncombatMoveOptions(unittest.TestCase):
+    """GameEngine.legal_noncombat_move_options -- the Non-Combat Move
+    counterpart to legal_combat_move_options, queried after Combat
+    Resolution (and, for a human, after process_return_to_base) rather
+    than at turn start."""
+
+    def test_a_unit_with_a_legal_destination_is_included(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, units_by_territory={1: [mover]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_noncombat_move_options('NAA')
+        self.assertIn(mover.unit_id, options)
+        entry = options[mover.unit_id]
+        self.assertEqual(entry['unit_type'], 'Infantry')
+        self.assertEqual(entry['territory_id'], 1)
+        self.assertEqual(entry['destinations'], [2], 'a plain list of ids, not {destination: path} -- no route to report')
+
+    def test_a_unit_that_already_noncombat_moved_is_excluded(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        mover = make_unit('Infantry', 'NAA')
+        mover.has_moved_noncombat = True
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, units_by_territory={1: [mover]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_noncombat_move_options('NAA')
+        self.assertNotIn(mover.unit_id, options)
+
+    def test_a_land_unit_that_already_combat_moved_is_excluded(self):
+        # combat_or_noncombat_not_both: a non-air unit that combat-moved
+        # this turn may not also non-combat-move.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        mover = make_unit('Infantry', 'NAA')
+        mover.has_moved_combat = True
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, units_by_territory={1: [mover]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_noncombat_move_options('NAA')
+        self.assertNotIn(mover.unit_id, options)
+
+    def test_an_air_unit_that_already_combat_moved_is_still_included(self):
+        # Air is the sole exception to combat_or_noncombat_not_both --
+        # still eligible for its own non-combat move even after already
+        # combat-moving this same turn.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        flyer = make_unit('Fighter', 'NAA')
+        flyer.has_moved_combat = True
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, units_by_territory={1: [flyer]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_noncombat_move_options('NAA')
+        self.assertIn(flyer.unit_id, options)
+        self.assertEqual(options[flyer.unit_id]['destinations'], [2])
+
+    def test_a_unit_with_no_legal_destination_is_excluded(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})  # no neighbors at all
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, units_by_territory={1: [mover]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_noncombat_move_options('NAA')
+        self.assertEqual(options, {})
+
+    def test_another_factions_units_are_excluded(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        mover = make_unit('Infantry', 'AAC')
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+                         units_by_territory={2: [mover]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_noncombat_move_options('NAA')
+        self.assertEqual(options, {})
+
+    def test_clean_foreign_territory_is_not_a_legal_destination(self):
+        # noncombat_move_destination: never a clean (uncontested),
+        # non-allied foreign territory -- only combat move can attack.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+                         units_by_territory={1: [mover]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_noncombat_move_options('NAA')
+        self.assertEqual(options, {})
+
+    def test_contested_foreign_territory_becomes_a_legal_destination(self):
+        # Same territory as above, but now contested (e.g. by this same
+        # turn's own earlier Combat Move) -- noncombat_move_destination
+        # allows reinforcing ANY already-contested territory regardless
+        # of who owns/contests it. Demonstrates why this query has to be
+        # computed fresh once Non-Combat Move is reached, not reused from
+        # a turn-start snapshot: this same unit had zero legal moves
+        # before the territory became contested.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        mover = make_unit('Infantry', 'NAA')
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+                         units_by_territory={1: [mover]}, contested={2: {'NAA', 'AAC'}})
+        engine = GameEngine(gs, data)
+        options = engine.legal_noncombat_move_options('NAA')
+        self.assertEqual(options[mover.unit_id]['destinations'], [2])
+
+
 class TestLandPurchase(unittest.TestCase):
     def test_buy_within_capacity_and_confirm(self):
         # territory 1: land, value 2, owned by NAA -- cap 2.

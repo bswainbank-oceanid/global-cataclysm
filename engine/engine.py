@@ -571,6 +571,60 @@ class GameEngine:
                 options[u.unit_id] = {'unit_type': u.unit_type, 'territory_id': tid, 'destinations': destinations}
         return options
 
+    def legal_noncombat_move_options(self, faction):
+        """{unit_id: {'unit_type': ..., 'territory_id': origin_id,
+        'destinations': [destination_id, ...]}} for every one of
+        `faction`'s own units still eligible to make a non-combat move --
+        has_moved_noncombat is False, and (unless it's an Air unit,
+        exempt from combat_or_noncombat_not_both) has_moved_combat is
+        also False. Meant to be queried AFTER Combat Resolution has
+        actually run and, for a human, after process_return_to_base's
+        automatic snap-back has already claimed every air unit it can
+        (that landing REPLACES the unit's non-combat move -- see
+        process_return_to_base -- so those units are naturally excluded
+        here too, same as any other already-moved unit): what's legal
+        genuinely depends on how combat played out (captures,
+        eliminations, newly contested territory), not just where things
+        stood at the start of the turn -- unlike legal_combat_move_
+        options, there's no meaningful "known at turn start" snapshot to
+        take here.
+
+        Unlike legal_combat_move_options, `destinations` is a plain,
+        sorted list of territory ids, not {destination: path} --
+        NonCombatMoveOrder only ever needs the endpoint (no blitz/route
+        concept off the combat-move phase; see that dataclass's own
+        docstring), so there's no route to report. A unit with zero
+        legal destinations is simply omitted, same convention as
+        legal_combat_move_options.
+
+        Deliberately does NOT special-case or omit an Air unit just
+        because every one of its remaining legal destinations would
+        strand it -- per movement.stranded_aircraft_rule, an aircraft
+        left over open water with no own carrier at phase end is simply
+        lost, and the engine already only enforces that actual loss
+        (_apply_stranded_aircraft_check), never blocks declaring the
+        move that leads to it. Warning a player before they submit one
+        is a client UI concern, not an engine-level restriction. No
+        bot-only policy exclusions applied here either, same rationale
+        as legal_combat_move_options."""
+        unit_defs = self.data.units()
+        options = {}
+        for tid, t in self.game_state.territories.items():
+            for u in t.units:
+                if u.owner != faction or u.has_moved_noncombat:
+                    continue
+                category = unit_defs[u.unit_type]['category']
+                if category == 'Air':
+                    legal = legal_air_move_destinations(u.unit_type, faction, tid, 'noncombat', self.game_state, self.data)
+                else:
+                    if u.has_moved_combat:
+                        continue
+                    legal = legal_noncombat_move_destinations(u.unit_type, faction, tid, self.game_state, self.data)
+                if not legal:
+                    continue
+                options[u.unit_id] = {'unit_type': u.unit_type, 'territory_id': tid, 'destinations': sorted(legal)}
+        return options
+
     def _execute_combat_moves(self, orders, faction, game_state):
         """Runs `orders` against `game_state`, relocating each unit
         along its validated path and applying every consequence as it

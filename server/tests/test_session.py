@@ -148,6 +148,10 @@ class TestHandleMessage(unittest.TestCase):
     def test_purchase_with_no_orders_drains_to_game_over_in_the_solo_scenario(self):
         session = _solo_session()
         messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        prompt = next(m for m in messages if m['type'] == 'your_turn')
+        self.assertEqual(prompt['phase'], 'NONCOMBAT_MOVE', 'Non-Combat Move is a real decision point now too')
+
+        messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
         types = [m['type'] for m in messages]
         self.assertEqual(types, ['state', 'game_over'], 'only 1 active faction -- would_game_end() is true immediately')
         self.assertTrue(session.engine.game_state.game_over)
@@ -158,6 +162,10 @@ class TestHandleMessage(unittest.TestCase):
         self.assertEqual(gs.active_faction, 'NAA')
 
         messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        prompt = next(m for m in messages if m['type'] == 'your_turn')
+        self.assertEqual(prompt['phase'], 'NONCOMBAT_MOVE')
+
+        messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
         types = [m['type'] for m in messages]
         self.assertEqual(types, ['state', 'your_turn'])
         self.assertEqual(messages[1]['faction'], 'UE', "advance_turn should have moved play on to UE")
@@ -170,7 +178,8 @@ class TestHandleMessage(unittest.TestCase):
         # End-to-end proof the whole validate-then-commit-then-drained
         # pipeline really places units, not just that the messages look
         # right -- deploy_and_collect_income runs as part of draining
-        # through the automatic phases.
+        # through the automatic phases once Non-Combat Move (a real
+        # decision point now) is also confirmed.
         session = _solo_session()
         gs = session.engine.game_state
         owned = next(tid for tid, t in gs.territories.items() if t.owner == 'NAA')
@@ -179,6 +188,7 @@ class TestHandleMessage(unittest.TestCase):
             'type': 'purchase', 'faction': 'NAA',
             'orders': [{'unit_type': 'Infantry', 'qty': 1, 'deploy_at': owned}],
         })
+        session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
         after = len(gs.territories[owned].units)
         self.assertEqual(after, before + 1)
 
@@ -186,7 +196,8 @@ class TestHandleMessage(unittest.TestCase):
 class TestBotTurnPlayback(unittest.TestCase):
     def test_confirming_the_humans_turn_plays_out_the_bots_whole_turn(self):
         session = _human_and_bot_session()
-        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
         types = [m['type'] for m in messages]
         # NAA's own turn has no battles to report (nothing to attack yet),
         # so no "combat_events" for NAA; then AAC's whole turn plays out
@@ -198,7 +209,8 @@ class TestBotTurnPlayback(unittest.TestCase):
 
     def test_bot_turn_events_include_a_purchase_and_income(self):
         session = _human_and_bot_session()
-        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
         bot_turn = next(m for m in messages if m['type'] == 'bot_turn')
         kinds = {e['kind'] for e in bot_turn['events']}
         self.assertIn('purchase', kinds)
@@ -206,20 +218,25 @@ class TestBotTurnPlayback(unittest.TestCase):
 
     def test_bot_turn_events_are_only_that_bots_own_turn_not_the_humans(self):
         session = _human_and_bot_session()
-        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
         bot_turn = next(m for m in messages if m['type'] == 'bot_turn')
         for event in bot_turn['events']:
             self.assertNotEqual(event.get('faction'), 'NAA')
 
     def test_second_purchase_by_the_human_plays_another_bot_turn(self):
         # game_start_settings.allow_combat_moves_first_turn defaults
-        # False, so NAA's FIRST turn skips Combat Move entirely (straight
-        # through to AAC's bot turn) -- by NAA's SECOND turn that no
-        # longer applies, so a real Combat Move decision is needed too.
+        # False, so NAA's FIRST turn skips Combat Move entirely -- Non-
+        # Combat Move is still a real decision point every turn though,
+        # so it needs an explicit (empty) submission before AAC's first
+        # bot turn plays. By NAA's SECOND turn, Combat Move is no longer
+        # skipped either, so both decisions are needed again.
         session = _human_and_bot_session()
         session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
         session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
-        messages = session.handle_message({'type': 'combat_move', 'faction': 'NAA', 'orders': []})
+        session.handle_message({'type': 'combat_move', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
         types = [m['type'] for m in messages]
         self.assertIn('bot_turn', types)
 
@@ -349,6 +366,74 @@ class TestCombatMovePlayback(unittest.TestCase):
         self.assertIn('combat_events', types)
         combat_msgs = [m for m in messages if m['type'] == 'combat_events']
         self.assertEqual(combat_msgs[0]['faction'], 'NAA')
+
+
+class TestNonCombatMovePlayback(unittest.TestCase):
+    """Non-Combat Move as a real human decision point: "non-combat move
+    options can change after combat. Should be a similar pattern, get
+    the full list of legal options after combat. User submits their
+    choices" (this session)."""
+
+    def test_your_turn_for_noncombat_move_includes_legal_options(self):
+        session = _two_human_session()
+        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        prompt = next(m for m in messages if m['type'] == 'your_turn')
+        self.assertEqual(prompt['phase'], 'NONCOMBAT_MOVE')
+        self.assertIn('legal_noncombat_moves', prompt)
+        self.assertNotIn('legal_combat_moves', prompt)
+
+    def test_reconnecting_mid_turn_at_noncombat_move_gets_the_same_prompt(self):
+        session = _two_human_session()
+        session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        messages = session.connect('NAA')
+        prompt = next(m for m in messages if m['type'] == 'your_turn')
+        self.assertEqual(prompt['phase'], 'NONCOMBAT_MOVE')
+
+    def test_noncombat_move_out_of_turn_is_rejected(self):
+        session = _two_human_session()
+        messages = session.handle_message({'type': 'noncombat_move', 'faction': 'UE', 'orders': []})
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_malformed_noncombat_move_order_is_rejected(self):
+        session = _two_human_session()
+        session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({
+            'type': 'noncombat_move', 'faction': 'NAA', 'orders': [{'unit_id': 1}],  # missing destination
+        })
+        self.assertEqual(messages[0]['type'], 'error')
+        self.assertIn('malformed order', messages[0]['message'])
+
+    def test_illegal_noncombat_move_is_rejected_by_the_real_engine(self):
+        session = _two_human_session()
+        session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({
+            'type': 'noncombat_move', 'faction': 'NAA',
+            'orders': [{'unit_id': 999999, 'destination': 1}],  # no such unit
+        })
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_picking_a_legal_option_actually_moves_the_unit_and_continues_the_turn(self):
+        session = _two_human_session()
+        gs = session.engine.game_state
+        session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+
+        options = session.engine.legal_noncombat_move_options('NAA')
+        self.assertTrue(options, "NAA should have at least one unit with a legal non-combat move")
+        unit_id = next(iter(options))
+        origin = options[unit_id]['territory_id']
+        destination = options[unit_id]['destinations'][0]
+
+        messages = session.handle_message({
+            'type': 'noncombat_move', 'faction': 'NAA', 'orders': [{'unit_id': unit_id, 'destination': destination}],
+        })
+        moved_unit = next(u for t in gs.territories.values() for u in t.units if u.unit_id == unit_id)
+        self.assertNotIn(moved_unit, gs.territories[origin].units)
+        self.assertIn(moved_unit, gs.territories[destination].units)
+        # NAA's turn is fully done (Non-Combat Move was the last real
+        # decision point) -- play moves on to UE.
+        types = [m['type'] for m in messages]
+        self.assertEqual(types, ['state', 'your_turn'])
+        self.assertEqual(messages[1]['faction'], 'UE')
 
 
 if __name__ == '__main__':
