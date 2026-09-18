@@ -312,4 +312,32 @@ the same JSON, not a parallel editing path.
   out-of-turn message exists).
   This is the project's first external dependency (`websockets`,
   `requirements.txt`) — `engine/` and `tools/` remain stdlib-only.
-- ⬜ Godot client / map rendering / wraparound camera.
+- 🔶 Godot client (`client/`, Godot 4.7 GL Compatibility, GDScript) -- the
+  map/HUD milestone is built: pannable/zoomable map with seamless
+  east-west wraparound (three side-by-side copies, camera folds x back
+  into range; smooth cursor-anchored zoom, drag inertia, keyboard and
+  trackpad); faction ownership overlay drawn from `territory_shapes.json`
+  polygons (unfillable ones cleaned by boolean union at load); zoom-aware
+  labels and hover/selection with picking (land before sea -- a sea
+  zone's polygon is its outer boundary, so sea highlight fills sit
+  beneath the ownership fill); adaptive unit badges (quiet Flag badges at
+  world zoom, per-type Strip badges from 1.0x, chosen after comparing
+  three styles on real data); a HUD following `reference/GC Mockup.pdf`
+  (title/round/phase block, one T/MCP/SC/UV/allies panel per seated
+  faction with eliminated ones dimmed, a selection panel with per-faction
+  unit stacks, an event log fed by `bot_turn`/`combat_events`); and a
+  WebSocket `Net` autoload that joins the server and feeds `state` into
+  `GameStore`, the single seam every view reads from. NOT built yet: the
+  per-phase human decision UIs (purchase, combat/non-combat move,
+  alliances, invite response), bot-turn/combat playback, and touch/tablet
+  polish -- the client currently only observes (`--autoplay N` answers
+  prompts with do-nothing for scripted runs).
+  Run: `python tools/sync_client_data.py` (copies reference data into the
+  gitignored `client/data`, `client/assets`), `python -m server.app`, then
+  `godot --path client -- --server`. Scripted UI verification without a
+  human: `python tools/client_shot.py OUT.png [--server --autoplay N]
+  [--cam x,y,z] [--select ID] [--wheel/--drag/--click ...]` runs the client,
+  injects real input through the window, and saves a screenshot (see
+  `client/scripts/dbg.gd`). Known protocol wart handled client-side: the
+  server broadcasts `state` before `advance_turn()`, so the client patches
+  active faction/phase from each `your_turn` prompt.
