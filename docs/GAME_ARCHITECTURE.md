@@ -157,47 +157,30 @@ the same JSON, not a parallel editing path.
   (`tools/compute_adjacency.py`).
 - ✅ Territory shape/polygon extraction (`tools/extract_territory_shapes.py`
   → `data/territory_shapes.json`).
-- ⬜ Rules engine (standalone module) — Purchase, Deploy + Income, Combat
-  Move, Combat Resolution, Non-Combat Move, Capture Territory, faction
-  elimination, game-end detection, and full turn/phase orchestration are
-  implemented and tested (`engine/`), along with a random bot
-  (`engine/bots/`) that drives full games through the same public API a
-  human UI would use, and a `GameStats` observer
-  (`engine/stats.py`) for per-turn/per-game reporting. The Alliance
+- ✅ Rules engine (standalone module, `engine/`, 381 tests) — Purchase
+  (including the carrierless-air and contested-purchase-lost deploy
+  fallbacks), Deploy + Income, Combat Move, Combat Resolution, Non-Combat
+  Move, Capture Territory, faction elimination, game-end detection, and
+  full turn/phase orchestration are implemented and tested, along with a
+  random bot (`engine/bots/`) that drives full games through the same
+  public API a human UI would use, and a `GameStats` observer
+  (`engine/stats.py`) for per-turn/per-game reporting. The full Alliance
   System (invite/accept/withdraw, the Strategic-Center withdrawal lock,
-  the rejoin ban, the former-ally reclaim combat bonus, an elimination-
-  aware max-alliance-size cap, and bot decision policy for all of it) and
-  all three of combat.first_round_bonuses' cases (amphibious landing,
-  sea-deploy ambush, former-ally reclaim) are now fully implemented too.
-  Two real, pre-existing bugs found and fixed this session, both about a
-  faction being able to become eliminated (`victory.elimination_rule`)
-  DURING its own turn, not just someone else's:
-  1. Its own units defending a contested territory it owns can die while
-     a co-stationed ALLY's survive, so `_determine_capture_winner` hands
-     that territory to the ally instead, right there in the active
-     faction's own Capture Territory phase.
-  2. `combat.true_territory_loss` (the more direct case, per the user:
-     "the clearest path to being eliminated on your turn is an enemy
-     contesting your SC... your forces might lose... this can lead to a
-     true loss of territory," no ally needed) -- `attacker_always_solo`
-     labels the active faction "attacker" even when a standing contest
-     against its OWN territory is just being re-fought on its own Combat
-     Resolution phase; if its defense fails outright, the surviving
-     non-allied enemy now actually takes ownership right there (see
-     `GameEngine._true_territory_loss_winner`), for any contested land
-     territory, not just Strategic Centers.
-  Either can drop the active faction below the Strategic Center
-  threshold mid-turn. `engine.bots.driver.play_to_completion` checks
-  `faction in gs.active_factions()` before every remaining per-phase call
-  once this happens, instead of crashing on the first one (previously
-  `deploy_and_collect_income` or `process_game_end_check` would raise
-  'not an active faction').
-  Not yet marked done because it still leaves an unrelated question open:
-  process_capture_territory/true_territory_loss only ever transfer
-  ownership to an actual surviving claimant; neither ever clears a
-  territory to unowned/neutral, so an eliminated faction's OTHER,
-  currently-uncontested territories can still sit in limbo (owned by a
-  faction with zero units and no more turns) until someone else
-  physically attacks and takes them -- not yet investigated further.
+  the rejoin ban, an elimination-aware max-alliance-size cap, and bot
+  decision policy for all of it), all three of `combat.
+  first_round_bonuses`' cases (amphibious landing, sea-deploy ambush,
+  former-ally reclaim — recurring, not one-shot, and exempted from true
+  territory loss while a betrayal reclaim is in progress), and `combat.
+  true_territory_loss` (a faction that fails to defend its own contested
+  land outright now actually loses it — including mid-turn, if that drops
+  it below the Strategic Center threshold) are all in too. A faction's
+  *other*, currently-uncontested territories staying owned by it after
+  elimination, until someone physically attacks them, is confirmed
+  intentional — not a gap.
+  Known non-blocking future work, not part of "the engine" itself:
+  `RandomBot` has no learning/lookahead (deliberate, for now); there's no
+  human-facing decision UI for alliance actions (the engine API is
+  complete — invite_to_alliance/withdraw_from_alliance take a decision as
+  input, same as every other order; a UI just needs to call them).
 - ⬜ Godot client / map rendering / wraparound camera.
 - ⬜ Backend / persistence / multiplayer.
