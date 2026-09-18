@@ -6,6 +6,8 @@ extends Node
 ##   --cam=x,y,zoom          jump the map camera
 ##   --hover=<id>            force-hover a territory
 ##   --select=<id>           force-select a territory
+##   --state=<abs path.json> load a GameState dict into GameStore
+##   --badges=flag|strip|category   unit badge style
 ##   --wheel=x,y,steps       inject mouse-wheel steps at a screen point (+ = zoom in)
 ##   --drag=x1,y1,x2,y2      inject a left-button drag between two screen points
 ##   --click=x,y             inject a left click at a screen point

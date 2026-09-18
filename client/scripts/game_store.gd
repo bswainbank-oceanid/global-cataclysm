@@ -21,3 +21,19 @@ func owner_of(tid: int) -> String:
 		return "" if t == null or t["owner"] == null else str(t["owner"])
 	var s = GameData.territories[tid]
 	return str(s.get("faction", ""))
+
+
+## Deployed units in a space grouped for display: owner -> {unit_type: count}.
+## Excludes units still in pending_deployment (bought, not yet on the board).
+func stacks(tid: int) -> Dictionary:
+	var out := {}
+	if state.is_empty():
+		return out
+	var t = state["territories"].get(str(tid))
+	if t == null:
+		return out
+	for u in t["units"]:
+		var by_type: Dictionary = out.get(u["owner"], {})
+		by_type[u["unit_type"]] = by_type.get(u["unit_type"], 0) + 1
+		out[u["owner"]] = by_type
+	return out

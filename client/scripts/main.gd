@@ -50,6 +50,10 @@ func _start_view() -> void:
 	var z := maxf(vp.x / GameData.map_w, vp.y / GameData.map_h)
 	_cam.jump_to(Vector2(GameData.map_w, GameData.map_h) * 0.5, z)
 	_world.set_zoom(_cam.zoom.x)
+	if Dbg.args.has("state"):
+		GameStore.set_state(JSON.parse_string(FileAccess.get_file_as_string(Dbg.args["state"])))
+	if Dbg.args.has("badges"):
+		_world.units.set_style(MapUnits.Style[Dbg.args["badges"].to_upper()])
 	if Dbg.args.has("cam"):
 		var c: PackedStringArray = Dbg.args["cam"].split(",")
 		_cam.jump_to(Vector2(float(c[0]), float(c[1])), float(c[2]))

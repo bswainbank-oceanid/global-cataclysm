@@ -12,16 +12,11 @@ var zoom := 1.0
 
 
 func set_zoom(z: float) -> void:
-	# Redraw only when a label-visibility threshold is crossed, not on every
-	# frame of a smooth zoom.
-	var old_bucket := _bucket(zoom)
+	# Label size is counter-scaled by 1/zoom, so it must be redrawn on every
+	# zoom change -- skipping frames between visibility thresholds left the
+	# text growing with the map.
 	zoom = z
-	if _bucket(z) != old_bucket:
-		queue_redraw()
-
-
-func _bucket(z: float) -> int:
-	return int(z >= LAND_FULL_NAME_ZOOM) + int(z >= SEA_MIN_ZOOM) * 2
+	queue_redraw()
 
 
 func _draw() -> void:

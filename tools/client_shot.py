@@ -5,7 +5,8 @@ arguments it understands). Syncs client data first.
 
 Run: python tools/client_shot.py OUT.png [--cam x,y,zoom] [--hover ID]
          [--select ID] [--wheel X,Y,STEPS]
-         [--drag X1,Y1,X2,Y2] [--click X,Y] [--wait FRAMES] [--size WxH]
+         [--drag X1,Y1,X2,Y2] [--click X,Y]
+         [--state FILE.json] [--badges flag|strip|category] [--wait FRAMES] [--size WxH]
 """
 import argparse
 import shutil
@@ -36,16 +37,21 @@ def main():
     ap.add_argument('--wheel')
     ap.add_argument('--drag')
     ap.add_argument('--click')
+    ap.add_argument('--state')
+    ap.add_argument('--badges')
     ap.add_argument('--wait', default='8')
     ap.add_argument('--size', default='1600x900')
     a = ap.parse_args()
 
     subprocess.run([sys.executable, str(ROOT / 'tools' / 'sync_client_data.py')], check=True)
     user_args = [f'--shot={Path(a.out).resolve()}', f'--wait={a.wait}']
-    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click'):
+    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click', 'state', 'badges'):
         if getattr(a, key):
-            user_args.append(f'--{key}={getattr(a, key)}')
-    cmd = [find_godot(), '--path', str(ROOT / 'client'), '--resolution', a.size, '--'] + user_args
+            val = getattr(a, key)
+            user_args.append(f'--{key}={Path(val).resolve() if key == "state" else val}')
+    godot = find_godot()
+    subprocess.run([godot, '--headless', '--path', str(ROOT / 'client'), '--import'], capture_output=True, timeout=180)
+    cmd = [godot, '--path', str(ROOT / 'client'), '--resolution', a.size, '--'] + user_args
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
     print(r.stdout[-1500:])
     if r.stderr.strip():

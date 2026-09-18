@@ -8,6 +8,7 @@ signal hovered_changed(tid: int)
 signal selected_changed(tid: int)
 
 var fill: MapFill
+var units: MapUnits
 var labels: MapLabels
 var highlight: MapHighlight        # top pass: outlines (+ land fills); the source of truth for hover/selection
 var _sea_fill_under: MapHighlight  # sea-zone fills, beneath the ownership fill
@@ -32,6 +33,8 @@ func _ready() -> void:
 	add_child(fill)
 	highlight = MapHighlight.new()
 	add_child(highlight)
+	units = MapUnits.new()
+	add_child(units)
 	labels = MapLabels.new()  # above the highlight so outlines never cut through text
 	add_child(labels)
 
@@ -46,6 +49,7 @@ func _load_base_texture() -> Texture2D:
 
 func set_zoom(z: float) -> void:
 	labels.set_zoom(z)
+	units.set_zoom(z)
 	highlight.set_zoom(z)
 	_sea_fill_under.set_zoom(z)
 
