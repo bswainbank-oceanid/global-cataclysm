@@ -796,8 +796,34 @@ class GameEngine:
             # did. No longer contested also means no longer a legal
             # non-combat-move destination for anyone else (a clean,
             # non-allied foreign territory never is).
+            #
+            # combat.true_territory_loss (this session): attacker_always_
+            # solo labels `faction` "attacker" here even when it's really
+            # just DEFENDING its own ground against a standing contest
+            # (an enemy attacked on an earlier turn and it's `faction`'s
+            # OWN Combat Resolution phase re-fighting the stalemate) --
+            # confirmed by the user: "the clearest path to being
+            # eliminated on your turn is an enemy contesting your SC...
+            # your forces might lose... this can lead to a true loss of
+            # territory." If `faction` was this territory's registered
+            # OWNER and just lost it outright (no ally needed -- unlike
+            # the ally-claims-it path in process_capture_territory, which
+            # never even runs here, see below), the surviving non-allied
+            # side must actually take ownership, right now, at the end
+            # of combat resolution -- process_capture_territory would
+            # never catch this on its own: it only ever scans territories
+            # `faction` is STILL listed in contested_by for, and that's
+            # exactly what's being cleared immediately below.
+            new_owner = None
+            if battle_type == 'land' and t.owner == faction:
+                new_owner = self._true_territory_loss_winner(t, faction)
             t.contested_by = None
-            if self.stats is not None:
+            if new_owner is not None:
+                previous_owner = t.owner
+                t.owner = new_owner
+                if self.stats is not None:
+                    self.stats.record_capture(self.game_state.global_turn, new_owner, territory_id, previous_owner)
+            elif self.stats is not None:
                 self.stats.record_contest_ended_without_capture(territory_id)
             return
 
@@ -829,6 +855,39 @@ class GameEngine:
             _is_ally_or_self(self.game_state, faction, u.owner) and unit_defs[u.unit_type]['category'] in ('Land', 'Sea')
             for u in territory_state.units
         )
+
+    def _true_territory_loss_winner(self, territory_state, faction):
+        """Called only when `faction` just lost its OWN territory
+        outright (see combat.true_territory_loss in _apply_battle_outcome
+        above) -- who actually takes it. Every LAND unit still present
+        that ISN'T `faction` or one of its allies is pooled by owner
+        (combat.multi_party_battles: could be more than one distinct
+        non-allied faction at once), and the one with the greatest TOTAL
+        cost of its land units here wins; ties broken by turn order
+        (GameState.factions' fixed iteration order -- earlier wins).
+        None if nobody has land presence at all (air-only survivors, or a
+        mutual wipe) -- the ground is simply abandoned, not captured;
+        ownership stays with `faction` by default, same standard
+        _determine_capture_winner uses for its own "nobody's here"
+        fallback (air can't capture, and nobody to hand it to either)."""
+        unit_defs = self.data.units()
+        by_owner = {}
+        for u in territory_state.units:
+            if unit_defs[u.unit_type]['category'] != 'Land':
+                continue
+            if _is_ally_or_self(self.game_state, faction, u.owner):
+                continue
+            by_owner.setdefault(u.owner, []).append(u)
+        if not by_owner:
+            return None
+
+        turn_order = list(self.game_state.factions.keys())
+
+        def sort_key(owner):
+            total_cost = sum(unit_defs[u.unit_type]['cost'] or 0 for u in by_owner[owner])
+            return (total_cost, -turn_order.index(owner))
+
+        return max(by_owner, key=sort_key)
 
     def _resolve_stranded_defender_aircraft(self, territory_id, result, rng):
         """combat.emergency_landing: once a sea battle concludes, any

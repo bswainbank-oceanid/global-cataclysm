@@ -169,24 +169,35 @@ the same JSON, not a parallel editing path.
   aware max-alliance-size cap, and bot decision policy for all of it) and
   all three of combat.first_round_bonuses' cases (amphibious landing,
   sea-deploy ambush, former-ally reclaim) are now fully implemented too.
-  A real, pre-existing bug found and fixed this session: a faction CAN
-  become eliminated (`victory.elimination_rule`) DURING its own turn, not
-  just someone else's (the clearest case: its own units defending a
-  contested territory it owns die while a co-stationed ALLY's survive, so
-  `_determine_capture_winner` hands that territory to the ally instead,
-  right there in the active faction's own Capture Territory phase --
-  dropping it below the Strategic Center threshold). `engine.bots.driver.
-  play_to_completion` now checks `faction in gs.active_factions()` before
-  every remaining per-phase call once this happens, instead of crashing
-  on the first one (previously `deploy_and_collect_income` or
-  `process_game_end_check` would raise 'not an active faction').
+  Two real, pre-existing bugs found and fixed this session, both about a
+  faction being able to become eliminated (`victory.elimination_rule`)
+  DURING its own turn, not just someone else's:
+  1. Its own units defending a contested territory it owns can die while
+     a co-stationed ALLY's survive, so `_determine_capture_winner` hands
+     that territory to the ally instead, right there in the active
+     faction's own Capture Territory phase.
+  2. `combat.true_territory_loss` (the more direct case, per the user:
+     "the clearest path to being eliminated on your turn is an enemy
+     contesting your SC... your forces might lose... this can lead to a
+     true loss of territory," no ally needed) -- `attacker_always_solo`
+     labels the active faction "attacker" even when a standing contest
+     against its OWN territory is just being re-fought on its own Combat
+     Resolution phase; if its defense fails outright, the surviving
+     non-allied enemy now actually takes ownership right there (see
+     `GameEngine._true_territory_loss_winner`), for any contested land
+     territory, not just Strategic Centers.
+  Either can drop the active faction below the Strategic Center
+  threshold mid-turn. `engine.bots.driver.play_to_completion` checks
+  `faction in gs.active_factions()` before every remaining per-phase call
+  once this happens, instead of crashing on the first one (previously
+  `deploy_and_collect_income` or `process_game_end_check` would raise
+  'not an active faction').
   Not yet marked done because it still leaves an unrelated question open:
-  process_capture_territory currently only ever transfers a contested
-  territory's ownership TO the active faction or one of its allies, never
-  clears it to unowned/neutral for a faction that's since been
-  eliminated, so an eliminated faction's other, still-standing
-  territories can sit in limbo (owned by a faction with zero units and no
-  more turns) until someone else physically attacks and takes them --
-  not yet investigated further.
+  process_capture_territory/true_territory_loss only ever transfer
+  ownership to an actual surviving claimant; neither ever clears a
+  territory to unowned/neutral, so an eliminated faction's OTHER,
+  currently-uncontested territories can still sit in limbo (owned by a
+  faction with zero units and no more turns) until someone else
+  physically attacks and takes them -- not yet investigated further.
 - ⬜ Godot client / map rendering / wraparound camera.
 - ⬜ Backend / persistence / multiplayer.

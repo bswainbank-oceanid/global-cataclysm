@@ -1274,6 +1274,102 @@ class TestCombatResolutionThenCaptureTerritory(unittest.TestCase):
         self.assertIn('NAA: final MPC=16 cumulative MPC=6', report)
 
 
+class TestTrueTerritoryLoss(unittest.TestCase):
+    """combat.true_territory_loss (this session, per the user): attacker_
+    always_solo labels the active faction "attacker" in resolve_combat
+    even when it's really just DEFENDING its own ground against a
+    standing contest (an enemy attacked on an earlier turn and it's the
+    owner's OWN Combat Resolution phase re-fighting the stalemate) -- no
+    ally needed. If that defense fails outright, the surviving non-allied
+    enemy must actually take ownership, right at the end of combat
+    resolution -- process_capture_territory never gets a chance to (it
+    only scans territories still listed in contested_by, and combat
+    resolution already clears that for this exact case). See also
+    test_random_bot.py's TestPlayToCompletion.
+    test_true_territory_loss_can_eliminate_the_active_faction_with_no_ally
+    for the full end-to-end drive."""
+
+    def test_ownership_transfers_to_the_surviving_enemy(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        defender_unit = make_unit('Infantry', 'AAC')  # AAC's own defense, about to lose
+        attacker_unit = make_unit('Infantry', 'X')  # the actual conqueror
+        gs = make_state(
+            data, {1: 'AAC'}, {'AAC': FactionMode.HUMAN, 'X': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'AAC', 'X'}}, units_by_territory={1: [defender_unit, attacker_unit]},
+        )
+        engine = GameEngine(gs, data)
+        # AAC (labeled "attacker" here, per attacker_always_solo, even
+        # though it's really defending its own ground) rolls 1 -- misses
+        # regardless; X (the "defender" role) rolls 5 -- a clean hit,
+        # kills AAC's hp-2 Infantry outright.
+        engine.resolve_combat('AAC', rng=ScriptedRNG([1, 5]))
+        self.assertEqual(gs.territories[1].owner, 'X')
+        self.assertIsNone(gs.territories[1].contested_by)
+
+    def test_recorded_as_a_capture_in_stats(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        defender_unit = make_unit('Infantry', 'AAC')
+        attacker_unit = make_unit('Infantry', 'X')
+        gs = make_state(
+            data, {1: 'AAC'}, {'AAC': FactionMode.HUMAN, 'X': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'AAC', 'X'}}, units_by_territory={1: [defender_unit, attacker_unit]}, global_turn=9,
+        )
+        stats = GameStats()
+        engine = GameEngine(gs, data, stats=stats)
+        engine.resolve_combat('AAC', rng=ScriptedRNG([1, 5]))
+        self.assertEqual(len(stats.captures), 1)
+        capture = stats.captures[0]
+        self.assertEqual(capture['turn'], 9)
+        self.assertEqual(capture['faction'], 'X')
+        self.assertEqual(capture['territory_id'], 1)
+        self.assertEqual(capture['previous_owner'], 'AAC')
+
+    def test_strongest_non_ally_wins_when_more_than_one_is_present(self):
+        # X and Z are both non-allied to AAC (and not allied with each
+        # other either -- combat.multi_party_battles pools them as one
+        # side regardless) -- Z's two Infantry outweigh X's one, so Z
+        # takes the territory, not X.
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        defender_unit = make_unit('Infantry', 'AAC')
+        x_unit = make_unit('Infantry', 'X')
+        z_unit1 = make_unit('Infantry', 'Z')
+        z_unit2 = make_unit('Infantry', 'Z')
+        gs = make_state(
+            data, {1: 'AAC'},
+            {'AAC': FactionMode.HUMAN, 'X': FactionMode.HUMAN, 'Z': FactionMode.HUMAN},
+            phase=Phase.COMBAT_RESOLUTION, contested={1: {'AAC', 'X', 'Z'}},
+            units_by_territory={1: [defender_unit, x_unit, z_unit1, z_unit2]},
+        )
+        engine = GameEngine(gs, data)
+        # Round 1: AAC's single roll (1) and all three defenders' rolls
+        # (1, 1, 1) are safe misses -- nobody dies, continue to round 2.
+        # Round 2: AAC rolls again (1, still irrelevant), then the first
+        # defender unit rolls 5 -- a clean hit, kills AAC's hp-2
+        # Infantry; the other two defenders' rolls (1, 1) don't matter.
+        engine.resolve_combat('AAC', rng=ScriptedRNG([1, 1, 1, 1, 1, 5, 1, 1]))
+        self.assertEqual(gs.territories[1].owner, 'Z')
+
+    def test_no_transfer_when_nobody_has_land_presence(self):
+        # A mutual wipe -- the ground is abandoned, not captured;
+        # ownership stays with AAC by default (same "air can't capture,
+        # nobody to hand it to" standard used elsewhere).
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        defender_unit = make_unit('Infantry', 'AAC', hp=1)
+        attacker_unit = make_unit('Infantry', 'X', hp=1)
+        gs = make_state(
+            data, {1: 'AAC'}, {'AAC': FactionMode.HUMAN, 'X': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'AAC', 'X'}}, units_by_territory={1: [defender_unit, attacker_unit]},
+        )
+        stats = GameStats()
+        engine = GameEngine(gs, data, stats=stats)
+        # Both roll 5 -- a clean hit against defense 5 either way,
+        # killing both hp-1 units in round 1.
+        engine.resolve_combat('AAC', rng=ScriptedRNG([5, 5]))
+        self.assertEqual(gs.territories[1].owner, 'AAC', 'nobody holds the ground -- ownership is unchanged, not captured')
+        self.assertIsNone(gs.territories[1].contested_by)
+        self.assertEqual(len(stats.captures), 0)
+
+
 class TestEmergencyLandingConsequence(unittest.TestCase):
     """Exercises _apply_battle_outcome/_resolve_stranded_defender_aircraft
     directly against a hand-built BattleResult -- keeps this focused on

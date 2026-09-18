@@ -7,7 +7,7 @@ from engine.engine import GameEngine
 from engine.setup import build_game_state
 from engine.state import Phase, FactionMode
 from engine.stats import GameStats
-from engine.tests.test_engine import FakeData, make_state, make_unit
+from engine.tests.test_engine import FakeData, ScriptedRNG, make_state, make_unit
 
 
 class FakeDataWithExcludedZones(FakeData):
@@ -451,6 +451,39 @@ class TestPlayToCompletion(unittest.TestCase):
 
         self.assertEqual(turns, 1)
         self.assertEqual(gs.territories[1].owner, 'Y', "AAC's ally claims the territory, per the documented rule")
+        self.assertTrue(gs.factions['AAC'].eliminated, 'AAC drops to 0 Strategic Centers and is eliminated')
+
+    def test_true_territory_loss_can_eliminate_the_active_faction_with_no_ally(self):
+        # The simpler, more direct path the user pointed out afterward:
+        # no ally needed at all. AAC owns territory 1 (its only Strategic
+        # Center), already contested by a non-allied X from an earlier
+        # turn. On AAC's own Combat Resolution phase (attacker_always_
+        # solo labels AAC "attacker" here even though it's really just
+        # defending its own ground), AAC's own Infantry dies while X's
+        # survives -- combat.true_territory_loss (GameEngine.
+        # _true_territory_loss_winner, see TestTrueTerritoryLoss in
+        # test_engine.py for the mechanism itself) transfers ownership
+        # straight to X and drops AAC to 0 Strategic Centers, eliminating
+        # it mid-turn -- same crash risk as the ally case above, fixed
+        # the same way.
+        data = FakeData(territories={1: {'type': 'land', 'value': 5, 'strategic_center': True}}, adjacency={})
+        defender_unit = make_unit('Infantry', 'AAC')
+        attacker_unit = make_unit('Infantry', 'X')
+        gs = make_state(
+            data, {1: 'AAC'}, {'AAC': FactionMode.BOT, 'X': FactionMode.BOT},
+            phase=Phase.COMBAT_RESOLUTION, contested={1: {'AAC', 'X'}},
+            units_by_territory={1: [defender_unit, attacker_unit]},
+        )
+        gs.active_faction = 'AAC'
+        # AAC (attacker role) rolls 1 -- misses regardless; X (defender
+        # role) rolls 5 -- a clean hit, kills AAC's hp-2 Infantry.
+        engine = GameEngine(gs, data, combat_rng=ScriptedRNG([1, 5]))
+        bots = {'AAC': RandomBot(engine, 'AAC')}
+
+        turns = play_to_completion(engine, bots, max_turns=1)  # must not raise
+
+        self.assertEqual(turns, 1)
+        self.assertEqual(gs.territories[1].owner, 'X')
         self.assertTrue(gs.factions['AAC'].eliminated, 'AAC drops to 0 Strategic Centers and is eliminated')
 
 
