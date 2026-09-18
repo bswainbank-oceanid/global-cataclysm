@@ -193,15 +193,22 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 19 tests) — first vertical slice,
+- ⬜ WebSocket server (`server/`, 18 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
   (NAA the only HUMAN faction, AAC a BOT, everyone else NEUTRAL),
   `server/session.py` handles the Purchase phase as a real client
-  decision (join/submit_purchases/confirm_purchases messages, with
-  legal_purchase_targets included so a client knows its choices before
-  composing an order) and auto-drives every other phase through to the
-  next decision point or game-over, the same single-while-loop shape
-  `engine/bots/driver.py` uses for a bot's non-decision phases.
+  decision -- a single one-shot `purchase` message carrying the
+  COMPLETE, final order list (decided this session: the client owns
+  territory selection and MPC budget tracking itself, so a separate
+  stage-then-confirm round trip has nothing left to teach it -- `your_turn`
+  still includes `legal_purchase_targets`, territory-level only, so the
+  client knows where it can buy before composing an order; unit
+  types/costs are the client's own `units.json` copy's job, same as
+  rendering needs anyway) -- and auto-drives every other phase through to
+  the next decision point or game-over, the same single-while-loop shape
+  `engine/bots/driver.py` uses for a bot's non-decision phases. The same
+  one-shot shape is the plan for Combat Move/Non-Combat Move once they
+  become real human decision points too.
   Bot turns and combat resolution are narrated, not just applied silently:
   `engine.turn_log.TurnLog` (a new engine-level observer, alongside
   `stats.GameStats` but an ORDERED per-event log rather than a whole-game

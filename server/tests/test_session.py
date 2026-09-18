@@ -92,16 +92,16 @@ class TestHandleMessage(unittest.TestCase):
         self.assertEqual(messages[0]['type'], 'error')
         self.assertEqual(messages[0]['to'], 'NAA')
 
-    def test_submit_purchases_out_of_turn_is_rejected(self):
+    def test_purchase_out_of_turn_is_rejected(self):
         session = _two_human_session()
-        messages = session.handle_message({'type': 'submit_purchases', 'faction': 'UE', 'orders': []})
+        messages = session.handle_message({'type': 'purchase', 'faction': 'UE', 'orders': []})
         self.assertEqual(messages[0]['type'], 'error')
         self.assertIn("not UE's turn", messages[0]['message'])
 
     def test_malformed_order_is_rejected(self):
         session = _solo_session()
         messages = session.handle_message({
-            'type': 'submit_purchases', 'faction': 'NAA', 'orders': [{'unit_type': 'Infantry'}],  # missing qty/deploy_at
+            'type': 'purchase', 'faction': 'NAA', 'orders': [{'unit_type': 'Infantry'}],  # missing qty/deploy_at
         })
         self.assertEqual(messages[0]['type'], 'error')
         self.assertIn('malformed order', messages[0]['message'])
@@ -111,43 +111,36 @@ class TestHandleMessage(unittest.TestCase):
         # a territory_id that doesn't exist on the map reliably raises
         # regardless of the real map's layout.
         messages = session.handle_message({
-            'type': 'submit_purchases', 'faction': 'NAA',
+            'type': 'purchase', 'faction': 'NAA',
             'orders': [{'unit_type': 'Infantry', 'qty': 1, 'deploy_at': -1}],
         })
         self.assertEqual(messages[0]['type'], 'error')
 
-    def test_submit_purchases_stages_without_committing(self):
+    def test_rejected_purchase_commits_nothing(self):
         session = _solo_session()
         gs = session.engine.game_state
         owned = next(tid for tid, t in gs.territories.items() if t.owner == 'NAA')
-        messages = session.handle_message({
-            'type': 'submit_purchases', 'faction': 'NAA',
-            'orders': [{'unit_type': 'Infantry', 'qty': 1, 'deploy_at': owned}],
+        before = gs.factions['NAA'].treasury_mpc
+        session.handle_message({
+            'type': 'purchase', 'faction': 'NAA',
+            'orders': [{'unit_type': 'Infantry', 'qty': 1, 'deploy_at': -1}],  # illegal target
         })
-        self.assertEqual(len(messages), 1)
-        self.assertEqual(messages[0]['type'], 'purchases_staged')
-        self.assertEqual(messages[0]['to'], 'NAA')
-        self.assertGreater(messages[0]['total_cost'], 0)
-        self.assertEqual(gs.territories[owned].pending_deployment, [], 'staged only -- not committed until confirm')
+        self.assertEqual(gs.territories[owned].pending_deployment, [])
+        self.assertEqual(gs.factions['NAA'].treasury_mpc, before)
 
-    def test_confirm_with_no_staged_orders_drains_to_game_over_in_the_solo_scenario(self):
+    def test_purchase_with_no_orders_drains_to_game_over_in_the_solo_scenario(self):
         session = _solo_session()
-        messages = session.handle_message({'type': 'confirm_purchases', 'faction': 'NAA'})
+        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
         types = [m['type'] for m in messages]
         self.assertEqual(types, ['state', 'game_over'], 'only 1 active faction -- would_game_end() is true immediately')
         self.assertTrue(session.engine.game_state.game_over)
 
-    def test_confirm_out_of_turn_is_rejected(self):
-        session = _two_human_session()
-        messages = session.handle_message({'type': 'confirm_purchases', 'faction': 'UE'})
-        self.assertEqual(messages[0]['type'], 'error')
-
-    def test_confirm_drains_through_to_the_next_factions_turn(self):
+    def test_purchase_drains_through_to_the_next_factions_turn(self):
         session = _two_human_session()
         gs = session.engine.game_state
         self.assertEqual(gs.active_faction, 'NAA')
 
-        messages = session.handle_message({'type': 'confirm_purchases', 'faction': 'NAA'})
+        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
         types = [m['type'] for m in messages]
         self.assertEqual(types, ['state', 'your_turn'])
         self.assertEqual(messages[1]['faction'], 'UE', "advance_turn should have moved play on to UE")
@@ -157,19 +150,18 @@ class TestHandleMessage(unittest.TestCase):
         self.assertFalse(gs.game_over)
 
     def test_full_purchase_and_deploy_actually_lands_units_on_the_board(self):
-        # End-to-end proof the whole staged-then-committed-then-drained
+        # End-to-end proof the whole validate-then-commit-then-drained
         # pipeline really places units, not just that the messages look
         # right -- deploy_and_collect_income runs as part of draining
         # through the automatic phases.
         session = _solo_session()
         gs = session.engine.game_state
         owned = next(tid for tid, t in gs.territories.items() if t.owner == 'NAA')
+        before = len(gs.territories[owned].units)
         session.handle_message({
-            'type': 'submit_purchases', 'faction': 'NAA',
+            'type': 'purchase', 'faction': 'NAA',
             'orders': [{'unit_type': 'Infantry', 'qty': 1, 'deploy_at': owned}],
         })
-        before = len(gs.territories[owned].units)
-        session.handle_message({'type': 'confirm_purchases', 'faction': 'NAA'})
         after = len(gs.territories[owned].units)
         self.assertEqual(after, before + 1)
 
@@ -177,7 +169,7 @@ class TestHandleMessage(unittest.TestCase):
 class TestBotTurnPlayback(unittest.TestCase):
     def test_confirming_the_humans_turn_plays_out_the_bots_whole_turn(self):
         session = _human_and_bot_session()
-        messages = session.handle_message({'type': 'confirm_purchases', 'faction': 'NAA'})
+        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
         types = [m['type'] for m in messages]
         # NAA's own turn has no battles to report (nothing to attack yet),
         # so no "combat_events" for NAA; then AAC's whole turn plays out
@@ -189,7 +181,7 @@ class TestBotTurnPlayback(unittest.TestCase):
 
     def test_bot_turn_events_include_a_purchase_and_income(self):
         session = _human_and_bot_session()
-        messages = session.handle_message({'type': 'confirm_purchases', 'faction': 'NAA'})
+        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
         bot_turn = next(m for m in messages if m['type'] == 'bot_turn')
         kinds = {e['kind'] for e in bot_turn['events']}
         self.assertIn('purchase', kinds)
@@ -197,15 +189,15 @@ class TestBotTurnPlayback(unittest.TestCase):
 
     def test_bot_turn_events_are_only_that_bots_own_turn_not_the_humans(self):
         session = _human_and_bot_session()
-        messages = session.handle_message({'type': 'confirm_purchases', 'faction': 'NAA'})
+        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
         bot_turn = next(m for m in messages if m['type'] == 'bot_turn')
         for event in bot_turn['events']:
             self.assertNotEqual(event.get('faction'), 'NAA')
 
-    def test_second_confirm_by_the_human_plays_another_bot_turn(self):
+    def test_second_purchase_by_the_human_plays_another_bot_turn(self):
         session = _human_and_bot_session()
-        session.handle_message({'type': 'confirm_purchases', 'faction': 'NAA'})
-        messages = session.handle_message({'type': 'confirm_purchases', 'faction': 'NAA'})
+        session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
         types = [m['type'] for m in messages]
         self.assertIn('bot_turn', types)
 
@@ -234,7 +226,7 @@ class TestHumanCombatPlayback(unittest.TestCase):
         # it never actually takes a turn in this test.
         gs.factions['AAC'].mode = FactionMode.HUMAN
 
-        messages = session.handle_message({'type': 'confirm_purchases', 'faction': 'NAA'})
+        messages = session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
         combat_msgs = [m for m in messages if m['type'] == 'combat_events']
         self.assertEqual(len(combat_msgs), 1)
         self.assertEqual(combat_msgs[0]['faction'], 'NAA')

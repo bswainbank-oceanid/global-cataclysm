@@ -1,14 +1,16 @@
 """
 A minimal scripted WebSocket client -- joins as NAA against server.app's
-demo game (NAA human, AAC bot), submits one small purchase, confirms it,
-then prints every message the server sends back -- including AAC's whole
-bot turn, played back event by event with a short pause between each, as
-a stand-in for a real client's own playback-speed control (decided this
-session: pacing is entirely a client-side concern once it has the full
-event list -- the server never paces delivery itself). Not a test in the
-unittest sense (nothing here is asserted); it's a manual sanity check
-that the actual network loop works end to end, since server/tests/
-test_session.py deliberately never opens a real socket.
+demo game (NAA human, AAC bot), sends one complete "purchase" order list
+(client-composed, one shot -- see server/session.py's own docstring on
+why there's no separate stage/confirm round trip), then prints every
+message the server sends back -- including AAC's whole bot turn, played
+back event by event with a short pause between each, as a stand-in for a
+real client's own playback-speed control (decided this session: pacing
+is entirely a client-side concern once it has the full event list -- the
+server never paces delivery itself). Not a test in the unittest sense
+(nothing here is asserted); it's a manual sanity check that the actual
+network loop works end to end, since server/tests/test_session.py
+deliberately never opens a real socket.
 
 Run the server first in one terminal: python -m server.app
 Then, in another terminal:            python -m server.test_client
@@ -75,12 +77,9 @@ async def main(uri):
         print(f'NAA owns territory {owned}, treasury {treasury} MPC')
 
         await ws.send(json.dumps({
-            'type': 'submit_purchases', 'faction': 'NAA',
+            'type': 'purchase', 'faction': 'NAA',
             'orders': [{'unit_type': 'Infantry', 'qty': 1, 'deploy_at': int(owned)}],
         }))
-        print('<-', json.loads(await ws.recv()))
-
-        await ws.send(json.dumps({'type': 'confirm_purchases', 'faction': 'NAA'}))
         while True:
             msg = json.loads(await ws.recv())
             if msg['type'] in ('bot_turn', 'combat_events'):

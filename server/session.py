@@ -19,28 +19,31 @@ Client -> server (each a dict with at least "type" and "faction"):
         see this module's own docstring note on that). Always answered
         with a full "state" message; also a "your_turn" if it's already
         this faction's Purchase phase.
-    {"type": "submit_purchases", "faction": "NAA",
+    {"type": "purchase", "faction": "NAA",
      "orders": [{"unit_type": "Infantry", "qty": 2, "deploy_at": 5}, ...]}
-        Stages (not yet committed -- engine.engine.GameEngine.
-        submit_purchases semantics) a purchase order list, validated
-        against the real engine. Answered with "purchases_staged" (and
-        the running total cost) or "error", sent only to the faction
-        that submitted it -- staging isn't visible in GameState yet, so
-        there's nothing to broadcast.
-    {"type": "confirm_purchases", "faction": "NAA"}
-        Commits the staged list (engine.confirm_purchases), then drains
-        every following automatic phase for THIS faction's own turn
-        through to Alliances, broadcasting a "combat_events" message
-        first if that drove any battles (so the human can watch their
-        own attack land, using the same playback UI a bot's turn uses).
-        Then: a broadcast "state"; if the faction that just finished was
-        the last one before the game ends, "game_over"; otherwise
-        advance_turn() runs and, for as long as the NEW active faction
-        is BOT-controlled, its entire turn is played out immediately (a
-        bot never waits for input) and shipped as one "bot_turn" message
-        per bot turn (every order it made and every roll of every battle,
-        in order) before the loop finally reaches a HUMAN faction's turn
-        (a "your_turn") or the game ends.
+        The COMPLETE, final order list for this Purchase phase, one shot
+        -- decided this session: the client owns territory selection and
+        MPC budget tracking itself (it already needs its own copy of
+        units.json for cost/type info to render the purchase UI at all),
+        so there's nothing left for a separate stage-then-confirm round
+        trip to teach the client that it doesn't already know. Calls
+        engine.submit_purchases then confirm_purchases back to back
+        (still two engine-level calls, just not two client-facing
+        messages -- a failed submit_purchases never partially applies
+        anything, so there's nothing to unwind if it's rejected); an
+        "error" if either raises, otherwise drains every following
+        automatic phase for THIS faction's own turn through to Alliances,
+        broadcasting a "combat_events" message first if that drove any
+        battles (so the human can watch their own attack land, using the
+        same playback UI a bot's turn uses). Then: a broadcast "state";
+        if the faction that just finished was the last one before the
+        game ends, "game_over"; otherwise advance_turn() runs and, for as
+        long as the NEW active faction is BOT-controlled, its entire turn
+        is played out immediately (a bot never waits for input) and
+        shipped as one "bot_turn" message per bot turn (every order it
+        made and every roll of every battle, in order) before the loop
+        finally reaches a HUMAN faction's turn (a "your_turn") or the
+        game ends.
 
 Server -> client (each a dict; a "to": faction_code key means send only
 to that faction's connection(s), no "to" key means broadcast to every
@@ -48,7 +51,6 @@ connection on this game -- everyone sees the same board, no fog of war):
     {"type": "state", "game_state": <GameState.to_dict()>}
     {"type": "your_turn", "faction": "NAA", "phase": "PURCHASE",
      "legal_purchase_targets": {"sc_targets": [...], "other_targets": [...]}}
-    {"type": "purchases_staged", "to": "NAA", "total_cost": 12}
     {"type": "combat_events", "faction": "NAA", "events": [...]}
         Only the battle_event entries (turn_log.TurnLog.record_battle_
         events' shape) from a HUMAN faction's own Combat Resolution --
@@ -67,14 +69,18 @@ connection on this game -- everyone sees the same board, no fog of war):
 Not yet built (see docs/GAME_ARCHITECTURE.md): Combat Move/Non-Combat
 Move/Alliances as real HUMAN decision points (submitted as empty orders
 here -- fine for now since the one demo scenario, server.app._build_demo_
-session, gives the human faction no reason to need them yet) and the
-legal-move-query messages that would need; multiple simultaneous games
-(one GameSession per server process for now); real auth/session
-management (a "join" message is trusted at face value -- nothing stops
-two connections both claiming the same faction); client-controlled
-PACING of playback is entirely a client-side concern once it has a
-"bot_turn"/"combat_events" message's full event list (decided this
-session) -- the server never paces delivery itself.
+session, gives the human faction no reason to need them yet). When they
+are built, expect the same one-shot shape "purchase" uses: the client
+composes the complete move/alliance-action list itself (it'll need its
+own copy of adjacency/movement-legality data to render the choices
+either way) and sends it once -- not a per-unit or stage-then-confirm
+round trip. Also not yet built: multiple simultaneous games (one
+GameSession per server process for now); real auth/session management (a
+"join" message is trusted at face value -- nothing stops two connections
+both claiming the same faction); client-controlled PACING of playback is
+entirely a client-side concern once it has a "bot_turn"/"combat_events"
+message's full event list (decided this session) -- the server never
+paces delivery itself.
 """
 from engine.engine import PurchaseOrder
 from engine.state import FactionMode, Phase
@@ -113,13 +119,11 @@ class GameSession:
         faction = msg.get('faction')
         if msg_type == 'join':
             return self.connect(faction)
-        if msg_type == 'submit_purchases':
-            return self._handle_submit_purchases(faction, msg.get('orders') or [])
-        if msg_type == 'confirm_purchases':
-            return self._handle_confirm_purchases(faction)
+        if msg_type == 'purchase':
+            return self._handle_purchase(faction, msg.get('orders') or [])
         return [self._error(faction, f'unknown message type: {msg_type!r}')]
 
-    def _handle_submit_purchases(self, faction, raw_orders):
+    def _handle_purchase(self, faction, raw_orders):
         gs = self.engine.game_state
         if faction != gs.active_faction:
             return [self._error(faction, f"it is not {faction}'s turn")]
@@ -129,16 +133,7 @@ class GameSession:
             return [self._error(faction, f'malformed order: {e}')]
 
         try:
-            total_cost = self.engine.submit_purchases(faction, orders)
-        except ValueError as e:
-            return [self._error(faction, str(e))]
-        return [{'type': 'purchases_staged', 'to': faction, 'total_cost': total_cost}]
-
-    def _handle_confirm_purchases(self, faction):
-        gs = self.engine.game_state
-        if faction != gs.active_faction:
-            return [self._error(faction, f"it is not {faction}'s turn")]
-        try:
+            self.engine.submit_purchases(faction, orders)
             self.engine.confirm_purchases(faction)
         except ValueError as e:
             return [self._error(faction, str(e))]
@@ -166,7 +161,7 @@ class GameSession:
         after advance_turn -- see _play_bot_turns_until_human_or_game_
         over); `bot=None` means those phases are left exactly as the
         caller already handled them (Purchase, by the human's own
-        confirm_purchases, called just before this) or auto-submitted
+        _handle_purchase, called just before this) or auto-submitted
         empty (Combat Move/Non-Combat Move -- see this module's own
         docstring on what's not built yet). Combat Resolution always
         runs for real either way -- there's no player choice in HOW it
@@ -218,7 +213,7 @@ class GameSession:
         consecutive BOT faction's entire turn (a bot never waits for
         input) until either a HUMAN faction's turn comes up or the game
         ends. Returns one "bot_turn" message (the WHOLE turn's worth of
-        turn_log events, in order -- unlike _handle_confirm_purchases'
+        turn_log events, in order -- unlike _handle_purchase's
         "combat_events", which deliberately narrows to just the battle
         narrative since a human already knows its OWN other decisions)
         plus a "state" broadcast per bot turn played, then a final
