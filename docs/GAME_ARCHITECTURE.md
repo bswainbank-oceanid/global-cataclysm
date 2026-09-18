@@ -193,9 +193,11 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 53 tests) — first vertical slice,
+- ⬜ WebSocket server (`server/`, 63 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
-  (NAA the only HUMAN faction, AAC a BOT, everyone else NEUTRAL). Every one
+  (NAA and AAC both BOTs watched by a spectator client -- see the watch
+  mode below; the human-play protocol described next is still in place and
+  tested, just no longer what the demo server runs). Every one
   of the 7 `turn_order` phases is now a real client decision (Combat
   Resolution excepted -- no player choice in HOW it resolves, only whether
   to attack at all via Combat Move), same one-shot shape for each: a
@@ -330,25 +332,26 @@ the same JSON, not a parallel editing path.
   `GameStore`, the single seam every view reads from. NOT built yet: the
   per-phase human decision UIs (purchase, combat/non-combat move,
   alliances, invite response), bot-turn/combat playback, and touch/tablet
-  polish -- until those exist, a **Next button** (or Space) steps the
-  scenario one phase per press: it answers the human's prompt with the
-  do-nothing decision for that phase, and reveals a bot's turn one of its
-  seven phases per press (`TurnStepper` queues server messages; the server
-  sends no mid-bot-turn snapshots, so the map/HUD numbers update when the
-  bot's turn closes). The human's automatic phases are stepped too: the
-  server reports them as `combat_events` (roll-by-roll plus one
-  `battle_summary` per battle: both sides' participants and casualties) and
-  a new `turn_events` (capture / deploy / income), and the stepper reveals
-  the phases that passed between prompts as steps of their own. The engine's
-  `TurnLog` records each move order's unit type and origin (`from`) so the
-  log can say "3x Armor: Panama > Costa Rica". `--steps N` / `--autoplay N`
-  drive it in scripted runs.
+  polish -- until those exist the client is a **watcher**: NAA and AAC are
+  both bots, and the game is stepped with a **Next button** (or Space).
+  The UI pattern is meant to carry over to player turns: the upper right
+  panel shows details of the selected space (later: where orders get
+  picked), and the lower box holds the **queued orders** for the current
+  phase, above a log of what has been executed. The server side is
+  `server/stepper.py` (`PhaseStepper`, protocol in its docstring): a
+  spectator sends `watch`; the server has the active bot *plan* the phase
+  (`RandomBot.plan_*` stage orders through the engine's `submit_*`; Combat
+  Resolution queues the battles about to be fought; the dice-free automatic
+  phases queue a dry run of themselves) and sends a `phase_queue`. `next`
+  commits the queue (`confirm_*` / `resolve_combat` / ...), sends
+  `phase_result` (what executing logged: rolls and per-battle participants
+  and casualties), a fresh `state` (so the map/HUD update after every phase)
+  and the following `phase_queue`. `--steps N` drives it in scripted runs.
   Run: `python tools/sync_client_data.py` (copies reference data into the
   gitignored `client/data`, `client/assets`), `python -m server.app`, then
   `godot --path client -- --server`. Scripted UI verification without a
-  human: `python tools/client_shot.py OUT.png [--server --autoplay N]
+  human: `python tools/client_shot.py OUT.png [--server --steps N]
   [--cam x,y,z] [--select ID] [--wheel/--drag/--click ...]` runs the client,
   injects real input through the window, and saves a screenshot (see
-  `client/scripts/dbg.gd`). Known protocol wart handled client-side: the
-  server broadcasts `state` before `advance_turn()`, so the client patches
-  active faction/phase from each `your_turn` prompt.
+  `client/scripts/dbg.gd`); the server keeps one game, so restart it
+  between scripted runs.

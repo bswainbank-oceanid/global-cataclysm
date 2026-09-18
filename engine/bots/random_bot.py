@@ -106,6 +106,14 @@ class RandomBot:
     # ---- Purchase -----------------------------------------------------
 
     def take_purchase_phase(self):
+        self.plan_purchase_phase()
+        self.engine.confirm_purchases(self.faction)
+
+    def plan_purchase_phase(self):
+        """Decides and STAGES this phase's purchases (engine.submit_purchases)
+        without committing them -- the staged list is what a watcher shows
+        as queued; engine.confirm_purchases executes it. take_purchase_phase
+        is plan + confirm back to back."""
         self._maybe_reroll_variable_alliance_settings()
         self._maybe_roll_treacherous_intent()
         gs = self.engine.game_state
@@ -120,7 +128,6 @@ class RandomBot:
             orders = self._random_fill_purchases(orders, other_targets, treasury)
 
         self.engine.submit_purchases(self.faction, orders)
-        self.engine.confirm_purchases(self.faction)
 
     def _purchase_target_pools(self):
         """(sc_targets, other_targets): GameEngine.legal_purchase_targets
@@ -207,7 +214,12 @@ class RandomBot:
     # ---- Combat Move ----------------------------------------------------
 
     def take_combat_move_phase(self):
-        """Plans against a single working copy of the game state, applying
+        self.plan_combat_move_phase()
+        self.engine.confirm_combat_moves(self.faction)
+
+    def plan_combat_move_phase(self):
+        """Decides and STAGES this phase's combat moves (confirm_combat_moves
+        commits them; take_combat_move_phase is plan + confirm). Plans against a single working copy of the game state, applying
         each accepted order to it immediately (via GameEngine's own
         _execute_combat_moves -- the same primitive submit_combat_moves
         uses to validate) before deciding the next unit's move -- so a
@@ -242,7 +254,7 @@ class RandomBot:
                     continue
                 orders.append(order)
 
-        self._submit_incrementally(orders, self.engine.submit_combat_moves, self.engine.confirm_combat_moves)
+        self._stage_incrementally(orders, self.engine.submit_combat_moves)
 
     def _first_combat_move_path(self, unit, origin_id, category, game_state):
         """The bot never retreats from a contested area via combat move
@@ -296,9 +308,14 @@ class RandomBot:
     # ---- Non-Combat Move ------------------------------------------------
 
     def take_noncombat_move_phase(self):
+        self.plan_noncombat_move_phase()
+        self.engine.confirm_noncombat_moves(self.faction)
+
+    def plan_noncombat_move_phase(self):
         """Same single-working-copy planning approach as
-        take_combat_move_phase, for the same reason (avoid an O(units)
-        number of whole-board deep copies)."""
+        plan_combat_move_phase, for the same reason (avoid an O(units)
+        number of whole-board deep copies). Stages only; confirm_
+        noncombat_moves commits."""
         self.engine.process_return_to_base(self.faction)  # mutates the real game state; must run before the copy below
         working = copy.deepcopy(self.engine.game_state)
         unit_defs = self.engine.data.units()
@@ -323,7 +340,7 @@ class RandomBot:
                     continue
                 orders.append(order)
 
-        self._submit_incrementally(orders, self.engine.submit_noncombat_moves, self.engine.confirm_noncombat_moves)
+        self._stage_incrementally(orders, self.engine.submit_noncombat_moves)
 
     def _advance_toward_nearest_enemy(self, unit, origin_id, category, game_state):
         data = self.engine.data
@@ -390,6 +407,9 @@ class RandomBot:
             fstate.pending_treacherous_withdrawal = self.rng.random() < 0.15
 
     def take_alliance_phase(self):
+        self.commit_alliance_phase(self.plan_alliance_phase())
+
+    def plan_alliance_phase(self):
         """One optional action this turn, per alliance_strategy/
         alliance_behavior (engine.bots.alliance_policy) -- withdrawing
         (behavior-driven) takes priority over inviting (strategy-driven)
@@ -400,46 +420,53 @@ class RandomBot:
         faction's invite this same Alliances-phase pass already changed
         something) -- silently do nothing that turn rather than treat it
         as a bug, exactly like every other speculative bot decision in
-        this file."""
+        this file.
+
+        Returns the chosen action WITHOUT executing it -- {'action':
+        'withdraw'} / {'action': 'invite', 'target': code, 'accepts': bool}
+        / {'action': 'none'} -- for commit_alliance_phase (a watcher shows
+        it as queued first). take_alliance_phase is plan + commit."""
         gs = self.engine.game_state
         fstate = gs.factions[self.faction]
 
         if fstate.alliance is not None and gs.can_withdraw_from_alliances:
             if alliance_policy.should_withdraw(self.engine, self.faction):
-                try:
-                    self.engine.withdraw_from_alliance(self.faction)
-                except ValueError:
-                    pass
-                return
+                return {'action': 'withdraw'}
 
         target = alliance_policy.choose_invite_target(self.engine, self.faction, self.rng)
         if target is None:
-            return
+            return {'action': 'none'}
         accepts = alliance_policy.accepts_invite(self.engine, target, self.faction)
+        return {'action': 'invite', 'target': target, 'accepts': accepts}
+
+    def commit_alliance_phase(self, plan):
+        """Executes a plan_alliance_phase() result. A ValueError from the
+        engine (the advisory pick no longer holds up) silently does
+        nothing, as it always did."""
         try:
-            self.engine.invite_to_alliance(self.faction, target, accepts)
+            if plan['action'] == 'withdraw':
+                self.engine.withdraw_from_alliance(self.faction)
+            elif plan['action'] == 'invite':
+                self.engine.invite_to_alliance(self.faction, plan['target'], plan['accepts'])
         except ValueError:
             pass
 
     # ---- shared submission helper ---------------------------------------
 
-    def _submit_incrementally(self, orders, submit_fn, confirm_fn):
-        """Tries the whole candidate list in one call first -- the fast,
-        common path, since every order here was already checked for
-        legality in isolation when picked, so the whole batch is
-        usually legal together too. submit_combat_moves/
-        submit_noncombat_moves each deep-copy the entire GameState to
-        validate, so this matters: falling back to accepting one order
-        at a time (dropping whichever turn out illegal once earlier
-        ones in the same batch are applied -- e.g. two units both
-        wanting to move through the same just-captured territory) is
-        only worth its O(n) extra deep-copies in the rare case the
-        whole batch doesn't already work. Always confirms, even an
-        empty list, so the phase's own `_*_confirmed` guard is satisfied
-        for a unitless faction/turn."""
+    def _stage_incrementally(self, orders, submit_fn):
+        """Stages the candidate list (engine.submit_*; confirming is the
+        caller's job) -- the whole list in one call first, the fast, common
+        path, since every order here was already checked for legality in
+        isolation when picked, so the whole batch is usually legal together
+        too. submit_combat_moves/submit_noncombat_moves each deep-copy the
+        entire GameState to validate, so this matters: falling back to
+        accepting one order at a time (dropping whichever turn out illegal
+        once earlier ones in the same batch are applied -- e.g. two units
+        both wanting to move through the same just-captured territory) is
+        only worth its O(n) extra deep-copies in the rare case the whole
+        batch doesn't already work. Always stages, even an empty list."""
         try:
             submit_fn(self.faction, orders)
-            confirm_fn(self.faction)
             return
         except ValueError:
             pass
@@ -453,4 +480,3 @@ class RandomBot:
                 continue
             accepted = candidate
         submit_fn(self.faction, accepted)
-        confirm_fn(self.faction)

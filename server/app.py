@@ -9,12 +9,11 @@ just that faction's connection(s), no "to" key means every connection on
 this game (everyone sees the same board).
 
 First vertical slice, per docs/GAME_ARCHITECTURE.md: ONE hardcoded game
-(NAA the only HUMAN faction, AAC a BOT faction, every other faction
-NEUTRAL -- see _build_demo_session), built fresh each time this process
-starts, with randomize_play_order=False so NAA -- the only HUMAN, the
-only faction any client can "join" as -- always goes first (a known
-simplification: this module doesn't yet handle a client connecting mid-
-game to a scenario that opens on a bot's turn). Not yet: multiple
+(NAA and AAC both BOTs, every other faction NEUTRAL -- see
+_build_demo_session), built fresh each time this process starts, with
+randomize_play_order=False so NAA goes first. Clients connect as
+watchers ({"type": "watch"}) and step the game a phase at a time with
+{"type": "next"} -- see server/stepper.py. Not yet: multiple
 simultaneous games, persistence, real auth (a "join" message is trusted
 at face value for now).
 
@@ -39,15 +38,17 @@ from .session import GameSession
 
 logger = logging.getLogger('server')
 
+WATCHER = '*watchers'  # sockets_by_faction key for spectators (not a faction code)
+
 
 def _build_demo_session():
     modes = {code: FactionMode.NEUTRAL for code in data_module.factions()}
-    modes['NAA'] = FactionMode.HUMAN
+    modes['NAA'] = FactionMode.BOT
     modes['AAC'] = FactionMode.BOT
     gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
     turn_log = TurnLog()
     engine = GameEngine(gs, data_module, turn_log=turn_log)
-    bots = {'AAC': RandomBot(engine, 'AAC', rng=random.Random())}
+    bots = {code: RandomBot(engine, code, rng=random.Random()) for code in ('NAA', 'AAC')}
     return GameSession(engine, turn_log, bots)
 
 
@@ -72,7 +73,10 @@ class Server:
                     await websocket.send(json.dumps({'type': 'error', 'message': 'malformed JSON'}))
                     continue
 
-                if msg.get('type') == 'join' and msg.get('faction'):
+                if msg.get('type') == 'watch':
+                    joined_as = WATCHER
+                    self.sockets_by_faction.setdefault(joined_as, set()).add(websocket)
+                elif msg.get('type') == 'join' and msg.get('faction'):
                     joined_as = msg['faction']
                     self.sockets_by_faction.setdefault(joined_as, set()).add(websocket)
 

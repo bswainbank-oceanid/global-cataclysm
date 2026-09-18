@@ -124,6 +124,10 @@ Client -> server (each a dict with at least "type" and "faction"):
         with `faction`'s answer and finishes the INVITER's turn (not
         `faction`'s own -- it was never `faction`'s turn to begin with).
 
+Watch mode (every faction a BOT, a spectator steps the game one phase at a
+time): "watch" / "next" and the "phase_queue" / "phase_result" messages are
+documented in server/stepper.py.
+
 Server -> client (each a dict; a "to": faction_code key means send only
 to that faction's connection(s), no "to" key means broadcast to every
 connection on this game -- everyone sees the same board, no fog of war):
@@ -200,6 +204,7 @@ session) -- the server never paces delivery itself.
 from engine.bots.alliance_policy import accepts_invite
 from engine.engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from engine.state import FactionMode, Phase
+from .stepper import PhaseStepper
 
 # turn_log event kinds a HUMAN's own drained (automatic) phases produce, and
 # which message reports them: Combat Resolution's battles ("combat_events",
@@ -219,6 +224,9 @@ class GameSession:
         self.engine = engine
         self.turn_log = turn_log
         self.bots = bots or {}  # faction_code -> RandomBot, one per BOT faction in play
+        # The all-bot "watch" mode ({"type": "watch"}/{"type": "next"}) --
+        # see server/stepper.py for its own protocol.
+        self.stepper = PhaseStepper(engine, turn_log, self.bots)
         # The ONE out-of-turn decision in the whole protocol -- everything
         # else is always made by GameState.active_faction, on its own
         # turn. Set only between a HUMAN inviting another HUMAN (see
@@ -270,6 +278,10 @@ class GameSession:
         faction = msg.get('faction')
         if msg_type == 'join':
             return self.connect(faction)
+        if msg_type == 'watch':
+            return self.stepper.watch()
+        if msg_type == 'next':
+            return self.stepper.next()
         if msg_type == 'purchase':
             return self._handle_purchase(faction, msg.get('orders') or [])
         if msg_type == 'combat_move':

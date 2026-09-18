@@ -15,19 +15,6 @@ func set_state(new_state: Dictionary) -> void:
 	state_changed.emit()
 
 
-## A `your_turn` prompt is authoritative about whose turn/phase it is NOW.
-## The server broadcasts `state` before it advances the turn, so after a
-## turn ends the last `state` still names the faction that just finished;
-## patching the two fields here keeps the HUD correct without waiting for a
-## state message that (for a mid-turn phase change) never comes.
-func note_prompt(faction: String, phase: String) -> void:
-	if state.is_empty():
-		return
-	state["active_faction"] = faction
-	state["phase"] = phase
-	state_changed.emit()
-
-
 func owner_of(tid: int) -> String:
 	if not state.is_empty():
 		var t = state["territories"].get(str(tid))

@@ -2,10 +2,13 @@ class_name SidePanel
 extends VBoxContainer
 ## The two right-hand panels from the mockup. Upper: details of the
 ## selected space (owner, value, strategic center, contest, and the units
-## there grouped by faction and type). Lower: an event log the network layer
-## appends to (bot turns, combat results, alerts).
+## there grouped by faction and type) -- later also where orders get picked.
+## Lower: the orders QUEUED for the current phase (what Next will execute),
+## above a log of the phases already executed.
 
 var _detail: VBoxContainer
+var _queue: RichTextLabel
+var _queue_head: Label
 var _log: RichTextLabel
 var _selected := -1
 var _next: Button
@@ -56,14 +59,15 @@ func _ready() -> void:
 	lower.add_theme_stylebox_override("panel", HudStyle.box())
 	var lv := VBoxContainer.new()
 	lower.add_child(lv)
-	lv.add_child(HudStyle.label("Log", 12, HudStyle.TEXT_DIM))
-	_log = RichTextLabel.new()
-	_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_log.bbcode_enabled = true
+	_queue_head = HudStyle.label("Queued orders", 12, HudStyle.GOLD)
+	lv.add_child(_queue_head)
+	_queue = _rich_text()
+	_queue.scroll_following = false
+	lv.add_child(_queue)
+	lv.add_child(HSeparator.new())
+	lv.add_child(HudStyle.label("Executed", 12, HudStyle.TEXT_DIM))
+	_log = _rich_text()
 	_log.scroll_following = true
-	_log.add_theme_font_size_override("normal_font_size", 12)
-	_log.add_theme_font_size_override("bold_font_size", 12)  # default bold is larger, which made battle headings tower over the text
-	_log.add_theme_color_override("default_color", HudStyle.TEXT)
 	lv.add_child(_log)
 	add_child(lower)
 
@@ -74,6 +78,36 @@ func _ready() -> void:
 func _sync_next() -> void:
 	_next.text = Stepper.button_text
 	_next.disabled = not Stepper.button_enabled
+
+
+func _rich_text() -> RichTextLabel:
+	var r := RichTextLabel.new()
+	r.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	r.bbcode_enabled = true
+	r.add_theme_font_size_override("normal_font_size", 12)
+	r.add_theme_font_size_override("bold_font_size", 12)  # default bold is larger, which made battle headings tower over the text
+	r.add_theme_color_override("default_color", HudStyle.TEXT)
+	return r
+
+
+## The orders waiting for Next: what the current phase's bot decided (or, for
+## an automatic phase, what running it will do).
+func show_queue(header: String, skipped: Array, events: Array) -> void:
+	_queue_head.text = "Queued  -  %s" % header
+	_queue.clear()
+	for phase in skipped:
+		_queue.append_text("[color=#7f8ea0]%s skipped (not allowed on a faction's first turn)[/color]
+" % GameStore.PHASE_LABELS.get(phase, phase))
+	var shown := 0
+	for e in events:
+		var line := EventText.describe(e)
+		if line != "":
+			_queue.append_text(line + "
+")
+			shown += 1
+	if shown == 0:
+		_queue.append_text("[color=#7f8ea0]  (nothing queued)[/color]
+")
 
 
 func log_line(text: String) -> void:
@@ -89,7 +123,7 @@ func log_events(header: String, events: Array) -> void:
 			log_line(line)
 			shown += 1
 	if shown == 0:
-		log_line("[color=#7f8ea0]  (no action)[/color]")
+		log_line("[color=#7f8ea0]  (nothing happened)[/color]")
 
 
 func show_space(tid: int) -> void:

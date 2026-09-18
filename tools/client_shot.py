@@ -6,7 +6,7 @@ arguments it understands). Syncs client data first.
 Run: python tools/client_shot.py OUT.png [--cam x,y,zoom] [--hover ID]
          [--select ID] [--wheel X,Y,STEPS]
          [--drag X1,Y1,X2,Y2] [--click X,Y]
-         [--server [URL]] [--autoplay N] [--steps N] [--state FILE.json] [--badges flag|strip|category] [--wait FRAMES] [--size WxH]
+         [--server [URL]] [--steps N] [--state FILE.json] [--badges flag|strip|category] [--wait FRAMES] [--size WxH]
 """
 import argparse
 import shutil
@@ -39,7 +39,6 @@ def main():
     ap.add_argument('--click')
     ap.add_argument('--state')
     ap.add_argument('--server', nargs='?', const='true')
-    ap.add_argument('--autoplay')
     ap.add_argument('--steps')
     ap.add_argument('--badges')
     ap.add_argument('--wait', default='8')
@@ -48,7 +47,7 @@ def main():
 
     subprocess.run([sys.executable, str(ROOT / 'tools' / 'sync_client_data.py')], check=True)
     user_args = [f'--shot={Path(a.out).resolve()}', f'--wait={a.wait}']
-    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click', 'state', 'badges', 'server', 'autoplay', 'steps'):
+    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click', 'state', 'badges', 'server', 'steps'):
         if getattr(a, key):
             val = getattr(a, key)
             user_args.append(f'--{key}={Path(val).resolve() if key == "state" else val}')

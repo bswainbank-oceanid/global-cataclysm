@@ -80,6 +80,7 @@ from .movement import (
     legal_combat_move_paths, legal_noncombat_move_destinations, trace_combat_move,
 )
 from .state import Phase, FactionMode, UnitInstance
+from .turn_log import TurnLog
 
 # turn_order's fixed 7-phase sequence for one faction's full turn.
 _PHASE_ORDER = [
@@ -777,6 +778,44 @@ class GameEngine:
                 if u.unit_id in wanted:
                     info[u.unit_id] = (u.unit_type, tid)
         return info
+
+    # ---- Queued-orders previews -----------------------------------------
+    # What a phase WILL do, in the same event shape TurnLog records once it
+    # has, built without touching the log or the game -- for a watcher that
+    # shows a bot's staged orders before they're confirmed.
+
+    def staged_purchase_event(self, faction):
+        orders = self._staged_purchases.get(faction, [])
+        total_cost, _ = self._resolve_and_cost(orders, faction)
+        scratch = TurnLog()
+        scratch.record_purchase(faction, orders, total_cost)
+        return scratch.events[0]
+
+    def staged_combat_move_event(self, faction):
+        orders = self._staged_combat_moves.get(faction, [])
+        scratch = TurnLog()
+        scratch.record_combat_move(faction, orders, self._unit_info(o.unit_id for o in orders))
+        return scratch.events[0]
+
+    def staged_noncombat_move_event(self, faction):
+        orders = self._staged_noncombat_moves.get(faction, [])
+        scratch = TurnLog()
+        scratch.record_noncombat_move(faction, orders, self._unit_info(o.unit_id for o in orders))
+        return scratch.events[0]
+
+    def battle_previews(self, faction):
+        """One 'battle_preview' event per battle resolve_combat(faction) is
+        about to fight, in resolution order: who is on each side. (The dice
+        haven't been rolled, so no outcome.)"""
+        previews = []
+        for territory_id, battle_type in self.declared_battles(faction):
+            attackers, defenders = self.gather_battle_units(territory_id, faction)
+            previews.append({
+                'kind': 'battle_preview', 'territory_id': territory_id, 'battle_type': battle_type,
+                'attackers': [{'unit_id': u.unit_id, 'unit_type': u.unit_type, 'owner': u.owner} for u in attackers],
+                'defenders': [{'unit_id': u.unit_id, 'unit_type': u.unit_type, 'owner': u.owner} for u in defenders],
+            })
+        return previews
 
     def declared_battles(self, faction):
         """Every battle `faction`'s own Combat Resolution phase must

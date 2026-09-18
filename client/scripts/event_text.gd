@@ -100,6 +100,17 @@ static func describe(e: Dictionary) -> String:
 			lines.append("  Defender losses: " + _by_owner(e["eliminated_defenders"]))
 			lines.append("  Result: " + str(e["outcome"]).replace("_", " "))
 			return "\n".join(lines)
+		"battle_preview":
+			return "[b]Battle at %s[/b] (%s)\n  Attackers: %s\n  Defenders: %s" % [
+				_terr(e["territory_id"]), e["battle_type"], _by_owner(e["attackers"]), _by_owner(e["defenders"])]
+		"alliance_plan":
+			match str(e["action"]):
+				"invite":
+					return "%s invites %s (%s)" % [_fac(e["faction"]), _fac(str(e["target"])),
+						"they would accept" if e["accepts"] else "they would decline"]
+				"withdraw":
+					return "%s withdraws from its alliance" % _fac(e["faction"])
+			return "%s takes no alliance action" % _fac(e["faction"])
 		"territory_captured":
 			return "%s captures %s (from %s)" % [_fac(e["faction"]), _terr(e["territory_id"]), _fac(str(e["previous_owner"]))]
 		"unit_deployed":

@@ -2,9 +2,9 @@ extends Node
 ## WebSocket transport to the game server (autoload "Net"). The only place
 ## that touches the socket: it decodes each incoming message into a
 ## Dictionary and emits `raw_message`; what to DO with the messages (apply
-## state, prompt the player, step through a bot turn) is TurnStepper's job.
-## Sending goes through send_msg(); the per-phase message shapes are
-## documented in server/session.py.
+## state, show the queued phase) is TurnStepper's job. Sending goes through
+## send_msg(); the message shapes are documented in server/stepper.py (watch
+## mode) and server/session.py (joining as a faction).
 ##
 ## Not connected until start() is called (main.gd does so when the client is
 ## launched with --server, or later from a menu).
@@ -15,6 +15,7 @@ signal raw_message(msg: Dictionary)
 
 var url := "ws://localhost:8765"
 var faction := "NAA"
+var watcher := true  # spectate an all-bot game ("watch") rather than join as `faction`
 
 var _ws := WebSocketPeer.new()
 var _open := false
@@ -50,7 +51,7 @@ func _process(_delta: float) -> void:
 			if not _open:
 				_open = true
 				connected.emit()
-				send_msg({"type": "join", "faction": faction})
+				send_msg({"type": "watch"} if watcher else {"type": "join", "faction": faction})
 			while _ws.get_available_packet_count() > 0:
 				var msg = JSON.parse_string(_ws.get_packet().get_string_from_utf8())
 				if typeof(msg) == TYPE_DICTIONARY:

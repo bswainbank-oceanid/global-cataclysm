@@ -69,7 +69,8 @@ func _ready() -> void:
 	map_area.add_child(_hover_label)
 
 	Stepper.log_line.connect(_side.log_line)
-	Stepper.log_events.connect(_side.log_events)
+	Stepper.queue_shown.connect(_side.show_queue)
+	Stepper.executed.connect(_side.log_events)
 
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -99,9 +100,7 @@ func _start_view() -> void:
 	if Dbg.args.has("server"):
 		var url: String = Dbg.args["server"]
 		Net.start("" if url == "true" else url)
-		if Dbg.args.has("autoplay"):
-			await Stepper.autoplay(int(Dbg.args["autoplay"]))
-		elif Dbg.args.has("steps"):
+		if Dbg.args.has("steps"):
 			await Stepper.press(int(Dbg.args["steps"]))
 		else:
 			await Stepper.wait_ready()
