@@ -2494,6 +2494,109 @@ class TestGameEndCheck(unittest.TestCase):
             engine.process_game_end_check('NAA')
 
 
+class TestLegalAllianceOptions(unittest.TestCase):
+    """GameEngine.legal_alliance_options -- the "get the full list of
+    legal options" query Alliances as a real human decision point is
+    built on, mirroring legal_combat_move_options/legal_noncombat_move_
+    options for a per-faction rather than per-unit decision."""
+
+    def test_excludes_self(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        engine = GameEngine(gs, data)
+        options = engine.legal_alliance_options('NAA')
+        self.assertNotIn('NAA', options['eligible_invite_targets'])
+        self.assertIn('UE', options['eligible_invite_targets'])
+
+    def test_excludes_a_faction_already_in_another_alliance(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES,
+        )
+        gs.factions['UE'].alliance = 'pact'
+        gs.factions['AAC'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        options = engine.legal_alliance_options('NAA')
+        self.assertEqual(options['eligible_invite_targets'], [])
+
+    def test_excludes_own_existing_allies_but_includes_others(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES,
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        options = engine.legal_alliance_options('NAA')
+        self.assertNotIn('UE', options['eligible_invite_targets'], 'already an ally -- nothing to invite')
+        self.assertIn('AAC', options['eligible_invite_targets'])
+
+    def test_excludes_former_allies_when_rejoining_disabled(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs.can_rejoin_alliances = False
+        gs.factions['NAA'].former_allies = {'UE'}
+        gs.factions['UE'].former_allies = {'NAA'}
+        engine = GameEngine(gs, data)
+        options = engine.legal_alliance_options('NAA')
+        self.assertEqual(options['eligible_invite_targets'], [])
+
+    def test_does_not_filter_by_effective_max_alliance_size(self):
+        # Unlike a unit's own destination list, the candidate pool here
+        # isn't narrowed by _effective_max_alliance_size -- invite_to_
+        # alliance is still the authority on whether a SPECIFIC pick
+        # would exceed it.
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.ALLIANCES,
+        )
+        gs.max_alliance_size = 1  # NAA+UE would already be at the cap
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        options = engine.legal_alliance_options('NAA')
+        self.assertIn('AAC', options['eligible_invite_targets'])
+        with self.assertRaises(ValueError):
+            engine.invite_to_alliance('NAA', 'AAC', target_accepts=True)
+
+    def test_can_withdraw_true_when_allied_and_allowed(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        self.assertTrue(engine.legal_alliance_options('NAA')['can_withdraw'])
+
+    def test_can_withdraw_false_when_not_allied(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        engine = GameEngine(gs, data)
+        self.assertFalse(engine.legal_alliance_options('NAA')['can_withdraw'])
+
+    def test_can_withdraw_false_when_disabled_by_setting(self):
+        data = FakeData(territories={}, adjacency={})
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        gs.can_withdraw_from_alliances = False
+        engine = GameEngine(gs, data)
+        self.assertFalse(engine.legal_alliance_options('NAA')['can_withdraw'])
+
+    def test_can_withdraw_false_when_blocked_by_sc_lock(self):
+        data = FakeData(territories={1: {'type': 'land', 'strategic_center': True}}, adjacency={})
+        gs = make_state(
+            data, {1: 'UE'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
+        )
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        gs.territories[1].units.append(make_unit('Infantry', 'NAA'))
+        engine = GameEngine(gs, data)
+        self.assertFalse(engine.legal_alliance_options('NAA')['can_withdraw'])
+
+
 class TestInviteToAlliance(unittest.TestCase):
     def test_creates_a_new_alliance_when_inviter_has_none(self):
         # A bystander faction (PAF) is required here: with only 2 active

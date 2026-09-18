@@ -74,23 +74,12 @@ def resolve_alliance_behavior(value, rng):
 
 def _eligible_invite_targets(engine, faction):
     """Every active faction `faction` could legally invite right now --
-    not already one of its own allies, not already in SOME alliance
-    (must withdraw first), and, when can_rejoin_alliances is False, not
-    former_allies-banned against anyone already in faction's alliance.
-    A cheap pre-filter; GameEngine.invite_to_alliance is still the
-    authoritative check."""
-    gs = engine.game_state
-    members = engine._alliance_members(faction)
-    candidates = []
-    for code in gs.active_factions():
-        if code in members:
-            continue
-        if gs.factions[code].alliance is not None:
-            continue
-        if not gs.can_rejoin_alliances and gs.factions[code].former_allies & members:
-            continue
-        candidates.append(code)
-    return candidates
+    delegates to GameEngine.legal_alliance_options (moved there this
+    session, same reasoning as legal_purchase_targets' own earlier move:
+    any caller, not just a bot, can use it now), which is still the
+    authoritative pre-filter's source of truth; GameEngine.
+    invite_to_alliance itself remains the final, real check."""
+    return engine.legal_alliance_options(faction)['eligible_invite_targets']
 
 
 def _alliance_tag_sizes(engine):

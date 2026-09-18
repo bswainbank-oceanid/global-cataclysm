@@ -4,14 +4,18 @@ demo game (NAA human, AAC bot), then drives two full NAA turns: a first
 "purchase" (client-composed, one shot -- see server/session.py's own
 docstring on why there's no separate stage/confirm round trip) followed
 by a first "noncombat_move" (a real decision every turn, unlike Combat
-Move); then a second turn's "purchase" and, since allow_combat_moves_
-first_turn only skips Combat Move on a faction's very own first turn
-(turns_taken == 0), a real "combat_move" decision on that second turn
-too, followed by its own "noncombat_move" -- picking whatever legal
-option the server's "your_turn" offered each time (an attack/move if one
-exists, otherwise an empty order list). Prints every message the server
-sends back -- including AAC's whole bot turn, played back event by event
-with a short pause between each, as a stand-in for a real client's own
+Move) and "alliance_action" (always "none" here -- the demo's only 2
+active factions, NAA and AAC, mean GameEngine._effective_max_alliance_
+size caps out at 1, so no alliance could ever actually form anyway; see
+GameEngine.legal_alliance_options); then a second turn's "purchase" and,
+since allow_combat_moves_first_turn only skips Combat Move on a faction's
+very own first turn (turns_taken == 0), a real "combat_move" decision on
+that second turn too, followed by its own "noncombat_move" and
+"alliance_action" -- picking whatever legal option the server's
+"your_turn" offered each time (an attack/move if one exists, otherwise an
+empty order list or "none"). Prints every message the server sends back
+-- including AAC's whole bot turn, played back event by event with a
+short pause between each, as a stand-in for a real client's own
 playback-speed control (decided this session: pacing is entirely a
 client-side concern once it has the full event list -- the server never
 paces delivery itself). Not a test in the unittest sense (nothing here
@@ -73,9 +77,10 @@ async def _respond_to_your_turn(ws, msg, turn_number):
     """Composes and sends whatever this "your_turn" needs, client-side, the
     same way a real UI would: a purchase order list for PURCHASE (buys
     nothing on the first pass), a combat-move order list for COMBAT_MOVE,
-    or a non-combat-move order list for NONCOMBAT_MOVE -- each picking the
+    a non-combat-move order list for NONCOMBAT_MOVE -- each picking the
     first legal option offered for the first unit that has one, to
-    demonstrate a real move, or an empty list if none exist."""
+    demonstrate a real move, or an empty list if none exist -- or, for
+    ALLIANCES, always "none" (see this module's own docstring on why)."""
     faction = msg['faction']
     phase = msg['phase']
     if phase == 'PURCHASE':
@@ -100,6 +105,9 @@ async def _respond_to_your_turn(ws, msg, turn_number):
                 break
         print(f'NAA turn {turn_number}: non-combat move orders: {orders or "(none)"}')
         await ws.send(json.dumps({'type': 'noncombat_move', 'faction': faction, 'orders': orders}))
+    elif phase == 'ALLIANCES':
+        print(f'NAA turn {turn_number}: alliance action: none')
+        await ws.send(json.dumps({'type': 'alliance_action', 'faction': faction, 'action': 'none'}))
     else:
         raise AssertionError(f'unexpected your_turn phase: {phase}')
 
@@ -124,8 +132,9 @@ async def main(uri):
             if msg['type'] in ('bot_turn', 'combat_events'):
                 await _play_events(msg['events'], f"{msg['type']} ({msg.get('faction', '?')})")
                 continue
-            print('<-', msg['type'], {k: v for k, v in msg.items()
-                                       if k not in ('game_state', 'events', 'legal_combat_moves', 'legal_noncombat_moves')})
+            print('<-', msg['type'], {k: v for k, v in msg.items() if k not in (
+                'game_state', 'events', 'legal_combat_moves', 'legal_noncombat_moves', 'legal_alliance_options',
+            )})
             if msg['type'] == 'game_over':
                 break
             if msg['type'] == 'your_turn':

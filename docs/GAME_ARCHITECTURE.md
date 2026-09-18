@@ -168,7 +168,7 @@ the same JSON, not a parallel editing path.
   (`tools/compute_adjacency.py`).
 - ✅ Territory shape/polygon extraction (`tools/extract_territory_shapes.py`
   → `data/territory_shapes.json`).
-- ✅ Rules engine (standalone module, `engine/`, 418 tests) — Purchase
+- ✅ Rules engine (standalone module, `engine/`, 427 tests) — Purchase
   (including the carrierless-air and contested-purchase-lost deploy
   fallbacks), Deploy + Income, Combat Move, Combat Resolution, Non-Combat
   Move, Capture Territory, faction elimination, game-end detection, and
@@ -193,54 +193,72 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 30 tests) — first vertical slice,
+- ⬜ WebSocket server (`server/`, 42 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
-  (NAA the only HUMAN faction, AAC a BOT, everyone else NEUTRAL). Purchase,
-  Combat Move, and Non-Combat Move are all real client decisions now, same
-  one-shot shape for each: a single `purchase`/`combat_move`/
-  `noncombat_move` message carrying the COMPLETE, final order list
-  (decided this session for Purchase: the client owns territory selection
-  and MPC budget tracking itself, so a separate stage-then-confirm round
-  trip has nothing left to teach it -- `your_turn` still includes
-  `legal_purchase_targets`, territory-level only, so the client knows
-  where it can buy before composing an order; unit types/costs are the
-  client's own `units.json` copy's job, same as rendering needs anyway.
-  For Combat Move, decided this session: "the legal combat move options
-  for each unit is known at turn start" -- `GameEngine.legal_combat_move_
-  options` computes, per unit that hasn't moved yet, every legal
-  destination and the path to it, sent in the same `your_turn` message as
-  `legal_combat_moves`. For Non-Combat Move, decided this session: "non-
-  combat move options can change after combat[, so it needs] a similar
-  pattern[: get] the full list of legal options after combat[; the] user
-  submits their choices" -- unlike Purchase/Combat Move, `GameEngine.
-  legal_noncombat_move_options` is deliberately NOT a turn-start snapshot;
-  it's computed fresh only once Non-Combat Move is actually reached (after
-  Combat Resolution, and after `process_return_to_base`'s automatic air-
-  unit snap-back has already run), since what's legal genuinely depends on
-  how combat just played out. Its `destinations` are plain territory ids,
-  not `{destination: path}` like Combat Move's, since `NonCombatMoveOrder`
-  only ever needs the endpoint. This phase is also deliberately permissive
-  about carrier/aircraft stranding -- "the client can handle warning the
-  player about stranding aircraft[; the] server can allow that as a legal
-  move": an order leaving an aircraft over open water with no own carrier
-  is legal to submit, and the engine only enforces the actual loss at
-  phase end (`movement.stranded_aircraft_rule`), same as it always has --
-  no extra server-side restriction was added). The client picks from
-  whichever `legal_*` options each phase offers and sends the complete
-  order list in one message each time, no server-side per-unit round
-  trip. `your_turn` is one phase-aware message type throughout -- the
-  client tells the phases apart by `phase` and reads whichever `legal_*`
-  key is present. Every other phase auto-drives through to the next
-  decision point or game-over, the same single-while-loop shape
-  `engine/bots/driver.py` uses for a bot's non-decision phases --
-  `server/session.py`'s `_drain_phases` mirrors it directly, stopping
-  early (only for a human) right at Combat Move or Non-Combat Move to
-  await that decision, and resuming from there once it arrives; a human's
-  own `combat_events` (if Combat Move drove any battles) are reported the
-  moment they happen even when the drain stops again right after at
-  Non-Combat Move, not held back until the whole turn finishes. The same
-  one-shot shape is the plan for Alliances once it becomes a real human
-  decision point too.
+  (NAA the only HUMAN faction, AAC a BOT, everyone else NEUTRAL). Every one
+  of the 7 `turn_order` phases is now a real client decision (Combat
+  Resolution excepted -- no player choice in HOW it resolves, only whether
+  to attack at all via Combat Move), same one-shot shape for each: a
+  single `purchase`/`combat_move`/`noncombat_move`/`alliance_action`
+  message carrying the COMPLETE, final decision (decided this session for
+  Purchase: the client owns territory selection and MPC budget tracking
+  itself, so a separate stage-then-confirm round trip has nothing left to
+  teach it -- `your_turn` still includes `legal_purchase_targets`,
+  territory-level only, so the client knows where it can buy before
+  composing an order; unit types/costs are the client's own `units.json`
+  copy's job, same as rendering needs anyway. For Combat Move, decided
+  this session: "the legal combat move options for each unit is known at
+  turn start" -- `GameEngine.legal_combat_move_options` computes, per unit
+  that hasn't moved yet, every legal destination and the path to it, sent
+  in the same `your_turn` message as `legal_combat_moves`. For Non-Combat
+  Move, decided this session: "non-combat move options can change after
+  combat[, so it needs] a similar pattern[: get] the full list of legal
+  options after combat[; the] user submits their choices" -- unlike
+  Purchase/Combat Move, `GameEngine.legal_noncombat_move_options` is
+  deliberately NOT a turn-start snapshot; it's computed fresh only once
+  Non-Combat Move is actually reached (after Combat Resolution, and after
+  `process_return_to_base`'s automatic air-unit snap-back has already
+  run), since what's legal genuinely depends on how combat just played
+  out. Its `destinations` are plain territory ids, not `{destination:
+  path}` like Combat Move's, since `NonCombatMoveOrder` only ever needs
+  the endpoint. This phase is also deliberately permissive about
+  carrier/aircraft stranding -- "the client can handle warning the player
+  about stranding aircraft[; the] server can allow that as a legal move":
+  an order leaving an aircraft over open water with no own carrier is
+  legal to submit, and the engine only enforces the actual loss at phase
+  end (`movement.stranded_aircraft_rule`), same as it always has -- no
+  extra server-side restriction was added. For Alliances, decided this
+  session: "give the player the full set of legal options[; they] submit
+  their instructions, which might be do nothing (an option for any
+  phase)" -- `GameEngine.legal_alliance_options` reports
+  `eligible_invite_targets` and `can_withdraw` (a per-faction decision, not
+  per-unit, so no per-unit map); an `alliance_action` message's `action`
+  is `"none"` (the do-nothing option Purchase/Combat Move/Non-Combat Move
+  express as an empty order list instead, since Alliances has no list to
+  leave empty), `"invite"` (with a `"target"`), or `"withdraw"`. An
+  invite's accept/decline resolves synchronously server-side via
+  `engine.bots.alliance_policy.accepts_invite`, exactly like a bot
+  inviting another bot -- but that function only ever reads the TARGET's
+  own `alliance_strategy`, which `engine.setup.build_game_state` only ever
+  sets for BOT-mode factions, so a HUMAN invite target currently always
+  declines by default; genuine human-to-human alliance negotiation isn't
+  built (not a problem yet since the one demo scenario only ever has one
+  human faction in play) -- see `server/session.py`'s own docstring). The
+  client picks from whichever `legal_*` options each phase offers and
+  sends the complete decision in one message each time, no server-side
+  per-unit round trip. `your_turn` is one phase-aware message type
+  throughout -- the client tells the phases apart by `phase` and reads
+  whichever `legal_*` key is present. Every other phase auto-drives
+  through to the next decision point or game-over, the same single-while-
+  loop shape `engine/bots/driver.py` uses for a bot's non-decision phases
+  -- `server/session.py`'s `_drain_phases` mirrors it directly, stopping
+  early (only for a human) right at Combat Move, Non-Combat Move, or
+  Alliances to await that decision, and resuming from there once it
+  arrives (Alliances, being the last phase, finishes the turn directly
+  instead of resuming the drain -- there's nothing left to advance to); a
+  human's own `combat_events` (if Combat Move drove any battles) are
+  reported the moment they happen even when the drain stops again right
+  after at Non-Combat Move, not held back until the whole turn finishes.
   Bot turns and combat resolution are narrated, not just applied silently:
   `engine.turn_log.TurnLog` (a new engine-level observer, alongside
   `stats.GameStats` but an ORDERED per-event log rather than a whole-game
@@ -261,13 +279,11 @@ the same JSON, not a parallel editing path.
   is a small scripted client (with its own toy playback-pacing loop) for
   manual end-to-end verification against a running server
   (`python -m server.app`, then `python -m server.test_client`, which now
-  drives two full NAA turns so real `combat_move` and `noncombat_move`
-  decisions both get exercised, not just `purchase`). Not yet: Alliances
-  as a real HUMAN decision point (a no-op for a human turn for now — AAC,
-  the one bot, makes a real decision for it) and the legal-move-query
-  message that would need; multiple simultaneous games, persistence, or
-  real auth/session management (a "join" message is trusted at face
-  value).
+  drives two full NAA turns exercising real `purchase`, `combat_move`,
+  `noncombat_move`, and `alliance_action` decisions in sequence). Not yet:
+  genuine human-to-human alliance negotiation (see the Alliances paragraph
+  above); multiple simultaneous games, persistence, or real auth/session
+  management (a "join" message is trusted at face value).
   This is the project's first external dependency (`websockets`,
   `requirements.txt`) — `engine/` and `tools/` remain stdlib-only.
 - ⬜ Godot client / map rendering / wraparound camera.

@@ -4,13 +4,12 @@ server/app.py's actual WebSocket I/O so it can be unit-tested the same
 way engine/ is -- by calling methods directly and inspecting return
 values, never opening a real socket (see server/tests/test_session.py).
 
-Message protocol (Purchase, Combat Move, and Non-Combat Move are all real
-human decisions now, same one-shot shape each; Alliances is still a no-op
-for a HUMAN's own turn -- no decision UI for it yet -- or a real bot
-decision via engine.bots.random_bot.RandomBot on a BOT faction's turn.
-Combat Resolution always runs automatically (no player choice in HOW it
-resolves), but its roll-by-roll narrative is always captured and sent for
-playback either way -- see turn_log.TurnLog):
+Message protocol (Purchase, Combat Move, Non-Combat Move, and Alliances
+are all real human decisions now, same one-shot shape each -- or a real
+bot decision via engine.bots.random_bot.RandomBot on a BOT faction's
+turn. Combat Resolution always runs automatically (no player choice in
+HOW it resolves), but its roll-by-roll narrative is always captured and
+sent for playback either way -- see turn_log.TurnLog):
 
 Client -> server (each a dict with at least "type" and "faction"):
     {"type": "join", "faction": "NAA"}
@@ -18,8 +17,8 @@ Client -> server (each a dict with at least "type" and "faction"):
         see this module's own docstring note on that). Always answered
         with a full "state" message; also a "your_turn" if it's already
         this faction's turn AND currently at a phase needing a decision
-        (Purchase, Combat Move, or Non-Combat Move) -- e.g. a client
-        reconnecting mid-turn.
+        (Purchase, Combat Move, Non-Combat Move, or Alliances) -- e.g. a
+        client reconnecting mid-turn.
     {"type": "purchase", "faction": "NAA",
      "orders": [{"unit_type": "Infantry", "qty": 2, "deploy_at": 5}, ...]}
         The COMPLETE, final order list for this Purchase phase, one shot
@@ -69,15 +68,45 @@ Client -> server (each a dict with at least "type" and "faction"):
         otherwise continues the turn same as "combat_move" -- drains
         through to Alliances (no narration to add here: unlike Combat
         Resolution, a non-combat move has no roll-by-roll of its own) --
-        then a broadcast "state"; game over, or advance_turn() and
-        however many bot turns follow before the next human's turn.
-        Deliberately permissive about stranding: an order that leaves an
-        Air unit sitting over open water with no own carrier is legal to
-        submit -- the engine only enforces the actual loss at phase end
-        (movement.stranded_aircraft_rule), same as it always has. Warning
-        the player beforehand is entirely the client's job -- decided this
-        session: "the client can handle warning the player about stranding
+        then an Alliances "your_turn". Deliberately permissive about
+        stranding: an order that leaves an Air unit sitting over open
+        water with no own carrier is legal to submit -- the engine only
+        enforces the actual loss at phase end (movement.stranded_
+        aircraft_rule), same as it always has. Warning the player
+        beforehand is entirely the client's job -- decided this session:
+        "the client can handle warning the player about stranding
         aircraft[; the] server can allow that as a legal move."
+    {"type": "alliance_action", "faction": "NAA", "action": "none"}
+    {"type": "alliance_action", "faction": "NAA", "action": "invite", "target": "AAC"}
+    {"type": "alliance_action", "faction": "NAA", "action": "withdraw"}
+        `faction`'s one optional action this turn (this session: "give
+        the player the full set of legal options[; they] submit their
+        instructions, which might be do nothing (an option for any
+        phase)" -- unlike Purchase/Combat Move/Non-Combat Move, where
+        "do nothing" is simply an empty `orders` list, Alliances has no
+        list to leave empty, so "none" is its own explicit action value
+        instead). "invite" additionally requires "target" (one of the
+        preceding "your_turn"'s legal_alliance_options.eligible_invite_
+        targets); the target's accept/decline is resolved synchronously
+        server-side via engine.bots.alliance_policy.accepts_invite --
+        exactly like a bot inviting another bot, since that policy
+        function only ever reads the TARGET's own alliance_strategy, not
+        the inviter's, and doesn't care whether the inviter is human. A
+        HUMAN target's own alliance_strategy is never set (engine.setup.
+        build_game_state only resolves it for BOT-mode factions), so
+        accepts_invite's default (unknown strategy -> declines) applies
+        -- a human can't yet be synchronously asked for its own accept/
+        decision from inside another human's turn; genuine human-to-
+        human alliance negotiation isn't built (see "Not yet built"
+        below). Calls invite_to_alliance/withdraw_from_alliance/neither,
+        then process_game_end_check (the same call GameEngine.
+        _drain_phases' bot path always made here); an "error" if any of
+        those raise (including simply being the wrong phase, since even
+        "none" still calls process_game_end_check, which validates it),
+        otherwise the turn is fully done -- same finishing sequence
+        every other phase's confirm reaches once nothing is left to
+        decide: a broadcast "state"; game over, or advance_turn() and
+        however many bot turns follow before the next human's turn.
 
 Server -> client (each a dict; a "to": faction_code key means send only
 to that faction's connection(s), no "to" key means broadcast to every
@@ -91,14 +120,18 @@ connection on this game -- everyone sees the same board, no fog of war):
     {"type": "your_turn", "faction": "NAA", "phase": "NONCOMBAT_MOVE",
      "legal_noncombat_moves": {unit_id: {"unit_type", "territory_id",
      "destinations": [dest_id, ...]}, ...}}
+    {"type": "your_turn", "faction": "NAA", "phase": "ALLIANCES",
+     "legal_alliance_options": {"eligible_invite_targets": [faction_code, ...],
+     "can_withdraw": bool}}
         Same "your_turn" type every time -- it's still this faction's own
         turn, just a later phase of it -- the client tells them apart by
         "phase" and reads whichever legal_* key matches (see
         GameEngine.legal_purchase_targets/legal_combat_move_options/
-        legal_noncombat_move_options for exactly what those contain --
-        note legal_noncombat_moves' destinations are plain ids, not
-        {destination: path}, since NonCombatMoveOrder only needs the
-        endpoint).
+        legal_noncombat_move_options/legal_alliance_options for exactly
+        what those contain -- note legal_noncombat_moves' destinations
+        are plain ids, not {destination: path}, since NonCombatMoveOrder
+        only needs the endpoint; legal_alliance_options is a per-faction
+        decision, not per-unit, so it has no per-unit map at all).
     {"type": "combat_events", "faction": "NAA", "events": [...]}
         Only the battle_event entries (turn_log.TurnLog.record_battle_
         events' shape) from a HUMAN faction's own Combat Resolution --
@@ -114,26 +147,29 @@ connection on this game -- everyone sees the same board, no fog of war):
     {"type": "error", "to": "NAA", "message": "..."}
     {"type": "game_over"}
 
-Not yet built (see docs/GAME_ARCHITECTURE.md): Alliances as a real HUMAN
-decision point (a no-op here for a HUMAN's own turn -- fine for now since
-the one demo scenario, server.app._build_demo_session, gives the human
-faction no reason to need it yet). When it is built, expect the same
-one-shot shape the other phases use: the client composes the complete
-decision itself and sends it once -- not a per-step or stage-then-confirm
-round trip. Also not yet built: multiple simultaneous games (one
-GameSession per server process for now); real auth/session management (a
-"join" message is trusted at face value -- nothing stops two connections
-both claiming the same faction); client-controlled PACING of playback is
-entirely a client-side concern once it has a "bot_turn"/"combat_events"
-message's full event list (decided this session) -- the server never
-paces delivery itself.
+Not yet built (see docs/GAME_ARCHITECTURE.md): every one of the 7
+turn_order phases is now a real decision point (or fully automatic, for
+Combat Resolution) -- what's left is genuine human-to-human alliance
+negotiation (a HUMAN "invite" target's own accept/decline currently
+resolves via engine.bots.alliance_policy.accepts_invite, same as a bot
+target, which always declines for a human since it has no alliance_
+strategy set -- see the "alliance_action" entry above; the one demo
+scenario, server.app._build_demo_session, only ever has ONE human
+faction in play, so this limitation never actually bites yet); multiple
+simultaneous games (one GameSession per server process for now); real
+auth/session management (a "join" message is trusted at face value --
+nothing stops two connections both claiming the same faction); client-
+controlled PACING of playback is entirely a client-side concern once it
+has a "bot_turn"/"combat_events" message's full event list (decided this
+session) -- the server never paces delivery itself.
 """
+from engine.bots.alliance_policy import accepts_invite
 from engine.engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from engine.state import FactionMode, Phase
 
 # Phases where GameState.active_faction (a HUMAN one) is waiting on this
 # module for a real decision -- see connect()/_decision_prompt.
-_HUMAN_DECISION_PHASES = (Phase.PURCHASE, Phase.COMBAT_MOVE, Phase.NONCOMBAT_MOVE)
+_HUMAN_DECISION_PHASES = (Phase.PURCHASE, Phase.COMBAT_MOVE, Phase.NONCOMBAT_MOVE, Phase.ALLIANCES)
 
 
 class GameSession:
@@ -152,7 +188,9 @@ class GameSession:
         before this faction's phase could ever be NONCOMBAT_MOVE with
         active_faction pointed at it, so _decision_prompt's legal_
         noncombat_move_options call below reflects that, not a stale
-        pre-return-to-base snapshot."""
+        pre-return-to-base snapshot. Same idea for ALLIANCES: reaching it
+        at all (with active_faction still pointed here) already means
+        every phase before it this turn is fully resolved."""
         gs = self.engine.game_state
         if faction not in gs.factions:
             return [self._error(faction, f'no such faction: {faction}')]
@@ -181,6 +219,8 @@ class GameSession:
             return self._handle_combat_move(faction, msg.get('orders') or [])
         if msg_type == 'noncombat_move':
             return self._handle_noncombat_move(faction, msg.get('orders') or [])
+        if msg_type == 'alliance_action':
+            return self._handle_alliance_action(faction, msg.get('action'), msg.get('target'))
         return [self._error(faction, f'unknown message type: {msg_type!r}')]
 
     def _handle_purchase(self, faction, raw_orders):
@@ -242,23 +282,59 @@ class GameSession:
         self.engine.advance_phase()
         return self._continue_human_turn(faction)
 
+    def _handle_alliance_action(self, faction, action, target):
+        """`action`: "none" (do nothing this turn -- always legal, same
+        as leaving a unit out of a Purchase/Combat Move/Non-Combat Move
+        order list, just spelled as its own explicit value here since
+        there's no list to leave empty), "invite" (requires `target`), or
+        "withdraw". Unlike the other _handle_* methods, there is no
+        advance_phase() call here to make afterward -- Alliances is the
+        LAST phase (advance_phase() is already a documented no-op once
+        there), so once this faction's one optional action is resolved
+        there's nothing left to decide this turn; process_game_end_check
+        runs directly (the same call _drain_phases' bot path always made
+        here) and the turn is finished via _finish_turn, bypassing
+        _continue_human_turn/_drain_phases entirely (re-entering those
+        would just hit the ALLIANCES stop-and-return-False condition
+        again, since nothing moved GameState.phase anywhere)."""
+        gs = self.engine.game_state
+        if faction != gs.active_faction:
+            return [self._error(faction, f"it is not {faction}'s turn")]
+        try:
+            if action == 'invite':
+                if not target:
+                    raise ValueError("'invite' requires a target")
+                accepts = accepts_invite(self.engine, target, faction)
+                self.engine.invite_to_alliance(faction, target, accepts)
+            elif action == 'withdraw':
+                self.engine.withdraw_from_alliance(faction)
+            elif action != 'none':
+                raise ValueError(f'unknown alliance action: {action!r}')
+            # Also the phase guard for "none", which has no engine call
+            # of its own above to raise for a wrong-phase attempt.
+            self.engine.process_game_end_check(faction)
+        except ValueError as e:
+            return [self._error(faction, str(e))]
+        return self._finish_turn(faction, [])
+
     def _continue_human_turn(self, faction):
         """Drains as much of `faction`'s own turn as possible (bot=None),
         starting from wherever GameState.phase currently is. Stops at
-        Combat Move or Non-Combat Move -- returning that phase's
-        "your_turn" prompt, awaiting that decision -- or all the way
-        through to the end of Alliances: the turn's fully done, so this
-        reports the resulting state, game-over, or hands off to
-        advance_turn() and however many bot turns follow before the next
-        human's turn. Either way, any battle_event entries logged during
-        THIS call (i.e. from Combat Resolution, if Combat Move is what
-        was just confirmed) are reported as "combat_events" first, even
-        when the drain stops again right after at Non-Combat Move --
-        a human's own attack landing must never go unreported just
-        because Non-Combat Move is now also an interrupt point; it can
-        no longer be assumed, as it could when only Combat Move stopped
-        the drain, that "not finished" means "nothing happened yet"."""
-        gs = self.engine.game_state
+        Combat Move, Non-Combat Move, or Alliances -- returning that
+        phase's "your_turn" prompt, awaiting that decision -- or, for the
+        rare case _drain_phases runs all the way through on its own
+        (bot=None never actually reaches Alliances via this path today,
+        since every earlier phase either interrupts or leaves something
+        for the caller to have already handled -- see _drain_phases),
+        finishes the turn via _finish_turn. Any battle_event entries
+        logged during THIS call (i.e. from Combat Resolution, if Combat
+        Move is what was just confirmed) are reported as "combat_events"
+        first, even when the drain stops again right after at Non-Combat
+        Move -- a human's own attack landing must never go unreported
+        just because Non-Combat Move is now also an interrupt point; it
+        can no longer be assumed, as it could when only Combat Move
+        stopped the drain, that "not finished" means "nothing happened
+        yet"."""
         start = len(self.turn_log.events)
         finished = self._drain_phases(faction, bot=None)
 
@@ -269,7 +345,19 @@ class GameSession:
         if not finished:
             messages.append(self._decision_prompt(faction))
             return messages
+        return self._finish_turn(faction, messages)
 
+    def _finish_turn(self, faction, messages):
+        """Shared tail for whenever `faction`'s turn has nothing left to
+        decide -- process_game_end_check has already run by this point
+        (either _drain_phases' bot path, or _handle_alliance_action).
+        `messages` already carries whatever this call should report
+        before the state/game-over/next-turn wrap-up (typically nothing
+        for _handle_alliance_action, or a "combat_events" entry for
+        _continue_human_turn -- see there). Appends the resulting state,
+        then either game_over or hands off to advance_turn() and however
+        many bot turns follow before the next human's turn."""
+        gs = self.engine.game_state
         messages.append(self._state_message())
         if gs.game_over:
             messages.append({'type': 'game_over'})
@@ -279,21 +367,25 @@ class GameSession:
 
     def _drain_phases(self, faction, bot):
         """Runs `faction`'s turn from wherever GameState.phase currently
-        is through to the end of the Alliances phase (everything up to
-        but not including advance_turn) -- UNLESS it reaches Combat Move
-        or Non-Combat Move with `bot=None` (a human awaiting that
-        decision), in which case it stops right there and returns False
-        without touching that phase's actual decision at all; the caller
-        is responsible for prompting and, once a decision arrives,
-        advancing off the phase itself before calling back in here to
-        resume (see _handle_combat_move/_handle_noncombat_move). Returns
-        True if it ran all the way through to Alliances.
+        is -- UNLESS it reaches Combat Move, Non-Combat Move, or
+        Alliances with `bot=None` (a human awaiting that decision), in
+        which case it stops right there and returns False without
+        touching that phase's actual decision at all; the caller is
+        responsible for prompting and, once a decision arrives, resuming
+        (Combat Move/Non-Combat Move do this by calling back into here
+        after advancing off the phase themselves -- see _handle_combat_
+        move/_handle_noncombat_move; Alliances instead finishes the turn
+        directly, since it's the last phase -- see _handle_alliance_
+        action). Returns True if it ran the WHOLE way through to
+        Alliances AND handled it too (only ever happens for a bot, or in
+        principle if `bot=None` reached Alliances via some future caller
+        that isn't _continue_human_turn -- see its own docstring).
 
         `bot`, if given, makes its own Purchase/Combat Move/Non-Combat
         Move/Alliance decisions (a full bot turn, since GameState.phase
         starts back at PURCHASE right after advance_turn -- see
-        _play_bot_turns_until_human_or_game_over) -- for a bot, neither
-        Combat Move nor Non-Combat Move ever triggers the stop-and-
+        _play_bot_turns_until_human_or_game_over) -- for a bot, none of
+        Combat Move/Non-Combat Move/Alliances ever triggers the stop-and-
         return-False above, since a bot never waits for input. `bot=None`
         means Purchase/Combat Move/Non-Combat Move are each left exactly
         as the caller already handled them just before calling this (see
@@ -308,9 +400,24 @@ class GameSession:
         in a fixed row, since a disabled first-turn phase (game_start_
         settings) means GameState.phase may skip a step entirely."""
         gs = self.engine.game_state
-        while gs.phase != Phase.ALLIANCES:
+        while True:
             if gs.phase == Phase.COMBAT_MOVE and bot is None:
                 return False
+            if gs.phase == Phase.NONCOMBAT_MOVE and bot is None:
+                # Always automatic, even for a human -- it's not a
+                # decision, just bookkeeping that has to happen before
+                # legal_noncombat_move_options (sent by the "your_turn"
+                # prompt right after this returns) is even meaningful to
+                # compute. Then stop and wait for the real decision, same
+                # shape as Combat Move above.
+                self.engine.process_return_to_base(faction)
+                return False
+            if gs.phase == Phase.ALLIANCES:
+                if bot is None:
+                    return False
+                bot.take_alliance_phase()
+                self.engine.process_game_end_check(faction)
+                return True
             if gs.phase == Phase.PURCHASE:
                 if bot is not None:
                     bot.take_purchase_phase()
@@ -319,32 +426,19 @@ class GameSession:
             elif gs.phase == Phase.COMBAT_RESOLUTION:
                 self.engine.resolve_combat(faction)
             elif gs.phase == Phase.NONCOMBAT_MOVE:
-                if bot is not None:
-                    # RandomBot.take_noncombat_move_phase() already calls
-                    # process_return_to_base itself, first thing -- must
-                    # NOT also be called here too (a second call raises,
-                    # "already processed return-to-base this turn").
-                    bot.take_noncombat_move_phase()
-                else:
-                    # Always automatic, even for a human -- it's not a
-                    # decision, just bookkeeping that has to happen
-                    # before legal_noncombat_move_options (sent by the
-                    # "your_turn" prompt right below) is even meaningful
-                    # to compute. Then stop and wait for the real
-                    # decision, same shape as Combat Move above.
-                    self.engine.process_return_to_base(faction)
-                    return False
+                # RandomBot.take_noncombat_move_phase() already calls
+                # process_return_to_base itself, first thing -- must NOT
+                # also be called here too (a second call raises, "already
+                # processed return-to-base this turn"). Only reachable
+                # with bot is not None -- the bot=None case returned
+                # above already.
+                bot.take_noncombat_move_phase()
             elif gs.phase == Phase.CAPTURE:
                 self.engine.process_capture_territory(faction)
                 self.engine.process_elimination_check()
             elif gs.phase == Phase.DEPLOY_INCOME:
                 self.engine.deploy_and_collect_income(faction)
             self.engine.advance_phase()
-
-        if bot is not None:
-            bot.take_alliance_phase()
-        self.engine.process_game_end_check(faction)
-        return True
 
     def _play_bot_turns_until_human_or_game_over(self):
         """Called right after advance_turn() -- plays out every
@@ -377,14 +471,15 @@ class GameSession:
     def _decision_prompt(self, faction):
         """The "your_turn" message prompting `faction` for whatever
         decision is next -- a fresh Purchase phase, or a Combat Move/
-        Non-Combat Move decision later the same turn. Always type
-        "your_turn" either way (it's still this faction's own turn); the
-        client tells them apart by "phase" and reads whichever legal_*
-        key is present. For NONCOMBAT_MOVE specifically, this is only
-        ever called after _drain_phases has already run process_return_
-        to_base for this faction this turn (see there) -- so legal_
-        noncombat_move_options genuinely reflects what's left to decide,
-        not units that already got automatically sent back to base."""
+        Non-Combat Move/Alliances decision later the same turn. Always
+        type "your_turn" either way (it's still this faction's own
+        turn); the client tells them apart by "phase" and reads whichever
+        legal_* key is present. For NONCOMBAT_MOVE specifically, this is
+        only ever called after _drain_phases has already run process_
+        return_to_base for this faction this turn (see there) -- so
+        legal_noncombat_move_options genuinely reflects what's left to
+        decide, not units that already got automatically sent back to
+        base."""
         gs = self.engine.game_state
         msg = {'type': 'your_turn', 'faction': faction, 'phase': gs.phase.value}
         if gs.phase == Phase.PURCHASE:
@@ -394,6 +489,8 @@ class GameSession:
             msg['legal_combat_moves'] = self.engine.legal_combat_move_options(faction)
         elif gs.phase == Phase.NONCOMBAT_MOVE:
             msg['legal_noncombat_moves'] = self.engine.legal_noncombat_move_options(faction)
+        elif gs.phase == Phase.ALLIANCES:
+            msg['legal_alliance_options'] = self.engine.legal_alliance_options(faction)
         return msg
 
     @staticmethod

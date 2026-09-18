@@ -64,6 +64,31 @@ def _two_human_session_with_combat_moves_allowed():
     return _session(modes, allow_combat_moves_first_turn=True)
 
 
+def _three_human_session():
+    """NAA, UE, and AAC all HUMAN, everyone else NEUTRAL -- 3 active
+    factions, the minimum needed for an alliance invite to be legal at
+    all (GameEngine._effective_max_alliance_size caps out at
+    active_count - 1, so only 2 active factions could never actually
+    ally -- see engine/tests/test_engine.py's TestInviteToAlliance).
+    NAA still goes first (randomize_play_order=False)."""
+    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes['NAA'] = FactionMode.HUMAN
+    modes['UE'] = FactionMode.HUMAN
+    modes['AAC'] = FactionMode.HUMAN
+    return _session(modes)
+
+
+def _advance_to_alliances(session, faction='NAA'):
+    """Drives `faction`'s turn through Purchase/Non-Combat Move with
+    empty orders (Combat Move is skipped on a faction's own first turn
+    by default -- game_start_settings.allow_combat_moves_first_turn) to
+    reach its Alliances "your_turn" prompt -- the shared setup every
+    TestAllianceActionPlayback test needs before it can exercise the
+    actual alliance_action decision."""
+    session.handle_message({'type': 'purchase', 'faction': faction, 'orders': []})
+    return session.handle_message({'type': 'noncombat_move', 'faction': faction, 'orders': []})
+
+
 class TestConnect(unittest.TestCase):
     def test_unknown_faction_errors(self):
         session = _solo_session()
@@ -152,6 +177,10 @@ class TestHandleMessage(unittest.TestCase):
         self.assertEqual(prompt['phase'], 'NONCOMBAT_MOVE', 'Non-Combat Move is a real decision point now too')
 
         messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
+        prompt = next(m for m in messages if m['type'] == 'your_turn')
+        self.assertEqual(prompt['phase'], 'ALLIANCES', 'Alliances is a real decision point now too')
+
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
         types = [m['type'] for m in messages]
         self.assertEqual(types, ['state', 'game_over'], 'only 1 active faction -- would_game_end() is true immediately')
         self.assertTrue(session.engine.game_state.game_over)
@@ -166,6 +195,10 @@ class TestHandleMessage(unittest.TestCase):
         self.assertEqual(prompt['phase'], 'NONCOMBAT_MOVE')
 
         messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
+        prompt = next(m for m in messages if m['type'] == 'your_turn')
+        self.assertEqual(prompt['phase'], 'ALLIANCES')
+
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
         types = [m['type'] for m in messages]
         self.assertEqual(types, ['state', 'your_turn'])
         self.assertEqual(messages[1]['faction'], 'UE', "advance_turn should have moved play on to UE")
@@ -178,8 +211,8 @@ class TestHandleMessage(unittest.TestCase):
         # End-to-end proof the whole validate-then-commit-then-drained
         # pipeline really places units, not just that the messages look
         # right -- deploy_and_collect_income runs as part of draining
-        # through the automatic phases once Non-Combat Move (a real
-        # decision point now) is also confirmed.
+        # through the automatic phases well before Alliances (the last
+        # phase, and also a real decision point now) is even reached.
         session = _solo_session()
         gs = session.engine.game_state
         owned = next(tid for tid, t in gs.territories.items() if t.owner == 'NAA')
@@ -197,7 +230,8 @@ class TestBotTurnPlayback(unittest.TestCase):
     def test_confirming_the_humans_turn_plays_out_the_bots_whole_turn(self):
         session = _human_and_bot_session()
         session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
-        messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
+        session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
         types = [m['type'] for m in messages]
         # NAA's own turn has no battles to report (nothing to attack yet),
         # so no "combat_events" for NAA; then AAC's whole turn plays out
@@ -210,7 +244,8 @@ class TestBotTurnPlayback(unittest.TestCase):
     def test_bot_turn_events_include_a_purchase_and_income(self):
         session = _human_and_bot_session()
         session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
-        messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
+        session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
         bot_turn = next(m for m in messages if m['type'] == 'bot_turn')
         kinds = {e['kind'] for e in bot_turn['events']}
         self.assertIn('purchase', kinds)
@@ -219,7 +254,8 @@ class TestBotTurnPlayback(unittest.TestCase):
     def test_bot_turn_events_are_only_that_bots_own_turn_not_the_humans(self):
         session = _human_and_bot_session()
         session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
-        messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
+        session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
         bot_turn = next(m for m in messages if m['type'] == 'bot_turn')
         for event in bot_turn['events']:
             self.assertNotEqual(event.get('faction'), 'NAA')
@@ -227,16 +263,18 @@ class TestBotTurnPlayback(unittest.TestCase):
     def test_second_purchase_by_the_human_plays_another_bot_turn(self):
         # game_start_settings.allow_combat_moves_first_turn defaults
         # False, so NAA's FIRST turn skips Combat Move entirely -- Non-
-        # Combat Move is still a real decision point every turn though,
-        # so it needs an explicit (empty) submission before AAC's first
-        # bot turn plays. By NAA's SECOND turn, Combat Move is no longer
-        # skipped either, so both decisions are needed again.
+        # Combat Move and Alliances are still real decision points every
+        # turn though, so both need an explicit (empty/none) submission
+        # before AAC's first bot turn plays. By NAA's SECOND turn, Combat
+        # Move is no longer skipped either, so all three are needed again.
         session = _human_and_bot_session()
         session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
         session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
+        session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
         session.handle_message({'type': 'purchase', 'faction': 'NAA', 'orders': []})
         session.handle_message({'type': 'combat_move', 'faction': 'NAA', 'orders': []})
-        messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
+        session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
         types = [m['type'] for m in messages]
         self.assertIn('bot_turn', types)
 
@@ -429,11 +467,128 @@ class TestNonCombatMovePlayback(unittest.TestCase):
         moved_unit = next(u for t in gs.territories.values() for u in t.units if u.unit_id == unit_id)
         self.assertNotIn(moved_unit, gs.territories[origin].units)
         self.assertIn(moved_unit, gs.territories[destination].units)
-        # NAA's turn is fully done (Non-Combat Move was the last real
-        # decision point) -- play moves on to UE.
+        # NAA's own turn still has Alliances left -- confirm that too,
+        # then play moves on to UE.
+        prompt = next(m for m in messages if m['type'] == 'your_turn')
+        self.assertEqual(prompt['phase'], 'ALLIANCES')
+
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
         types = [m['type'] for m in messages]
         self.assertEqual(types, ['state', 'your_turn'])
         self.assertEqual(messages[1]['faction'], 'UE')
+
+
+class TestAllianceActionPlayback(unittest.TestCase):
+    """Alliances as a real human decision point: "give the player the
+    full set of legal options[; they] submit their instructions, which
+    might be do nothing (an option for any phase)" (this session)."""
+
+    def test_your_turn_for_alliances_includes_legal_options(self):
+        session = _three_human_session()
+        messages = _advance_to_alliances(session)
+        prompt = next(m for m in messages if m['type'] == 'your_turn')
+        self.assertEqual(prompt['phase'], 'ALLIANCES')
+        options = prompt['legal_alliance_options']
+        self.assertEqual(set(options['eligible_invite_targets']), {'UE', 'AAC'})
+        self.assertFalse(options['can_withdraw'], 'NAA is not currently in any alliance')
+
+    def test_reconnecting_mid_turn_at_alliances_gets_the_same_prompt(self):
+        session = _three_human_session()
+        _advance_to_alliances(session)
+        messages = session.connect('NAA')
+        prompt = next(m for m in messages if m['type'] == 'your_turn')
+        self.assertEqual(prompt['phase'], 'ALLIANCES')
+
+    def test_alliance_action_out_of_turn_is_rejected(self):
+        session = _three_human_session()
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'UE', 'action': 'none'})
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_alliance_action_before_alliances_phase_is_rejected(self):
+        # "none" has no engine call of its own to validate the phase --
+        # process_game_end_check is what catches this instead (see
+        # _handle_alliance_action's own docstring).
+        session = _three_human_session()
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_unknown_alliance_action_is_rejected(self):
+        session = _three_human_session()
+        _advance_to_alliances(session)
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'betray_everyone'})
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_invite_without_a_target_is_rejected(self):
+        session = _three_human_session()
+        _advance_to_alliances(session)
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'invite'})
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_illegal_invite_is_rejected_by_the_real_engine(self):
+        session = _three_human_session()
+        _advance_to_alliances(session)
+        messages = session.handle_message({
+            'type': 'alliance_action', 'faction': 'NAA', 'action': 'invite', 'target': 'NAA',
+        })
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_withdraw_without_an_alliance_is_rejected_by_the_real_engine(self):
+        session = _three_human_session()
+        _advance_to_alliances(session)
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'withdraw'})
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_none_action_finishes_the_turn_and_continues(self):
+        session = _three_human_session()
+        _advance_to_alliances(session)
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
+        types = [m['type'] for m in messages]
+        self.assertEqual(types, ['state', 'your_turn'])
+        self.assertEqual(messages[1]['faction'], 'UE', "advance_turn should have moved play on to UE")
+
+    def test_invite_target_with_no_alliance_strategy_declines_by_default(self):
+        # A genuinely HUMAN invite target -- engine.setup.build_game_state
+        # never sets alliance_strategy for a HUMAN-mode faction, so
+        # accepts_invite's default applies (unknown strategy -> declines)
+        # -- documented in this module's own docstring as the not-yet-
+        # built limitation around real human-to-human negotiation.
+        session = _three_human_session()
+        gs = session.engine.game_state
+        _advance_to_alliances(session)
+        messages = session.handle_message({
+            'type': 'alliance_action', 'faction': 'NAA', 'action': 'invite', 'target': 'UE',
+        })
+        self.assertIsNone(gs.factions['NAA'].alliance, 'a target with no alliance_strategy declines by default')
+        self.assertIsNone(gs.factions['UE'].alliance)
+        types = [m['type'] for m in messages]
+        self.assertEqual(types, ['state', 'your_turn'], 'a decline still spends the turn -- NOT an error')
+
+    def test_invite_target_forms_an_alliance_when_it_accepts(self):
+        # Simulates a target that WOULD accept (same mechanism a BOT
+        # target uses) -- proves invite_to_alliance/accepts_invite are
+        # wired correctly end to end, independent of the human-target
+        # limitation covered by the test above.
+        session = _three_human_session()
+        gs = session.engine.game_state
+        gs.factions['UE'].alliance_strategy = 'aggressive'
+        _advance_to_alliances(session)
+        session.handle_message({
+            'type': 'alliance_action', 'faction': 'NAA', 'action': 'invite', 'target': 'UE',
+        })
+        self.assertIsNotNone(gs.factions['NAA'].alliance)
+        self.assertEqual(gs.factions['NAA'].alliance, gs.factions['UE'].alliance)
+
+    def test_withdraw_leaves_the_alliance_and_continues_the_turn(self):
+        session = _three_human_session()
+        gs = session.engine.game_state
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['UE'].alliance = 'pact'
+        _advance_to_alliances(session)
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'withdraw'})
+        self.assertIsNone(gs.factions['NAA'].alliance)
+        self.assertEqual(gs.factions['UE'].alliance, 'pact')
+        types = [m['type'] for m in messages]
+        self.assertEqual(types, ['state', 'your_turn'])
 
 
 if __name__ == '__main__':

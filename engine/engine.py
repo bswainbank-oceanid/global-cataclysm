@@ -1453,6 +1453,59 @@ class GameEngine:
             return {faction}
         return {code for code, f in self.game_state.factions.items() if f.alliance == tag}
 
+    def legal_alliance_options(self, faction):
+        """{'eligible_invite_targets': [faction_code, ...], 'can_withdraw':
+        bool} for `faction`'s one optional Alliances-phase action this
+        turn -- invite OR withdraw, never both (see invite_to_alliance/
+        withdraw_from_alliance's shared _alliance_action_taken guard);
+        doing neither ('none') is always legal too and needs no entry
+        here, same as leaving a unit out of a Purchase/Combat Move/Non-
+        Combat Move order list.
+
+        eligible_invite_targets: every active faction that isn't already
+        one of `faction`'s own allies, isn't already in SOME alliance of
+        its own (it would have to withdraw first, on its own turn), and,
+        when can_rejoin_alliances is False, isn't former_allies-banned
+        against anyone already in `faction`'s alliance. Deliberately does
+        NOT additionally filter by _effective_max_alliance_size -- unlike
+        a unit's destination list, which target the caller will actually
+        try isn't known yet, so every structurally-eligible target is
+        offered; invite_to_alliance is still the authoritative check and
+        will reject a specific pick that would exceed the effective max.
+
+        can_withdraw: True only if `faction` is currently in an alliance,
+        game_start_settings.can_withdraw_from_alliances is True, and it
+        isn't blocked by the design doc's SC lock (a unit of `faction`'s
+        own standing on an ally's Strategic Center) -- mirrors
+        withdraw_from_alliance's own validation, read-only, so a client
+        can grey out that option rather than discovering the rejection
+        only after submitting it.
+
+        engine.bots.alliance_policy._eligible_invite_targets delegates to
+        this for its own candidate pool (previously its own private copy
+        of this same filter) -- any caller, not just a bot, can use it
+        now, same reasoning as legal_purchase_targets' own move here
+        earlier this project."""
+        gs = self.game_state
+        members = self._alliance_members(faction)
+        targets = []
+        for code in gs.active_factions():
+            if code in members:
+                continue
+            if gs.factions[code].alliance is not None:
+                continue
+            if not gs.can_rejoin_alliances and gs.factions[code].former_allies & members:
+                continue
+            targets.append(code)
+
+        fstate = gs.factions[faction]
+        can_withdraw = (
+            fstate.alliance is not None
+            and gs.can_withdraw_from_alliances
+            and not self._faction_has_units_on_an_allied_sc(faction)
+        )
+        return {'eligible_invite_targets': sorted(targets), 'can_withdraw': can_withdraw}
+
     def _new_alliance_tag(self):
         tag = f'ALLIANCE_{self.game_state._next_alliance_id}'
         self.game_state._next_alliance_id += 1
