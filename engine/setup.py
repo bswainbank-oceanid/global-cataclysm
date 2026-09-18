@@ -24,7 +24,9 @@ ordinarily 31 MPC (25 base territory value + 3 Strategic Centers x 2).
 import random
 
 from . import data
-from .bots.alliance_policy import resolve_alliance_behavior, resolve_alliance_strategy
+from .bots.alliance_policy import (
+    reroll_alliance_behavior, reroll_alliance_strategy, resolve_alliance_behavior, resolve_alliance_strategy,
+)
 from .economy import compute_income
 from .state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode, Phase
 
@@ -135,14 +137,22 @@ def build_game_state(scenario_name, faction_modes, defensive_scenario_name='star
 
     alliance_strategies / alliance_behaviors: optional {faction_code: str}
     -- per-BOT game-start settings (engine.bots.alliance_policy), each
-    value one of that module's STRATEGIES/BEHAVIORS, 'random', or simply
-    omitted (also treated as 'random'). Resolved ONCE here via
-    resolve_alliance_strategy/resolve_alliance_behavior (using `rng`, the
-    same one randomize_play_order uses) and stored as the concrete result
-    on FactionState.alliance_strategy/alliance_behavior -- fixed for the
-    rest of the game even when the input was 'random'. Only ever set for
-    FactionMode.BOT factions; HUMAN/DEFENSIVE/NEUTRAL factions never
-    consult this policy layer, so their fields stay None."""
+    value one of that module's STRATEGIES/BEHAVIORS (now including
+    'variable'), 'random', or simply omitted (also treated as 'random').
+    Resolved ONCE here via resolve_alliance_strategy/resolve_alliance_
+    behavior (using `rng`, the same one randomize_play_order uses) and
+    stored as the concrete result on FactionState.alliance_strategy/
+    alliance_behavior -- fixed for the rest of the game even when the
+    input was 'random' (landing on 'variable' is exactly as permanent a
+    result as landing on any other single value would have been). A
+    'variable' result additionally gets an initial concrete re-roll right
+    away too (FactionState.current_alliance_strategy/current_alliance_
+    behavior, via reroll_alliance_strategy/reroll_alliance_behavior) so
+    there's a real decision from turn 1, not None -- see RandomBot.
+    _maybe_reroll_variable_alliance_settings for the same re-roll
+    repeating every turn after that. Only ever set for FactionMode.BOT
+    factions; HUMAN/DEFENSIVE/NEUTRAL factions never consult this policy
+    layer, so their fields stay None."""
     rng = rng or random.Random()
     gs = GameState(
         global_turn=0, phase=Phase.PURCHASE,
@@ -170,6 +180,15 @@ def build_game_state(scenario_name, faction_modes, defensive_scenario_name='star
             continue
         fstate.alliance_strategy = resolve_alliance_strategy(alliance_strategies.get(code), rng)
         fstate.alliance_behavior = resolve_alliance_behavior(alliance_behaviors.get(code), rng)
+        # 'variable' gets its first concrete pick right away too, so
+        # there's a real decision from turn 1 (current_alliance_strategy/
+        # current_alliance_behavior would otherwise start out None until
+        # this bot's own first Purchase phase re-rolls them -- see
+        # RandomBot._maybe_reroll_variable_alliance_settings).
+        if fstate.alliance_strategy == 'variable':
+            fstate.current_alliance_strategy = reroll_alliance_strategy(rng)
+        if fstate.alliance_behavior == 'variable':
+            fstate.current_alliance_behavior = reroll_alliance_behavior(rng)
 
     for code, fstate in gs.factions.items():
         # Starting treasury: this faction's territories are already

@@ -71,9 +71,11 @@ Behavior, as specified by the user this session:
   alliance_policy, a standalone module, since accepting an invitation is
   the TARGET faction's own strategy decision, not the inviter's, and
   needs to be computable for any faction without needing its bot
-  instance. See take_alliance_phase/_maybe_roll_treacherous_intent below
-  and alliance_policy's module docstring for the per-strategy/behavior
-  rules themselves.
+  instance. A 'variable' strategy/behavior (added this session) re-rolls
+  its own CONCRETE pick every turn -- see take_alliance_phase/
+  _maybe_reroll_variable_alliance_settings/_maybe_roll_treacherous_intent
+  below and alliance_policy's module docstring for the per-strategy/
+  behavior rules themselves.
 
 Only Purchase is randomized (per spec); Combat Move and Non-Combat Move
 are both deterministic given the board state, which keeps a driven game
@@ -104,6 +106,7 @@ class RandomBot:
     # ---- Purchase -----------------------------------------------------
 
     def take_purchase_phase(self):
+        self._maybe_reroll_variable_alliance_settings()
         self._maybe_roll_treacherous_intent()
         gs = self.engine.game_state
         treasury = gs.factions[self.faction].treasury_mpc
@@ -349,6 +352,23 @@ class RandomBot:
 
     # ---- Alliances --------------------------------------------------------
 
+    def _maybe_reroll_variable_alliance_settings(self):
+        """Start-of-turn hook (called from take_purchase_phase, BEFORE
+        _maybe_roll_treacherous_intent -- order matters, see there):
+        alliance_strategy/alliance_behavior == 'variable' each re-roll to
+        a fresh concrete pick (engine.bots.alliance_policy.
+        reroll_alliance_strategy/reroll_alliance_behavior, using this
+        bot's own seeded rng), stored on FactionState.current_alliance_
+        strategy/current_alliance_behavior -- 'variable' itself stays on
+        alliance_strategy/alliance_behavior all game, same as any other
+        resolved choice; only the concrete value actually driving this
+        turn's decisions changes. A no-op for a non-'variable' bot."""
+        fstate = self.engine.game_state.factions[self.faction]
+        if fstate.alliance_strategy == 'variable':
+            fstate.current_alliance_strategy = alliance_policy.reroll_alliance_strategy(self.rng)
+        if fstate.alliance_behavior == 'variable':
+            fstate.current_alliance_behavior = alliance_policy.reroll_alliance_behavior(self.rng)
+
     def _maybe_roll_treacherous_intent(self):
         """Start-of-turn hook (called from take_purchase_phase, Purchase
         always being the first phase of every turn -- see turn_order):
@@ -357,9 +377,16 @@ class RandomBot:
         FactionState.pending_treacherous_withdrawal for
         alliance_policy.should_withdraw to read later this same turn, at
         the Alliances phase. Only rolls while actually in an alliance --
-        nothing to withdraw from otherwise, so the decision is moot."""
-        fstate = self.engine.game_state.factions[self.faction]
-        if fstate.alliance_behavior == 'treacherous' and fstate.alliance is not None:
+        nothing to withdraw from otherwise, so the decision is moot.
+        Reads the EFFECTIVE behavior (alliance_policy.effective_alliance_
+        behavior), not the raw field, so a 'variable' bot whose re-roll
+        this same turn (see _maybe_reroll_variable_alliance_settings,
+        called first) landed on 'treacherous' rolls this chance too --
+        it's acting as that concrete behavior for the turn, same as if it
+        had been fixed that way from the start."""
+        gs = self.engine.game_state
+        fstate = gs.factions[self.faction]
+        if alliance_policy.effective_alliance_behavior(gs, self.faction) == 'treacherous' and fstate.alliance is not None:
             fstate.pending_treacherous_withdrawal = self.rng.random() < 0.15
 
     def take_alliance_phase(self):

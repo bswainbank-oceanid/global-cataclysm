@@ -112,6 +112,37 @@ class TestSetup(unittest.TestCase):
         self.assertFalse(gs.allow_combat_moves_first_turn)
         self.assertTrue(gs.allow_noncombat_moves_first_turn)
 
+    def test_variable_alliance_settings_get_an_initial_concrete_reroll(self):
+        # A 'variable' strategy/behavior gets its first concrete pick
+        # right away at setup too, not just at the bot's own first
+        # Purchase phase (RandomBot._maybe_reroll_variable_alliance_
+        # settings) -- so there's a real decision from turn 1, not None,
+        # e.g. if another bot invites it before its own first turn.
+        modes = {c: FactionMode.HUMAN for c in data.factions()}
+        modes['NAA'] = FactionMode.BOT
+        gs = build_game_state(
+            'starting_setup_200ipc', modes,
+            alliance_strategies={'NAA': 'variable'}, alliance_behaviors={'NAA': 'variable'},
+            rng=random.Random(1),
+        )
+        self.assertEqual(gs.factions['NAA'].alliance_strategy, 'variable', 'stays variable all game')
+        self.assertEqual(gs.factions['NAA'].alliance_behavior, 'variable')
+        self.assertIsNotNone(gs.factions['NAA'].current_alliance_strategy)
+        self.assertIsNotNone(gs.factions['NAA'].current_alliance_behavior)
+        self.assertNotEqual(gs.factions['NAA'].current_alliance_strategy, 'variable')
+        self.assertNotEqual(gs.factions['NAA'].current_alliance_behavior, 'variable')
+
+    def test_non_variable_alliance_settings_leave_current_fields_unset(self):
+        modes = {c: FactionMode.HUMAN for c in data.factions()}
+        modes['NAA'] = FactionMode.BOT
+        gs = build_game_state(
+            'starting_setup_200ipc', modes,
+            alliance_strategies={'NAA': 'aggressive'}, alliance_behaviors={'NAA': 'loyal'},
+            rng=random.Random(1),
+        )
+        self.assertIsNone(gs.factions['NAA'].current_alliance_strategy)
+        self.assertIsNone(gs.factions['NAA'].current_alliance_behavior)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -16,7 +16,7 @@ ANY invited faction, not just the one instance currently taking its turn --
 the accepting decision belongs to the TARGET's own strategy, not the
 inviter's.
 
-Four strategies (game_start setting, per bot, fixed for the whole game):
+Five strategies (game_start setting, per bot):
 - aggressive: always invites a random eligible faction (capped by
   GameEngine._effective_max_alliance_size() -- game_start_settings.
   max_alliance_size, further capped by the CURRENT number of active
@@ -31,10 +31,19 @@ Four strategies (game_start setting, per bot, fixed for the whole game):
   largest other alliance" cap to ACCEPTING an invitation too, confirmed
   this session -- not just to its own inviting.
 - independent: never invites, never accepts.
+- variable (added this session): re-rolls to one of the four CONCRETE
+  strategies above -- never variable or random themselves -- once at game
+  start and again at the start of every one of this bot's own turns (see
+  reroll_alliance_strategy/effective_alliance_strategy below), so which
+  concrete strategy is actually driving its decisions can change turn to
+  turn, but "variable" itself is fixed for the whole game exactly like
+  every other choice (resolve_alliance_strategy still only resolves
+  'random' ONCE, same as ever -- 'variable' is just one of the concrete
+  outcomes that single resolution can now land on).
 
-Three behaviors (game_start setting, per bot, fixed for the whole game;
-irrelevant when game_start_settings.can_withdraw_from_alliances is False,
-since withdrawing is simply never possible then):
+Four behaviors (game_start setting, per bot; irrelevant when
+game_start_settings.can_withdraw_from_alliances is False, since
+withdrawing is simply never possible then):
 - loyal: never withdraws, no exceptions.
 - opportunistic: withdraws if it's now MUCH stronger than its weakest ally
   (>150% of either current treasury or total unit value) or MUCH weaker
@@ -51,17 +60,46 @@ since withdrawing is simply never possible then):
   factor -- see FactionState.pending_treacherous_withdrawal. ALSO always
   withdraws if the game would otherwise end on this faction's own turn,
   same override as opportunistic (confirmed this session).
+- variable (added this session): same re-roll-every-turn idea as the
+  variable strategy above, over the three concrete behaviors -- a turn
+  where its re-rolled pick happens to land on 'treacherous' rolls that
+  behavior's own 15% chance too (see RandomBot._maybe_reroll_variable_
+  alliance_settings/_maybe_roll_treacherous_intent ordering).
+
+Every decision function below (choose_invite_target, accepts_invite,
+should_withdraw) reads a faction's strategy/behavior through effective_
+alliance_strategy/effective_alliance_behavior, never FactionState.
+alliance_strategy/alliance_behavior directly -- that's the one place
+'variable' is resolved to whatever concrete value is currently active,
+so none of the actual decision logic needs to know 'variable' exists at
+all.
 """
-STRATEGIES = ('aggressive', 'passive', 'counterweight', 'independent')
-BEHAVIORS = ('loyal', 'opportunistic', 'treacherous')
+STRATEGIES = ('aggressive', 'passive', 'counterweight', 'independent', 'variable')
+BEHAVIORS = ('loyal', 'opportunistic', 'treacherous', 'variable')
+
+# What a 'variable' bot's own per-turn re-roll picks from (reroll_alliance_
+# strategy/reroll_alliance_behavior) -- everything in STRATEGIES/BEHAVIORS
+# except 'variable' itself; 'random' was never a real member of either
+# tuple to begin with (see resolve_alliance_strategy/resolve_alliance_
+# behavior). Also what the decision functions below check a resolved
+# strategy/behavior against, so an unset (None, e.g. a HUMAN faction) or
+# somehow-still-literally-'variable' value both correctly fail the check.
+_CONCRETE_STRATEGIES = tuple(s for s in STRATEGIES if s != 'variable')
+_CONCRETE_BEHAVIORS = tuple(b for b in BEHAVIORS if b != 'variable')
 
 
 def resolve_alliance_strategy(value, rng):
-    """`value`: one of STRATEGIES, 'random' (case-insensitive), or None
-    (treated as 'random'). Rolls 'random' to a concrete STRATEGIES member
-    ONCE here -- the caller (setup.build_game_state) stores only the
-    resolved result on FactionState.alliance_strategy, never 'random'
-    itself, so it stays fixed for the rest of the game."""
+    """`value`: one of STRATEGIES (now including 'variable'), 'random'
+    (case-insensitive), or None (treated as 'random'). Rolls 'random' to
+    a concrete STRATEGIES member ONCE here -- the caller (setup.
+    build_game_state) stores only the resolved result on FactionState.
+    alliance_strategy, never 'random' itself, so it stays fixed for the
+    rest of the game -- 'random' rolling 'variable' is exactly as
+    permanent a choice as rolling 'aggressive' would have been ("random
+    selection can choose variable... for the entire game", this session);
+    it's only the CONCRETE strategy actually driving decisions that then
+    keeps changing turn to turn, via reroll_alliance_strategy, not this
+    resolution happening again."""
     value = (value or 'random').lower()
     return rng.choice(STRATEGIES) if value == 'random' else value
 
@@ -70,6 +108,45 @@ def resolve_alliance_behavior(value, rng):
     """Same resolution as resolve_alliance_strategy, for BEHAVIORS."""
     value = (value or 'random').lower()
     return rng.choice(BEHAVIORS) if value == 'random' else value
+
+
+def reroll_alliance_strategy(rng):
+    """The concrete strategy a 'variable' bot re-rolls to -- at game
+    start (setup.build_game_state, so it has a real decision from turn 1,
+    not None) and again at the start of every one of its own turns
+    (RandomBot._maybe_reroll_variable_alliance_settings) -- stored on
+    FactionState.current_alliance_strategy, never on alliance_strategy
+    itself (which stays 'variable' all game, same as any other resolved
+    choice stays fixed). Never re-rolls to 'variable' or 'random'
+    themselves."""
+    return rng.choice(_CONCRETE_STRATEGIES)
+
+
+def reroll_alliance_behavior(rng):
+    """Same re-roll as reroll_alliance_strategy, for BEHAVIORS -- stored
+    on FactionState.current_alliance_behavior."""
+    return rng.choice(_CONCRETE_BEHAVIORS)
+
+
+def effective_alliance_strategy(gs, faction):
+    """The concrete strategy actually driving `faction`'s decisions right
+    now: FactionState.alliance_strategy directly, UNLESS that's
+    'variable', in which case FactionState.current_alliance_strategy (the
+    latest re-roll) is what's actually consulted instead. The single
+    place 'variable' is ever resolved -- every decision function in this
+    module reads a strategy through here, never the raw field."""
+    fstate = gs.factions[faction]
+    if fstate.alliance_strategy == 'variable':
+        return fstate.current_alliance_strategy
+    return fstate.alliance_strategy
+
+
+def effective_alliance_behavior(gs, faction):
+    """Same resolution as effective_alliance_strategy, for BEHAVIORS."""
+    fstate = gs.factions[faction]
+    if fstate.alliance_behavior == 'variable':
+        return fstate.current_alliance_behavior
+    return fstate.alliance_behavior
 
 
 def _eligible_invite_targets(engine, faction):
@@ -101,13 +178,13 @@ def _other_alliance_sizes(engine, exclude_tag):
 
 
 def choose_invite_target(engine, faction, rng):
-    """Which faction (if any) `faction`'s alliance_strategy wants to
-    invite this Alliances phase -- None means do nothing. Purely
+    """Which faction (if any) `faction`'s (effective) alliance_strategy
+    wants to invite this Alliances phase -- None means do nothing. Purely
     advisory: the caller must still call GameEngine.invite_to_alliance,
     which re-validates everything authoritatively (this function's own
     checks exist only to avoid the common-case wasted attempt)."""
     gs = engine.game_state
-    strategy = gs.factions[faction].alliance_strategy
+    strategy = effective_alliance_strategy(gs, faction)
     if strategy not in ('aggressive', 'counterweight'):
         return None
 
@@ -128,14 +205,15 @@ def choose_invite_target(engine, faction, rng):
 
 def accepts_invite(engine, faction, inviter):
     """Whether `faction` (the invitee) accepts an invitation from
-    `inviter` right now, per faction's OWN alliance_strategy -- not the
-    inviter's. Independent never accepts; Aggressive/Passive always do
-    (confirmed this session); Counterweight applies its size cap to
-    accepting too, comparing the prospective merged alliance's size
-    against the largest alliance other than the one it would be joining."""
+    `inviter` right now, per faction's OWN (effective) alliance_strategy
+    -- not the inviter's. Independent never accepts; Aggressive/Passive
+    always do (confirmed this session); Counterweight applies its size
+    cap to accepting too, comparing the prospective merged alliance's
+    size against the largest alliance other than the one it would be
+    joining."""
     gs = engine.game_state
-    strategy = gs.factions[faction].alliance_strategy
-    if strategy not in STRATEGIES:
+    strategy = effective_alliance_strategy(gs, faction)
+    if strategy not in _CONCRETE_STRATEGIES:
         return False
     if strategy == 'independent':
         return False
@@ -178,13 +256,13 @@ def _opportunistic_strength_mismatch(engine, faction):
 
 
 def should_withdraw(engine, faction):
-    """Whether `faction`'s alliance_behavior wants to withdraw this
-    Alliances phase. Caller must still confirm `faction` is actually in
-    an alliance and that can_withdraw_from_alliances is True -- this
-    function only decides WANTS, never checks legality."""
+    """Whether `faction`'s (effective) alliance_behavior wants to
+    withdraw this Alliances phase. Caller must still confirm `faction` is
+    actually in an alliance and that can_withdraw_from_alliances is True
+    -- this function only decides WANTS, never checks legality."""
     gs = engine.game_state
-    behavior = gs.factions[faction].alliance_behavior
-    if behavior not in BEHAVIORS:
+    behavior = effective_alliance_behavior(gs, faction)
+    if behavior not in _CONCRETE_BEHAVIORS:
         return False
     if behavior == 'loyal':
         return False

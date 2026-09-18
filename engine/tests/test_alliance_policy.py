@@ -38,12 +38,63 @@ class TestResolveSettings(unittest.TestCase):
     def test_explicit_strategy_passes_through_lowercased(self):
         self.assertEqual(alliance_policy.resolve_alliance_strategy('Aggressive', random.Random(1)), 'aggressive')
 
+    def test_explicit_variable_strategy_passes_through(self):
+        self.assertEqual(alliance_policy.resolve_alliance_strategy('Variable', random.Random(1)), 'variable')
+
+    def test_random_strategy_can_land_on_variable(self):
+        # "Random selection can choose variable as a strategy... for the
+        # entire game" -- confirm it's actually reachable, not just
+        # theoretically a STRATEGIES member, over enough seeds.
+        results = {alliance_policy.resolve_alliance_strategy('random', random.Random(seed)) for seed in range(50)}
+        self.assertIn('variable', results)
+
     def test_random_behavior_resolves_to_a_concrete_member(self):
         result = alliance_policy.resolve_alliance_behavior('random', random.Random(2))
         self.assertIn(result, alliance_policy.BEHAVIORS)
 
     def test_explicit_behavior_passes_through_lowercased(self):
         self.assertEqual(alliance_policy.resolve_alliance_behavior('Treacherous', random.Random(1)), 'treacherous')
+
+    def test_explicit_variable_behavior_passes_through(self):
+        self.assertEqual(alliance_policy.resolve_alliance_behavior('Variable', random.Random(1)), 'variable')
+
+    def test_random_behavior_can_land_on_variable(self):
+        results = {alliance_policy.resolve_alliance_behavior('random', random.Random(seed)) for seed in range(50)}
+        self.assertIn('variable', results)
+
+
+class TestRerollAllianceSettings(unittest.TestCase):
+    def test_reroll_strategy_never_picks_variable_or_random(self):
+        results = {alliance_policy.reroll_alliance_strategy(random.Random(seed)) for seed in range(50)}
+        self.assertNotIn('variable', results)
+        self.assertNotIn('random', results)
+        self.assertTrue(results.issubset(set(alliance_policy.STRATEGIES)))
+
+    def test_reroll_behavior_never_picks_variable_or_random(self):
+        results = {alliance_policy.reroll_alliance_behavior(random.Random(seed)) for seed in range(50)}
+        self.assertNotIn('variable', results)
+        self.assertNotIn('random', results)
+        self.assertTrue(results.issubset(set(alliance_policy.BEHAVIORS)))
+
+
+class TestEffectiveAllianceSettings(unittest.TestCase):
+    def test_effective_strategy_is_the_raw_value_when_not_variable(self):
+        engine, gs = make_engine({'NAA': FactionMode.BOT}, strategies={'NAA': 'aggressive'})
+        self.assertEqual(alliance_policy.effective_alliance_strategy(gs, 'NAA'), 'aggressive')
+
+    def test_effective_strategy_reads_the_current_reroll_when_variable(self):
+        engine, gs = make_engine({'NAA': FactionMode.BOT}, strategies={'NAA': 'variable'})
+        gs.factions['NAA'].current_alliance_strategy = 'independent'
+        self.assertEqual(alliance_policy.effective_alliance_strategy(gs, 'NAA'), 'independent')
+
+    def test_effective_behavior_is_the_raw_value_when_not_variable(self):
+        engine, gs = make_engine({'NAA': FactionMode.BOT}, behaviors={'NAA': 'loyal'})
+        self.assertEqual(alliance_policy.effective_alliance_behavior(gs, 'NAA'), 'loyal')
+
+    def test_effective_behavior_reads_the_current_reroll_when_variable(self):
+        engine, gs = make_engine({'NAA': FactionMode.BOT}, behaviors={'NAA': 'variable'})
+        gs.factions['NAA'].current_alliance_behavior = 'treacherous'
+        self.assertEqual(alliance_policy.effective_alliance_behavior(gs, 'NAA'), 'treacherous')
 
 
 class TestChooseInviteTarget(unittest.TestCase):
@@ -120,6 +171,30 @@ class TestChooseInviteTarget(unittest.TestCase):
         )
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
 
+    def test_variable_uses_the_current_rerolled_strategy(self):
+        # gs.factions['NAA'].alliance_strategy stays 'variable' -- only
+        # current_alliance_strategy (the latest re-roll) actually drives
+        # the decision, via effective_alliance_strategy.
+        engine, gs = make_engine(
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            strategies={'NAA': 'variable'},
+        )
+        gs.factions['NAA'].current_alliance_strategy = 'aggressive'
+        target = alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1))
+        self.assertIn(target, ('UE', 'AAC'))
+
+    def test_variable_with_no_reroll_yet_does_nothing(self):
+        # current_alliance_strategy is None until the first reroll (see
+        # RandomBot._maybe_reroll_variable_alliance_settings/setup's own
+        # initial roll) -- effective_alliance_strategy then returns None,
+        # which isn't 'aggressive'/'counterweight', so this is simply the
+        # same as any other non-inviting strategy for now.
+        engine, gs = make_engine(
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            strategies={'NAA': 'variable'},
+        )
+        self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
+
 
 class TestAcceptsInvite(unittest.TestCase):
     def test_independent_never_accepts(self):
@@ -168,6 +243,21 @@ class TestAcceptsInvite(unittest.TestCase):
         )
         # NAA's alliance already has 2 members; UE joining makes 3,
         # exceeding rival's size of 2.
+        self.assertFalse(alliance_policy.accepts_invite(engine, 'UE', 'NAA'))
+
+    def test_variable_uses_the_current_rerolled_strategy(self):
+        engine, gs = make_engine(
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
+            strategies={'UE': 'variable'},
+        )
+        gs.factions['UE'].current_alliance_strategy = 'passive'
+        self.assertTrue(alliance_policy.accepts_invite(engine, 'UE', 'NAA'))
+
+    def test_variable_with_no_reroll_yet_declines(self):
+        engine, gs = make_engine(
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
+            strategies={'UE': 'variable'},
+        )
         self.assertFalse(alliance_policy.accepts_invite(engine, 'UE', 'NAA'))
 
 
@@ -265,6 +355,25 @@ class TestShouldWithdraw(unittest.TestCase):
         self.assertTrue(engine.would_game_end())
         self.assertTrue(alliance_policy.should_withdraw(engine, 'NAA'))
 
+    def test_variable_uses_the_current_rerolled_behavior(self):
+        engine, gs = make_engine(
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'UE': 'pact'},
+            behaviors={'NAA': 'variable'},
+            treasuries={'NAA': 1000, 'UE': 100, 'AAC': 500},
+        )
+        gs.factions['NAA'].current_alliance_behavior = 'opportunistic'
+        self.assertFalse(engine.would_game_end())
+        self.assertTrue(alliance_policy.should_withdraw(engine, 'NAA'))  # 1000 > 1.5 * 100
+
+    def test_variable_with_no_reroll_yet_does_not_withdraw(self):
+        engine, gs = make_engine(
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'UE': 'pact'},
+            behaviors={'NAA': 'variable'},
+        )
+        self.assertFalse(alliance_policy.should_withdraw(engine, 'NAA'))
+
 
 class TestRandomBotAllianceIntegration(unittest.TestCase):
     def test_treacherous_intent_only_rolled_while_allied(self):
@@ -324,6 +433,67 @@ class TestRandomBotAllianceIntegration(unittest.TestCase):
         bot = RandomBot(engine, 'NAA', rng=random.Random(1))
         bot.take_alliance_phase()
         self.assertIsNone(gs.factions['NAA'].alliance, 'withdrew instead of inviting')
+
+    def test_reroll_variable_alliance_settings_rerolls_both(self):
+        engine, gs = make_engine(
+            {'NAA': FactionMode.BOT}, strategies={'NAA': 'variable'}, behaviors={'NAA': 'variable'},
+            phase=Phase.PURCHASE,
+        )
+        bot = RandomBot(engine, 'NAA', rng=random.Random(1))
+        bot._maybe_reroll_variable_alliance_settings()
+        self.assertIn(gs.factions['NAA'].current_alliance_strategy, alliance_policy._CONCRETE_STRATEGIES)
+        self.assertIn(gs.factions['NAA'].current_alliance_behavior, alliance_policy._CONCRETE_BEHAVIORS)
+        # alliance_strategy/alliance_behavior themselves never change --
+        # only the current_* reroll does.
+        self.assertEqual(gs.factions['NAA'].alliance_strategy, 'variable')
+        self.assertEqual(gs.factions['NAA'].alliance_behavior, 'variable')
+
+    def test_reroll_variable_alliance_settings_is_a_noop_for_concrete_settings(self):
+        engine, gs = make_engine(
+            {'NAA': FactionMode.BOT}, strategies={'NAA': 'aggressive'}, behaviors={'NAA': 'loyal'},
+            phase=Phase.PURCHASE,
+        )
+        bot = RandomBot(engine, 'NAA', rng=random.Random(1))
+        bot._maybe_reroll_variable_alliance_settings()
+        self.assertIsNone(gs.factions['NAA'].current_alliance_strategy)
+        self.assertIsNone(gs.factions['NAA'].current_alliance_behavior)
+
+    def test_treacherous_intent_rolled_when_variable_behavior_lands_on_treacherous(self):
+        # _maybe_roll_treacherous_intent reads the EFFECTIVE behavior, so
+        # a 'variable' bot whose re-roll landed on 'treacherous' this
+        # turn rolls the 15% chance too, exactly as if it had been fixed
+        # that way from the start.
+        engine, gs = make_engine(
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'UE': 'pact'},
+            behaviors={'NAA': 'variable'},
+            phase=Phase.PURCHASE,
+        )
+        gs.factions['NAA'].current_alliance_behavior = 'treacherous'
+        bot = RandomBot(engine, 'NAA', rng=random.Random(1))
+        bot._maybe_roll_treacherous_intent()
+        self.assertIsInstance(gs.factions['NAA'].pending_treacherous_withdrawal, bool)
+
+    def test_take_purchase_phase_rerolls_variable_settings_before_the_treacherous_check(self):
+        # take_purchase_phase calls _maybe_reroll_variable_alliance_
+        # settings BEFORE _maybe_roll_treacherous_intent -- confirms the
+        # ordering by checking the treacherous roll actually happened for
+        # a 'variable' behavior with no PRE-EXISTING current_alliance_
+        # behavior (i.e. only this call's own reroll could have set it to
+        # 'treacherous' in time for the check right after).
+        engine, gs = make_engine(
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'UE': 'pact'},
+            behaviors={'NAA': 'variable'},
+            phase=Phase.PURCHASE,
+        )
+        bot = RandomBot(engine, 'NAA', rng=random.Random(1))
+        bot.take_purchase_phase()
+        self.assertIn(gs.factions['NAA'].current_alliance_behavior, alliance_policy._CONCRETE_BEHAVIORS)
+        if gs.factions['NAA'].current_alliance_behavior == 'treacherous':
+            self.assertIsInstance(gs.factions['NAA'].pending_treacherous_withdrawal, bool)
+        else:
+            self.assertFalse(gs.factions['NAA'].pending_treacherous_withdrawal)
 
     def test_take_alliance_phase_withdrawal_blocked_by_setting_falls_through_to_nothing(self):
         # can_withdraw_from_alliances False means the withdrawal branch is
