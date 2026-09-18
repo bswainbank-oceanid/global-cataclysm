@@ -41,13 +41,16 @@ func _draw() -> void:
 
 func _outline(tid: int, line: Color, width_px: float, fill: Color) -> void:
 	var is_sea: bool = GameData.territories[tid]["type"] == "sea"
+	# Fills use the cleaned (triangulatable) polygons; outlines the raw ones.
+	if pass_kind == Pass.UNDER_LAND:
+		if is_sea:
+			for fpoly in GameData.fill_shapes[tid]:
+				draw_colored_polygon(fpoly, fill)
+		return
+	if not is_sea:
+		for fpoly in GameData.fill_shapes[tid]:
+			draw_colored_polygon(fpoly, fill)
 	for poly in GameData.shapes[tid]:
-		if pass_kind == Pass.UNDER_LAND:
-			if is_sea:
-				draw_colored_polygon(poly, fill)
-			continue
-		if not is_sea:
-			draw_colored_polygon(poly, fill)
 		var loop := PackedVector2Array(poly)
 		loop.append(poly[0])
 		draw_polyline(loop, line, width_px / zoom, true)

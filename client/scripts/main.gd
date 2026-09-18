@@ -1,21 +1,45 @@
 extends Control
-## Root of the client. Builds the scene tree in code: a SubViewport holding
-## the map world and camera (so the HUD can later frame it with panels and
-## the camera math only ever sees the map area), with a small debug readout
-## on top until the real HUD replaces it.
+## Root of the client. Builds the scene tree in code, following the mockup:
+## a top bar (title/round/phase + one stats panel per faction), and below it
+## the map area beside the right-hand selection/log panels. The map lives in
+## a SubViewport so the camera math only ever sees the map area itself.
 
 var _container: SubViewportContainer
 var _viewport: SubViewport
 var _world: MapWorld
 var _cam: CameraRig
-var _info: Label
+var _hover_label: Label
+var _top: TopBar
+var _side: SidePanel
 
 
 func _ready() -> void:
+	var root := VBoxContainer.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_theme_constant_override("separation", 6)
+	add_child(root)
+
+	_top = TopBar.new()
+	root.add_child(_top)
+
+	var body := HBoxContainer.new()
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 8)
+	root.add_child(body)
+
+	var map_area := Control.new()
+	map_area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	map_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	map_area.clip_contents = true
+	body.add_child(map_area)
+
+	_side = SidePanel.new()
+	body.add_child(_side)
+
 	_container = SubViewportContainer.new()
 	_container.stretch = true
 	_container.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(_container)
+	map_area.add_child(_container)
 
 	_viewport = SubViewport.new()
 	_viewport.handle_input_locally = true
@@ -32,15 +56,26 @@ func _ready() -> void:
 	_container.mouse_entered.connect(func(): _world.set_hover_enabled(true))
 	_container.mouse_exited.connect(func(): _world.set_hover_enabled(false))
 	_world.hovered_changed.connect(_refresh_info)
-	_world.selected_changed.connect(_refresh_info)
+	_world.selected_changed.connect(_side.show_space)
 
-	_info = Label.new()
-	_info.position = Vector2(12, 8)
-	_info.add_theme_color_override("font_color", Color.WHITE)
-	_info.add_theme_color_override("font_outline_color", Color.BLACK)
-	_info.add_theme_constant_override("outline_size", 4)
-	add_child(_info)
+	_hover_label = Label.new()
+	_hover_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_hover_label.position = Vector2(10, -26)
+	_hover_label.add_theme_font_size_override("font_size", 13)
+	_hover_label.add_theme_color_override("font_color", Color.WHITE)
+	_hover_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	_hover_label.add_theme_constant_override("outline_size", 4)
+	_hover_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	map_area.add_child(_hover_label)
 
+	Net.bot_turn.connect(func(m: Dictionary):
+		_side.log_events("%s's turn" % m["faction"], m["events"]))
+	Net.combat_events.connect(func(m: Dictionary):
+		_side.log_events("Your battles", m["events"]))
+	Net.server_error.connect(func(t: String): _side.log_line("[color=#ff7060]server: %s[/color]" % t))
+	Net.game_over.connect(func(): _side.log_line("[b]Game over[/b]"))
+
+	await get_tree().process_frame
 	await get_tree().process_frame
 	_start_view()
 
@@ -63,6 +98,21 @@ func _start_view() -> void:
 	if Dbg.args.has("hover"):
 		_world.force_hover(int(Dbg.args["hover"]))
 	_refresh_info(-1)
+	if Dbg.args.has("select"):
+		_side.show_space(int(Dbg.args["select"]))
+	if Dbg.args.has("server"):
+		Net.autoplay_prompts = int(Dbg.args.get("autoplay", "0"))
+		var url: String = Dbg.args["server"]
+		Net.start("" if url == "true" else url)
+		if Net.autoplay_prompts > 0:
+			var done := false
+			Net.autoplay_finished.connect(func(): done = true)
+			var waited := 0.0
+			while not done and waited < 30.0:  # never hang a scripted run
+				await get_tree().process_frame
+				waited += get_process_delta_time()
+		else:
+			await get_tree().create_timer(2.0).timeout
 	await _scripted_input()
 	Dbg.scene_ready = true
 
@@ -134,6 +184,4 @@ func _describe(tid: int) -> String:
 
 
 func _refresh_info(_tid: int) -> void:
-	var hov := _world.highlight.hovered
-	var sel := _world.highlight.selected
-	_info.text = "hover: %s\nselected: %s" % [_describe(hov), _describe(sel)]
+	_hover_label.text = _describe(_world.highlight.hovered)
