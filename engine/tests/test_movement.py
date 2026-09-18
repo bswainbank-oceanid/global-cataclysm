@@ -346,6 +346,87 @@ class TestNeutralExclusion(unittest.TestCase):
         self.assertNotIn(3, dest, 'neutral territory is never a legal landing spot, even via the amphibious exception')
 
 
+class TestSeaUnitsStayAtSea(unittest.TestCase):
+    """A sea unit can never enter, cross, or attack land, in either move
+    phase -- previously nothing stopped it, so bot ships wound up in (and
+    fought from) land territories."""
+
+    def test_combat_move_never_ends_on_enemy_land(self):
+        # 1 (sea, origin) -- 2 (land, AAC, occupied) and 3 (sea, enemy
+        # Cruiser). The occupied land would be a plain "attack" for any
+        # other unit type; for a sea unit only the enemy-occupied WATER is.
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}, 3: {'type': 'sea'}},
+            adjacency={1: [2, 3], 2: [1], 3: [1]},
+        )
+        gs = make_state(
+            data, territory_owners={2: 'AAC'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Infantry', 'AAC')], 3: [enemy_unit(2, 'Cruiser', 'AAC')]},
+        )
+        dest = legal_combat_move_destinations('Submarine', 'NAA', 1, gs, data)
+        self.assertIn(3, dest)
+        self.assertNotIn(2, dest, 'a sea unit cannot attack land')
+
+    def test_combat_move_cannot_pass_through_friendly_land(self):
+        # 1 (sea) -- 2 (land, NAA's own) -- 3 (sea, enemy Cruiser): only
+        # reachable by crossing the land, which a sea unit can't do.
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}, 3: {'type': 'sea'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={2: 'NAA'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={3: [enemy_unit(1, 'Cruiser', 'AAC')]},
+        )
+        dest = legal_combat_move_destinations('Submarine', 'NAA', 1, gs, data)
+        self.assertNotIn(3, dest, 'land is not a bridge between two sea zones')
+        self.assertNotIn(2, dest)
+
+    def test_noncombat_move_never_ends_on_or_crosses_friendly_land(self):
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}, 3: {'type': 'sea'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(data, territory_owners={2: 'NAA'}, faction_modes={'NAA': FactionMode.HUMAN})
+        dest = legal_noncombat_move_destinations('Submarine', 'NAA', 1, gs, data)
+        self.assertNotIn(2, dest, 'a sea unit cannot move onto friendly land')
+        self.assertNotIn(3, dest, 'nor across it')
+
+    def test_sea_units_still_move_between_sea_zones(self):
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'sea'}, 3: {'type': 'sea'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(data, territory_owners={}, faction_modes={'NAA': FactionMode.HUMAN})
+        dest = legal_noncombat_move_destinations('Submarine', 'NAA', 1, gs, data)
+        self.assertEqual(dest, {2, 3})
+
+    def test_trace_combat_move_rejects_a_sea_unit_path_onto_land(self):
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}},
+            adjacency={1: [2], 2: [1]},
+        )
+        gs = make_state(
+            data, territory_owners={2: 'AAC'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Infantry', 'AAC')]},
+        )
+        with self.assertRaisesRegex(ValueError, 'sea unit'):
+            trace_combat_move('Submarine', 'NAA', [1, 2], gs, data)
+
+    def test_land_units_are_unaffected(self):
+        # Control: an Infantry next to the same occupied land can still attack it.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 2: 'AAC'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Infantry', 'AAC')]},
+        )
+        self.assertIn(2, legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data))
+
+
 class TestNonCombatMoveDestinations(unittest.TestCase):
     def test_friendly_and_self_contested_are_legal_clean_foreign_is_not(self):
         data = FakeData(

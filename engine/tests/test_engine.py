@@ -170,6 +170,30 @@ class TestLegalCombatMoveOptions(unittest.TestCase):
         self.assertEqual(options[flyer.unit_id]['destinations'], {2: [1, 2]})
 
 
+class TestSeaUnitsCannotBeOrderedOntoLand(unittest.TestCase):
+    """The engine-level face of movement.sea_units_stay_at_sea: neither the
+    legal-option queries nor an actual submitted order may put a ship on
+    land."""
+
+    def _setup(self):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        ship = make_unit('Cruiser', 'NAA')
+        gs = make_state(
+            data, {2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.COMBAT_MOVE, units_by_territory={1: [ship], 2: [make_unit('Infantry', 'AAC')]},
+        )
+        return GameEngine(gs, data), ship
+
+    def test_legal_combat_move_options_never_offer_land_to_a_ship(self):
+        engine, ship = self._setup()
+        self.assertNotIn(ship.unit_id, engine.legal_combat_move_options('NAA'))
+
+    def test_a_submitted_combat_move_onto_land_is_rejected(self):
+        engine, ship = self._setup()
+        with self.assertRaises(ValueError):
+            engine.submit_combat_moves('NAA', [CombatMoveOrder(ship.unit_id, [1, 2])])
+
+
 class TestLegalNoncombatMoveOptions(unittest.TestCase):
     """GameEngine.legal_noncombat_move_options -- the Non-Combat Move
     counterpart to legal_combat_move_options, queried after Combat

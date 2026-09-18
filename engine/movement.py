@@ -18,6 +18,11 @@ graph_distances is a separate, plain-adjacency BFS with no move-legality
 awareness at all -- "how far is X from Y" in the abstract, for a bot
 picking a general direction to advance in.
 
+Sea units (category 'Sea') never leave the water at all: every search and
+path validator here refuses a land hop for one, in both move phases -- it
+can't end a move on land, pass over it, or attack it (see rules.json's
+movement.sea_units_stay_at_sea).
+
 Two move types, with different destination rules:
 - combat: the destination becomes an attack (or joins one already in
   progress). Ends when the path enters non-allied or contested
@@ -252,6 +257,7 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
     territories = data_module.territories()
     adjacency = data_module.adjacency()
     is_land_unit = unit_defs[unit_type]['category'] == 'Land'
+    is_sea_unit = unit_defs[unit_type]['category'] == 'Sea'
 
     base_budget = _base_move(unit_type, move_type, unit_defs)
     # The water bonus is a LAND-unit-becomes-Transport-cargo concept --
@@ -286,6 +292,8 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
         current_id, moves_used, water_active, land_only, current_path = stack.pop()
         for neighbor_id in adjacency.get(current_id, []):
             neighbor_is_land = territories[neighbor_id]['type'] == 'land'
+            if is_sea_unit and neighbor_is_land:
+                continue  # movement.sea_units_stay_at_sea: never enter, cross, or attack land
             if land_only and not neighbor_is_land:
                 continue  # amphibious continuation past occupied water: land only, never further open sea
             new_water_active = water_active or (is_land_unit and not neighbor_is_land)
@@ -429,6 +437,7 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
     territories = data_module.territories()
     adjacency = data_module.adjacency()
     is_land_unit = unit_defs[unit_type]['category'] == 'Land'
+    is_sea_unit = unit_defs[unit_type]['category'] == 'Sea'
 
     base_budget = _base_move(unit_type, 'combat', unit_defs)
     water_active = is_land_unit and territories[path[0]]['type'] == 'sea'
@@ -448,6 +457,8 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
             raise ValueError(f'{current_id} and {next_id} are not adjacent')
         neighbor_is_land = territories[next_id]['type'] == 'land'
         is_last = (i == len(path) - 1)
+        if is_sea_unit and neighbor_is_land:
+            raise ValueError(f'{unit_type} is a sea unit and cannot enter land territory {next_id}')
 
         if land_only_restricted:
             if not neighbor_is_land:
