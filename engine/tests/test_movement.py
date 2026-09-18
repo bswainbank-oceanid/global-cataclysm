@@ -566,6 +566,111 @@ class TestAirMovement(unittest.TestCase):
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
         self.assertNotIn(2, dest, "an ally's carrier, pending or not, is still never a legal landing spot")
 
+    def test_air_flies_over_neutral_territory_to_reach_a_further_attack_target(self):
+        # 1 (land, NAA origin) -- 2 (land, NEUTRAL) -- 3 (land, AAC,
+        # occupied -- a legal attack target). Confirmed: neutral
+        # territory blocks land/sea entirely (TestNeutralExclusion) but
+        # air may now fly straight over it.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={1: 'NAA', 2: 'PAF', 3: 'AAC'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN},
+            units_by_territory={3: [enemy_unit(1, 'Armor', 'AAC')]},
+        )
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', gs, data)
+        self.assertIn(3, dest, 'air can fly over neutral territory to reach a further attack target')
+        self.assertNotIn(2, dest, 'neutral territory is still never itself a legal attack target')
+
+    def test_air_noncombat_move_can_pass_through_neutral_territory(self):
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={1: 'NAA', 2: 'PAF', 3: 'NAA'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL},
+        )
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
+        self.assertIn(3, dest, 'air can fly through neutral territory to reach a further friendly landing spot')
+        self.assertNotIn(2, dest, 'neutral territory is still never a legal landing spot, even though flyover is allowed')
+
+    def test_enemy_fighter_in_transit_forces_a_combat_move_to_stop_and_attack_there(self):
+        # 1 (land, NAA origin) -- 2 (land, AAC, an enemy FIGHTER present)
+        # -- 3 (land, AAC, occupied by Armor, a further attack target).
+        # Ordinarily air would fly straight over 2 to reach 3 (see
+        # test_air_flies_over_occupied_territory_to_reach_a_further_
+        # attack_target) -- an enemy Fighter specifically disrupts that.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Fighter', 'AAC')], 3: [enemy_unit(2, 'Armor', 'AAC')]},
+        )
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', gs, data)
+        self.assertIn(2, dest, 'an enemy Fighter present forces the move to stop there and attack')
+        self.assertNotIn(3, dest, 'cannot continue past a territory holding an enemy Fighter in the same move')
+
+    def test_enemy_bomber_in_transit_does_not_disrupt_a_combat_move(self):
+        # Same shape as above, but the occupant at 2 is a Bomber, not a
+        # Fighter -- per this session's rule, only a Fighter disrupts
+        # overflight; a Bomber is an ordinary occupant, same as Armor.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Bomber', 'AAC')], 3: [enemy_unit(2, 'Armor', 'AAC')]},
+        )
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', gs, data)
+        self.assertIn(3, dest, 'an enemy Bomber, unlike a Fighter, never disrupts overflight')
+
+    def test_enemy_fighter_blocks_noncombat_pass_through_entirely(self):
+        # 1 (land, NAA origin) -- 2 (land, AAC, an enemy Fighter present)
+        # -- 3 (land, NAA, friendly -- would ordinarily be a legal
+        # landing spot). The Fighter makes 2 fully off limits: neither a
+        # landing spot nor a pass-through hop, so 3 becomes unreachable.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={1: 'NAA', 2: 'AAC', 3: 'NAA'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Fighter', 'AAC')]},
+        )
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
+        self.assertNotIn(2, dest, 'an enemy Fighter makes that territory entirely off limits for a non-combat move')
+        self.assertNotIn(3, dest, 'cannot pass through a Fighter-held territory to reach a further landing spot')
+
+    def test_enemy_fighter_overrides_the_own_contested_land_landing_allowance(self):
+        # Contrast with test_noncombat_air_landing_on_own_land_allowed_
+        # even_if_contested: own contested land is normally a fine
+        # landing spot regardless of who's contesting it, but an enemy
+        # FIGHTER specifically contesting it blocks landing there too.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        gs = make_state(
+            data,
+            territory_owners={1: 'NAA', 2: 'NAA'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            contested={2: {'AAC'}},
+            units_by_territory={2: [enemy_unit(1, 'Fighter', 'AAC')]},
+        )
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
+        self.assertNotIn(2, dest, 'an enemy Fighter overrides the usual own-contested-land landing allowance')
+
 
 class TestFindEmergencyLanding(unittest.TestCase):
     """find_emergency_landing is a pure one-hop spatial query -- WHEN it's

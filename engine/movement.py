@@ -115,6 +115,17 @@ def _enemies_present(territory_id, mover_faction, game_state):
                for u in game_state.territories[territory_id].units)
 
 
+def _enemy_fighter_present(territory_id, mover_faction, game_state):
+    """True if `territory_id` holds a Fighter belonging to a faction
+    that's neither `mover_faction` nor one of its allies -- the one
+    thing that disrupts air's otherwise-unconstrained overflight of
+    enemy and neutral territory (rules.json's air_interception_rule).
+    Bombers, every other unit type, and simple non-ally/neutral
+    presence alone never trigger this -- only a Fighter does."""
+    return any(u.unit_type == 'Fighter' and not _is_ally_or_self(game_state, mover_faction, u.owner)
+               for u in game_state.territories[territory_id].units)
+
+
 class _Hop:
     """Classification of a single step in a combat-move path onto
     `dest_id`, for `mover_faction`/`unit_type`. `stop`: legal as a final
@@ -525,10 +536,12 @@ def legal_noncombat_move_paths(unit_type, owner, origin_id, game_state, data_mod
 
 
 def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_state, data_module):
-    """Air units fly over everyone freely (never blocked, never forced
-    to stop by occupation) in both move phases -- the only constraint is
-    their own move budget (no water bonus; that's a land-unit/Transport
-    concept) and where they're allowed to end the turn:
+    """Air units fly over enemy AND neutral territories/sea zones freely
+    (never blocked, never forced to stop by mere occupation) in both
+    move phases -- the only constraints are their own move budget (no
+    water bonus; that's a land-unit/Transport concept), an enemy
+    Fighter specifically disrupting that overflight (see below), and
+    where they're allowed to end the turn:
     - combat: must be a real attack target -- non-ally-occupied, or
       already contested (joining the fight). Own/allied territory isn't
       an attack, and neither is empty foreign territory, since air alone
@@ -543,7 +556,24 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
       legal, even though one COULD show up later the
       same phase via its own move order; movement.py only ever evaluates
       one unit's move in isolation and can't see, and per this rule
-      shouldn't guess at, another unit's not-yet-submitted move."""
+      shouldn't guess at, another unit's not-yet-submitted move.
+
+    Enemy Fighter interception (rules.json's air_interception_rule):
+    Bombers, ground/sea units, and simple non-ally/neutral presence
+    never disrupt overflight -- ONLY an enemy Fighter (belonging to a
+    faction that's neither `owner` nor one of its allies) does, in
+    whichever territory/sea zone it's physically sitting in along the
+    path. Where one is present, that node becomes a hard boundary: for
+    a combat move, the flight is forced to stop there and attack (it's
+    always a valid attack target once a Fighter is there, since that
+    already means _enemies_present) and can't continue past it to a
+    further destination in the same move -- same consequence
+    enemy_occupation_stop_rule gives land/sea units, just narrower in
+    what triggers it. For a non-combat move, that node is entirely off
+    limits -- neither a legal landing spot nor a legal pass-through hop.
+    Not applied by process_return_to_base's automatic snap-back (a
+    direct return to a recorded origin, not a fresh pathfinding move --
+    there's no path to intercept)."""
     unit_defs = data_module.units()
     territories = data_module.territories()
     adjacency = data_module.adjacency()
@@ -562,9 +592,12 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
             if remaining <= best_seen.get(neighbor_id, -1):
                 continue
             best_seen[neighbor_id] = remaining
-            if _is_neutral(neighbor_id, game_state):
-                continue
+            intercepted = _enemy_fighter_present(neighbor_id, owner, game_state)
+            if intercepted and move_type == 'noncombat':
+                continue  # off limits entirely: neither a landing spot nor a pass-through hop
             reachable.add(neighbor_id)
+            if intercepted:
+                continue  # combat: forced to stop and attack here, can't fly on past it
             stack.append((neighbor_id, new_moves_used))
 
     if move_type == 'noncombat':
