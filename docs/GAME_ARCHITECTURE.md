@@ -193,7 +193,7 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 42 tests) — first vertical slice,
+- ⬜ WebSocket server (`server/`, 51 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
   (NAA the only HUMAN faction, AAC a BOT, everyone else NEUTRAL). Every one
   of the 7 `turn_order` phases is now a real client decision (Combat
@@ -259,6 +259,23 @@ the same JSON, not a parallel editing path.
   human's own `combat_events` (if Combat Move drove any battles) are
   reported the moment they happen even when the drain stops again right
   after at Non-Combat Move, not held back until the whole turn finishes.
+  An "invite" against a HUMAN target is the ONE genuinely out-of-turn
+  choice in the whole protocol (this session: "add the API for humans to
+  accept or reject alliance invitations[; this is] the only out-of-turn
+  choice in the game") -- `GameSession` tracks it as `_pending_invite`
+  (`{inviter, target}` or `None`); the inviter's turn stays open,
+  unfinished, and a `"to"`-routed `alliance_invite` goes to the TARGET
+  specifically (not GameState.active_faction -- the one message in this
+  protocol sent on behalf of a faction that isn't currently "up"), who
+  answers with `alliance_invite_response`; that resolves the exact same
+  `GameEngine.invite_to_alliance` call the synchronous BOT-target path
+  already used (a BOT target's accept/decline is still resolved
+  immediately via `engine.bots.alliance_policy.accepts_invite`, no
+  different from a bot inviting another bot), then finishes the
+  INVITER's turn, not the responder's. A reconnecting client on either
+  side of a pending invite gets that invite's state resurfaced (an
+  "invite still pending" ack for the inviter, the same `alliance_invite`
+  prompt for the target) instead of a stale/misleading fresh prompt.
   Bot turns and combat resolution are narrated, not just applied silently:
   `engine.turn_log.TurnLog` (a new engine-level observer, alongside
   `stats.GameStats` but an ORDERED per-event log rather than a whole-game
@@ -280,10 +297,19 @@ the same JSON, not a parallel editing path.
   manual end-to-end verification against a running server
   (`python -m server.app`, then `python -m server.test_client`, which now
   drives two full NAA turns exercising real `purchase`, `combat_move`,
-  `noncombat_move`, and `alliance_action` decisions in sequence). Not yet:
-  genuine human-to-human alliance negotiation (see the Alliances paragraph
-  above); multiple simultaneous games, persistence, or real auth/session
-  management (a "join" message is trusted at face value).
+  `noncombat_move`, and `alliance_action` decisions in sequence -- always
+  `"none"` for the alliance action there, since the demo scenario's only
+  2 active factions, NAA and AAC, could never actually ally anyway; the
+  out-of-turn invite/accept exchange itself was verified live separately,
+  with two real client sockets against an ad-hoc two-human session, not
+  through the committed single-human demo). Not yet: a HUMAN invite
+  target that never answers at all (no timeout/auto-decline -- the
+  inviter's turn just stays open indefinitely; not exercised by the demo
+  scenario, which has only one human faction); multiple simultaneous
+  games, persistence, or real auth/session management (a "join" message
+  is trusted at face value -- nothing stops two connections both claiming
+  the same faction, which matters a lot more now that a genuinely
+  out-of-turn message exists).
   This is the project's first external dependency (`websockets`,
   `requirements.txt`) — `engine/` and `tools/` remain stdlib-only.
 - ⬜ Godot client / map rendering / wraparound camera.

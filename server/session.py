@@ -87,26 +87,42 @@ Client -> server (each a dict with at least "type" and "faction"):
         list to leave empty, so "none" is its own explicit action value
         instead). "invite" additionally requires "target" (one of the
         preceding "your_turn"'s legal_alliance_options.eligible_invite_
-        targets); the target's accept/decline is resolved synchronously
-        server-side via engine.bots.alliance_policy.accepts_invite --
-        exactly like a bot inviting another bot, since that policy
-        function only ever reads the TARGET's own alliance_strategy, not
-        the inviter's, and doesn't care whether the inviter is human. A
-        HUMAN target's own alliance_strategy is never set (engine.setup.
-        build_game_state only resolves it for BOT-mode factions), so
-        accepts_invite's default (unknown strategy -> declines) applies
-        -- a human can't yet be synchronously asked for its own accept/
-        decision from inside another human's turn; genuine human-to-
-        human alliance negotiation isn't built (see "Not yet built"
-        below). Calls invite_to_alliance/withdraw_from_alliance/neither,
-        then process_game_end_check (the same call GameEngine.
-        _drain_phases' bot path always made here); an "error" if any of
-        those raise (including simply being the wrong phase, since even
-        "none" still calls process_game_end_check, which validates it),
-        otherwise the turn is fully done -- same finishing sequence
-        every other phase's confirm reaches once nothing is left to
-        decide: a broadcast "state"; game over, or advance_turn() and
-        however many bot turns follow before the next human's turn.
+        targets). Against a BOT target, the accept/decline is resolved
+        immediately, synchronously, server-side via engine.bots.
+        alliance_policy.accepts_invite -- exactly like a bot inviting
+        another bot, since that policy function only ever reads the
+        TARGET's own alliance_strategy, not the inviter's. Against a
+        HUMAN target, there's genuinely nobody to synchronously ask --
+        this instead starts the ONE out-of-turn exchange in the whole
+        protocol (see "alliance_invite"/"alliance_invite_response"
+        below): `faction`'s turn stays open, unfinished, until the
+        target answers, however long that takes; a second
+        "alliance_action" from `faction` in the meantime is rejected.
+        For "none"/"withdraw", or "invite" against a BOT target, this
+        calls invite_to_alliance/withdraw_from_alliance/neither, then
+        process_game_end_check (the same call GameEngine._drain_phases'
+        bot path always made here); an "error" if any of those raise
+        (including simply being the wrong phase, since even "none" still
+        calls process_game_end_check, which validates it), otherwise the
+        turn is fully done -- same finishing sequence every other
+        phase's confirm reaches once nothing is left to decide: a
+        broadcast "state"; game over, or advance_turn() and however many
+        bot turns follow before the next human's turn.
+    {"type": "alliance_invite_response", "faction": "UE", "accept": true}
+        `faction` answering a pending out-of-turn "alliance_invite" (see
+        below) -- the ONE message in this whole protocol a client sends
+        on a faction that is NOT GameState.active_faction; it's still
+        the INVITER's turn, paused awaiting exactly this. "accept" is
+        required (true or false; a decline is not an error -- it still
+        resolves the invite and spends the inviter's one action for the
+        turn, same as invite_to_alliance has always worked for a BOT
+        decline). "error" if no invite is currently pending for
+        `faction`, or if this races a phase-changing message somehow
+        arriving first (defensive only -- nothing else CAN act while an
+        invite is pending, since GameState.active_faction/phase never
+        move until this resolves). Otherwise resolves invite_to_alliance
+        with `faction`'s answer and finishes the INVITER's turn (not
+        `faction`'s own -- it was never `faction`'s turn to begin with).
 
 Server -> client (each a dict; a "to": faction_code key means send only
 to that faction's connection(s), no "to" key means broadcast to every
@@ -132,6 +148,16 @@ connection on this game -- everyone sees the same board, no fog of war):
         are plain ids, not {destination: path}, since NonCombatMoveOrder
         only needs the endpoint; legal_alliance_options is a per-faction
         decision, not per-unit, so it has no per-unit map at all).
+    {"type": "alliance_invite_sent", "to": "NAA", "target": "UE"}
+        Acknowledges `faction`'s own "invite" against a HUMAN target was
+        received and is now the pending out-of-turn exchange -- NOT a
+        fresh ALLIANCES "your_turn" (nothing else can be decided until
+        this resolves). Also what a reconnecting inviter gets instead of
+        a "your_turn" (see connect()/_pending_invite_message).
+    {"type": "alliance_invite", "to": "UE", "from": "NAA"}
+        The out-of-turn prompt itself, sent to the invited HUMAN target
+        -- answer with "alliance_invite_response". Also what a
+        reconnecting target gets if it hasn't answered yet.
     {"type": "combat_events", "faction": "NAA", "events": [...]}
         Only the battle_event entries (turn_log.TurnLog.record_battle_
         events' shape) from a HUMAN faction's own Combat Resolution --
@@ -149,16 +175,17 @@ connection on this game -- everyone sees the same board, no fog of war):
 
 Not yet built (see docs/GAME_ARCHITECTURE.md): every one of the 7
 turn_order phases is now a real decision point (or fully automatic, for
-Combat Resolution) -- what's left is genuine human-to-human alliance
-negotiation (a HUMAN "invite" target's own accept/decline currently
-resolves via engine.bots.alliance_policy.accepts_invite, same as a bot
-target, which always declines for a human since it has no alliance_
-strategy set -- see the "alliance_action" entry above; the one demo
-scenario, server.app._build_demo_session, only ever has ONE human
-faction in play, so this limitation never actually bites yet); multiple
-simultaneous games (one GameSession per server process for now); real
-auth/session management (a "join" message is trusted at face value --
-nothing stops two connections both claiming the same faction); client-
+Combat Resolution), including the one genuinely out-of-turn exchange
+(alliance_invite/alliance_invite_response) -- what's NOT handled is a
+target that never answers at all (no timeout/auto-decline; the inviter's
+turn simply stays open indefinitely -- not yet exercised by the one demo
+scenario, server.app._build_demo_session, which only ever has ONE human
+faction in play, so a HUMAN-to-HUMAN invite never actually happens
+there). Also not yet built: multiple simultaneous games (one GameSession
+per server process for now); real auth/session management (a "join"
+message is trusted at face value -- nothing stops two connections both
+claiming the same faction, which would matter a lot more once a genuine
+out-of-turn message like alliance_invite_response exists); client-
 controlled PACING of playback is entirely a client-side concern once it
 has a "bot_turn"/"combat_events" message's full event list (decided this
 session) -- the server never paces delivery itself.
@@ -177,15 +204,27 @@ class GameSession:
         self.engine = engine
         self.turn_log = turn_log
         self.bots = bots or {}  # faction_code -> RandomBot, one per BOT faction in play
+        # The ONE out-of-turn decision in the whole protocol -- everything
+        # else is always made by GameState.active_faction, on its own
+        # turn. Set only between a HUMAN inviting another HUMAN (see
+        # _handle_alliance_action) and that target's own alliance_invite_
+        # response, however long that takes -- {'inviter': faction_code,
+        # 'target': faction_code} or None. A BOT target never sets this;
+        # its accept/decline is still resolved synchronously via
+        # engine.bots.alliance_policy.accepts_invite, same as bot-to-bot.
+        self._pending_invite = None
 
     def connect(self, faction):
         """A client just identified itself as `faction` ("join"). Pure
         query/no mutation -- returns the messages to send it (always the
         current state; a "your_turn" too if it's already this faction's
         turn at a phase needing a decision -- e.g. reconnecting mid-turn,
-        not just a fresh Purchase phase). Safe to call even mid-Non-Combat
-        Move: process_return_to_base already ran (see _drain_phases)
-        before this faction's phase could ever be NONCOMBAT_MOVE with
+        not just a fresh Purchase phase -- OR, taking priority over that,
+        an "alliance_invite"/"alliance_invite_sent" resume if `faction` is
+        either side of a currently-pending out-of-turn invite -- see
+        _pending_invite_message). Safe to call even mid-Non-Combat Move:
+        process_return_to_base already ran (see _drain_phases) before
+        this faction's phase could ever be NONCOMBAT_MOVE with
         active_faction pointed at it, so _decision_prompt's legal_
         noncombat_move_options call below reflects that, not a stale
         pre-return-to-base snapshot. Same idea for ALLIANCES: reaching it
@@ -198,7 +237,10 @@ class GameSession:
             return [self._error(faction, f'{faction} is not a HUMAN-controlled faction')]
 
         messages = [self._state_message()]
-        if faction == gs.active_faction and gs.phase in _HUMAN_DECISION_PHASES:
+        pending = self._pending_invite_message(faction)
+        if pending is not None:
+            messages.append(pending)
+        elif faction == gs.active_faction and gs.phase in _HUMAN_DECISION_PHASES:
             messages.append(self._decision_prompt(faction))
         return messages
 
@@ -221,6 +263,8 @@ class GameSession:
             return self._handle_noncombat_move(faction, msg.get('orders') or [])
         if msg_type == 'alliance_action':
             return self._handle_alliance_action(faction, msg.get('action'), msg.get('target'))
+        if msg_type == 'alliance_invite_response':
+            return self._handle_alliance_invite_response(faction, msg.get('accept'))
         return [self._error(faction, f'unknown message type: {msg_type!r}')]
 
     def _handle_purchase(self, faction, raw_orders):
@@ -296,14 +340,37 @@ class GameSession:
         here) and the turn is finished via _finish_turn, bypassing
         _continue_human_turn/_drain_phases entirely (re-entering those
         would just hit the ALLIANCES stop-and-return-False condition
-        again, since nothing moved GameState.phase anywhere)."""
+        again, since nothing moved GameState.phase anywhere).
+
+        "invite" against a BOT target resolves immediately, same as
+        always -- engine.bots.alliance_policy.accepts_invite is a pure,
+        synchronous function of the target's own alliance_strategy, no
+        different from a bot inviting another bot. Against a HUMAN
+        target, though, there is genuinely nobody to synchronously ask:
+        this starts the one out-of-turn exchange in the whole protocol
+        (see _pending_invite/_handle_alliance_invite_response) and
+        returns immediately WITHOUT finishing `faction`'s turn -- no
+        process_game_end_check, no _finish_turn. The turn stays open,
+        awaiting the target's response, however long that takes; a
+        second alliance_action from `faction` in the meantime is
+        rejected (see the _pending_invite guard below)."""
         gs = self.engine.game_state
         if faction != gs.active_faction:
             return [self._error(faction, f"it is not {faction}'s turn")]
+        if self._pending_invite is not None:
+            return [self._error(faction, 'an alliance invite is already pending -- awaiting a response')]
         try:
             if action == 'invite':
                 if not target:
                     raise ValueError("'invite' requires a target")
+                if target not in self.engine.legal_alliance_options(faction)['eligible_invite_targets']:
+                    raise ValueError(f'{target} is not a legal invite target for {faction} right now')
+                if gs.factions[target].mode == FactionMode.HUMAN:
+                    self._pending_invite = {'inviter': faction, 'target': target}
+                    return [
+                        {'type': 'alliance_invite_sent', 'to': faction, 'target': target},
+                        {'type': 'alliance_invite', 'to': target, 'from': faction},
+                    ]
                 accepts = accepts_invite(self.engine, target, faction)
                 self.engine.invite_to_alliance(faction, target, accepts)
             elif action == 'withdraw':
@@ -316,6 +383,66 @@ class GameSession:
         except ValueError as e:
             return [self._error(faction, str(e))]
         return self._finish_turn(faction, [])
+
+    def _handle_alliance_invite_response(self, faction, accept):
+        """`faction` is answering a pending out-of-turn invite -- the
+        one place in this protocol where the responder is NOT GameState.
+        active_faction (that's still the inviter, mid-Alliances-phase,
+        with its own turn paused since _handle_alliance_action started
+        this). `accept`: True/False, required.
+
+        Resolves the exact same engine call the synchronous BOT-target
+        path always used (invite_to_alliance) -- just with the decision
+        arriving from a real out-of-turn message instead of alliance_
+        policy.accepts_invite; the engine itself never knew or cared
+        which one supplied it (see invite_to_alliance's own docstring:
+        "whichever bot/human logic controls target is responsible for
+        it"). Clears _pending_invite FIRST, before calling anything else,
+        so a second response (or a reconnect racing the first one) can't
+        double-process the same invite. On success, finishes the
+        INVITER's turn, not the responder's -- it was never the
+        responder's turn to begin with, and still isn't."""
+        if self._pending_invite is None or faction != self._pending_invite['target']:
+            return [self._error(faction, 'no alliance invite is pending for you')]
+        if accept is None:
+            return [self._error(faction, "'accept' is required (true or false)")]
+        pending = self._pending_invite
+        self._pending_invite = None
+        inviter = pending['inviter']
+        try:
+            self.engine.invite_to_alliance(inviter, faction, bool(accept))
+            self.engine.process_game_end_check(inviter)
+        except ValueError as e:
+            # Something an eligibility pre-check at invite-send time
+            # couldn't have caught -- most likely accepting would now
+            # exceed the effective max alliance size, which legal_
+            # alliance_options deliberately never pre-filters for (see
+            # its own docstring). Report it to the responder, whose
+            # message triggered this call, and let the inviter's turn
+            # resume as a fresh decision -- their one action was never
+            # actually consumed, since invite_to_alliance only marks
+            # that once every check upstream of target_accepts already
+            # passed.
+            return [self._error(faction, str(e)), self._decision_prompt(inviter)]
+        return self._finish_turn(inviter, [])
+
+    def _pending_invite_message(self, faction):
+        """If `faction` is either side of the one currently-pending
+        out-of-turn invite, the message to resend it on a fresh "join"
+        -- the inviter is told their invite is still awaiting a response
+        (NOT a fresh ALLIANCES your_turn -- they can't act again until
+        this resolves, see _handle_alliance_action's own guard), the
+        target gets the same alliance_invite prompt a live connection
+        got when it was first sent. None if there's no pending invite,
+        or `faction` isn't part of the one that exists."""
+        pending = self._pending_invite
+        if pending is None:
+            return None
+        if faction == pending['inviter']:
+            return {'type': 'alliance_invite_sent', 'to': faction, 'target': pending['target']}
+        if faction == pending['target']:
+            return {'type': 'alliance_invite', 'to': faction, 'from': pending['inviter']}
+        return None
 
     def _continue_human_turn(self, faction):
         """Drains as much of `faction`'s own turn as possible (bot=None),

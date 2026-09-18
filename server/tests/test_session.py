@@ -78,6 +78,20 @@ def _three_human_session():
     return _session(modes)
 
 
+def _two_human_and_bot_session():
+    """NAA and UE HUMAN, AAC BOT, everyone else NEUTRAL -- 3 active
+    factions (same minimum-for-an-alliance reasoning as
+    _three_human_session), but with a real BOT among them so a
+    synchronous alliance_policy.accepts_invite invite target actually
+    exists (distinct from a HUMAN target, which never resolves
+    synchronously -- see TestAllianceInviteResponse)."""
+    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes['NAA'] = FactionMode.HUMAN
+    modes['UE'] = FactionMode.HUMAN
+    modes['AAC'] = FactionMode.BOT
+    return _session(modes, bot_factions=['AAC'])
+
+
 def _advance_to_alliances(session, faction='NAA'):
     """Drives `faction`'s turn through Purchase/Non-Combat Move with
     empty orders (Combat Move is skipped on a faction's own first turn
@@ -546,37 +560,45 @@ class TestAllianceActionPlayback(unittest.TestCase):
         self.assertEqual(types, ['state', 'your_turn'])
         self.assertEqual(messages[1]['faction'], 'UE', "advance_turn should have moved play on to UE")
 
-    def test_invite_target_with_no_alliance_strategy_declines_by_default(self):
-        # A genuinely HUMAN invite target -- engine.setup.build_game_state
-        # never sets alliance_strategy for a HUMAN-mode faction, so
-        # accepts_invite's default applies (unknown strategy -> declines)
-        # -- documented in this module's own docstring as the not-yet-
-        # built limitation around real human-to-human negotiation.
+    def test_invite_a_bot_target_resolves_synchronously(self):
+        # A BOT target's accept/decline is a pure, synchronous function
+        # of its own alliance_strategy (engine.bots.alliance_policy.
+        # accepts_invite) -- no out-of-turn exchange, unlike a HUMAN
+        # target (see TestAllianceInviteResponse).
+        session = _two_human_and_bot_session()
+        gs = session.engine.game_state
+        gs.factions['AAC'].alliance_strategy = 'aggressive'  # deterministic accept
+        _advance_to_alliances(session)
+        messages = session.handle_message({
+            'type': 'alliance_action', 'faction': 'NAA', 'action': 'invite', 'target': 'AAC',
+        })
+        self.assertIsNotNone(gs.factions['NAA'].alliance)
+        self.assertEqual(gs.factions['NAA'].alliance, gs.factions['AAC'].alliance)
+        types = [m['type'] for m in messages]
+        self.assertEqual(types, ['state', 'your_turn'], "a BOT target resolves immediately -- no waiting")
+
+    def test_invite_a_human_target_starts_the_out_of_turn_exchange_instead(self):
+        # Unlike a BOT target, a HUMAN one is never resolved synchronously
+        # -- this session: "add the API for humans to accept or reject
+        # alliance invitations[; this is] the only out-of-turn choice in
+        # the game." No alliance forms yet, and the inviter's turn is
+        # NOT finished (no "state"/"your_turn" -- see
+        # TestAllianceInviteResponse for what happens once UE answers).
         session = _three_human_session()
         gs = session.engine.game_state
         _advance_to_alliances(session)
         messages = session.handle_message({
             'type': 'alliance_action', 'faction': 'NAA', 'action': 'invite', 'target': 'UE',
         })
-        self.assertIsNone(gs.factions['NAA'].alliance, 'a target with no alliance_strategy declines by default')
+        self.assertIsNone(gs.factions['NAA'].alliance, "not resolved yet -- awaiting UE's own response")
         self.assertIsNone(gs.factions['UE'].alliance)
-        types = [m['type'] for m in messages]
-        self.assertEqual(types, ['state', 'your_turn'], 'a decline still spends the turn -- NOT an error')
-
-    def test_invite_target_forms_an_alliance_when_it_accepts(self):
-        # Simulates a target that WOULD accept (same mechanism a BOT
-        # target uses) -- proves invite_to_alliance/accepts_invite are
-        # wired correctly end to end, independent of the human-target
-        # limitation covered by the test above.
-        session = _three_human_session()
-        gs = session.engine.game_state
-        gs.factions['UE'].alliance_strategy = 'aggressive'
-        _advance_to_alliances(session)
-        session.handle_message({
-            'type': 'alliance_action', 'faction': 'NAA', 'action': 'invite', 'target': 'UE',
-        })
-        self.assertIsNotNone(gs.factions['NAA'].alliance)
-        self.assertEqual(gs.factions['NAA'].alliance, gs.factions['UE'].alliance)
+        self.assertEqual(
+            messages,
+            [
+                {'type': 'alliance_invite_sent', 'to': 'NAA', 'target': 'UE'},
+                {'type': 'alliance_invite', 'to': 'UE', 'from': 'NAA'},
+            ],
+        )
 
     def test_withdraw_leaves_the_alliance_and_continues_the_turn(self):
         session = _three_human_session()
@@ -589,6 +611,102 @@ class TestAllianceActionPlayback(unittest.TestCase):
         self.assertEqual(gs.factions['UE'].alliance, 'pact')
         types = [m['type'] for m in messages]
         self.assertEqual(types, ['state', 'your_turn'])
+
+
+def _pending_invite_session():
+    """A _three_human_session with NAA already mid-invite to UE -- the
+    shared setup every TestAllianceInviteResponse test needs before it
+    can exercise UE's own out-of-turn answer."""
+    session = _three_human_session()
+    _advance_to_alliances(session)
+    session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'invite', 'target': 'UE'})
+    return session
+
+
+class TestAllianceInviteResponse(unittest.TestCase):
+    """The one out-of-turn choice in the whole protocol: UE (the invite
+    TARGET, not GameState.active_faction -- that's still NAA, mid-
+    Alliances-phase, paused awaiting exactly this) accepting or rejecting
+    NAA's pending "alliance_action": "invite"."""
+
+    def test_accepting_forms_the_alliance_and_finishes_the_inviters_turn(self):
+        session = _pending_invite_session()
+        gs = session.engine.game_state
+        messages = session.handle_message({'type': 'alliance_invite_response', 'faction': 'UE', 'accept': True})
+        self.assertIsNotNone(gs.factions['NAA'].alliance)
+        self.assertEqual(gs.factions['NAA'].alliance, gs.factions['UE'].alliance)
+        types = [m['type'] for m in messages]
+        self.assertEqual(types, ['state', 'your_turn'], "NAA's turn -- the inviter's, not UE's -- finishes now")
+        self.assertEqual(messages[1]['faction'], 'UE', "advance_turn should have moved play on to UE next")
+
+    def test_declining_does_not_form_an_alliance_but_still_finishes_the_inviters_turn(self):
+        # withdraw_from_alliance's own docstring on a decline: "NOT an
+        # error (nothing changes, but the one-action-per-turn slot is
+        # still spent)" -- same here, just arriving from a real
+        # out-of-turn message instead of a bot's synchronous policy.
+        session = _pending_invite_session()
+        gs = session.engine.game_state
+        messages = session.handle_message({'type': 'alliance_invite_response', 'faction': 'UE', 'accept': False})
+        self.assertIsNone(gs.factions['NAA'].alliance)
+        self.assertIsNone(gs.factions['UE'].alliance)
+        types = [m['type'] for m in messages]
+        self.assertEqual(types, ['state', 'your_turn'], 'a decline still spends the turn -- NOT an error')
+
+    def test_second_alliance_action_by_the_inviter_while_pending_is_rejected(self):
+        session = _pending_invite_session()
+        messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_response_with_no_pending_invite_is_rejected(self):
+        session = _three_human_session()
+        _advance_to_alliances(session)  # no invite sent this time
+        messages = session.handle_message({'type': 'alliance_invite_response', 'faction': 'UE', 'accept': True})
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_response_from_the_wrong_faction_is_rejected(self):
+        # AAC isn't the invite's target (UE is) -- can't answer for them.
+        session = _pending_invite_session()
+        messages = session.handle_message({'type': 'alliance_invite_response', 'faction': 'AAC', 'accept': True})
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_response_missing_accept_is_rejected(self):
+        session = _pending_invite_session()
+        messages = session.handle_message({'type': 'alliance_invite_response', 'faction': 'UE'})
+        self.assertEqual(messages[0]['type'], 'error')
+
+    def test_reconnecting_target_gets_the_pending_invite_prompt(self):
+        session = _pending_invite_session()
+        messages = session.connect('UE')
+        self.assertIn({'type': 'alliance_invite', 'to': 'UE', 'from': 'NAA'}, messages)
+
+    def test_reconnecting_inviter_gets_the_pending_ack_not_a_fresh_your_turn(self):
+        session = _pending_invite_session()
+        messages = session.connect('NAA')
+        self.assertIn({'type': 'alliance_invite_sent', 'to': 'NAA', 'target': 'UE'}, messages)
+        self.assertFalse(any(m['type'] == 'your_turn' for m in messages), "NAA can't act again until UE answers")
+
+    def test_response_that_would_exceed_the_effective_max_alliance_size_reopens_the_inviters_turn(self):
+        # game_start_settings.max_alliance_size defaults to 2, and 3
+        # active factions caps _effective_max_alliance_size at min(2, 2)
+        # = 2 -- so NAA already having a 2-member alliance (with AAC)
+        # makes accepting UE's response a 3rd member, over the cap. This
+        # is exactly the case legal_alliance_options' own docstring says
+        # it deliberately does NOT pre-filter for, so it wasn't caught
+        # at invite-send time -- only now, when the real authoritative
+        # check (invite_to_alliance) finally runs.
+        session = _three_human_session()
+        gs = session.engine.game_state
+        gs.factions['NAA'].alliance = 'pact'
+        gs.factions['AAC'].alliance = 'pact'
+        _advance_to_alliances(session)
+        session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'invite', 'target': 'UE'})
+        messages = session.handle_message({'type': 'alliance_invite_response', 'faction': 'UE', 'accept': True})
+        self.assertIsNone(gs.factions['UE'].alliance, 'the size cap should have blocked this')
+        types = [m['type'] for m in messages]
+        self.assertEqual(types, ['error', 'your_turn'])
+        self.assertEqual(messages[0]['to'], 'UE')
+        self.assertEqual(messages[1]['faction'], 'NAA', "NAA's one action was never actually consumed")
+        self.assertEqual(messages[1]['phase'], 'ALLIANCES')
 
 
 if __name__ == '__main__':
