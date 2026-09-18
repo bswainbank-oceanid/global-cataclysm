@@ -418,6 +418,41 @@ class TestPlayToCompletion(unittest.TestCase):
         self.assertEqual(turns1, turns2)
         self.assertEqual(report1, report2)
 
+    def test_survives_the_active_faction_eliminating_itself_mid_turn(self):
+        # A real, pre-existing bug found this session (reproduces on
+        # prior commits too, unrelated to any of the above): a faction
+        # CAN become eliminated during its own turn, not just someone
+        # else's -- the clearest case is an ally-defended territory.
+        # AAC owns territory 1 (its only Strategic Center), contested by
+        # AAC vs a non-allied X; AAC's and X's own units there have
+        # already died in earlier rounds, but AAC's ally Y's co-stationed
+        # units survive. On AAC's own Capture Territory phase,
+        # _determine_capture_winner hands the territory to Y instead (Y
+        # is the only land presence left, per the documented "ally
+        # claims it, not faction" rule) -- dropping AAC itself to 0
+        # Strategic Centers, eliminating it mid-turn. Before the fix,
+        # deploy_and_collect_income('AAC') right after would then raise
+        # ('AAC is not an active faction'), crashing play_to_completion
+        # outright instead of just ending AAC's turn early.
+        data = FakeData(territories={1: {'type': 'land', 'value': 5, 'strategic_center': True}}, adjacency={})
+        ally_unit = make_unit('Infantry', 'Y')
+        gs = make_state(
+            data, {1: 'AAC'},
+            {'AAC': FactionMode.BOT, 'Y': FactionMode.BOT, 'X': FactionMode.BOT},
+            phase=Phase.CAPTURE, contested={1: {'AAC', 'X'}}, units_by_territory={1: [ally_unit]},
+        )
+        gs.factions['AAC'].alliance = 'pact'
+        gs.factions['Y'].alliance = 'pact'
+        gs.active_faction = 'AAC'
+        engine = GameEngine(gs, data)
+        bots = {'AAC': RandomBot(engine, 'AAC')}
+
+        turns = play_to_completion(engine, bots, max_turns=1)  # must not raise
+
+        self.assertEqual(turns, 1)
+        self.assertEqual(gs.territories[1].owner, 'Y', "AAC's ally claims the territory, per the documented rule")
+        self.assertTrue(gs.factions['AAC'].eliminated, 'AAC drops to 0 Strategic Centers and is eliminated')
+
 
 if __name__ == '__main__':
     unittest.main()

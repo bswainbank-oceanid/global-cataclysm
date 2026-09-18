@@ -169,15 +169,24 @@ the same JSON, not a parallel editing path.
   aware max-alliance-size cap, and bot decision policy for all of it) and
   all three of combat.first_round_bonuses' cases (amphibious landing,
   sea-deploy ambush, former-ally reclaim) are now fully implemented too.
-  Not yet marked done: a real, pre-existing bug found this session (not
-  caused by the above, reproduces on prior commits too) — a faction can
-  become eliminated (`victory.elimination_rule`) DURING its own turn
-  (e.g. its own Combat Resolution/Capture Territory phase resolves a
-  standing multi-turn stalemate against it badly enough to drop it to
-  <=1 Strategic Center), and the driver's later phase calls for that
-  same, now-eliminated faction (Deploy + Income, Alliances) then raise
-  ValueError instead of being skipped — crashes `engine.bots.driver.
-  play_to_completion` outright rather than just ending that faction's
-  turn early. Not yet investigated in depth or fixed.
+  A real, pre-existing bug found and fixed this session: a faction CAN
+  become eliminated (`victory.elimination_rule`) DURING its own turn, not
+  just someone else's (the clearest case: its own units defending a
+  contested territory it owns die while a co-stationed ALLY's survive, so
+  `_determine_capture_winner` hands that territory to the ally instead,
+  right there in the active faction's own Capture Territory phase --
+  dropping it below the Strategic Center threshold). `engine.bots.driver.
+  play_to_completion` now checks `faction in gs.active_factions()` before
+  every remaining per-phase call once this happens, instead of crashing
+  on the first one (previously `deploy_and_collect_income` or
+  `process_game_end_check` would raise 'not an active faction').
+  Not yet marked done because it still leaves an unrelated question open:
+  process_capture_territory currently only ever transfers a contested
+  territory's ownership TO the active faction or one of its allies, never
+  clears it to unowned/neutral for a faction that's since been
+  eliminated, so an eliminated faction's other, still-standing
+  territories can sit in limbo (owned by a faction with zero units and no
+  more turns) until someone else physically attacks and takes them --
+  not yet investigated further.
 - ⬜ Godot client / map rendering / wraparound camera.
 - ⬜ Backend / persistence / multiplayer.
