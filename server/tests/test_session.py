@@ -12,7 +12,14 @@ from server.session import GameSession
 def _session(modes, bot_factions=(), **build_kwargs):
     gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False, **build_kwargs)
     turn_log = TurnLog()
-    engine = GameEngine(gs, None, turn_log=turn_log)
+    # combat_rng must be seeded -- GameEngine defaults to an unseeded
+    # random.Random() otherwise, which made any test that actually
+    # triggers combat resolution (e.g. TestCombatMovePlayback) flaky:
+    # its dice-dependent outcome (attacker wins outright vs. battle still
+    # contested after 3 rounds) differed from run to run even though
+    # every other source of randomness here (RandomBot's own rng below)
+    # was already seeded.
+    engine = GameEngine(gs, None, turn_log=turn_log, combat_rng=random.Random(1))
     bots = {code: RandomBot(engine, code, rng=random.Random(1)) for code in bot_factions}
     return GameSession(engine, turn_log, bots)
 
