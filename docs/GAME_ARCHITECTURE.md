@@ -143,12 +143,23 @@ the same JSON, not a parallel editing path.
 1. Rules/combat engine as a standalone, tested module consuming the
    existing JSON data — no rendering yet.
 2. ~~Territory shape extraction~~ — done.
-3. Single-player desktop client: map pan/zoom (including east-west
+3. Single-player desktop client: a Python WebSocket server (`server/`)
+   wrapping the engine, and a Godot client talking to it over that API —
+   decided this session, even for local single-player, rather than
+   embedding the engine in Godot (see `server/`'s own docstrings for why:
+   no reimplementing the rules engine in GDScript, no drift risk between
+   two copies of the ruleset). Map pan/zoom (including east-west
    wraparound from day one, not bolted on later), territory selection,
-   unit deployment UI, simple bot AI.
+   unit deployment UI, and simple bot AI (already built, `engine/bots/`)
+   all live on top of that. Server-side, the engine's phase-orchestration
+   already existed in `engine/bots/driver.py`'s shape; `server/session.py`
+   reuses that same single-while-loop pattern for whichever phases don't
+   need a human decision.
 4. Tablet input/UI polish.
-5. Backend + persistence + lobby, wrapping the same rules engine, for
-   multiplayer.
+5. Extend the same `server/` (not a separate backend) with persistence
+   (`GameState.to_dict()`/`from_dict()` already exist for exactly this),
+   a lobby, multiple simultaneous games, and real auth/session
+   management, for remote multiplayer.
 6. Web export, if still wanted by then.
 
 ## Status
@@ -182,5 +193,21 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
+- ⬜ WebSocket server (`server/`, 13 tests) — first vertical slice only,
+  proving the client-server architecture end to end: one hardcoded game
+  (NAA the only HUMAN faction, everyone else NEUTRAL), `server/session.py`
+  handles the Purchase phase as a real client decision (join/
+  submit_purchases/confirm_purchases messages) and auto-drives every other
+  phase through to the next decision point or game-over, the same way
+  `engine/bots/driver.py` auto-drives a bot's non-decision phases.
+  `server/app.py` is the actual asyncio/`websockets` I/O, deliberately
+  thin — every real decision lives in `GameSession`, unit-tested directly
+  with no socket ever opened; `server/test_client.py` is a small scripted
+  client for manual end-to-end verification against a running server
+  (`python -m server.app`, then `python -m server.test_client`). Not yet:
+  Combat Move/Non-Combat Move/Alliances as real decision points (submitted
+  empty for now), multiple simultaneous games, persistence, or real
+  auth/session management (a "join" message is trusted at face value).
+  This is the project's first external dependency (`websockets`,
+  `requirements.txt`) — `engine/` and `tools/` remain stdlib-only.
 - ⬜ Godot client / map rendering / wraparound camera.
-- ⬜ Backend / persistence / multiplayer.

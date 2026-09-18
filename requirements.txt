@@ -1,0 +1,4 @@
+# server/ (the WebSocket server wrapping engine/) needs this; engine/ and
+# tools/ remain pure stdlib -- this is the project's first external
+# dependency, deliberately kept to just one package.
+websockets>=17.1
