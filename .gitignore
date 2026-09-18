@@ -5,3 +5,9 @@ exports/
 __pycache__/
 *.pyc
 .DS_Store
+
+# Godot client: engine cache + data synced in by tools/sync_client_data.py
+client/.godot/
+client/data/
+client/assets/
+client/shots/
