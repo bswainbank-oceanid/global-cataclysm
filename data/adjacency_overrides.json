@@ -1,5 +1,5 @@
 {
- "_note": "Hand-confirmed corrections applied on top of the outline-derived adjacency (tools/compute_adjacency.py). 'remove': pairs whose outlines touch but that are NOT adjacent in play (the sea zone only overlaps the land, or touches a coastline it does not border). 'add': pairs that are adjacent in play but whose outlines do not touch (none yet). Each entry is [id, id, 'names']; only the ids are read. Source: reference/GC Adjacency.ods ('Wrong' column, the 'Missing' column was empty).",
+ "_note": "Hand-confirmed corrections applied on top of the outline-derived adjacency (tools/compute_adjacency.py). 'remove': pairs whose outlines touch but that are NOT adjacent in play (mostly a sea zone whose polygon only overlaps a coast it does not border). 'add': pairs adjacent in play whose outlines do not touch. Each entry is [id, id, 'names']; only the ids are read. Source: reference/GC Adjacency.ods ('Wrong' and 'Missing' columns). Bering Strait / Hudson Bay (150, 11) was first marked wrong, then listed as Missing; its outlines touch, so it stays adjacent: it is simply no longer in 'remove' (no 'add' entry needed).",
  "remove": [
   [
    4,
@@ -67,11 +67,6 @@
    "North-Central Pacific / Mexico"
   ],
   [
-   150,
-   11,
-   "Bering Strait / Hudson Bay"
-  ],
-  [
    10,
    11,
    "Western Canada / Hudson Bay"
@@ -85,6 +80,76 @@
    124,
    134,
    "South-Eastern Indian Ocean / Eastern Australia"
+  ],
+  [
+   20,
+   69,
+   "Eastern Canada / Rocky Mountain States"
+  ],
+  [
+   29,
+   41,
+   "West Germany / Romania"
+  ],
+  [
+   84,
+   45,
+   "South China Sea / Sea of Japan"
+  ],
+  [
+   20,
+   150,
+   "Eastern Canada / Bering Strait"
+  ],
+  [
+   107,
+   100,
+   "Indonesia / Gulf of Tonkin"
+  ],
+  [
+   125,
+   131,
+   "Coral Sea / Western Australia"
+  ],
+  [
+   61,
+   82,
+   "Central Mediterranean Sea / Egypt"
+  ],
+  [
+   4,
+   22,
+   "Baffin Bay / Benelux"
+  ],
+  [
+   90,
+   113,
+   "West Africa / Brazil Basin"
+  ],
+  [
+   127,
+   119,
+   "Drake Passage / Southeast Brazil"
+  ],
+  [
+   136,
+   118,
+   "Weddell Sea / Argentina"
+  ],
+  [
+   86,
+   112,
+   "Western Caribbean Sea / Peru"
+  ],
+  [
+   80,
+   79,
+   "Panama / Northeast Pacific"
+  ],
+  [
+   57,
+   79,
+   "Southern United States / Northeast Pacific"
   ]
  ],
  "add": []
