@@ -25,6 +25,8 @@ const CARGO_OFFSET := Vector2(46, 2)      # where that unit's package starts ins
 
 var unit: Dictionary
 var in_transport := false  # a land unit at sea: drawn as a Transport carrying it
+var max_hp_override := -1  # the battle board: HP as the battle counts it (a Transport has 1)
+var mark := 0              # BattleModel.Mark: 1 = hit but alive ("/"), 2 = eliminated ("X")
 
 
 static func make(u: Dictionary, transport_form := false) -> UnitTile:
@@ -41,7 +43,31 @@ static func make(u: Dictionary, transport_form := false) -> UnitTile:
 	return tile
 
 
+## A tile for a unit as the battle board tracks it (a BattleModel unit row).
+static func for_battle(row: Dictionary) -> UnitTile:
+	var u := {
+		"unit_id": row["unit_id"], "unit_type": row["unit_type"], "owner": row["owner"],
+		"current_hp": row["hp"], "xp": row["xp"], "promoted": row["promoted"],
+	}
+	var tile := UnitTile.make(u, bool(row["cargo"]))
+	tile.max_hp_override = int(row["max_hp"])
+	return tile
+
+
+## Refresh from a BattleModel unit row (HP, XP, promotion, mark).
+func update_from_battle(row: Dictionary) -> void:
+	unit["current_hp"] = row["hp"]
+	unit["xp"] = row["xp"]
+	unit["promoted"] = row["promoted"]
+	max_hp_override = int(row["max_hp"])
+	mark = int(row["mark"])
+	tooltip_text = _describe()
+	queue_redraw()
+
+
 func max_hp() -> int:
+	if max_hp_override >= 0:
+		return max_hp_override
 	var base := int(GameData.units["units"][unit["unit_type"]]["hp"])
 	return base + (1 if unit.get("promoted", false) else 0)
 
@@ -63,12 +89,29 @@ func _draw() -> void:
 
 	if not in_transport:
 		_draw_package(Vector2.ZERO, owner_col)
+	else:
+		# The transport itself: a regular-size icon, with no XP or HP of its own.
+		_draw_icon("Transport", Vector2.ZERO, owner_col)
+		draw_rect(CARGO_BOX, owner_col.darkened(0.6))
+		draw_rect(CARGO_BOX, Color(1, 1, 1, 0.9), false, 1.5)
+		_draw_package(CARGO_OFFSET, owner_col)
+	_draw_mark()
+
+
+## Battle marks: "/" through a unit that was hit but lives, "X" through an
+## eliminated one.
+func _draw_mark() -> void:
+	if mark == 0:
 		return
-	# The transport itself: a regular-size icon, with no XP or HP of its own.
-	_draw_icon("Transport", Vector2.ZERO, owner_col)
-	draw_rect(CARGO_BOX, owner_col.darkened(0.6))
-	draw_rect(CARGO_BOX, Color(1, 1, 1, 0.9), false, 1.5)
-	_draw_package(CARGO_OFFSET, owner_col)
+	var box := Rect2(Vector2(0, 8), Vector2(size.x, size.y - 12))
+	var col := Color(1.0, 0.25, 0.2)
+	if mark == 1:
+		draw_line(box.position + Vector2(box.size.x, 0), box.position + Vector2(0, box.size.y), Color(0, 0, 0, 0.9), 5.0, true)
+		draw_line(box.position + Vector2(box.size.x, 0), box.position + Vector2(0, box.size.y), col, 3.0, true)
+	else:
+		for pair in [[Vector2(0, 0), Vector2(box.size.x, box.size.y)], [Vector2(box.size.x, 0), Vector2(0, box.size.y)]]:
+			draw_line(box.position + pair[0], box.position + pair[1], Color(0, 0, 0, 0.9), 6.0, true)
+			draw_line(box.position + pair[0], box.position + pair[1], col, 3.5, true)
 
 
 ## A unit's icon on its owner's colour, at `offset` within the tile.

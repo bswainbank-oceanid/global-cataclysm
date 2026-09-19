@@ -177,6 +177,9 @@ func _draw_arrow(a: Dictionary, progress: float) -> void:
 		var dir := (tip - base).normalized()
 		var side := Vector2(-dir.y, dir.x) * head_w * 0.5 * head_scale
 		var head := PackedVector2Array([tip, base + side, base - side])
+		var head_area := absf((head[1] - head[0]).cross(head[2] - head[0]))
+		if not (head[0].is_finite() and head[1].is_finite() and head[2].is_finite()) or head_area < 0.05 * inv * inv:
+			continue  # degenerate head (the arrow is all but gone): nothing to triangulate
 		var head_loop := PackedVector2Array(head)
 		head_loop.append(head[0])
 

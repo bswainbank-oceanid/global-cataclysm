@@ -10,6 +10,9 @@ extends Node
 ##   --badges=flag|strip|category   unit badge style
 ##   --server[=ws://host:port]  connect to the game server (watches the all-bot game)
 ##   --steps=<n>             press the Next button n times (needs --server)
+##   --pause=never|turn|phase, --pause_battle   playback settings for this run
+##   --resolve=entire|round|side|type|unit   battle board Resolve setting, both sides
+##   --battle_rolls=<n>      press the open battle board's button n times
 ##   --wheel=x,y,steps       inject mouse-wheel steps at a screen point (+ = zoom in)
 ##   --drag=x1,y1,x2,y2      inject a left-button drag between two screen points
 ##   --click=x,y             inject a left click at a screen point

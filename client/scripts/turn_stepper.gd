@@ -12,6 +12,8 @@ signal changed
 signal queue_shown(header: String, skipped: Array, events: Array)
 signal executed(header: String, events: Array)
 signal log_line(text: String)
+signal battle_opened(preview: Dictionary)   # a battle paused: show the battle board
+signal battle_result(events: Array)         # ...its fought events, for the board to reveal
 
 var button_text := "Connecting..."
 var button_enabled := false  # Next can execute the queued phase
@@ -25,12 +27,15 @@ var _last_queue: Dictionary = {}  # the queue message awaiting execution
 var _playing := false  # running unpaused: the button offers Pause instead of Next
 var _pause_requested := false  # Pause pressed mid-run; takes effect when the next phase is queued
 var _auto := false  # the queued phase should run by itself (Settings say not to pause)
+var _battle_open := false          # the battle board is up: hold everything it would spoil
+var _held: Array = []              # messages received meanwhile (result, state, next queue)
+var _held_result: Dictionary = {}
 var _awaiting := false  # a `next` is in flight; the reply is the next queue
 
 
 func _ready() -> void:
 	Settings.changed.connect(func():
-		if not _last_queue.is_empty() and not _awaiting:
+		if not _last_queue.is_empty() and not _awaiting and not _battle_open:
 			_auto = not _should_pause(_last_queue)  # a live change applies to the phase waiting now
 			_playing = _auto
 			_refresh())
@@ -42,6 +47,9 @@ func _ready() -> void:
 
 
 func _on_message(msg: Dictionary) -> void:
+	if _battle_open and str(msg.get("type", "")) in ["state", "phase_queue"]:
+		_held.append(msg)  # applying these would show the battle's outcome before the board does
+		return
 	match str(msg.get("type", "")):
 		"state":
 			GameStore.set_state(msg["game_state"])
@@ -49,6 +57,8 @@ func _on_message(msg: Dictionary) -> void:
 			_awaiting = false
 			_last_queue = msg
 			_auto = not _should_pause(msg) and not _pause_requested
+			if _battle_pause(msg) and not _pause_requested:
+				_open_battle(_battle_in(msg))  # sets _auto false; the board takes over from here
 			_pause_requested = false  # a manual pause is held for exactly one phase; settings decide after
 			_playing = _auto
 			_queued_faction = str(msg["faction"])
@@ -60,7 +70,11 @@ func _on_message(msg: Dictionary) -> void:
 				header += " (battle %d of %d)" % [int(msg["battle"]["index"]) + 1, int(msg["battle"]["count"])]
 			queue_shown.emit(header, msg.get("skipped", []), msg["events"])
 		"phase_result":
-			executed.emit(_header(str(msg["faction"]), str(msg["phase"])), msg["events"])
+			if _battle_open:
+				_held_result = msg
+				battle_result.emit(msg["events"])
+			else:
+				executed.emit(_header(str(msg["faction"]), str(msg["phase"])), msg["events"])
 		"error":
 			_awaiting = false
 			log_line.emit("[color=#ff7060]server: %s[/color]" % str(msg.get("message", "")))
@@ -82,6 +96,8 @@ func _refresh() -> void:
 	button_active = false
 	if game_over:
 		button_text = "Game over"
+	elif _battle_open:
+		button_text = "Battle in progress..."
 	elif _playing:
 		button_text = "Pausing..." if _pause_requested else "Pause"
 		button_active = not _pause_requested
@@ -122,6 +138,55 @@ func _should_pause(msg: Dictionary) -> bool:
 				if GameStore.is_player(str(u["owner"])):
 					return true
 	return false
+
+
+## True when this queued battle should stop for the battle board, as opposed to
+## an ordinary phase pause (which just offers the Next button).
+func _battle_pause(msg: Dictionary) -> bool:
+	var battle := _battle_in(msg)
+	if battle.is_empty():
+		return false
+	if GameStore.is_player(str(msg["faction"])):
+		return Settings.your_pause_battle
+	if Settings.opp_pause_battle:
+		return true
+	if Settings.opp_pause_battle_mine:
+		for side in ["attackers", "defenders"]:
+			for u in battle[side]:
+				if GameStore.is_player(str(u["owner"])):
+					return true
+	return false
+
+
+func _open_battle(preview: Dictionary) -> void:
+	_battle_open = true
+	_held = []
+	_held_result = {}
+	_auto = false
+	_playing = false
+	battle_opened.emit(preview)
+
+
+## The board asked for the battle to be fought (its first Next Roll).
+func execute_open_battle() -> void:
+	if _battle_open:
+		_do_advance()
+
+
+## End Battle: show what was held back -- the log entry, then the new state and
+## whatever comes next -- exactly as if the battle had just been fought.
+func release_battle() -> void:
+	if not _battle_open:
+		return
+	_battle_open = false
+	if not _held_result.is_empty():
+		executed.emit(_header(str(_held_result["faction"]), str(_held_result["phase"])), _held_result["events"])
+	_held_result = {}
+	var pending := _held
+	_held = []
+	for m in pending:
+		_on_message(m)
+	_refresh()
 
 
 ## The battle_preview a Combat Resolution queue is holding ({} if none).
@@ -175,7 +240,7 @@ func _do_advance() -> void:
 ## Waits (bounded) until a press is possible, for scripted runs.
 func wait_ready(max_seconds: float = 15.0) -> void:
 	var waited := 0.0
-	while not button_enabled and not game_over and waited < max_seconds:
+	while not button_enabled and not game_over and not _battle_open and waited < max_seconds:
 		await get_tree().process_frame
 		waited += get_process_delta_time()
 

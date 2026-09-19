@@ -11,6 +11,7 @@ var _cam: CameraRig
 var _hover_label: Label
 var _top: TopBar
 var _side: SidePanel
+var _battle_panel: BattlePanel
 
 
 func _ready() -> void:
@@ -71,6 +72,16 @@ func _ready() -> void:
 	_side.territory_clicked.connect(_focus_territory)
 	Stepper.busy = func(): return _world.arrows.is_playing()
 
+	var battle_panel := BattlePanel.new()
+	_battle_panel = battle_panel
+	add_child(battle_panel)
+	Stepper.battle_opened.connect(func(preview: Dictionary):
+		_focus_territory(int(preview["territory_id"]))  # zoom in on the battle, then pop the board
+		battle_panel.open(preview))
+	Stepper.battle_result.connect(battle_panel.receive_events)
+	battle_panel.roll_requested.connect(Stepper.execute_open_battle)
+	battle_panel.closed.connect(Stepper.release_battle)
+
 	var settings_panel := SettingsPanel.new()
 	settings_panel.visible = false
 	settings_panel.z_index = 100
@@ -120,6 +131,8 @@ func _start_view() -> void:
 			await Stepper.press(int(Dbg.args["steps"]))
 		else:
 			await Stepper.wait_ready()
+		if Dbg.args.has("battle_rolls"):
+			await _battle_panel.debug_press(int(Dbg.args["battle_rolls"]))
 	await _scripted_input()
 	Dbg.scene_ready = true
 
