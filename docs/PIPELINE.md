@@ -9,13 +9,14 @@ python3 tools/build_all.py
 
 which runs, in order:
 
-1. `tools/compute_adjacency.py` — `data/territories.json` →
-   `data/adjacency.json`; a Delaunay triangulation over every space's
-   center point, computed on a cylinder (the map wraps east-west) via the
-   ghost-point technique, edges kept under a 420px threshold (a sanity
-   check against spurious long edges, not a hard rule — a small
-   hand-confirmed `FORCED_EDGES` list in the script adds back real
-   adjacencies it would otherwise wrongly exclude). Fully regenerable —
+1. `tools/compute_adjacency.py` — `data/territory_shapes.json` (so
+   `tools/extract_territory_shapes.py` runs first) → `data/adjacency.json`;
+   two spaces are adjacent when their real outlines touch (within a few
+   pixels, wrapping east-west, a sea zone counting as its visible water
+   only -- `tools/outline_adjacency.py`). This replaced a centre-point
+   Delaunay triangulation that got ~120 pairs wrong and missed ~125. Two
+   land spaces separated by water (England/Benelux) are therefore not
+   adjacent; they connect through the sea between. Fully regenerable —
    kept in `data/` rather than `derived/` because it's
    foundational/canonical enough to want reviewed directly, but nothing
    in it is hand-edited.
@@ -52,11 +53,11 @@ zones in stable pastels, land in faction colours, outlines dark) for eyeballing
 the extracted shapes. Like `exports/map.png` it is a gitignored reference image,
 regenerated on request.
 
-`tools/debug_adjacency.py` checks `data/adjacency.json` against the real
-outlines and draws `exports/adjacency_debug.png` (green = adjacent and touching,
-red = adjacent in the data but the outlines don't touch, magenta = touching but
-missing from the data); `--only land-sea` filters to one kind of pair. It also
-warns about outlines that are identical or fully hidden.
+`tools/debug_adjacency.py` draws `data/adjacency.json` as single-colour lines
+between centre points (`--only sea-sea|land-land|land-sea` filters the kind of
+pair; `--out` sets the file). `--diff` instead colours pairs by agreement with
+the outlines (green agree, red data-only, magenta outline-only). It also warns
+about outlines that are identical or fully hidden.
 
 ## Editing territory data via the spreadsheet
 

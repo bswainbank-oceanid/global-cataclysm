@@ -82,10 +82,10 @@ adjacency graph was built with plain Euclidean distance, so it had no
 concept of wraparound — territories that should be "next to each other
 across the seam" (confirmed concretely: Cuba↔Mexico, ~3082px apart in raw
 coordinates but ~418px apart measured around the wrap) were missing edges
-entirely. Fixed by `tools/compute_adjacency.py`: a Delaunay triangulation
-computed on a cylinder (ghost-point technique — triangulate every point
-alongside copies of the whole set shifted by ±the map width, keep edges
-that touch a real point), same 420px threshold as before. This also
+entirely. Fixed by `tools/compute_adjacency.py`, first with a Delaunay
+triangulation on a cylinder, and now (superseding that, because
+centre-point triangulation mis-stated ~245 pairs) by testing which real
+outlines in `territory_shapes.json` touch, wrapping east-west. This also
 absorbed a second, unrelated problem: the old graph was a frozen
 historical artifact that had quietly drifted out of sync with
 `territories.json` as positions changed over the course of this project;

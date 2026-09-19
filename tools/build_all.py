@@ -19,6 +19,7 @@ import subprocess
 import sys
 
 STEPS = [
+    ['python3', 'tools/extract_territory_shapes.py'],  # first: adjacency is derived from the outlines
     ['python3', 'tools/compute_adjacency.py'],
     ['python3', 'tools/compute_foreign_neighbors.py'],
     ['python3', 'tools/compute_faction_profile.py'],
@@ -27,7 +28,6 @@ STEPS = [
     ['python3', '/mnt/skills/public/xlsx/scripts/recalc.py', 'exports/GC1972_Territories.xlsx'],
     ['python3', 'tools/validate_setup.py'],
     ['python3', 'tools/render_map.py'],
-    ['python3', 'tools/extract_territory_shapes.py'],
 ]
 
 for step in STEPS:

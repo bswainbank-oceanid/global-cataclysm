@@ -33,26 +33,23 @@ keyed by the same faction codes used here.
 
 ## data/adjacency.json
 
-The Delaunay-triangulation adjacency graph — fully regenerable from
-`data/territories.json` via `tools/compute_adjacency.py`, kept in `data/`
-rather than `derived/` because it's foundational/canonical enough to want
-reviewed directly (nothing in it is hand-edited, though). The map wraps
-east-west (x=3500 is the same seam as x=0; north-south does not wrap), so
-the triangulation is computed on a cylinder using the standard
-ghost-point technique — every point is triangulated alongside copies of
-the whole point set shifted by ±the map width, and only edges touching a
-real point are kept, at the same 420px threshold used everywhere else.
-That threshold is a sanity check against spurious long edges, not a hard
-rule — a small hand-confirmed `FORCED_EDGES` list in
-`tools/compute_adjacency.py` adds back real adjacencies it would
-otherwise wrongly exclude (e.g. a large territory whose center point
-sits far from its actual shared border).
+The adjacency graph — two spaces are adjacent when their real outlines in
+`data/territory_shapes.json` touch (within a few pixels; a sea zone counts
+as its visible water only, since its polygon also covers the coast it
+borders). Fully regenerable via `tools/compute_adjacency.py` (see
+`tools/outline_adjacency.py`), kept in `data/` rather than `derived/` because
+it's foundational/canonical enough to want reviewed directly (nothing in it
+is hand-edited, though). The map wraps east-west (x=3500 is the same seam
+as x=0; north-south does not wrap), and the touch test wraps too. It
+replaced a centre-point Delaunay triangulation: edges no longer depend on
+where a space's centre point happens to sit, and two land spaces
+separated by water are not adjacent (they connect through the sea zone).
 
 ```
 {
   "reference_image_width_px": 3500,
   "wraps_east_west": true,
-  "node_count": 149, "edge_count": 414,
+  "node_count": 149, "edge_count": 420,
   "nodes": { "<id>": {"type": "land"|"sea", "name": string}, ... },
   "edges": [[a, b], ...],                    // sorted, deduped, order-independent
   "neighbors_ordered": { "<id>": [neighbor ids...], ... }  // sorted by id; order carries no meaning

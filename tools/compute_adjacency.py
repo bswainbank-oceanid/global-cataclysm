@@ -1,95 +1,36 @@
 """
-Compute data/adjacency.json from scratch: a Delaunay triangulation over
-every space's center point (land and sea together, matching the original
-methodology), edges kept under a 420px length threshold, plus a small
-hand-confirmed FORCED_EDGES list for real adjacencies the generic
-distance check misses (see below).
+Compute data/adjacency.json from the real outlines: two spaces are adjacent when
+their outlines in data/territory_shapes.json touch (see tools/outline_adjacency.py:
+within a few pixels, wrapping east-west, a sea zone counting only as its visible
+water). Nothing is added by hand and nothing is inferred from centre points.
 
-This REPLACES the old adjacency.json, which was a one-time migration from
-a pre-project graph.pkl (see git history / tools/export_adjacency.py) and
-was never a regenerable pipeline step -- it silently drifted out of sync
-with territories.json as positions changed (Cuba's coordinate fix, the
-Tasman Sea split, etc.), and it was never wrap-aware in the first place.
+This replaced a Delaunay triangulation over the spaces' centre points (edges
+under a 420px cap, plus a short hand-confirmed FORCED_EDGES list). That method
+could not represent large or oddly shaped spaces -- a big sea zone's centre sits
+far from most of its coastline -- and produced ~120 edges between spaces whose
+outlines do not touch and missed ~125 that do (see tools/debug_adjacency.py).
+Consequence to know about: two land spaces separated by water (England/Benelux,
+Ireland/Scotland) are NOT adjacent; they connect through the sea zone between.
 
-Wraparound: the map is a cylinder, not a torus -- it wraps east-west only
-(going off x=3500 comes back around to x=0), north-south does not wrap.
-A plain scipy Delaunay triangulation has no concept of that, so this uses
-the standard "ghost point" trick for a periodic-in-x triangulation: every
-point is triangulated alongside two shifted copies of the whole point set
-(-width and +width), an ordinary planar Delaunay runs over all of that,
-and only edges that touch at least one real (unshifted) point are kept,
-mapped back to real ids and deduplicated. The resulting distance for a
-wrap-crossing edge is exactly the cylindrical distance, because the ghost
-copy's coordinates already encode it.
+Needs data/territory_shapes.json, so tools/extract_territory_shapes.py runs first
+(tools/build_all.py has them in that order).
 
-Every space in territories.json is now a real graph node -- there is no
-more "added after the graph was built" fallback category (that concept
-only existed because the old graph was frozen/historical; this one is a
-regenerable derived artifact like everything else in derived/, so a
-territory added later just gets included next time this runs).
-
-neighbors_ordered's order is *not* meaningful here (sorted by neighbor id
-for determinism) -- the historical graph's build-order quirk that some
-downstream logic used to depend on ("first sea-type neighbor in this
-order") was already replaced by nearest-by-distance in
-compute_faction_profile.py; nothing reads order-as-signal anymore.
+neighbors_ordered's order carries no meaning (sorted by neighbor id for
+determinism); nothing reads order-as-signal.
 
 Run from the repo root:
     python3 tools/compute_adjacency.py
 """
 import json
 
-import numpy as np
-from scipy.spatial import Delaunay
+from outline_adjacency import label_image, touching_pairs, load
 
-WIDTH = 3500
-THRESHOLD = 420
+meta, spaces, shapes = load()
+WIDTH = int(meta['reference_image_width_px'])
+HEIGHT = int(meta['reference_image_height_px'])
+territories = meta['spaces']
 
-# The threshold above is a sanity check against spurious long-distance
-# Delaunay edges, not a hard adjacency rule -- it can wrongly exclude a
-# real adjacency when a territory is large enough that its center point
-# sits far from its actual shared border/coastline. Confirmed by hand,
-# not derived, and applied after the normal triangulation+threshold
-# process:
-#   (10, 20)  Western Canada / Eastern Canada -- the base_map2 redraw of
-#             10 makes their coastlines visually touch across the
-#             east-west wrap seam, but their centers are ~529px apart.
-#   (150, 3)  Bering Strait / Beaufort Sea -- a real Delaunay edge
-#             (784px) just over threshold.
-#   (150, 11) Bering Strait / Hudson Bay -- not even a raw Delaunay edge
-#             (Beaufort Sea sits between them geometrically), added for
-#             the same Arctic-gateway connectivity as the (150, 3) case.
-FORCED_EDGES = {
-    (10, 20),
-    (150, 3),
-    (150, 11),
-}
-
-territories = json.load(open('data/territories.json'))['spaces']
-
-pts = []
-owner = []
-for shift in (-WIDTH, 0, WIDTH):
-    for s in territories:
-        pts.append([s['x'] + shift, s['y']])
-        owner.append(s['id'])
-pts = np.array(pts, dtype=float)
-
-tri = Delaunay(pts)
-
-edges = set()
-for simplex in tri.simplices:
-    for i in range(3):
-        a, b = simplex[i], simplex[(i + 1) % 3]
-        ra, rb = owner[a], owner[b]
-        if ra == rb:
-            continue
-        d = np.hypot(pts[a][0] - pts[b][0], pts[a][1] - pts[b][1])
-        if d <= THRESHOLD:
-            edges.add(tuple(sorted((ra, rb))))
-
-edges |= {tuple(sorted(e)) for e in FORCED_EDGES}
-edges = sorted(edges)
+edges = sorted(touching_pairs(label_image(spaces, shapes, WIDTH, HEIGHT)))
 
 neighbors = {}
 for a, b in edges:
@@ -114,4 +55,4 @@ print(f'wrote data/adjacency.json: {len(nodes)} nodes, {len(edges)} edges')
 
 isolated = [s['id'] for s in territories if s['id'] not in neighbors]
 if isolated:
-    print('WARNING: territories with zero neighbors:', isolated)
+    print('WARNING: territories with zero neighbors:', [(i, spaces[i]['name']) for i in isolated])
