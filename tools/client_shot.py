@@ -42,6 +42,8 @@ def main():
     ap.add_argument('--steps')
     ap.add_argument('--pause')
     ap.add_argument('--battle_rolls')
+    ap.add_argument('--buy')
+    ap.add_argument('--hold')
     ap.add_argument('--resolve')
     ap.add_argument('--pause_battle', action='store_true')
     ap.add_argument('--badges')
@@ -51,7 +53,7 @@ def main():
 
     subprocess.run([sys.executable, str(ROOT / 'tools' / 'sync_client_data.py')], check=True)
     user_args = [f'--shot={Path(a.out).resolve()}', f'--wait={a.wait}']
-    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click', 'state', 'badges', 'server', 'steps', 'pause', 'pause_battle', 'battle_rolls', 'resolve'):
+    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click', 'state', 'badges', 'server', 'steps', 'pause', 'pause_battle', 'battle_rolls', 'resolve', 'buy', 'hold'):
         if getattr(a, key):
             val = getattr(a, key)
             user_args.append(f'--{key}={Path(val).resolve() if key == "state" else val}')

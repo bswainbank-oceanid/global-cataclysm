@@ -107,9 +107,9 @@ class TestWatch(unittest.TestCase):
         again = session.handle_message({'type': 'watch'})[1]
         self.assertIs(first, again)
 
-    def test_watch_is_refused_when_a_faction_in_play_is_not_a_bot(self):
+    def test_watch_is_refused_when_a_faction_is_neither_human_nor_a_bot_with_a_bot_attached(self):
         modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
-        modes['NAA'] = FactionMode.HUMAN
+        modes['NAA'] = FactionMode.BOT  # a BOT with no RandomBot attached
         modes['AAC'] = FactionMode.BOT
         gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
         turn_log = TurnLog()
@@ -237,3 +237,117 @@ class TestWatch(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def _human_session(seed=1):
+    """NAA a human player, GPC a bot."""
+    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes['NAA'] = FactionMode.HUMAN
+    modes['GPC'] = FactionMode.BOT
+    gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
+    turn_log = TurnLog()
+    engine = GameEngine(gs, None, turn_log=turn_log, combat_rng=random.Random(seed))
+    return GameSession(engine, turn_log, {'GPC': RandomBot(engine, 'GPC', rng=random.Random(seed))})
+
+
+class TestHumanPurchase(unittest.TestCase):
+    def _watch(self):
+        session = _human_session()
+        messages = session.handle_message({'type': 'watch'})
+        return session, _by_type(messages, 'phase_queue')[0]
+
+    def test_a_human_purchase_queue_carries_the_options_and_nothing_is_decided_for_them(self):
+        session, queue = self._watch()
+        self.assertEqual((queue['faction'], queue['phase']), ('NAA', 'PURCHASE'))
+        self.assertEqual(queue['events'][0]['orders'], [])
+        human = queue['human']
+        self.assertEqual(human['treasury'], session.engine.game_state.factions['NAA'].treasury_mpc)
+        self.assertEqual(human['total_cost'], 0)
+        self.assertEqual(human['orders'], [])
+        self.assertTrue(human['targets'])
+        for target in human['targets'].values():
+            self.assertGreater(target['remaining'], 0)
+
+    def test_staging_replaces_the_queue_and_reports_cost_and_remaining_capacity(self):
+        session, queue = self._watch()
+        # England (21, a Strategic Center, value 3 -> cap 5): 2 Infantry at the SC price (3 each).
+        reply = session.handle_message({'type': 'stage_purchase', 'faction': 'NAA', 'orders': [
+            {'unit_type': 'Infantry', 'qty': 2, 'deploy_at': 21}]})
+        self.assertEqual([m['type'] for m in reply], ['phase_queue'])
+        human = reply[0]['human']
+        self.assertEqual(human['total_cost'], 6)
+        self.assertEqual(human['orders'][0]['cost'], 6)
+        self.assertEqual(human['targets']['21']['remaining'] if '21' in human['targets'] else human['targets'][21]['remaining'], 3)
+        self.assertEqual(reply[0]['events'][0]['orders'], [{'unit_type': 'Infantry', 'qty': 2, 'deploy_at': 21}])
+        # nothing has been committed yet
+        gs = session.engine.game_state
+        self.assertEqual(gs.territories[21].pending_deployment, [])
+
+    def test_restaging_replaces_rather_than_accumulates(self):
+        session, _ = self._watch()
+        session.handle_message({'type': 'stage_purchase', 'faction': 'NAA', 'orders': [
+            {'unit_type': 'Infantry', 'qty': 2, 'deploy_at': 21}]})
+        reply = session.handle_message({'type': 'stage_purchase', 'faction': 'NAA', 'orders': [
+            {'unit_type': 'Infantry', 'qty': 1, 'deploy_at': 21}]})
+        self.assertEqual(reply[0]['human']['total_cost'], 3)
+
+    def test_an_illegal_stage_is_rejected_with_the_unchanged_queue(self):
+        session, queue = self._watch()
+        session.handle_message({'type': 'stage_purchase', 'faction': 'NAA', 'orders': [
+            {'unit_type': 'Infantry', 'qty': 1, 'deploy_at': 21}]})
+        reply = session.handle_message({'type': 'stage_purchase', 'faction': 'NAA', 'orders': [
+            {'unit_type': 'Submarine', 'qty': 1, 'deploy_at': 21}]})  # a ship on land
+        self.assertEqual([m['type'] for m in reply], ['error', 'phase_queue'])
+        self.assertEqual(reply[1]['human']['total_cost'], 3)  # the earlier staging survived
+
+    def test_over_budget_is_rejected(self):
+        session, _ = self._watch()
+        treasury = session.engine.game_state.factions['NAA'].treasury_mpc
+        reply = session.handle_message({'type': 'stage_purchase', 'faction': 'NAA', 'orders': [
+            {'unit_type': 'Armor', 'qty': 40, 'deploy_at': 21}]})
+        self.assertEqual(reply[0]['type'], 'error')
+
+    def test_only_a_human_faction_can_stage_and_only_in_its_purchase_phase(self):
+        session, _ = self._watch()
+        self.assertEqual(session.handle_message({'type': 'stage_purchase', 'faction': 'GPC', 'orders': []})[0]['type'], 'error')
+        session.handle_message({'type': 'next'})  # NAA's purchase -> its Combat Resolution
+        self.assertEqual(session.handle_message({'type': 'stage_purchase', 'faction': 'NAA', 'orders': []})[0]['type'], 'error')
+
+    def test_next_commits_the_purchase_and_it_deploys_at_the_deploy_phase(self):
+        session, _ = self._watch()
+        session.handle_message({'type': 'stage_purchase', 'faction': 'NAA', 'orders': [
+            {'unit_type': 'Infantry', 'qty': 2, 'deploy_at': 21}]})
+        gs = session.engine.game_state
+        before = gs.factions['NAA'].treasury_mpc
+        messages = session.handle_message({'type': 'next'})
+        result = _by_type(messages, 'phase_result')[0]
+        self.assertEqual(result['events'][0]['kind'], 'purchase')
+        self.assertEqual(gs.factions['NAA'].treasury_mpc, before - 6)
+        self.assertEqual(len(gs.territories[21].pending_deployment), 2)
+        # play the rest of NAA's turn: the units land at Deploy + Income
+        for _ in range(8):
+            if gs.active_faction != 'NAA':
+                break
+            session.handle_message({'type': 'next'})
+        self.assertEqual(gs.territories[21].pending_deployment, [])
+
+    def test_a_human_turn_passes_through_every_other_phase_without_orders(self):
+        session, _ = self._watch()
+        seen = []
+        for _ in range(12):
+            messages = session.handle_message({'type': 'next'})
+            self.assertNotIn('error', [m['type'] for m in messages])
+            queue = _by_type(messages, 'phase_queue')[0]
+            seen.append((queue['faction'], queue['phase']))
+            if queue['faction'] == 'GPC':
+                break
+        self.assertIn(('NAA', 'ALLIANCES'), seen)
+        self.assertEqual(seen[-1], ('GPC', 'PURCHASE'))
+
+    def test_purchase_options_list_a_sea_zone_target_with_its_sources(self):
+        session, queue = self._watch()
+        sea = [(int(t), v) for t, v in queue['human']['targets'].items()
+               if session.engine.data.territories()[int(t)]['type'] == 'sea']
+        self.assertTrue(sea)
+        for tid, info in sea:
+            self.assertTrue(info['sources'])

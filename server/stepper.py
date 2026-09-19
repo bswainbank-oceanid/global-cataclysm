@@ -15,6 +15,18 @@ Client -> server:
     {"type": "watch"}   join as a spectator; answered with the current
                         state and the queue awaiting execution.
     {"type": "next"}    execute the queued phase, then queue the next one.
+    {"type": "stage_purchase", "orders": [{"unit_type", "qty", "deploy_at"}, ...]}
+                        a HUMAN faction's Purchase phase: replace the staged
+                        purchase list (the COMPLETE list, like the human
+                        protocol's "purchase"). Validated by the engine
+                        (submit_purchases); answered with the refreshed
+                        phase_queue, or an "error" plus the unchanged queue.
+                        "next" then confirms it -- irreversibly.
+
+A faction in HUMAN mode is a player, not a bot: its phases are queued the same
+way, but nothing is decided for it. Its Purchase queue carries a "human" block
+(engine.purchase_options: treasury, legal targets with remaining capacity,
+staged orders with costs); its other phases stage nothing, so "next" passes.
 
 Server -> client (always broadcast to watchers):
     {"type": "phase_queue", "faction": "AAC", "phase": "PURCHASE",
@@ -42,7 +54,8 @@ Server -> client (always broadcast to watchers):
 """
 import copy
 
-from engine.state import Phase
+from engine.engine import PurchaseOrder
+from engine.state import FactionMode, Phase
 from engine.turn_log import TurnLog
 
 _PHASES = list(Phase)
@@ -56,7 +69,7 @@ class PhaseStepper:
     def __init__(self, engine, turn_log, bots):
         self.engine = engine
         self.turn_log = turn_log
-        self.bots = bots
+        self.bots = bots  # faction -> RandomBot; a HUMAN faction has none
         self._queue = None  # the phase_queue message awaiting "next"
         self._skipped_before = []
         self._alliance_plan = None
@@ -77,6 +90,31 @@ class PhaseStepper:
         if self._queue is None:
             self._plan_current_phase()
         return [self._state_message(), self._queue]
+
+    def stage_purchase(self, faction, raw_orders):
+        """A human's whole staged purchase list. Replies with the refreshed
+        queue (so every watching client updates), or an error plus the
+        unchanged queue so the client can resync."""
+        gs = self.engine.game_state
+        problem = self._check_all_bots()
+        if problem:
+            return [self._error(problem)]
+        if self._queue is None:
+            self._plan_current_phase()
+        if faction not in gs.factions or not self._is_human(faction):
+            return [self._error(f'{faction} is not a human-controlled faction')]
+        if faction != gs.active_faction or gs.phase != Phase.PURCHASE or self._queue['phase'] != Phase.PURCHASE.value:
+            return [self._error(f"it is not {faction}'s Purchase phase")]
+        try:
+            orders = [PurchaseOrder(o['unit_type'], int(o['qty']), int(o['deploy_at'])) for o in raw_orders]
+        except (KeyError, TypeError, ValueError) as e:
+            return [self._error(f'malformed order: {e}'), self._queue]
+        try:
+            self.engine.submit_purchases(faction, orders)
+        except ValueError as e:
+            return [self._error(str(e)), self._queue]
+        self._plan_current_phase()  # rebuilds the queue from what is now staged
+        return [self._queue]
 
     def next(self):
         problem = self._check_all_bots()
@@ -130,7 +168,7 @@ class PhaseStepper:
         remaining phase call for it would raise, so those become no-ops --
         except the global elimination check and the game-over check, which
         still run (same handling as engine.bots.driver)."""
-        engine, bot = self.engine, self.bots[faction]
+        engine, bot = self.engine, self.bots.get(faction)
         active = faction in engine.game_state.active_factions()
         if phase == Phase.PURCHASE:
             engine.confirm_purchases(faction)
@@ -149,7 +187,8 @@ class PhaseStepper:
                 engine.deploy_and_collect_income(faction)
         elif phase == Phase.ALLIANCES:
             if active:
-                bot.commit_alliance_phase(self._alliance_plan)
+                if bot is not None:
+                    bot.commit_alliance_phase(self._alliance_plan)
                 engine.process_game_end_check(faction)
             else:
                 engine.game_state.game_over = engine.would_game_end()
@@ -182,15 +221,26 @@ class PhaseStepper:
         is committed), then builds the phase_queue message describing it."""
         engine, gs = self.engine, self.engine.game_state
         faction, phase = gs.active_faction, gs.phase
-        bot = self.bots[faction]
+        bot = self.bots.get(faction)
+        human = self._is_human(faction)
+        extra = {}
 
         if faction not in gs.active_factions():
             events = []  # eliminated during its own turn; nothing left to do (see _commit)
         elif phase == Phase.PURCHASE:
-            bot.plan_purchase_phase()
-            events = [engine.staged_purchase_event(faction)]
+            if human:
+                # The player composes it; keep whatever is staged already (a re-plan
+                # after each stage_purchase must not wipe it).
+                events = [engine.staged_purchase_event(faction)]
+                extra['human'] = engine.purchase_options(faction)
+            else:
+                bot.plan_purchase_phase()
+                events = [engine.staged_purchase_event(faction)]
         elif phase == Phase.COMBAT_MOVE:
-            bot.plan_combat_move_phase()
+            if human:
+                engine.submit_combat_moves(faction, [])  # no combat-move UI yet: the player passes
+            else:
+                bot.plan_combat_move_phase()
             events = [engine.staged_combat_move_event(faction)]
         elif phase == Phase.COMBAT_RESOLUTION:
             if self._battles is None:
@@ -208,7 +258,12 @@ class PhaseStepper:
                     self._queue = {'type': 'phase_queue', 'faction': faction, 'phase': RETURN_TO_BASE,
                                    'events': homeward, 'skipped': [p.value for p in self._skipped_before]}
                     return
-            bot.plan_noncombat_move_phase()
+            if human:
+                if not engine.has_processed_return_to_base(faction):
+                    engine.process_return_to_base(faction)  # a bot's plan does this itself
+                engine.submit_noncombat_moves(faction, [])  # no move UI yet: the player passes
+            else:
+                bot.plan_noncombat_move_phase()
             events = [engine.staged_noncombat_move_event(faction)]
         elif phase == Phase.CAPTURE:
             events = self._dry_run(lambda sim: (
@@ -216,11 +271,11 @@ class PhaseStepper:
         elif phase == Phase.DEPLOY_INCOME:
             events = self._dry_run(lambda sim: sim.deploy_and_collect_income(faction))
         else:  # ALLIANCES
-            self._alliance_plan = bot.plan_alliance_phase()
+            self._alliance_plan = {'action': 'none'} if human else bot.plan_alliance_phase()
             events = [{'kind': 'alliance_plan', 'faction': faction, **self._alliance_plan}]
 
         self._queue = {'type': 'phase_queue', 'faction': faction, 'phase': phase.value,
-                       'events': events, 'skipped': [p.value for p in self._skipped_before]}
+                       'events': events, 'skipped': [p.value for p in self._skipped_before], **extra}
         if phase == Phase.COMBAT_RESOLUTION and self._battles:
             self._queue['battle'] = {'index': self._battle_index, 'count': len(self._battles)}
 
@@ -240,11 +295,14 @@ class PhaseStepper:
 
     # ---- helpers ---------------------------------------------------------
 
+    def _is_human(self, faction):
+        return self.engine.game_state.factions[faction].mode == FactionMode.HUMAN
+
     def _check_all_bots(self):
         gs = self.engine.game_state
         for code in gs.active_factions():
-            if code not in self.bots:
-                return f'watch mode needs every active faction to be a BOT; {code} is not'
+            if code not in self.bots and not self._is_human(code):
+                return f'{code} is neither a HUMAN nor a BOT with a bot attached'
         return None
 
     def _state_message(self):

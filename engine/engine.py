@@ -797,6 +797,46 @@ class GameEngine:
         scratch.record_purchase(faction, orders, total_cost)
         return scratch.events[0]
 
+    def purchase_options(self, faction):
+        """What a purchase UI needs beyond legal_purchase_targets, given the
+        currently STAGED purchases: for every legal target, how many more units
+        it can still take ('remaining', across the eligible source territories),
+        and whether the NEXT unit bought there would be charged at a Strategic
+        Center's discounted price ('next_sc'); plus 'orders' -- each staged order
+        with its exact cost and which territories' capacity paid for it -- and
+        the staged 'total_cost'. A pure query."""
+        orders = self._staged_purchases.get(faction, [])
+        total_cost, allocations = self._resolve_and_cost(orders, faction)
+        consumed = {}
+        for alloc in allocations:
+            for source, qty in alloc:
+                consumed[source] = consumed.get(source, 0) + qty
+        terrs = self.data.territories()
+        sc_targets, other_targets = self.legal_purchase_targets(faction)
+        targets = {}
+        for tid in sc_targets + other_targets:
+            sources = self._purchase_sources(tid, faction)
+            left = [(s, self._deploy_cap(s) - consumed.get(s, 0)) for s in sources]
+            nxt = next((s for s, n in left if n > 0), None)
+            targets[tid] = {
+                'remaining': sum(max(n, 0) for _, n in left),
+                'next_sc': bool(nxt is not None and terrs[nxt].get('strategic_center')),
+                'sources': list(sources),
+            }
+        detail = []
+        for order, alloc in zip(orders, allocations):
+            detail.append({
+                'unit_type': order.unit_type, 'qty': order.qty, 'deploy_at': order.deploy_at,
+                'cost': sum(qty * self._unit_cost(order.unit_type, src) for src, qty in alloc),
+                'allocation': [[src, qty] for src, qty in alloc],
+            })
+        contested = [tid for tid in targets
+                     if terrs[tid]['type'] == 'land' and self.game_state.territories[tid].contested_by]
+        return {
+            'treasury': self.game_state.factions[faction].treasury_mpc,
+            'total_cost': total_cost, 'targets': targets, 'orders': detail, 'contested': contested,
+        }
+
     def staged_combat_move_event(self, faction):
         orders = self._staged_combat_moves.get(faction, [])
         scratch = TurnLog()

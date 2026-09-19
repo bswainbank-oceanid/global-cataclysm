@@ -71,6 +71,8 @@ func _ready() -> void:
 	map_area.add_child(_hover_label)
 
 	_side.territory_clicked.connect(_focus_territory)
+	_side.purchase_add.connect(Stepper.purchase_add)
+	_side.purchase_remove.connect(Stepper.purchase_remove)
 	Stepper.busy = func(): return _world.arrows.is_playing()
 
 	var battle_panel := BattlePanel.new()
@@ -142,6 +144,17 @@ func _start_view() -> void:
 			await Stepper.press(int(Dbg.args["steps"]))
 		else:
 			await Stepper.wait_ready()
+		if Dbg.args.has("buy"):  # --buy=Infantry:21,Cruiser:14  (a scripted player's purchase clicks)
+			await Stepper.wait_ready()
+			for item in str(Dbg.args["buy"]).split(","):
+				var parts := item.split(":")
+				if parts[0].begins_with("-"):  # a leading "-" removes one
+					Stepper.purchase_remove(parts[0].substr(1), int(parts[1]))
+				else:
+					Stepper.purchase_add(parts[0], int(parts[1]))
+				await get_tree().create_timer(0.25).timeout
+		if Dbg.args.has("hold"):  # --hold=<seconds>: hold the submit button that long (the ring fills)
+			await _side.debug_hold(float(Dbg.args["hold"]))
 		if Dbg.args.has("battle_rolls"):
 			# Scripted play: n actions, each opening a paused battle's board (the
 			# player's go-ahead) and/or pressing the board's button once.

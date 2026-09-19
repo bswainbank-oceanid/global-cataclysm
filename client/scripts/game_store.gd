@@ -6,7 +6,9 @@ extends Node
 ## falls back to the static starting owners in territories.json.
 
 signal state_changed
+signal purchase_changed  # the human player's purchase queue/options changed
 
+var human_purchase := {}  # the human's Purchase phase in progress: {faction, treasury, total_cost, targets{tid: {remaining, next_sc, sources}}, orders[], contested[]}
 var queued_purchase := {}  # the purchase event awaiting execution, {} if none
 var queued_attack := {}    # the combat_move event awaiting execution, {} if none
 var state := {}  # last full GameState.to_dict() from the server, {} until one arrives
@@ -131,6 +133,48 @@ func contested_spaces() -> Array:
 func set_queued_attack(event: Dictionary) -> void:
 	queued_attack = event
 	state_changed.emit()
+
+
+## The server's purchase options for the human's Purchase phase ({} = not in one).
+func set_human_purchase(faction: String, block: Dictionary) -> void:
+	if block.is_empty():
+		if not human_purchase.is_empty():
+			human_purchase = {}
+			purchase_changed.emit()
+		return
+	var targets := {}
+	for k in block["targets"]:
+		targets[int(k)] = block["targets"][k]
+	var contested := []
+	for t in block["contested"]:
+		contested.append(int(t))
+	human_purchase = {
+		"faction": faction, "treasury": int(block["treasury"]), "total_cost": int(block["total_cost"]),
+		"targets": targets, "orders": block["orders"], "contested": contested,
+	}
+	purchase_changed.emit()
+
+
+func human_purchase_active() -> bool:
+	return not human_purchase.is_empty()
+
+
+## The purchase options at a space ({} if it isn't somewhere the player may buy).
+func purchase_target(tid: int) -> Dictionary:
+	return human_purchase.get("targets", {}).get(tid, {})
+
+
+func purchase_budget_left() -> int:
+	return int(human_purchase.get("treasury", 0)) - int(human_purchase.get("total_cost", 0))
+
+
+## How many of a unit type are queued for deployment at a space.
+func purchase_queued_at(tid: int, unit_type: String) -> int:
+	var n := 0
+	for o in human_purchase.get("orders", []):
+		if int(o["deploy_at"]) == tid and str(o["unit_type"]) == unit_type:
+			n += int(o["qty"])
+	return n
 
 
 ## The purchase event a phase_queue is holding for execution ({} = none).

@@ -9,11 +9,12 @@ just that faction's connection(s), no "to" key means every connection on
 this game (everyone sees the same board).
 
 First vertical slice, per docs/GAME_ARCHITECTURE.md: ONE hardcoded game
-(NAA and GPC both BOTs, every other faction NEUTRAL -- see
-_build_demo_session), built fresh each time this process starts, with
-randomize_play_order=False so NAA goes first. Clients connect as
-watchers ({"type": "watch"}) and step the game a phase at a time with
-{"type": "next"} -- see server/stepper.py. Not yet: multiple
+(NAA a HUMAN player by default, GPC a BOT, every other faction NEUTRAL -- see
+_build_demo_session; `--human none` makes both bots), built fresh each time this
+process starts, with randomize_play_order=False so NAA goes first. Clients
+connect as watchers ({"type": "watch"}) and step the game a phase at a time
+with {"type": "next"}; a human faction's orders arrive as "stage_purchase"
+etc. -- see server/stepper.py. Not yet: multiple
 simultaneous games, persistence, real auth (a "join" message is trusted
 at face value for now).
 
@@ -41,14 +42,18 @@ logger = logging.getLogger('server')
 WATCHER = '*watchers'  # sockets_by_faction key for spectators (not a faction code)
 
 
-def _build_demo_session():
+def _build_demo_session(human='NAA'):
+    """NAA vs GPC, everyone else NEUTRAL. `human`: the faction a player controls
+    (its phases wait for the client's orders); None makes both bots, for
+    watching."""
     modes = {code: FactionMode.NEUTRAL for code in data_module.factions()}
-    modes['NAA'] = FactionMode.BOT
-    modes['GPC'] = FactionMode.BOT
+    modes['NAA'] = FactionMode.HUMAN if human == 'NAA' else FactionMode.BOT
+    modes['GPC'] = FactionMode.HUMAN if human == 'GPC' else FactionMode.BOT
     gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
     turn_log = TurnLog()
     engine = GameEngine(gs, data_module, turn_log=turn_log)
-    bots = {code: RandomBot(engine, code, rng=random.Random()) for code in ('NAA', 'GPC')}
+    bots = {code: RandomBot(engine, code, rng=random.Random())
+            for code in ('NAA', 'GPC') if modes[code] == FactionMode.BOT}
     return GameSession(engine, turn_log, bots)
 
 
@@ -101,8 +106,8 @@ class Server:
             await asyncio.gather(*(ws.send(payload) for ws in targets), return_exceptions=True)
 
 
-async def main(host, port):
-    session = _build_demo_session()
+async def main(host, port, human):
+    session = _build_demo_session(human)
     server = Server(session)
     async with websockets.serve(server.handle_connection, host, port):
         logger.info('listening on ws://%s:%s', host, port)
@@ -113,6 +118,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--host', default='localhost')
     parser.add_argument('--port', type=int, default=8765)
+    parser.add_argument('--human', choices=['NAA', 'GPC', 'none'], default='NAA',
+                        help="the faction a player controls (default NAA); 'none' = both bots, just watch")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(message)s')
-    asyncio.run(main(args.host, args.port))
+    asyncio.run(main(args.host, args.port, None if args.human == 'none' else args.human))

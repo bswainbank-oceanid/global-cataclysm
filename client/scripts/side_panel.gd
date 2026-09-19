@@ -13,9 +13,13 @@ var _log: RichTextLabel
 signal territory_clicked(tid: int)  # a territory name in the queue/log was clicked
 signal units_selected(unit_ids: Array)  # the units toggled on in the selection panel
 
+signal purchase_add(unit_type: String, tid: int)
+signal purchase_remove(unit_type: String, tid: int)
+
 var _selected := -1
 var _selected_units := {}  # unit_id -> true; survives the panel rebuilding on every state change
-var _next: Button
+var _orders: OrdersPanel
+var _next: HoldButton
 
 
 func _ready() -> void:
@@ -24,7 +28,7 @@ func _ready() -> void:
 
 	var upper := PanelContainer.new()
 	upper.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	upper.size_flags_stretch_ratio = 0.9  # room for a stack of unit tiles; the queue/log pane is still the larger one
+	upper.size_flags_stretch_ratio = 0.8  # room for a stack of unit tiles; the queue/log pane is still the larger one
 	upper.add_theme_stylebox_override("panel", HudStyle.box())
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -34,32 +38,20 @@ func _ready() -> void:
 	scroll.add_child(_detail)
 	add_child(upper)
 
-	_next = Button.new()
-	_next.custom_minimum_size = Vector2(0, 46)
-	_next.focus_mode = Control.FOCUS_NONE
-	_next.add_theme_font_size_override("font_size", 15)
-	_next.add_theme_color_override("font_color", HudStyle.GOLD)
-	_next.add_theme_color_override("font_hover_color", Color.WHITE)
-	_next.add_theme_color_override("font_disabled_color", HudStyle.TEXT_DIM)
-	_next.add_theme_stylebox_override("normal", HudStyle.box(HudStyle.GOLD, Color(0.16, 0.14, 0.05), 2))
-	_next.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.24, 0.2, 0.06), 2))
-	_next.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, Color(0.3, 0.25, 0.08), 2))
-	_next.add_theme_stylebox_override("disabled", HudStyle.box(HudStyle.EDGE, HudStyle.BG, 1))
-	var key := InputEventKey.new()
-	key.keycode = KEY_SPACE
-	var sc := Shortcut.new()
-	sc.events = [key]
-	_next.shortcut = sc
-	_next.shortcut_in_tooltip = false
+	_orders = OrdersPanel.new()
+	add_child(_orders)
+	_orders.add_requested.connect(func(u: String, tid: int): purchase_add.emit(u, tid))
+	_orders.remove_requested.connect(func(u: String, tid: int): purchase_remove.emit(u, tid))
+	_next = _orders.button
 	_next.tooltip_text = "Step to the next phase (Space)"
-	_next.pressed.connect(Stepper.button_pressed)
-	add_child(_next)
+	_next.activated.connect(Stepper.button_pressed)
 	Stepper.changed.connect(_sync_next)
+	GameStore.purchase_changed.connect(func(): show_queue_again())
 	_sync_next()
 
 	var lower := PanelContainer.new()
 	lower.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	lower.size_flags_stretch_ratio = 1.3
+	lower.size_flags_stretch_ratio = 1.0
 	lower.add_theme_stylebox_override("panel", HudStyle.box())
 	var lv := VBoxContainer.new()
 	lower.add_child(lv)
@@ -79,9 +71,17 @@ func _ready() -> void:
 	show_space(-1)
 
 
+## Dev/scripted: hold the submit button for `seconds` (and leave it held).
+func debug_hold(seconds: float) -> void:
+	_next._start_hold()
+	await get_tree().create_timer(seconds).timeout
+
+
 func _sync_next() -> void:
 	_next.text = Stepper.button_text
 	_next.disabled = not Stepper.button_active
+	_next.hold_seconds = 1.0 if Stepper.needs_hold else 0.0
+	_next.tooltip_text = "Hold for 1 second to submit (mouse or Space)" if Stepper.needs_hold else "Step to the next phase (Space)"
 
 
 func _rich_text() -> RichTextLabel:
@@ -91,30 +91,52 @@ func _rich_text() -> RichTextLabel:
 	r.add_theme_font_size_override("normal_font_size", 12)
 	r.add_theme_font_size_override("bold_font_size", 12)  # default bold is larger, which made battle headings tower over the text
 	r.add_theme_color_override("default_color", HudStyle.TEXT)
-	r.meta_clicked.connect(func(meta): territory_clicked.emit(int(str(meta))))
+	r.meta_clicked.connect(_on_meta)
 	r.meta_hover_started.connect(func(_m): r.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND)
 	r.meta_hover_ended.connect(func(_m): r.mouse_default_cursor_shape = Control.CURSOR_ARROW)
 	return r
 
 
+## A link in the queue/log: a territory name (its id) centres the map on it; a
+## "dec:<unit>:<territory>" link removes one queued purchase of that unit there.
+func _on_meta(meta: Variant) -> void:
+	var s := str(meta)
+	if s.begins_with("dec:"):
+		var parts := s.split(":")
+		purchase_remove.emit(parts[1], int(parts[2]))
+		return
+	territory_clicked.emit(int(s))
+
+
+var _last_queue := {}  # header, skipped, events -- to redraw the queue when only the purchase options changed
+
+
 ## The orders waiting for Next: what the current phase's bot decided (or, for
-## an automatic phase, what running it will do).
+## an automatic phase, what running it will do). For the player's own Purchase
+## phase they are the player's queue, each order with a "-" link.
 func show_queue(header: String, skipped: Array, events: Array) -> void:
+	_last_queue = {"header": header, "skipped": skipped, "events": events}
 	_queue_head.text = "Queued  -  %s" % header
 	_queue.clear()
 	for phase in skipped:
-		_queue.append_text("[color=#7f8ea0]%s skipped (not allowed on a faction's first turn)[/color]
-" % GameStore.PHASE_LABELS.get(phase, phase))
+		_queue.append_text("[color=#7f8ea0]%s skipped (not allowed on a faction's first turn)[/color]\n" % GameStore.PHASE_LABELS.get(phase, phase))
+	if GameStore.human_purchase_active():
+		var hp: Dictionary = GameStore.human_purchase
+		_queue.append_text(EventText.describe_editable_purchase(hp["orders"], int(hp["total_cost"]), int(hp["treasury"])) + "\n")
+		return
 	var shown := 0
 	for e in events:
 		var line := EventText.describe(e)
 		if line != "":
-			_queue.append_text(line + "
-")
+			_queue.append_text(line + "\n")
 			shown += 1
 	if shown == 0:
-		_queue.append_text("[color=#7f8ea0]  (nothing queued)[/color]
-")
+		_queue.append_text("[color=#7f8ea0]  (nothing queued)[/color]\n")
+
+
+func show_queue_again() -> void:
+	if not _last_queue.is_empty():
+		show_queue(_last_queue["header"], _last_queue["skipped"], _last_queue["events"])
 
 
 func log_line(text: String) -> void:
@@ -138,6 +160,7 @@ func show_space(tid: int) -> void:
 		_selected_units.clear()
 		units_selected.emit([])
 	_selected = tid
+	_orders.set_target(tid)
 	for c in _detail.get_children():
 		c.queue_free()
 	if tid < 0:

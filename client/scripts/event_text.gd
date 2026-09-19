@@ -70,12 +70,26 @@ static func _move_lines(orders: Array, dest_of: Callable) -> String:
 	return "\n".join(lines)
 
 
+## The player's own purchase queue: each order with its price and a "-" link
+## that removes one unit (SidePanel turns "dec:<unit>:<territory>" links into
+## purchase_remove).
+static func describe_editable_purchase(orders: Array, total: int, treasury: int) -> String:
+	if orders.is_empty():
+		return "[color=#7f8ea0]  (nothing bought yet: pick a territory and use + )[/color]"
+	var lines := []
+	for o in orders:
+		lines.append("  %dx %s at %s  [color=#c9a227]%d MCP[/color]  [url=dec:%s:%d][color=#ff8a7a][b] [ - ] [/b][/color][/url]" % [
+			int(o["qty"]), o["unit_type"], _terr(o["deploy_at"]), int(o["cost"]), o["unit_type"], int(o["deploy_at"])])
+	lines.append("[b]Total %d of %d MCP[/b]" % [total, treasury])
+	return "\n".join(lines)
+
+
 static func describe(e: Dictionary) -> String:
 	match str(e.get("kind", "")):
 		"purchase":
 			if e["orders"].is_empty():
 				return "%s buys nothing" % _fac(e["faction"])
-			var lines := ["%s buys (%d MPC):" % [_fac(e["faction"]), int(e["total_cost"])]]
+			var lines := ["%s buys (%d MCP):" % [_fac(e["faction"]), int(e["total_cost"])]]
 			for o in e["orders"]:
 				lines.append("  %dx %s at %s" % [int(o["qty"]), o["unit_type"], _terr(o["deploy_at"])])
 			return "\n".join(lines)
@@ -124,7 +138,7 @@ static func describe(e: Dictionary) -> String:
 		"unit_deployed":
 			return "%s deploys %dx %s at %s" % [_fac(e["faction"]), int(e["qty"]), e["unit_type"], _terr(e["territory_id"])]
 		"income_collected":
-			return "%s collects %d MPC" % [_fac(e["faction"]), int(e["amount"])]
+			return "%s collects %d MCP" % [_fac(e["faction"]), int(e["amount"])]
 		"faction_eliminated":
 			return "[b]%s is eliminated![/b]" % _fac(e["faction"])
 		"alliance_joined":

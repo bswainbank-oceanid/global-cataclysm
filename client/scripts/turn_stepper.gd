@@ -19,6 +19,7 @@ signal battle_result(events: Array)         # ...its fought events, for the boar
 
 var button_text := "Connecting..."
 var button_enabled := false  # Next can execute the queued phase
+var needs_hold := false      # the button is a hold-to-submit (an irreversible order from the player)
 var button_active := false   # the button can be pressed at all: Next, or Pause while playing
 var game_over := false
 
@@ -34,6 +35,7 @@ var _battle_pending: Dictionary = {}  # a battle is paused, map zoomed to it, aw
 var _battle_open := false          # the battle board is up: hold everything it would spoil
 var _held: Array = []              # messages received meanwhile (result, state, next queue)
 var _held_result: Dictionary = {}
+var _edit_orders: Array = []  # the human's staged purchase as last sent/received: [{unit_type, qty, deploy_at}]
 var _awaiting := false  # a `next` is in flight; the reply is the next queue
 
 
@@ -60,6 +62,10 @@ func _on_message(msg: Dictionary) -> void:
 		"phase_queue":
 			_awaiting = false
 			_last_queue = msg
+			GameStore.set_human_purchase(str(msg["faction"]), msg.get("human", {}))
+			_edit_orders = []
+			for o in GameStore.human_purchase.get("orders", []):
+				_edit_orders.append({"unit_type": o["unit_type"], "qty": int(o["qty"]), "deploy_at": int(o["deploy_at"])})
 			if _battle_zoomed and str(msg["phase"]) != "COMBAT_RESOLUTION":
 				_battle_zoomed = false
 				combat_resolution_ended.emit()
@@ -101,6 +107,7 @@ static func _header(faction: String, phase: String) -> String:
 func _refresh() -> void:
 	button_enabled = false
 	button_active = false
+	needs_hold = false
 	if game_over:
 		button_text = "Game over"
 	elif _battle_open:
@@ -112,7 +119,11 @@ func _refresh() -> void:
 		button_text = "Pausing..." if _pause_requested else "Pause"
 		button_active = not _pause_requested
 	elif _queued_phase != "" and not _awaiting:
-		button_text = "Next  >  Execute %s" % _header(_queued_faction, _queued_phase)
+		needs_hold = GameStore.is_player(_queued_faction) and ["PURCHASE", "COMBAT_MOVE", "NONCOMBAT_MOVE", "ALLIANCES"].has(_queued_phase)
+		if needs_hold:
+			button_text = "Hold to submit  -  %s" % _header(_queued_faction, _queued_phase)
+		else:
+			button_text = "Next  >  Execute %s" % _header(_queued_faction, _queued_phase)
 		button_enabled = true
 		button_active = true
 	elif _awaiting:
@@ -254,6 +265,33 @@ func button_pressed() -> void:
 	else:
 		_pause_requested = true
 	_refresh()
+
+
+## The player's purchase edits: send the whole staged list to the server, which
+## validates it and answers with the refreshed queue (or an error and the old one).
+func purchase_add(unit_type: String, tid: int) -> void:
+	_change_purchase(unit_type, tid, 1)
+
+
+func purchase_remove(unit_type: String, tid: int) -> void:
+	_change_purchase(unit_type, tid, -1)
+
+
+func _change_purchase(unit_type: String, tid: int, delta: int) -> void:
+	if not GameStore.human_purchase_active():
+		return
+	var found := false
+	for o in _edit_orders:
+		if o["unit_type"] == unit_type and int(o["deploy_at"]) == tid:
+			o["qty"] = int(o["qty"]) + delta
+			found = true
+			break
+	if not found:
+		if delta < 0:
+			return
+		_edit_orders.append({"unit_type": unit_type, "qty": 1, "deploy_at": tid})
+	_edit_orders = _edit_orders.filter(func(o): return int(o["qty"]) > 0)
+	Net.send_msg({"type": "stage_purchase", "faction": GameStore.human_purchase["faction"], "orders": _edit_orders})
 
 
 ## One press: execute the queued phase and move on to the next.
