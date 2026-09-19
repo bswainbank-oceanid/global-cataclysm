@@ -46,6 +46,12 @@ which runs, in order:
    `tools/map_geometry.py`. Fully regenerable — kept in `data/` for the
    same reason as (1).
 
+Not part of `build_all.py`: `tools/render_shapes_preview.py` draws
+`exports/territory_shapes_preview.png` from `data/territory_shapes.json` (sea
+zones in stable pastels, land in faction colours, outlines dark) for eyeballing
+the extracted shapes. Like `exports/map.png` it is a gitignored reference image,
+regenerated on request.
+
 ## Editing territory data via the spreadsheet
 
 `data/territories.json` is canonical, but you don't have to edit it by
