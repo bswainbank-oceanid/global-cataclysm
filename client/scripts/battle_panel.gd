@@ -392,7 +392,7 @@ func _show_dice() -> void:
 		var half := COL_ROLL * 0.5
 		var step := minf(DieView.SIZE + 2.0, (half - 8.0 - DieView.SIZE) / 2.0)
 		var x := roll_x + (4.0 if side == "attacker" else half + 4.0) + minf(n, 2) * step
-		var y := float(_row_y[row]) + (float(_row_h[row]) - DieView.SIZE) * 0.5 + (n / 3) * 8.0
+		var y := float(_row_y[row]) + (float(_row_h[row]) - DieView.TOTAL_H) * 0.5 + (n / 3) * 8.0
 		var die := DieView.make(str(e["die"]), int(e["roll"]), bool(e["hit"]), bool(e.get("bypass_hit", false)) if e.get("bypass_hit") != null else false,
 			GameData.factions[str(e["owner"])].color)
 		die.position = Vector2(x, y)

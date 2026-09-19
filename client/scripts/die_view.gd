@@ -6,6 +6,8 @@ extends Control
 ## that only landed through the max-die bypass, dim for a miss.
 
 const SIZE := 38.0
+const LABEL_H := 10.0   # room under the die for its name (D6, D8, ...), clear of the image
+const TOTAL_H := SIZE + LABEL_H
 
 var die := "D6"
 var roll := 1
@@ -21,8 +23,8 @@ static func make(die_name: String, value: int, is_hit: bool, is_bypass: bool, co
 	d.hit = is_hit
 	d.bypass = is_bypass
 	d.tint = colour
-	d.custom_minimum_size = Vector2(SIZE, SIZE)
-	d.size = Vector2(SIZE, SIZE)
+	d.custom_minimum_size = Vector2(SIZE, TOTAL_H)
+	d.size = Vector2(SIZE, TOTAL_H)
 	d.mouse_filter = Control.MOUSE_FILTER_PASS
 	return d
 
@@ -60,5 +62,6 @@ func _draw() -> void:
 	var at := Vector2((SIZE - w) * 0.5, SIZE * 0.5 + 5.5)
 	draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 3, Color(0, 0, 0, 0.9))
 	draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
-	# The die's name, small, under the number.
-	draw_string(font, Vector2((SIZE - 14.0) * 0.5 - 1.0, SIZE - 2.0), die, HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(1, 1, 1, 0.75))
+	# The die's name, small, centred BELOW the die so it never overlaps the image.
+	var name_w := font.get_string_size(die, HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x
+	draw_string(font, Vector2((SIZE - name_w) * 0.5, SIZE + 8.0), die, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(1, 1, 1, 0.8))
