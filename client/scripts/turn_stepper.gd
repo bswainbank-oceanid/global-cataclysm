@@ -62,7 +62,13 @@ func _on_message(msg: Dictionary) -> void:
 		"phase_queue":
 			_awaiting = false
 			_last_queue = msg
-			GameStore.set_human_purchase(str(msg["faction"]), msg.get("human", {}))
+			var block: Dictionary = msg.get("human", {})
+			if block.has("kind"):  # a move phase (Combat / Non-Combat Move)
+				GameStore.set_human_purchase("", {})
+				GameStore.set_human_move(str(msg["faction"]), block)
+			else:
+				GameStore.set_human_move("", {})
+				GameStore.set_human_purchase(str(msg["faction"]), block)
 			_edit_orders = []
 			for o in GameStore.human_purchase.get("orders", []):
 				_edit_orders.append({"unit_type": o["unit_type"], "qty": int(o["qty"]), "deploy_at": int(o["deploy_at"])})
@@ -292,6 +298,30 @@ func _change_purchase(unit_type: String, tid: int, delta: int) -> void:
 		_edit_orders.append({"unit_type": unit_type, "qty": 1, "deploy_at": tid})
 	_edit_orders = _edit_orders.filter(func(o): return int(o["qty"]) > 0)
 	Net.send_msg({"type": "stage_purchase", "faction": GameStore.human_purchase["faction"], "orders": _edit_orders})
+
+
+## Send the human's whole staged move list (the server validates it and answers
+## with the refreshed queue, or an error and the old one).
+func _send_moves(orders: Array) -> void:
+	Net.send_msg({"type": "stage_moves", "faction": GameStore.move_faction(), "orders": orders})
+
+
+## The selected units were dropped on `dest`: queue their move.
+func move_commit(dest: int) -> void:
+	var targets := GameStore.move_targets()
+	if not targets.has(dest):
+		return
+	var orders := GameStore.staged_orders_plain()
+	orders.append_array(targets[dest]["orders"])
+	GameStore.move_selected.clear()  # they are committed; the rest stay available
+	_send_moves(orders)
+
+
+## Take units (by id) out of the queued moves.
+func move_recall(unit_ids: Array) -> void:
+	if not GameStore.human_move_active():
+		return
+	_send_moves(GameStore.staged_orders_plain(unit_ids))
 
 
 ## One press: execute the queued phase and move on to the next.

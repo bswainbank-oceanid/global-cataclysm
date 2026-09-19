@@ -9,6 +9,8 @@ signal selected_changed(tid: int)
 
 var fill: MapFill
 var arrows: MapArrows
+var _targets_under: MapTargets
+var _targets_top: MapTargets
 var _stripes: Array[MapContested] = []
 var units: MapUnits
 var labels: MapLabels
@@ -32,9 +34,14 @@ func _ready() -> void:
 	_sea_fill_under.pass_kind = MapHighlight.Pass.UNDER_LAND
 	add_child(_sea_fill_under)
 	_add_stripes(MapContested.Kind.SEA)  # beneath the ownership fill, like the sea highlight
+	_targets_under = MapTargets.new()
+	_targets_under.pass_kind = MapTargets.Pass.UNDER_LAND
+	add_child(_targets_under)  # sea-zone target fills, beneath the ownership fill
 	fill = MapFill.new()
 	add_child(fill)
 	_add_stripes(MapContested.Kind.LAND)
+	_targets_top = MapTargets.new()
+	add_child(_targets_top)
 	highlight = MapHighlight.new()
 	add_child(highlight)
 	arrows = MapArrows.new()
@@ -64,10 +71,18 @@ func set_zoom(z: float) -> void:
 	labels.set_zoom(z)
 	units.set_zoom(z)
 	arrows.set_zoom(z)
+	_targets_under.set_zoom(z)
+	_targets_top.set_zoom(z)
 	highlight.set_zoom(z)
 	_sea_fill_under.set_zoom(z)
 	for stripes in _stripes:
 		stripes.set_zoom(z)
+
+
+## Highlight where the selected units can move (`hover`: the one under the drag).
+func set_move_targets(ids: Array, hover: int) -> void:
+	_targets_under.set_targets(ids, hover)
+	_targets_top.set_targets(ids, hover)
 
 
 func set_hover_enabled(on: bool) -> void:

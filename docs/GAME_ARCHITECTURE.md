@@ -193,7 +193,7 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 76 tests) — first vertical slice,
+- ⬜ WebSocket server (`server/`, 82 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
   (NAA and GPC both BOTs watched by a spectator client -- see the watch
   mode below; the human-play protocol described next is still in place and
@@ -371,6 +371,25 @@ the same JSON, not a parallel editing path.
   appear in the lower box, each with a [-] link to remove one, and as the darker
   box on the map. Submitting is a `HoldButton`: hold the mouse or Space for 1
   second, a ring fills around the button, and releasing early cancels.
+  **Combat Move / Non-Combat Move:** the human queue carries `human: {kind,
+  options, orders}` -- what each unit may still do with the staged moves applied
+  (`engine.move_options_with_staged`, a throwaway copy where staged units have
+  moved) and the staged moves themselves -- and the client edits it with
+  `stage_moves` (the whole list, one order per unit: `path` for combat,
+  `destination` for non-combat; validated by `submit_*_moves`). In the client,
+  select a space with your units: its movable units start selected (click the
+  faction banner to select/unselect all, or click units). `GameStore.move_targets`
+  works out the highlighted spaces (green): every selected unit must reach the
+  target, except that in an amphibious group (land + sea units) a land target only
+  needs the land/air units to reach it, and the sea units that can escort them to
+  the last sea zone of the landing path do. Drag from the selected units (tile) or
+  from the origin space on the map (dragging elsewhere still pans) onto a target:
+  the arrow that will accompany the move follows the drag, and on release the
+  move is queued. Committed units show dimmed with an arrow badge at the origin
+  and as "Incoming" at the destination, and the queue lists each (from, to)
+  group; any of the three lets you recall a unit, a group, or all incoming. The
+  remaining units stay available. `python -m server.app --combat-first-turn`
+  (dev) allows Combat Move on the first turn, which the rules skip.
   shortening. While phases are running unpaused the Next button becomes a **Pause**
   button: it holds the phase in hand (or the next one, mid-execution) and
   offers Next as a scheduled pause would; after that Settings apply again. A battle that pauses because of the battle options (not an

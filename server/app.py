@@ -42,14 +42,15 @@ logger = logging.getLogger('server')
 WATCHER = '*watchers'  # sockets_by_faction key for spectators (not a faction code)
 
 
-def _build_demo_session(human='NAA'):
+def _build_demo_session(human='NAA', combat_first_turn=False):
     """NAA vs GPC, everyone else NEUTRAL. `human`: the faction a player controls
     (its phases wait for the client's orders); None makes both bots, for
     watching."""
     modes = {code: FactionMode.NEUTRAL for code in data_module.factions()}
     modes['NAA'] = FactionMode.HUMAN if human == 'NAA' else FactionMode.BOT
     modes['GPC'] = FactionMode.HUMAN if human == 'GPC' else FactionMode.BOT
-    gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
+    gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False,
+                          allow_combat_moves_first_turn=combat_first_turn)
     turn_log = TurnLog()
     engine = GameEngine(gs, data_module, turn_log=turn_log)
     bots = {code: RandomBot(engine, code, rng=random.Random())
@@ -106,8 +107,8 @@ class Server:
             await asyncio.gather(*(ws.send(payload) for ws in targets), return_exceptions=True)
 
 
-async def main(host, port, human):
-    session = _build_demo_session(human)
+async def main(host, port, human, combat_first_turn):
+    session = _build_demo_session(human, combat_first_turn)
     server = Server(session)
     async with websockets.serve(server.handle_connection, host, port):
         logger.info('listening on ws://%s:%s', host, port)
@@ -120,6 +121,8 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--human', choices=['NAA', 'GPC', 'none'], default='NAA',
                         help="the faction a player controls (default NAA); 'none' = both bots, just watch")
+    parser.add_argument('--combat-first-turn', action='store_true',
+                        help='dev/testing: allow Combat Move on a faction\'s first turn (the rules skip it)')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(message)s')
-    asyncio.run(main(args.host, args.port, None if args.human == 'none' else args.human))
+    asyncio.run(main(args.host, args.port, None if args.human == 'none' else args.human, args.combat_first_turn))

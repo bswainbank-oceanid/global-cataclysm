@@ -13,11 +13,13 @@ var _log: RichTextLabel
 signal territory_clicked(tid: int)  # a territory name in the queue/log was clicked
 signal units_selected(unit_ids: Array)  # the units toggled on in the selection panel
 
+signal move_recall(unit_ids: Array)  # take these units out of the queued moves
 signal purchase_add(unit_type: String, tid: int)
 signal purchase_remove(unit_type: String, tid: int)
 
 var _selected := -1
 var _selected_units := {}  # unit_id -> true; survives the panel rebuilding on every state change
+var _expanded := {}  # "from:dest" -> true: a queued move group shown unit by unit
 var _orders: OrdersPanel
 var _next: HoldButton
 
@@ -47,6 +49,7 @@ func _ready() -> void:
 	_next.activated.connect(Stepper.button_pressed)
 	Stepper.changed.connect(_sync_next)
 	GameStore.purchase_changed.connect(func(): show_queue_again())
+	GameStore.move_changed.connect(_on_move_changed)
 	_sync_next()
 
 	var lower := PanelContainer.new()
@@ -77,6 +80,15 @@ func debug_hold(seconds: float) -> void:
 	await get_tree().create_timer(seconds).timeout
 
 
+## The move queue/selection changed: redraw the detail panel and the queue, and if a
+## move phase just began with a space already selected, make it the origin.
+func _on_move_changed() -> void:
+	if GameStore.human_move_active() and _selected >= 0 and GameStore.move_origin != _selected:
+		GameStore.select_move_origin(_selected, true)
+	show_space(_selected)
+	show_queue_again()
+
+
 func _sync_next() -> void:
 	_next.text = Stepper.button_text
 	_next.disabled = not Stepper.button_active
@@ -101,6 +113,22 @@ func _rich_text() -> RichTextLabel:
 ## "dec:<unit>:<territory>" link removes one queued purchase of that unit there.
 func _on_meta(meta: Variant) -> void:
 	var s := str(meta)
+	if s.begins_with("recall1:"):
+		move_recall.emit([int(s.substr(8))])
+		return
+	if s.begins_with("recall:") or s.begins_with("exp:"):
+		var p := s.split(":")
+		var key := "%s:%s" % [p[1], p[2]]
+		if s.begins_with("exp:"):
+			_expanded[key] = not _expanded.get(key, false)
+			show_queue_again()
+			return
+		var ids := []
+		for o in GameStore.human_move.get("orders", []):
+			if int(o["from"]) == int(p[1]) and int(o["dest"]) == int(p[2]):
+				ids.append(int(o["unit_id"]))
+		move_recall.emit(ids)
+		return
 	if s.begins_with("dec:"):
 		var parts := s.split(":")
 		purchase_remove.emit(parts[1], int(parts[2]))
@@ -120,6 +148,9 @@ func show_queue(header: String, skipped: Array, events: Array) -> void:
 	_queue.clear()
 	for phase in skipped:
 		_queue.append_text("[color=#7f8ea0]%s skipped (not allowed on a faction's first turn)[/color]\n" % GameStore.PHASE_LABELS.get(phase, phase))
+	if GameStore.human_move_active():
+		_queue.append_text(_move_queue_text() + "\n")
+		return
 	if GameStore.human_purchase_active():
 		var hp: Dictionary = GameStore.human_purchase
 		_queue.append_text(EventText.describe_editable_purchase(hp["orders"], int(hp["total_cost"]), int(hp["treasury"])) + "\n")
@@ -132,6 +163,33 @@ func show_queue(header: String, skipped: Array, events: Array) -> void:
 			shown += 1
 	if shown == 0:
 		_queue.append_text("[color=#7f8ea0]  (nothing queued)[/color]\n")
+
+
+## The player's queued moves, one line per (from, to) group with a [ - ] link that
+## recalls the whole group; the arrow next to it expands the group unit by unit,
+## each with its own [ - ].
+func _move_queue_text() -> String:
+	var orders: Array = GameStore.human_move["orders"]
+	if orders.is_empty():
+		return "[color=#7f8ea0]  (no moves queued: select units, then drag them to a highlighted target)[/color]"
+	var groups := {}
+	var keys := []
+	for o in orders:
+		var key := "%d:%d" % [int(o["from"]), int(o["dest"])]
+		if not groups.has(key):
+			groups[key] = []
+			keys.append(key)
+		groups[key].append(o)
+	var lines := []
+	for key in keys:
+		var g: Array = groups[key]
+		var open: bool = _expanded.get(key, false)
+		lines.append("  [url=exp:%s]%s[/url] %s: %s > %s  [url=recall:%s][color=#ff8a7a][b] [ - ] [/b][/color][/url]" % [
+			key, "v" if open else ">", EventText._tally(g), EventText._terr(g[0]["from"]), EventText._terr(g[0]["dest"]), key])
+		if open:
+			for o in g:
+				lines.append("      %s #%d  [url=recall1:%d][color=#ff8a7a][b] [ - ] [/b][/color][/url]" % [o["unit_type"], int(o["unit_id"]), int(o["unit_id"])])
+	return "\n".join(lines)
 
 
 func show_queue_again() -> void:
@@ -159,7 +217,11 @@ func show_space(tid: int) -> void:
 	if tid != _selected and not _selected_units.is_empty():
 		_selected_units.clear()
 		units_selected.emit([])
+	var newly := tid != _selected
 	_selected = tid
+	if newly and GameStore.human_move_active():
+		GameStore.select_move_origin(tid, true)  # all of its movable units start selected
+		GameStore.move_changed.emit.call_deferred()  # the map's target highlights follow
 	_orders.set_target(tid)
 	for c in _detail.get_children():
 		c.queue_free()
@@ -193,25 +255,100 @@ func show_space(tid: int) -> void:
 		by_owner[u["owner"]].append(u)
 	if by_owner.is_empty():
 		_detail.add_child(HudStyle.label("No units", 12, HudStyle.TEXT_DIM))
-		return
 	for code in GameData.faction_order:
 		if not by_owner.has(code):
 			continue
-		var head := PanelContainer.new()
-		head.add_theme_stylebox_override("panel", HudStyle.box(GameData.factions[code].color.darkened(0.3), GameData.factions[code].color, 1))
-		head.add_child(HudStyle.label(GameData.factions[code].name, 12, Color.WHITE))
-		_detail.add_child(head)
-		var flow := HFlowContainer.new()
-		flow.add_theme_constant_override("h_separation", 2)
-		flow.add_theme_constant_override("v_separation", 2)
-		_detail.add_child(flow)
 		var units: Array = by_owner[code]
 		units.sort_custom(_unit_before)
-		for u in units:
-			var tile := UnitTile.make(u, GameStore.in_transport_form(tid, u))
-			tile.button_pressed = _selected_units.has(int(u["unit_id"]))
-			tile.toggled.connect(_on_unit_toggled.bind(int(u["unit_id"])))
-			flow.add_child(tile)
+		var mine := GameStore.human_move_active() and code == GameStore.move_faction()
+		var head := PanelContainer.new()
+		head.add_theme_stylebox_override("panel", HudStyle.box(GameData.factions[code].color.darkened(0.3), GameData.factions[code].color, 1))
+		var caption: String = GameData.factions[code].name
+		if mine and not GameStore.movable_ids_at(tid).is_empty():
+			caption += "   (click: select all / none)"
+			head.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			head.gui_input.connect(func(ev: InputEvent):
+				if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+					GameStore.set_all_move_selected(not GameStore.all_move_selected()))
+		head.add_child(HudStyle.label(caption, 12, Color.WHITE))
+		_detail.add_child(head)
+		_detail.add_child(_tiles_for(tid, units, mine))
+	if GameStore.human_move_active():
+		_add_incoming_section(tid)
+
+
+## The unit tiles of one faction in a space. For the player's own units in a move
+## phase they are selectable (movable), or dimmed with an arrow badge when already
+## committed (click to recall), or dimmed when they have no legal move.
+func _tiles_for(tid: int, units: Array, mine: bool) -> Control:
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 2)
+	flow.add_theme_constant_override("v_separation", 2)
+	var movable := GameStore.movable_ids_at(tid) if mine else []
+	var committed := {}
+	if mine:
+		for o in GameStore.committed_from(tid):
+			committed[int(o["unit_id"])] = true
+	for u in units:
+		var uid := int(u["unit_id"])
+		var tile := UnitTile.make(u, GameStore.in_transport_form(tid, u))
+		if mine and committed.has(uid):
+			tile.toggle_mode = false
+			tile.committed = true
+			tile.tooltip_text += "\nQueued to move - click to recall"
+			tile.pressed.connect(func(): move_recall.emit([uid]))
+		elif mine and movable.has(uid):
+			tile.button_pressed = GameStore.move_selected.has(uid)
+			tile.toggled.connect(func(on: bool): GameStore.toggle_move_unit(uid, on))
+			if tile.button_pressed:
+				tile.drag_payload = {"kind": "move_units"}
+		elif mine:
+			tile.toggle_mode = false
+			tile.dimmed = true
+			tile.tooltip_text += "\nNo legal move this phase"
+		else:
+			tile.button_pressed = _selected_units.has(uid)
+			tile.toggled.connect(_on_unit_toggled.bind(uid))
+		flow.add_child(tile)
+	return flow
+
+
+## Units queued to move INTO this space (from elsewhere): shown so they can be
+## recalled from the destination too.
+func _add_incoming_section(tid: int) -> void:
+	var incoming := GameStore.incoming_to(tid)
+	if incoming.is_empty():
+		return
+	var head := HBoxContainer.new()
+	var label := HudStyle.label("Incoming: %d unit(s) moving here" % incoming.size(), 12, HudStyle.GOLD)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(label)
+	var recall_all := Button.new()
+	recall_all.text = "Recall all"
+	recall_all.focus_mode = Control.FOCUS_NONE
+	recall_all.add_theme_font_size_override("font_size", 11)
+	recall_all.pressed.connect(func():
+		var ids := []
+		for o in incoming:
+			ids.append(int(o["unit_id"]))
+		move_recall.emit(ids))
+	head.add_child(recall_all)
+	_detail.add_child(head)
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 2)
+	flow.add_theme_constant_override("v_separation", 2)
+	for o in incoming:
+		var uid := int(o["unit_id"])
+		var u := GameStore.unit_of(uid)
+		if u.is_empty():
+			continue
+		var tile := UnitTile.make(u, GameStore.in_transport_form(int(o["from"]), u))
+		tile.toggle_mode = false
+		tile.committed = true
+		tile.tooltip_text += "\nFrom %s - click to recall" % GameData.territories[int(o["from"])]["name"]
+		tile.pressed.connect(func(): move_recall.emit([uid]))
+		flow.add_child(tile)
+	_detail.add_child(flow)
 
 
 ## Display order within a faction: by unit type, promoted first, most XP first.

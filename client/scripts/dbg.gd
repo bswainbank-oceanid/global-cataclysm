@@ -13,6 +13,9 @@ extends Node
 ##   --pause=never|turn|phase, --pause_battle   playback settings for this run
 ##   --resolve=entire|round|side|type|unit   battle board Resolve setting, both sides
 ##   --buy=Unit:territory,...  add units to the human's purchase queue (a scripted player)
+##   --move_to=<id>     drop the selected units on that space (Combat/Non-Combat Move)
+##   --recall=<unit,..> take units out of the queued moves
+##   --select2=<id>     select another space afterwards
 ##   --hold=<seconds>   hold the submit button that long
 ##   --battle_rolls=<n>      press the open battle board's button n times
 ##   --wheel=x,y,steps       inject mouse-wheel steps at a screen point (+ = zoom in)

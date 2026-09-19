@@ -282,6 +282,8 @@ class GameSession:
             return self.stepper.watch()
         if msg_type == 'next':
             return self.stepper.next()
+        if msg_type == 'stage_moves':
+            return self.stepper.stage_moves(faction, msg.get('orders') or [])
         if msg_type == 'stage_purchase':
             return self.stepper.stage_purchase(faction, msg.get('orders') or [])
         if msg_type == 'purchase':

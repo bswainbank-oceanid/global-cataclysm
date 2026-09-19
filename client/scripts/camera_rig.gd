@@ -9,6 +9,10 @@ extends Camera2D
 
 signal zoom_changed(z: float)
 signal clicked(world_pos: Vector2)
+## A left-button drag that started where `drag_intercept` said "mine" (e.g. on the
+## space whose units are being moved) instead of panning: "start" / "move" / "end"
+## with the cursor in viewport px. A press-release without movement is a click.
+signal move_drag(phase: String, screen_pos: Vector2)
 
 const MAX_ZOOM := 4.0
 const ZOOM_STEP := 1.18
@@ -25,6 +29,8 @@ var target_zoom := 1.0
 var _follow_min := true
 var _anchor := Vector2.ZERO    # viewport-px point a USER zoom (wheel/pinch) is anchored to
 var _user_zoom := false        # true while a wheel/pinch zoom is still animating
+var drag_intercept := Callable()  # (viewport_pos: Vector2) -> bool: should a left-press here start a move drag?
+var _move_dragging := false
 var _dragging := false
 var _drag_travel := 0.0
 var _velocity := Vector2.ZERO  # world px/sec, inertia after a drag is released
@@ -71,6 +77,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			MOUSE_BUTTON_WHEEL_DOWN:
 				_zoom_at(mb.position, 1.0 / ZOOM_STEP)
 			MOUSE_BUTTON_LEFT, MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_RIGHT:
+				if mb.button_index == MOUSE_BUTTON_LEFT and (_move_dragging or (mb.pressed and drag_intercept.is_valid() and drag_intercept.call(mb.position))):
+					if mb.pressed:
+						_move_dragging = true
+						_drag_travel = 0.0
+						move_drag.emit("start", mb.position)
+					else:
+						_move_dragging = false
+						if _drag_travel < CLICK_SLOP:
+							move_drag.emit("cancel", mb.position)
+							clicked.emit(screen_to_world(mb.position))
+						else:
+							move_drag.emit("end", mb.position)
+					return
 				if mb.pressed:
 					_dragging = true
 					_drag_travel = 0.0
@@ -79,6 +98,12 @@ func _unhandled_input(event: InputEvent) -> void:
 					_dragging = false
 					if mb.button_index == MOUSE_BUTTON_LEFT and _drag_travel < CLICK_SLOP:
 						clicked.emit(screen_to_world(mb.position))
+	elif event is InputEventMouseMotion and _move_dragging:
+		var mv := event as InputEventMouseMotion
+		mouse_screen = mv.position
+		_drag_travel += mv.relative.length()
+		if _drag_travel >= CLICK_SLOP:
+			move_drag.emit("move", mv.position)
 	elif event is InputEventMouseMotion and _dragging:
 		var mm := event as InputEventMouseMotion
 		mouse_screen = mm.position

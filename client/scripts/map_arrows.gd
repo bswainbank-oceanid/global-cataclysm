@@ -19,6 +19,7 @@ const MOVE_KINDS := ["combat_move", "noncombat_move", "return_to_base"]
 var zoom := 1.0
 var _queued: Array = []   # [{from, to, faction, count}]
 var _playing: Array = []  # [{arrow: Dictionary, t: float}]
+var _preview: Dictionary = {}  # the arrow of a move being dragged: {from, to (id or -1), to_pos, faction, count}
 
 
 func _ready() -> void:
@@ -58,6 +59,19 @@ static func from_events(events: Array) -> Array:
 	return groups.values()
 
 
+## The arrow that will accompany a move being dragged: it ends on the target
+## space when `to` >= 0, else follows the cursor (`to_pos`, a map position).
+func set_preview(preview: Dictionary) -> void:
+	_preview = preview
+	queue_redraw()
+
+
+func clear_preview() -> void:
+	if not _preview.is_empty():
+		_preview = {}
+		queue_redraw()
+
+
 ## True while executed arrows are still shortening.
 func is_playing() -> bool:
 	return not _playing.is_empty()
@@ -90,6 +104,8 @@ func _draw() -> void:
 		_draw_arrow(a, 0.0)
 	for p in _playing:
 		_draw_arrow(p["arrow"], p["t"])
+	if not _preview.is_empty():
+		_draw_arrow(_preview, 0.0)
 
 
 # ---- geometry ---------------------------------------------------------------
@@ -98,6 +114,10 @@ func _draw() -> void:
 ## is nearest the origin.
 func _endpoints(a: Dictionary) -> Array:
 	var p0: Vector2 = GameData.label_points[a["from"]]
+	if int(a.get("to", -1)) < 0 and a.has("to_pos"):
+		var cursor: Vector2 = a["to_pos"]
+		p0.x += roundf((cursor.x - p0.x) / GameData.map_w) * GameData.map_w  # the copy of the origin nearest the cursor
+		return [p0, cursor]
 	var p1: Vector2 = GameData.label_points[a["to"]]
 	var dx := p1.x - p0.x
 	if dx > GameData.map_w * 0.5:

@@ -15,6 +15,11 @@ Client -> server:
     {"type": "watch"}   join as a spectator; answered with the current
                         state and the queue awaiting execution.
     {"type": "next"}    execute the queued phase, then queue the next one.
+    {"type": "stage_moves", "orders": [{"unit_id", "path"} | {"unit_id", "destination"}, ...]}
+                        a HUMAN faction's Combat Move ({"unit_id", "path"}) or
+                        Non-Combat Move ({"unit_id", "destination"}): replace the
+                        staged move list with this COMPLETE one, one order per unit.
+                        Same validation/reply/commit pattern as stage_purchase.
     {"type": "stage_purchase", "orders": [{"unit_type", "qty", "deploy_at"}, ...]}
                         a HUMAN faction's Purchase phase: replace the staged
                         purchase list (the COMPLETE list, like the human
@@ -54,7 +59,7 @@ Server -> client (always broadcast to watchers):
 """
 import copy
 
-from engine.engine import PurchaseOrder
+from engine.engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from engine.state import FactionMode, Phase
 from engine.turn_log import TurnLog
 
@@ -114,6 +119,37 @@ class PhaseStepper:
         except ValueError as e:
             return [self._error(str(e)), self._queue]
         self._plan_current_phase()  # rebuilds the queue from what is now staged
+        return [self._queue]
+
+    def stage_moves(self, faction, raw_orders):
+        """A human's whole staged combat-move / non-combat-move list."""
+        gs = self.engine.game_state
+        problem = self._check_all_bots()
+        if problem:
+            return [self._error(problem)]
+        if self._queue is None:
+            self._plan_current_phase()
+        if faction not in gs.factions or not self._is_human(faction):
+            return [self._error(f'{faction} is not a human-controlled faction')]
+        phase = gs.phase
+        if faction != gs.active_faction or phase not in (Phase.COMBAT_MOVE, Phase.NONCOMBAT_MOVE) \
+                or self._queue['phase'] != phase.value:
+            return [self._error(f"it is not {faction}'s move phase")]
+        try:
+            if phase == Phase.COMBAT_MOVE:
+                orders = [CombatMoveOrder(int(o['unit_id']), [int(t) for t in o['path']]) for o in raw_orders]
+            else:
+                orders = [NonCombatMoveOrder(int(o['unit_id']), int(o['destination'])) for o in raw_orders]
+        except (KeyError, TypeError, ValueError) as e:
+            return [self._error(f'malformed order: {e}'), self._queue]
+        try:
+            if phase == Phase.COMBAT_MOVE:
+                self.engine.submit_combat_moves(faction, orders)
+            else:
+                self.engine.submit_noncombat_moves(faction, orders)
+        except (ValueError, KeyError) as e:  # KeyError: an id the engine has no such territory/unit for
+            return [self._error(f'illegal move: {e}'), self._queue]
+        self._plan_current_phase()
         return [self._queue]
 
     def next(self):
@@ -238,7 +274,8 @@ class PhaseStepper:
                 events = [engine.staged_purchase_event(faction)]
         elif phase == Phase.COMBAT_MOVE:
             if human:
-                engine.submit_combat_moves(faction, [])  # no combat-move UI yet: the player passes
+                # The player composes it; a re-plan after each stage_moves must keep it.
+                extra['human'] = self._move_block(faction, 'combat')
             else:
                 bot.plan_combat_move_phase()
             events = [engine.staged_combat_move_event(faction)]
@@ -261,7 +298,7 @@ class PhaseStepper:
             if human:
                 if not engine.has_processed_return_to_base(faction):
                     engine.process_return_to_base(faction)  # a bot's plan does this itself
-                engine.submit_noncombat_moves(faction, [])  # no move UI yet: the player passes
+                extra['human'] = self._move_block(faction, 'noncombat')
             else:
                 bot.plan_noncombat_move_phase()
             events = [engine.staged_noncombat_move_event(faction)]
@@ -294,6 +331,15 @@ class PhaseStepper:
         return sim.turn_log.events
 
     # ---- helpers ---------------------------------------------------------
+
+    def _move_block(self, faction, kind):
+        """The 'human' block of a move-phase queue: what is still legal per unit
+        (with the staged moves applied) and the staged moves themselves."""
+        return {
+            'kind': kind,
+            'options': self.engine.move_options_with_staged(faction, kind),
+            'orders': self.engine.staged_moves_detail(faction, kind),
+        }
 
     def _is_human(self, faction):
         return self.engine.game_state.factions[faction].mode == FactionMode.HUMAN

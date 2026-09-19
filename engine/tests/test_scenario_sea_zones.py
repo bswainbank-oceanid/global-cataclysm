@@ -8,7 +8,8 @@ def _naval_zones(scenario_name):
     """{faction: {sea_zone_id: [(buy_at_territory_id, unit_type), ...]}} exactly as
     engine.setup places them: Sea units (and carrier-escort aircraft) go to the
     override zone for their purchase territory, else that territory's default."""
-    scenario = json.load(open(f'data/scenarios/{scenario_name}.json'))
+    with open(f'data/scenarios/{scenario_name}.json', encoding='utf-8') as f:
+        scenario = json.load(f)
     terrs = data.territories()
     name_to_id = {t['name']: tid for tid, t in terrs.items() if t['type'] == 'sea'}
     overrides = scenario.get('naval_deploy_overrides', {})

@@ -12,6 +12,9 @@ var _hover_label: Label
 var _top: TopBar
 var _side: SidePanel
 var _battle_panel: BattlePanel
+var _tile_drag_label: PanelContainer
+var _tile_drag_travel := 0.0
+var _tile_dragging := false
 var _view_before_battles := {}  # the camera before the first auto-zoom to a battle: {pos, zoom}
 
 
@@ -54,6 +57,7 @@ func _ready() -> void:
 	_world.cam = _cam
 
 	_cam.zoom_changed.connect(_world.set_zoom)
+	_setup_move_dragging()
 	_cam.clicked.connect(func(p: Vector2): _world.select(_world.space_at_world(p)))
 	_container.mouse_entered.connect(func(): _world.set_hover_enabled(true))
 	_container.mouse_exited.connect(func(): _world.set_hover_enabled(false))
@@ -71,6 +75,7 @@ func _ready() -> void:
 	map_area.add_child(_hover_label)
 
 	_side.territory_clicked.connect(_focus_territory)
+	_side.move_recall.connect(Stepper.move_recall)
 	_side.purchase_add.connect(Stepper.purchase_add)
 	_side.purchase_remove.connect(Stepper.purchase_remove)
 	Stepper.busy = func(): return _world.arrows.is_playing()
@@ -153,6 +158,18 @@ func _start_view() -> void:
 				else:
 					Stepper.purchase_add(parts[0], int(parts[1]))
 				await get_tree().create_timer(0.25).timeout
+		if Dbg.args.has("move_to"):  # --move_to=<territory id>: drop the selected units there (a scripted player)
+			await Stepper.wait_ready()
+			await get_tree().create_timer(0.3).timeout
+			Stepper.move_commit(int(Dbg.args["move_to"]))
+			await get_tree().create_timer(0.6).timeout
+		if Dbg.args.has("recall"):  # --recall=<unit id,...>
+			for uid in str(Dbg.args["recall"]).split(","):
+				Stepper.move_recall([int(uid)])
+				await get_tree().create_timer(0.4).timeout
+		if Dbg.args.has("select2"):  # --select2=<id>: select another space after the moves (e.g. the destination)
+			_side.show_space(int(Dbg.args["select2"]))
+			await get_tree().create_timer(0.3).timeout
 		if Dbg.args.has("hold"):  # --hold=<seconds>: hold the submit button that long (the ring fills)
 			await _side.debug_hold(float(Dbg.args["hold"]))
 		if Dbg.args.has("battle_rolls"):
@@ -208,8 +225,9 @@ func _inject_all() -> void:
 			mm.button_mask = MOUSE_BUTTON_MASK_LEFT
 			Input.parse_input_event(mm)
 			await get_tree().process_frame
-		_inject_button(b, false)
-		await get_tree().process_frame
+		if not Dbg.args.has("drag_hold"):  # --drag_hold: leave the button pressed (to capture the drag in progress)
+			_inject_button(b, false)
+			await get_tree().process_frame
 	if Dbg.args.has("click"):
 		var c: PackedStringArray = Dbg.args["click"].split(",")
 		var p := Vector2(float(c[0]), float(c[1]))
@@ -226,6 +244,101 @@ func _inject_button(pos: Vector2, pressed: bool) -> void:
 	ev.global_position = pos
 	ev.pressed = pressed
 	Input.parse_input_event(ev)
+
+
+# ---- dragging units to a move target -------------------------------------------
+
+## A drag from the space whose units are selected (on the map) or from a selected
+## unit tile (in the side panel) onto a green target queues that move. The map
+## drag is intercepted by the camera only when it starts on the origin space, so
+## panning everywhere else is unchanged.
+func _setup_move_dragging() -> void:
+	_cam.drag_intercept = func(p: Vector2) -> bool:
+		return GameStore.human_move_active() and not GameStore.move_selected.is_empty() \
+			and _world.space_at_world(_cam.screen_to_world(p)) == GameStore.move_origin
+	_cam.move_drag.connect(_on_move_drag)
+	GameStore.move_changed.connect(_refresh_move_targets)
+	_tile_drag_label = PanelContainer.new()
+	_tile_drag_label.add_theme_stylebox_override("panel", HudStyle.box(HudStyle.GOLD, Color(0.16, 0.14, 0.05), 2))
+	_tile_drag_label.add_child(HudStyle.label("moving", 13, HudStyle.GOLD))
+	_tile_drag_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tile_drag_label.z_index = 200
+	_tile_drag_label.visible = false
+	add_child(_tile_drag_label)
+
+
+## A drag that started on a selected unit tile: follow the mouse (globally), show
+## what is being dragged, and treat the map like the origin-drag does.
+func _input(event: InputEvent) -> void:
+	if not GameStore.tile_drag_armed:
+		return
+	if Dbg.args.has("shot") and not Dbg.injecting:
+		return
+	var mm := event as InputEventMouseMotion
+	var mb := event as InputEventMouseButton
+	if mm != null:
+		_tile_drag_travel += mm.relative.length()
+		if _tile_drag_travel < 6.0:
+			return
+		_tile_dragging = true
+		_tile_drag_label.visible = true
+		(_tile_drag_label.get_child(0) as Label).text = "%d unit(s)" % GameStore.move_selected.size()
+		_tile_drag_label.position = mm.position + Vector2(14, 10)
+		if _container.get_global_rect().has_point(mm.position):
+			_drag_hover(mm.position - _container.get_global_rect().position)
+		else:
+			_clear_drag_preview()
+	elif mb != null and mb.button_index == MOUSE_BUTTON_LEFT and not mb.pressed:
+		var over_map := _container.get_global_rect().has_point(mb.position)
+		if _tile_dragging and over_map:
+			_drag_release(mb.position - _container.get_global_rect().position)
+		else:
+			_clear_drag_preview()
+		GameStore.tile_drag_armed = false
+		_tile_dragging = false
+		_tile_drag_travel = 0.0
+		_tile_drag_label.visible = false
+
+
+func _on_move_drag(phase: String, p: Vector2) -> void:
+	if phase == "start" or phase == "move":
+		_drag_hover(p)
+	elif phase == "end":
+		_drag_release(p)
+	else:
+		_clear_drag_preview()
+
+
+func _refresh_move_targets() -> void:
+	_world.set_move_targets(GameStore.move_targets().keys(), -1)
+
+
+## While dragging: highlight the target under the cursor and draw the arrow the
+## move will get (snapped to the target, else following the cursor). True if the
+## cursor is over a viable target.
+func _drag_hover(screen_pos: Vector2) -> bool:
+	var world := _cam.screen_to_world(screen_pos)
+	var tid := _world.space_at_world(world)
+	var targets := GameStore.move_targets()
+	var over := targets.has(tid)
+	_world.arrows.set_preview({
+		"from": GameStore.move_origin, "to": tid if over else -1, "to_pos": world,
+		"faction": GameStore.move_faction(),
+		"count": int(targets[tid]["count"]) if over else GameStore.move_selected.size()})
+	_world.set_move_targets(targets.keys(), tid if over else -1)
+	return over
+
+
+func _drag_release(screen_pos: Vector2) -> void:
+	var tid := _world.space_at_world(_cam.screen_to_world(screen_pos))
+	if GameStore.move_targets().has(tid):
+		Stepper.move_commit(tid)
+	_clear_drag_preview()
+
+
+func _clear_drag_preview() -> void:
+	_world.arrows.clear_preview()
+	_refresh_move_targets()
 
 
 ## Select a territory and centre the map on it, zoomed to fit it (never

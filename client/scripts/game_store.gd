@@ -6,8 +6,14 @@ extends Node
 ## falls back to the static starting owners in territories.json.
 
 signal state_changed
+signal move_changed  # the human player's move queue, options or selection changed
 signal purchase_changed  # the human player's purchase queue/options changed
 
+var human_move := {}      # the human's Combat/Non-Combat Move in progress: {kind, faction, options{uid: {unit_type, origin, dests{dest: path}}}, orders[{unit_id, unit_type, from, dest, path?}]}
+var tile_drag_armed := false  # a selected unit tile was pressed: a move drag may follow (see main.gd)
+var move_origin := -1     # the space whose units are being picked to move
+var move_selected := {}   # unit_id -> true: the units picked (all uncommitted ones by default)
+var _unit_index := {}     # unit_id -> unit dict, rebuilt with every state
 var human_purchase := {}  # the human's Purchase phase in progress: {faction, treasury, total_cost, targets{tid: {remaining, next_sc, sources}}, orders[], contested[]}
 var queued_purchase := {}  # the purchase event awaiting execution, {} if none
 var queued_attack := {}    # the combat_move event awaiting execution, {} if none
@@ -16,7 +22,16 @@ var state := {}  # last full GameState.to_dict() from the server, {} until one a
 
 func set_state(new_state: Dictionary) -> void:
 	state = new_state
+	_unit_index.clear()
+	for tid in state.get("territories", {}):
+		for u in state["territories"][tid]["units"]:
+			_unit_index[int(u["unit_id"])] = u
 	state_changed.emit()
+
+
+## A unit's dict (as the server sent it) by id, {} if there is none.
+func unit_of(unit_id: int) -> Dictionary:
+	return _unit_index.get(unit_id, {})
 
 
 ## Neutral powers take no turns; their land is shown in cream rather than the
@@ -133,6 +148,208 @@ func contested_spaces() -> Array:
 func set_queued_attack(event: Dictionary) -> void:
 	queued_attack = event
 	state_changed.emit()
+
+
+# ---- the human's move phases ---------------------------------------------------
+
+## The server's move options and staged moves for the human's Combat/Non-Combat
+## Move ({} = not in one). Destinations are normalised to {dest: path}; a
+## non-combat move has no route, so its "path" is just [origin, dest].
+func set_human_move(faction: String, block: Dictionary) -> void:
+	if block.is_empty() or not block.has("kind"):
+		if not human_move.is_empty():
+			human_move = {}
+			move_origin = -1
+			move_selected.clear()
+			move_changed.emit()
+		return
+	var combat: bool = block["kind"] == "combat"
+	var options := {}
+	for k in block["options"]:
+		var o: Dictionary = block["options"][k]
+		var origin := int(o["territory_id"])
+		var dests := {}
+		for d in o["destinations"]:
+			if combat:
+				var path := []
+				for x in o["destinations"][d]:
+					path.append(int(x))
+				dests[int(d)] = path
+			else:
+				dests[int(d)] = [origin, int(d)]
+		options[int(k)] = {"unit_type": o["unit_type"], "origin": origin, "dests": dests}
+	var orders := []
+	for o in block["orders"]:
+		var order := {"unit_id": int(o["unit_id"]), "unit_type": str(o["unit_type"]), "from": int(o["from"])}
+		if combat:
+			var path := []
+			for x in o["path"]:
+				path.append(int(x))
+			order["path"] = path
+			order["dest"] = path[path.size() - 1]
+		else:
+			order["dest"] = int(o["destination"])
+		orders.append(order)
+	human_move = {"kind": block["kind"], "faction": faction, "options": options, "orders": orders}
+	for uid in move_selected.keys():
+		if not options.has(uid):
+			move_selected.erase(uid)  # committed (or otherwise unable to move) now
+	move_changed.emit()
+
+
+func human_move_active() -> bool:
+	return not human_move.is_empty()
+
+
+func move_faction() -> String:
+	return str(human_move.get("faction", ""))
+
+
+## The units at a space that can still be ordered this phase (the server's
+## options exclude committed ones).
+func movable_ids_at(tid: int) -> Array:
+	var out := []
+	if human_move.is_empty():
+		return out
+	for u in units_at(tid):
+		if u["owner"] == move_faction() and human_move["options"].has(int(u["unit_id"])):
+			out.append(int(u["unit_id"]))
+	return out
+
+
+## Orders whose units start at `tid` (committed there).
+func committed_from(tid: int) -> Array:
+	var out := []
+	for o in human_move.get("orders", []):
+		if int(o["from"]) == tid:
+			out.append(o)
+	return out
+
+
+## Orders whose units end at `tid` and start elsewhere.
+func incoming_to(tid: int) -> Array:
+	var out := []
+	for o in human_move.get("orders", []):
+		if int(o["dest"]) == tid and int(o["from"]) != tid:
+			out.append(o)
+	return out
+
+
+## Pick the space whose units are being moved, all of its movable units selected.
+## `silent`: don't emit move_changed (a caller mid-rebuild re-emits it deferred).
+func select_move_origin(tid: int, silent := false) -> void:
+	move_origin = tid
+	move_selected.clear()
+	for uid in movable_ids_at(tid):
+		move_selected[uid] = true
+	if not silent:
+		move_changed.emit()
+
+
+func toggle_move_unit(unit_id: int, on: bool) -> void:
+	if on:
+		move_selected[unit_id] = true
+	else:
+		move_selected.erase(unit_id)
+	move_changed.emit()
+
+
+func set_all_move_selected(on: bool) -> void:
+	move_selected.clear()
+	if on:
+		for uid in movable_ids_at(move_origin):
+			move_selected[uid] = true
+	move_changed.emit()
+
+
+func all_move_selected() -> bool:
+	var ids := movable_ids_at(move_origin)
+	return not ids.is_empty() and ids.all(func(uid): return move_selected.has(uid))
+
+
+func _category(unit_type: String) -> String:
+	return str(GameData.units["units"][unit_type]["category"])
+
+
+## The space a path ends at, walking back to the last SEA zone before it (the
+## zone an amphibious landing crosses last), or -1 if there is none.
+func _last_sea_before_end(path: Array) -> int:
+	for i in range(path.size() - 2, -1, -1):
+		if GameData.territories[int(path[i])]["type"] == "sea":
+			return int(path[i])
+	return -1
+
+
+func _order_for(kind: String, unit_id: int, path: Array) -> Dictionary:
+	if kind == "combat":
+		return {"unit_id": unit_id, "path": path}
+	return {"unit_id": unit_id, "destination": int(path[path.size() - 1])}
+
+
+## Where the selected units can go, and the orders that would send them:
+## {dest: {"orders": [...], "count": n}}. Every selected unit must be able to reach
+## the target -- except that in an AMPHIBIOUS group (land units together with sea
+## units) a LAND target only needs the land (and air) units to reach it: the sea
+## units that can then escort them to the last sea zone of the landing path.
+func move_targets() -> Dictionary:
+	var out := {}
+	if human_move.is_empty() or move_selected.is_empty():
+		return out
+	var opts: Dictionary = human_move["options"]
+	var kind: String = human_move["kind"]
+	var ids := []
+	for uid in move_selected:
+		if opts.has(uid):
+			ids.append(uid)
+	if ids.is_empty():
+		return out
+	var has_land := false
+	var has_sea := false
+	for uid in ids:
+		var cat := _category(opts[uid]["unit_type"])
+		has_land = has_land or cat == "Land"
+		has_sea = has_sea or cat == "Sea"
+	var amphibious: bool = kind == "combat" and has_land and has_sea
+	var core := []
+	var escorts := []
+	var lead := -1  # a land unit whose path decides where the escorts go
+	for uid in ids:
+		var cat := _category(opts[uid]["unit_type"])
+		if amphibious and cat == "Sea":
+			escorts.append(uid)
+		else:
+			core.append(uid)
+			if cat == "Land" and lead < 0:
+				lead = uid
+	for d in opts[core[0]]["dests"]:
+		var ok := true
+		for uid in core:
+			if not opts[uid]["dests"].has(d):
+				ok = false
+				break
+		if not ok:
+			continue
+		var orders := []
+		for uid in core:
+			orders.append(_order_for(kind, uid, opts[uid]["dests"][d]))
+		if amphibious and GameData.territories[d]["type"] == "land":
+			var zone := _last_sea_before_end(opts[lead]["dests"][d])
+			if zone >= 0:
+				for uid in escorts:
+					if opts[uid]["dests"].has(zone):
+						orders.append(_order_for(kind, uid, opts[uid]["dests"][zone]))
+		out[d] = {"orders": orders, "count": orders.size()}
+	return out
+
+
+## The staged moves in the shape stage_moves wants (unit id + path/destination).
+func staged_orders_plain(except_units: Array = []) -> Array:
+	var out := []
+	for o in human_move.get("orders", []):
+		if except_units.has(int(o["unit_id"])):
+			continue
+		out.append(_order_for(human_move["kind"], int(o["unit_id"]), o["path"] if human_move["kind"] == "combat" else [int(o["from"]), int(o["dest"])]))
+	return out
 
 
 ## The server's purchase options for the human's Purchase phase ({} = not in one).

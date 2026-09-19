@@ -40,6 +40,7 @@ func _ready() -> void:
 	v.add_child(button)
 
 	GameStore.purchase_changed.connect(_rebuild)
+	GameStore.move_changed.connect(_rebuild)
 	GameStore.state_changed.connect(_rebuild)
 	_rebuild()
 
@@ -54,6 +55,10 @@ func _rebuild() -> void:
 	for c in _content.get_children():
 		_content.remove_child(c)
 		c.queue_free()
+	if GameStore.human_move_active():
+		_content.visible = true
+		_add_move_summary()
+		return
 	if not GameStore.human_purchase_active():
 		_content.visible = false
 		return
@@ -67,6 +72,25 @@ func _rebuild() -> void:
 	else:
 		_add_site(info)
 	_add_budget()
+
+
+## Combat / Non-Combat Move: what to do, and where the selection stands.
+func _add_move_summary() -> void:
+	var combat: bool = GameStore.human_move["kind"] == "combat"
+	_content.add_child(HudStyle.label("Combat Move" if combat else "Non-Combat Move", 14, HudStyle.GOLD))
+	var hint := HudStyle.label(
+		"Pick a territory with your units. Its movable units start selected (click the faction banner to select all / none, or click units to toggle). Green spaces are where they can go: drag from the selected units or the territory onto one.",
+		11, HudStyle.TEXT_DIM)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_content.add_child(hint)
+	var selected := GameStore.move_selected.size()
+	var targets := GameStore.move_targets().size()
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.add_child(HudStyle.label("Selected %d" % selected, 13, Color.WHITE if selected > 0 else HudStyle.TEXT_DIM))
+	row.add_child(HudStyle.label("Targets %d" % targets, 13, Color(0.55, 1.0, 0.6) if targets > 0 else HudStyle.TEXT_DIM))
+	row.add_child(HudStyle.label("Queued %d" % GameStore.human_move["orders"].size(), 13, HudStyle.GOLD))
+	_content.add_child(row)
 
 
 func _add_site(info: Dictionary) -> void:

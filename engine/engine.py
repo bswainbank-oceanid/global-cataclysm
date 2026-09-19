@@ -538,7 +538,7 @@ class GameEngine:
             defenders.add(dest_state.owner)
         dest_state.contested_by = (dest_state.contested_by or set()) | {faction} | defenders
 
-    def legal_combat_move_options(self, faction):
+    def legal_combat_move_options(self, faction, game_state=None):
         """{unit_id: {'unit_type': ..., 'territory_id': origin_id,
         'destinations': {destination_id: path, ...}}} for every one of
         `faction`'s own units, anywhere on the board, that hasn't already
@@ -560,25 +560,26 @@ class GameEngine:
         never moves an SC-garrisoning Infantry) -- those are strategy
         choices, not engine-level illegality; see engine.bots.random_bot
         for that layer."""
+        gs = game_state or self.game_state  # a working copy, e.g. with staged moves applied
         terrs = self.data.territories()
         unit_defs = self.data.units()
         options = {}
-        for tid, t in self.game_state.territories.items():
+        for tid, t in gs.territories.items():
             for u in t.units:
                 if u.owner != faction or u.has_moved_combat:
                     continue
                 category = unit_defs[u.unit_type]['category']
                 if category == 'Air':
-                    legal = legal_air_move_destinations(u.unit_type, faction, tid, 'combat', self.game_state, self.data)
+                    legal = legal_air_move_destinations(u.unit_type, faction, tid, 'combat', gs, self.data)
                     destinations = {dest: [tid, dest] for dest in legal}
                 else:
-                    destinations = legal_combat_move_paths(u.unit_type, faction, tid, self.game_state, self.data)
+                    destinations = legal_combat_move_paths(u.unit_type, faction, tid, gs, self.data)
                 if not destinations:
                     continue
                 options[u.unit_id] = {'unit_type': u.unit_type, 'territory_id': tid, 'destinations': destinations}
         return options
 
-    def legal_noncombat_move_options(self, faction):
+    def legal_noncombat_move_options(self, faction, game_state=None):
         """{unit_id: {'unit_type': ..., 'territory_id': origin_id,
         'destinations': [destination_id, ...]}} for every one of
         `faction`'s own units still eligible to make a non-combat move --
@@ -614,19 +615,20 @@ class GameEngine:
         is a client UI concern, not an engine-level restriction. No
         bot-only policy exclusions applied here either, same rationale
         as legal_combat_move_options."""
+        gs = game_state or self.game_state  # a working copy, e.g. with staged moves applied
         unit_defs = self.data.units()
         options = {}
-        for tid, t in self.game_state.territories.items():
+        for tid, t in gs.territories.items():
             for u in t.units:
                 if u.owner != faction or u.has_moved_noncombat:
                     continue
                 category = unit_defs[u.unit_type]['category']
                 if category == 'Air':
-                    legal = legal_air_move_destinations(u.unit_type, faction, tid, 'noncombat', self.game_state, self.data)
+                    legal = legal_air_move_destinations(u.unit_type, faction, tid, 'noncombat', gs, self.data)
                 else:
                     if u.has_moved_combat:
                         continue
-                    legal = legal_noncombat_move_destinations(u.unit_type, faction, tid, self.game_state, self.data)
+                    legal = legal_noncombat_move_destinations(u.unit_type, faction, tid, gs, self.data)
                 if not legal:
                     continue
                 options[u.unit_id] = {'unit_type': u.unit_type, 'territory_id': tid, 'destinations': sorted(legal)}
@@ -836,6 +838,37 @@ class GameEngine:
             'treasury': self.game_state.factions[faction].treasury_mpc,
             'total_cost': total_cost, 'targets': targets, 'orders': detail, 'contested': contested,
         }
+
+    def move_options_with_staged(self, faction, kind):
+        """What is still legal for `faction`'s units once the moves staged so far
+        ('combat' or 'noncombat') are applied: the same shape as
+        legal_combat_move_options / legal_noncombat_move_options, computed on a
+        throwaway copy where the staged units have already moved (so they no
+        longer appear, and a newly contested territory changes what the rest may
+        do). A pure query -- what a move UI needs after every staged change."""
+        working = copy.deepcopy(self.game_state)
+        if kind == 'combat':
+            self._execute_combat_moves(self._staged_combat_moves.get(faction, []), faction, working)
+            return self.legal_combat_move_options(faction, working)
+        self._execute_noncombat_moves(self._staged_noncombat_moves.get(faction, []), faction, working)
+        return self.legal_noncombat_move_options(faction, working)
+
+    def staged_moves_detail(self, faction, kind):
+        """The staged moves as a UI wants them: one dict per ordered unit, with its
+        type and where it starts ('from'), plus its 'path' (combat) or
+        'destination' (non-combat)."""
+        orders = (self._staged_combat_moves if kind == 'combat' else self._staged_noncombat_moves).get(faction, [])
+        info = self._unit_info(o.unit_id for o in orders)
+        out = []
+        for o in orders:
+            unit_type, origin = info.get(o.unit_id, (None, None))
+            entry = {'unit_id': o.unit_id, 'unit_type': unit_type, 'from': origin}
+            if kind == 'combat':
+                entry['path'] = list(o.path)
+            else:
+                entry['destination'] = o.destination
+            out.append(entry)
+        return out
 
     def staged_combat_move_event(self, faction):
         orders = self._staged_combat_moves.get(faction, [])

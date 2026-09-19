@@ -351,3 +351,106 @@ class TestHumanPurchase(unittest.TestCase):
         self.assertTrue(sea)
         for tid, info in sea:
             self.assertTrue(info['sources'])
+
+
+def _human_moves_session(seed=1):
+    """NAA human, GPC bot, Combat Move allowed on the first turn (the rules skip it),
+    parked at NAA's Combat Move."""
+    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes['NAA'] = FactionMode.HUMAN
+    modes['GPC'] = FactionMode.BOT
+    gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False, allow_combat_moves_first_turn=True)
+    turn_log = TurnLog()
+    engine = GameEngine(gs, None, turn_log=turn_log, combat_rng=random.Random(seed))
+    session = GameSession(engine, turn_log, {'GPC': RandomBot(engine, 'GPC', rng=random.Random(seed))})
+    session.handle_message({'type': 'watch'})
+    messages = session.handle_message({'type': 'next'})  # NAA's Purchase (nothing bought) -> Combat Move
+    return session, _by_type(messages, 'phase_queue')[0]
+
+
+def _pick_attack(queue):
+    """(unit_id, path) for some unit that has a combat-move destination."""
+    for uid, opt in queue['human']['options'].items():
+        for dest, path in opt['destinations'].items():
+            return int(uid), [int(t) for t in path]
+    raise AssertionError('no legal combat move at all')
+
+
+class TestHumanMoves(unittest.TestCase):
+    def test_a_human_combat_move_queue_carries_the_legal_options_and_no_staged_moves(self):
+        session, queue = _human_moves_session()
+        self.assertEqual((queue['faction'], queue['phase']), ('NAA', 'COMBAT_MOVE'))
+        human = queue['human']
+        self.assertEqual(human['kind'], 'combat')
+        self.assertEqual(human['orders'], [])
+        self.assertTrue(human['options'])
+        for opt in human['options'].values():
+            self.assertTrue({'unit_type', 'territory_id', 'destinations'} <= set(opt))
+
+    def test_staging_a_move_queues_it_and_removes_that_unit_from_the_options(self):
+        session, queue = _human_moves_session()
+        uid, path = _pick_attack(queue)
+        reply = session.handle_message({'type': 'stage_moves', 'faction': 'NAA', 'orders': [{'unit_id': uid, 'path': path}]})
+        self.assertEqual([m['type'] for m in reply], ['phase_queue'])
+        human = reply[0]['human']
+        self.assertEqual([o['unit_id'] for o in human['orders']], [uid])
+        self.assertEqual(human['orders'][0]['from'], path[0])
+        self.assertEqual(human['orders'][0]['path'], path)
+        self.assertNotIn(str(uid), {str(k) for k in human['options']})  # committed units are not available again
+        self.assertEqual(reply[0]['events'][0]['orders'][0]['unit_id'], uid)
+        # nothing has actually moved yet
+        gs = session.engine.game_state
+        self.assertIn(uid, [u.unit_id for u in gs.territories[path[0]].units])
+
+    def test_restaging_without_it_recalls_the_move(self):
+        session, queue = _human_moves_session()
+        uid, path = _pick_attack(queue)
+        session.handle_message({'type': 'stage_moves', 'faction': 'NAA', 'orders': [{'unit_id': uid, 'path': path}]})
+        reply = session.handle_message({'type': 'stage_moves', 'faction': 'NAA', 'orders': []})
+        self.assertEqual(reply[0]['human']['orders'], [])
+        self.assertIn(str(uid), {str(k) for k in reply[0]['human']['options']})
+
+    def test_an_illegal_move_is_rejected_and_the_queue_is_unchanged(self):
+        session, queue = _human_moves_session()
+        uid, path = _pick_attack(queue)
+        session.handle_message({'type': 'stage_moves', 'faction': 'NAA', 'orders': [{'unit_id': uid, 'path': path}]})
+        reply = session.handle_message({'type': 'stage_moves', 'faction': 'NAA', 'orders': [{'unit_id': uid, 'path': [path[0], 9999]}]})
+        self.assertEqual([m['type'] for m in reply], ['error', 'phase_queue'])
+        self.assertEqual([o['unit_id'] for o in reply[1]['human']['orders']], [uid])
+
+    def test_next_executes_the_staged_moves(self):
+        session, queue = _human_moves_session()
+        uid, path = _pick_attack(queue)
+        session.handle_message({'type': 'stage_moves', 'faction': 'NAA', 'orders': [{'unit_id': uid, 'path': path}]})
+        messages = session.handle_message({'type': 'next'})
+        result = _by_type(messages, 'phase_result')[0]
+        self.assertEqual(result['events'][0]['kind'], 'combat_move')
+        gs = session.engine.game_state
+        self.assertIn(uid, [u.unit_id for u in gs.territories[path[-1]].units] + [u.unit_id for t in gs.territories.values() for u in t.units])
+        self.assertNotIn(uid, [u.unit_id for u in gs.territories[path[0]].units])
+
+    def test_only_the_active_human_in_a_move_phase_can_stage(self):
+        session, queue = _human_moves_session()
+        uid, path = _pick_attack(queue)
+        self.assertEqual(session.handle_message({'type': 'stage_moves', 'faction': 'GPC', 'orders': []})[0]['type'], 'error')
+        session.handle_message({'type': 'next'})  # NAA's Combat Move -> Combat Resolution
+        self.assertEqual(session.handle_message({'type': 'stage_moves', 'faction': 'NAA', 'orders': []})[0]['type'], 'error')
+
+    def test_non_combat_move_options_and_staging(self):
+        session, queue = _human_moves_session()
+        for _ in range(6):
+            if queue['phase'] == 'NONCOMBAT_MOVE' and 'human' in queue:
+                break
+            messages = session.handle_message({'type': 'next'})
+            queue = _by_type(messages, 'phase_queue')[0]
+        self.assertEqual(queue['phase'], 'NONCOMBAT_MOVE')
+        human = queue['human']
+        self.assertEqual(human['kind'], 'noncombat')
+        uid, opt = next((int(u), o) for u, o in human['options'].items() if o['destinations'])
+        dest = opt['destinations'][0]
+        reply = session.handle_message({'type': 'stage_moves', 'faction': 'NAA', 'orders': [{'unit_id': uid, 'destination': dest}]})
+        self.assertEqual([m['type'] for m in reply], ['phase_queue'])
+        self.assertEqual(reply[0]['human']['orders'][0]['destination'], dest)
+        self.assertEqual(reply[0]['human']['orders'][0]['from'], opt['territory_id'])
+        result = _by_type(session.handle_message({'type': 'next'}), 'phase_result')[0]
+        self.assertEqual(result['events'][0]['kind'], 'noncombat_move')

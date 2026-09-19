@@ -27,6 +27,9 @@ var unit: Dictionary
 var in_transport := false  # a land unit at sea: drawn as a Transport carrying it
 var max_hp_override := -1  # the battle board: HP as the battle counts it (a Transport has 1)
 var mark := 0              # BattleModel.Mark: 1 = hit but alive ("/"), 2 = eliminated ("X")
+var dimmed := false        # can't be picked right now (no legal move, or already committed)
+var committed := false     # queued to move: drawn with an arrow badge; clicking recalls it
+var drag_payload := {}     # non-empty: this tile can start a move drag carrying this payload
 var rolling := false       # the battle board: this unit's roll is the one on show
 
 
@@ -38,6 +41,7 @@ static func make(u: Dictionary, transport_form := false) -> UnitTile:
 	tile.toggle_mode = true
 	tile.focus_mode = Control.FOCUS_NONE
 	tile.tooltip_text = tile._describe()
+	tile.button_down.connect(tile._arm_drag)
 	var invisible := StyleBoxEmpty.new()
 	for state in ["normal", "pressed", "hover", "hover_pressed", "focus", "disabled"]:
 		tile.add_theme_stylebox_override(state, invisible)
@@ -100,6 +104,25 @@ func _draw() -> void:
 		draw_rect(CARGO_BOX, Color(1, 1, 1, 0.9), false, 1.5)
 		_draw_package(CARGO_OFFSET, owner_col)
 	_draw_mark()
+	if dimmed or committed:
+		draw_rect(Rect2(ICON_POS - Vector2(2, 2), Vector2(ICON, ICON) + Vector2(4, 4)), Color(0.05, 0.07, 0.1, 0.62))
+	if committed:
+		# an arrow badge on the icon, and a small x in the corner: click to recall
+		var c := ICON_POS + Vector2(ICON, ICON) * 0.5
+		draw_line(c + Vector2(-9, 0), c + Vector2(6, 0), Color(1.0, 0.85, 0.3), 3.0)
+		draw_colored_polygon(PackedVector2Array([c + Vector2(11, 0), c + Vector2(3, -6), c + Vector2(3, 6)]), Color(1.0, 0.85, 0.3))
+		var x0 := ICON_POS + Vector2(ICON - 5, -5)
+		draw_line(x0, x0 + Vector2(8, 8), Color(1.0, 0.45, 0.4), 2.0)
+		draw_line(x0 + Vector2(8, 0), x0 + Vector2(0, 8), Color(1.0, 0.45, 0.4), 2.0)
+
+
+## Pressing a selected, movable tile arms a move drag: main.gd watches the mouse from
+## there (Godot's built-in drag and drop can't be used, since it is never offered the
+## map's SubViewportContainer as a drop target under all conditions) and, on release
+## over a green target, queues the whole selection's move.
+func _arm_drag() -> void:
+	if not drag_payload.is_empty():
+		GameStore.tile_drag_armed = true
 
 
 ## Battle marks: "/" through a unit that was hit but lives, "X" through an
