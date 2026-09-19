@@ -107,6 +107,7 @@ const PHASE_LABELS := {
 	"COMBAT_MOVE": "Combat Move",
 	"COMBAT_RESOLUTION": "Combat Resolution",
 	"NONCOMBAT_MOVE": "Non-Combat Move",
+	"RETURN_TO_BASE": "Return to Base",  # a queue step of its own before Non-Combat Move
 	"CAPTURE": "Capture Territory",
 	"DEPLOY_INCOME": "Deploy & Income",
 	"ALLIANCES": "Alliances",

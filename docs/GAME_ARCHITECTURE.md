@@ -193,7 +193,7 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 64 tests) — first vertical slice,
+- ⬜ WebSocket server (`server/`, 65 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
   (NAA and GPC both BOTs watched by a spectator client -- see the watch
   mode below; the human-play protocol described next is still in place and
@@ -324,7 +324,7 @@ the same JSON, not a parallel editing path.
   zone's polygon is its outer boundary, so sea highlight fills sit
   beneath the ownership fill); adaptive unit badges (quiet Flag badges at
   world zoom, per-type Strip badges from 1.0x, chosen after comparing
-  three styles on real data; zoomed-in badges are drawn at 2x, and a value marker -- the territory value in an owner-coloured disc, inside a gold star for Strategic Centers -- leads each land space's badge row when zoomed in, and only for SCs when zoomed out); neutral powers' land is filled cream instead of a faction colour (and shows no value marker); purchases awaiting deployment -- queued or already confirmed -- show as a second, darker, white-bordered box under a space's units; contested spaces -- and the destinations of a queued combat move -- get diagonal black stripes (a map-space shader); queued moves (combat, non-combat, and the automatic air return-to-base, which `TurnLog` now records as `return_to_base`) are drawn as curved faction-coloured arrows, wider with unit count, bending north/east for origins to the north/east and south/west otherwise, and shortening tail-first over 1s when executed; territory names in the queue/log are links that select and zoom to that space; a HUD following `reference/GC Mockup.pdf`
+  three styles on real data; zoomed-in badges are drawn at 2x, and a value marker -- the territory value in an owner-coloured disc, inside a gold star for Strategic Centers -- leads each land space's badge row when zoomed in, and only for SCs when zoomed out); neutral powers' land is filled cream instead of a faction colour (and shows no value marker); purchases awaiting deployment -- queued or already confirmed -- show as a second, darker, white-bordered box under a space's units; contested spaces -- and the destinations of a queued combat move -- get diagonal black stripes (a map-space shader); queued moves (combat, non-combat, and the automatic air return-to-base, which `TurnLog` records as `return_to_base` and the stepper queues as its own "Return to Base" step before the rest of Non-Combat Move) are drawn as curved faction-coloured arrows, wider with unit count, bending north/east for origins to the north/east and south/west otherwise, and shortening tail-first over 1s when executed; territory names in the queue/log are links that select and zoom to that space; a HUD following `reference/GC Mockup.pdf`
   (title/round/phase block, one T/MCP/SC/UV/allies panel per seated
   faction with eliminated ones dimmed, a selection panel with per-faction
   unit stacks, an event log fed by `bot_turn`/`combat_events`); and a

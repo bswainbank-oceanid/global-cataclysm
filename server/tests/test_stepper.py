@@ -117,6 +117,38 @@ class TestWatch(unittest.TestCase):
         session = GameSession(engine, turn_log, {'AAC': RandomBot(engine, 'AAC', rng=random.Random(1))})
         self.assertEqual(session.handle_message({'type': 'watch'})[0]['type'], 'error')
 
+    def test_aircraft_flying_home_is_its_own_step_before_the_rest_of_non_combat_move(self):
+        for seed in range(1, 15):
+            session = _watch_session(seed)
+            messages = session.handle_message({'type': 'watch'})[1:]
+            for _ in range(60):
+                queue = _by_type(messages, 'phase_queue')[0]
+                if queue['phase'] == 'RETURN_TO_BASE':
+                    break
+                messages = session.handle_message({'type': 'next'})
+            else:
+                continue
+            gs = session.engine.game_state
+            flights = queue['events'][0]['orders']
+            self.assertEqual(queue['events'][0]['kind'], 'return_to_base')
+            self.assertEqual(gs.phase, Phase.NONCOMBAT_MOVE)  # still queued, not yet flown
+            unit = flights[0]
+            in_place = [u.unit_id for u in gs.territories[unit['from']].units]
+            self.assertIn(unit['unit_id'], in_place)
+
+            messages = session.handle_message({'type': 'next'})
+            result = _by_type(messages, 'phase_result')[0]
+            self.assertEqual(result['phase'], 'RETURN_TO_BASE')
+            self.assertEqual(result['events'], [dict(queue['events'][0])])
+            self.assertEqual(gs.phase, Phase.NONCOMBAT_MOVE)
+            self.assertNotIn(unit['unit_id'], [u.unit_id for u in gs.territories[unit['from']].units])
+            self.assertIn(unit['unit_id'], [u.unit_id for u in gs.territories[unit['to']].units])
+            follow = _by_type(messages, 'phase_queue')[0]
+            self.assertEqual(follow['phase'], 'NONCOMBAT_MOVE')
+            self.assertNotIn('return_to_base', [e['kind'] for e in follow['events']])
+            return
+        self.fail('no game in 14 seeds had aircraft returning to base')
+
     def test_a_faction_eliminated_during_its_own_turn_just_ends_the_turn(self):
         # Capture can hand the active faction's own territory to an ally and
         # drop it to <=1 Strategic Center; every later phase call for it

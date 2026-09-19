@@ -20,14 +20,16 @@ Server -> client (always broadcast to watchers):
     {"type": "phase_queue", "faction": "AAC", "phase": "PURCHASE",
      "events": [...], "skipped": ["COMBAT_MOVE"]}
         What `faction` WILL do this phase, in turn_log's event shapes
-        (purchase / combat_move / noncombat_move / alliance_plan; for
-        Non-Combat Move also a return_to_base event -- air units the game
-        already sent home automatically when the phase opened), plus
+        (purchase / combat_move / noncombat_move / alliance_plan), plus
         'battle_preview' (the battles about to be fought and who is in
         them) for Combat Resolution, or -- for the automatic Capture and
         Deploy + Income phases -- the events a dry run of the phase
         produces. `skipped`: phases the game passed over just before this
         one (e.g. Combat Move on a faction's first turn).
+    A Non-Combat Move whose faction has aircraft to send home is queued as
+    two steps: first phase "RETURN_TO_BASE" (not a GameState phase; its
+    events are the return_to_base flights the game makes automatically),
+    then the ordinary "NONCOMBAT_MOVE" queue, planned once they have landed.
     {"type": "phase_result", "faction": ..., "phase": ..., "events": [...]}
         What executing that phase actually logged (for Combat Resolution:
         the roll-by-roll events and one battle_summary per battle).
@@ -41,6 +43,10 @@ from engine.state import Phase
 from engine.turn_log import TurnLog
 
 _PHASES = list(Phase)
+
+# A queue step of its own, not a GameState phase: the automatic return-to-base
+# that opens Non-Combat Move (see PhaseStepper._plan_current_phase).
+RETURN_TO_BASE = 'RETURN_TO_BASE'
 
 
 class PhaseStepper:
@@ -82,15 +88,24 @@ class PhaseStepper:
 
     def _execute_queued_phase(self):
         gs = self.engine.game_state
-        faction, phase = self._queue['faction'], gs.phase
+        faction, queued = self._queue['faction'], self._queue['phase']
         start = len(self.turn_log.events)
-        self._commit(faction, phase)
-        result = {'type': 'phase_result', 'faction': faction, 'phase': phase.value,
-                  'events': self.turn_log.events[start:]}
+        messages = []
+        if queued == RETURN_TO_BASE:
+            # Its own step, ahead of the rest of Non-Combat Move: air units
+            # that fought this turn fly home. GameState.phase doesn't move.
+            self.engine.process_return_to_base(faction)
+            phase = None
+        else:
+            phase = gs.phase
+            self._commit(faction, phase)
+        messages.append({'type': 'phase_result', 'faction': faction, 'phase': queued,
+                         'events': self.turn_log.events[start:]})
 
         self._queue = None
-        messages = [result]
-        if phase == Phase.ALLIANCES:
+        if phase is None:
+            self._skipped_before = []
+        elif phase == Phase.ALLIANCES:
             if gs.game_over:
                 return messages + [self._state_message(), {'type': 'game_over'}]
             self.engine.advance_turn()
@@ -153,10 +168,16 @@ class PhaseStepper:
         elif phase == Phase.COMBAT_RESOLUTION:
             events = engine.battle_previews(faction)
         elif phase == Phase.NONCOMBAT_MOVE:
-            start = len(self.turn_log.events)
-            bot.plan_noncombat_move_phase()  # starts with the automatic return-to-base
-            returns = [e for e in self.turn_log.events[start:] if e['kind'] == 'return_to_base']
-            events = returns + [engine.staged_noncombat_move_event(faction)]
+            if not engine.has_processed_return_to_base(faction):
+                homeward = self._dry_run(lambda sim: sim.process_return_to_base(faction))
+                if homeward:
+                    # Queue the flight home on its own first; the rest of the
+                    # phase is planned once it has run (from the new positions).
+                    self._queue = {'type': 'phase_queue', 'faction': faction, 'phase': RETURN_TO_BASE,
+                                   'events': homeward, 'skipped': [p.value for p in self._skipped_before]}
+                    return
+            bot.plan_noncombat_move_phase()
+            events = [engine.staged_noncombat_move_event(faction)]
         elif phase == Phase.CAPTURE:
             events = self._dry_run(lambda sim: (
                 sim.process_capture_territory(faction), sim.process_elimination_check()))

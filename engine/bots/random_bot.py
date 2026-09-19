@@ -316,7 +316,10 @@ class RandomBot:
         plan_combat_move_phase, for the same reason (avoid an O(units)
         number of whole-board deep copies). Stages only; confirm_
         noncombat_moves commits."""
-        self.engine.process_return_to_base(self.faction)  # mutates the real game state; must run before the copy below
+        # Mutates the real game state, so it must run before the copy below -- unless a
+        # watcher already ran it as its own step (server/stepper.py).
+        if not self.engine.has_processed_return_to_base(self.faction):
+            self.engine.process_return_to_base(self.faction)
         working = copy.deepcopy(self.engine.game_state)
         unit_defs = self.engine.data.units()
         orders = []

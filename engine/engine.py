@@ -1157,6 +1157,10 @@ class GameEngine:
                 self.game_state.territories[landing].units.append(u)
             # else: no adjacent own carrier, own land, or allied land -- lost
 
+    def has_processed_return_to_base(self, faction):
+        """True once process_return_to_base has run for `faction` this turn."""
+        return faction in self._return_to_base_processed
+
     def process_return_to_base(self, faction):
         """carrier_air_operations.return_to_base_after_combat: an
         automated step at the very start of the Non-Combat Move phase --
