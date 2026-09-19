@@ -11,8 +11,10 @@ var _queue: RichTextLabel
 var _queue_head: Label
 var _log: RichTextLabel
 signal territory_clicked(tid: int)  # a territory name in the queue/log was clicked
+signal units_selected(unit_ids: Array)  # the units toggled on in the selection panel
 
 var _selected := -1
+var _selected_units := {}  # unit_id -> true; survives the panel rebuilding on every state change
 var _next: Button
 
 
@@ -22,7 +24,7 @@ func _ready() -> void:
 
 	var upper := PanelContainer.new()
 	upper.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	upper.size_flags_stretch_ratio = 0.5  # the log is the busier pane while stepping
+	upper.size_flags_stretch_ratio = 0.9  # room for a stack of unit tiles; the queue/log pane is still the larger one
 	upper.add_theme_stylebox_override("panel", HudStyle.box())
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -57,7 +59,7 @@ func _ready() -> void:
 
 	var lower := PanelContainer.new()
 	lower.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	lower.size_flags_stretch_ratio = 1.5
+	lower.size_flags_stretch_ratio = 1.3
 	lower.add_theme_stylebox_override("panel", HudStyle.box())
 	var lv := VBoxContainer.new()
 	lower.add_child(lv)
@@ -132,6 +134,9 @@ func log_events(header: String, events: Array) -> void:
 
 
 func show_space(tid: int) -> void:
+	if tid != _selected and not _selected_units.is_empty():
+		_selected_units.clear()
+		units_selected.emit([])
 	_selected = tid
 	for c in _detail.get_children():
 		c.queue_free()
@@ -158,19 +163,54 @@ func show_space(tid: int) -> void:
 	if contested != null and not contested.is_empty():
 		_detail.add_child(HudStyle.label("CONTESTED: " + ", ".join(contested), 12, Color(1.0, 0.5, 0.4)))
 
-	var stacks := GameStore.stacks(tid)
-	if stacks.is_empty():
+	var by_owner := {}
+	for u in GameStore.units_at(tid):
+		if not by_owner.has(u["owner"]):
+			by_owner[u["owner"]] = []
+		by_owner[u["owner"]].append(u)
+	if by_owner.is_empty():
 		_detail.add_child(HudStyle.label("No units", 12, HudStyle.TEXT_DIM))
 		return
 	for code in GameData.faction_order:
-		if not stacks.has(code):
+		if not by_owner.has(code):
 			continue
 		var head := PanelContainer.new()
 		head.add_theme_stylebox_override("panel", HudStyle.box(GameData.factions[code].color.darkened(0.3), GameData.factions[code].color, 1))
 		head.add_child(HudStyle.label(GameData.factions[code].name, 12, Color.WHITE))
 		_detail.add_child(head)
-		for unit_type in stacks[code]:
-			_detail.add_child(_unit_row(unit_type, stacks[code][unit_type]))
+		var flow := HFlowContainer.new()
+		flow.add_theme_constant_override("h_separation", 2)
+		flow.add_theme_constant_override("v_separation", 2)
+		_detail.add_child(flow)
+		var units: Array = by_owner[code]
+		units.sort_custom(_unit_before)
+		for u in units:
+			var tile := UnitTile.make(u)
+			tile.button_pressed = _selected_units.has(int(u["unit_id"]))
+			tile.toggled.connect(_on_unit_toggled.bind(int(u["unit_id"])))
+			flow.add_child(tile)
+
+
+## Display order within a faction: by unit type, promoted first, most XP first.
+func _unit_before(a: Dictionary, b: Dictionary) -> bool:
+	var types: Array = UnitIcons.FILES.keys()
+	var ta := types.find(a["unit_type"])
+	var tb := types.find(b["unit_type"])
+	if ta != tb:
+		return ta < tb
+	if a.get("promoted", false) != b.get("promoted", false):
+		return a.get("promoted", false)
+	if a.get("xp", 0) != b.get("xp", 0):
+		return a.get("xp", 0) > b.get("xp", 0)
+	return a["unit_id"] < b["unit_id"]
+
+
+func _on_unit_toggled(on: bool, unit_id: int) -> void:
+	if on:
+		_selected_units[unit_id] = true
+	else:
+		_selected_units.erase(unit_id)
+	units_selected.emit(_selected_units.keys())
 
 
 func _territory_field(tid: int, key: String) -> Variant:
@@ -178,16 +218,3 @@ func _territory_field(tid: int, key: String) -> Variant:
 		return null
 	var t = GameStore.state["territories"].get(str(tid))
 	return null if t == null else t.get(key)
-
-
-func _unit_row(unit_type: String, count: int) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	var icon := TextureRect.new()
-	icon.texture = UnitIcons.get_icon(unit_type)
-	icon.custom_minimum_size = Vector2(20, 20)
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	row.add_child(icon)
-	row.add_child(HudStyle.label("%s  x%d" % [unit_type, count], 13))
-	return row

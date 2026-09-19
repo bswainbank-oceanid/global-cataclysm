@@ -122,10 +122,7 @@ func _draw_value_marker(tid: int, c: Vector2) -> void:
 	var text_col := Color(0.15, 0.12, 0.05) if GameStore.is_neutral(owner) else Color.WHITE
 	var r := DISC_R
 	if t.get("strategic_center", false):
-		var pts := PackedVector2Array()
-		for i in 10:
-			var ang := -PI / 2.0 + i * PI / 5.0
-			pts.append(c + Vector2(cos(ang), sin(ang)) * (STAR_R if i % 2 == 0 else STAR_R * 0.5))
+		var pts := HudStyle.star_points(c, STAR_R)
 		draw_colored_polygon(pts, Color(1.0, 0.82, 0.25))
 		pts.append(pts[0])
 		draw_polyline(pts, Color(0, 0, 0, 0.85), 1.5)
@@ -145,12 +142,14 @@ func _sorted_types(by_type: Dictionary) -> Array:
 	types.sort_custom(func(a, b):
 		if by_type[a] != by_type[b]:
 			return by_type[a] > by_type[b]
+		if GameStore.base_type(a) == GameStore.base_type(b):
+			return GameStore.is_promoted(a)  # the promoted stack first
 		return _unit_cost(a) > _unit_cost(b))
 	return types
 
 
 func _unit_cost(unit_type: String) -> float:
-	var u = GameData.units["units"].get(unit_type)
+	var u = GameData.units["units"].get(GameStore.base_type(unit_type))
 	if u == null or u.get("cost") == null:
 		return 0.0
 	return float(u["cost"])
@@ -159,7 +158,7 @@ func _unit_cost(unit_type: String) -> float:
 func _by_category(by_type: Dictionary) -> Dictionary:
 	var out := {}
 	for t in by_type:
-		var cat: String = GameData.units["units"][t]["category"]
+		var cat: String = GameData.units["units"][GameStore.base_type(t)]["category"]
 		out[cat] = out.get(cat, 0) + by_type[t]
 	return out
 
@@ -181,16 +180,27 @@ func _draw_group(pos: Vector2, owner: String, by_type: Dictionary, size: Vector2
 	draw_rect(Rect2(pos, size), col.darkened(0.5) if dark else col.lightened(0.05))
 	match _style():
 		Style.FLAG:
-			var types := _sorted_types(by_type)
+			# One icon for the group: the most numerous unit type (promoted and
+			# not merged), starred if any unit of that type is promoted.
+			var merged := {}
+			var starred := {}
 			var total := 0
-			for t in by_type:
-				total += by_type[t]
-			_glyph(types[0], pos + Vector2(4, 3), 14)
+			for k in by_type:
+				var b := GameStore.base_type(k)
+				merged[b] = int(merged.get(b, 0)) + by_type[k]
+				starred[b] = starred.get(b, false) or GameStore.is_promoted(k)
+				total += by_type[k]
+			var top: String = _sorted_types(merged)[0]
+			_glyph(top, pos + Vector2(4, 3), 14)
+			if starred[top]:
+				_promotion_star(pos + Vector2(4 + 14, 3), 4.5)
 			_count(str(total), pos + Vector2(22, 15), FONT_SIZE)
 		Style.STRIP:
 			var x := pos.x + 3
 			for t in _sorted_types(by_type):
-				_glyph(t, Vector2(x, pos.y + 3), 14)
+				_glyph(GameStore.base_type(t), Vector2(x, pos.y + 3), 14)
+				if GameStore.is_promoted(t):
+					_promotion_star(Vector2(x + 7, pos.y + 1), 5.0)
 				_count(str(by_type[t]), Vector2(x + 15, pos.y + 15), 10)
 				x += 27
 		Style.CATEGORY:
@@ -201,6 +211,14 @@ func _draw_group(pos: Vector2, owner: String, by_type: Dictionary, size: Vector2
 					_glyph(CATEGORY_ICON[cat], Vector2(x, pos.y + 3), 14)
 					_count(str(cats[cat]), Vector2(x + 15, pos.y + 15), 10)
 					x += 27
+
+
+## The gold star marking a promoted unit, centred on `c`.
+func _promotion_star(c: Vector2, r: float) -> void:
+	var pts := HudStyle.star_points(c, r)
+	draw_colored_polygon(pts, Color(1.0, 0.82, 0.25))
+	pts.append(pts[0])
+	draw_polyline(pts, Color(0, 0, 0, 0.9), 1.0)
 
 
 func _glyph(unit_type: String, p: Vector2, px: float) -> void:

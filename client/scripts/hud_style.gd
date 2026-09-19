@@ -29,3 +29,12 @@ static func label(text: String = "", size: int = 13, color: Color = TEXT) -> Lab
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
 	return l
+
+
+## A five-point star's outline, centred on `c` (y grows downwards, one point up).
+static func star_points(c: Vector2, r_outer: float, r_inner_ratio: float = 0.5) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in 10:
+		var ang := -PI / 2.0 + i * PI / 5.0
+		pts.append(c + Vector2(cos(ang), sin(ang)) * (r_outer if i % 2 == 0 else r_outer * r_inner_ratio))
+	return pts

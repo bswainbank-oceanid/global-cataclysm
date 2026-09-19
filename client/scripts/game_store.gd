@@ -41,18 +41,38 @@ func owner_of(tid: int) -> String:
 
 ## Deployed units in a space grouped for display: owner -> {unit_type: count}.
 ## Excludes units still in pending_deployment (bought, not yet on the board).
+## Suffix on a stacks() key that marks the promoted version of a unit type.
+const PROMOTED_SUFFIX := "|P"
+
+
+## The units in a space as {owner: {stack key: count}}. A stack key is the unit
+## type, plus PROMOTED_SUFFIX for promoted units -- promoted and unpromoted
+## units of a type are separate stacks.
 func stacks(tid: int) -> Dictionary:
 	var out := {}
-	if state.is_empty():
-		return out
-	var t = state["territories"].get(str(tid))
-	if t == null:
-		return out
-	for u in t["units"]:
+	for u in units_at(tid):
 		var by_type: Dictionary = out.get(u["owner"], {})
-		by_type[u["unit_type"]] = by_type.get(u["unit_type"], 0) + 1
+		var key: String = u["unit_type"] + (PROMOTED_SUFFIX if u.get("promoted", false) else "")
+		by_type[key] = by_type.get(key, 0) + 1
 		out[u["owner"]] = by_type
 	return out
+
+
+## Every unit in a space, as the server's unit dicts (unit_id, unit_type,
+## owner, current_hp, xp, promoted, ...).
+func units_at(tid: int) -> Array:
+	if state.is_empty():
+		return []
+	var t = state["territories"].get(str(tid))
+	return [] if t == null else t["units"]
+
+
+static func base_type(key: String) -> String:
+	return key.trim_suffix(PROMOTED_SUFFIX)
+
+
+static func is_promoted(key: String) -> bool:
+	return key.ends_with(PROMOTED_SUFFIX)
 
 
 ## Purchases waiting to be deployed, {owner: {unit_type: count}}: those already
