@@ -13,6 +13,13 @@ const FONT_SIZE := 12
 const CATEGORY_ICON := {"Land": "Infantry", "Sea": "Cruiser", "Air": "Fighter"}
 
 const STRIP_MIN_ZOOM := 1.0
+const STRIP_SCALE := 2.0   # zoomed-in badges are drawn at this multiple of the Flag size
+const GAP := 3.0           # between the value marker and the faction badges in a row
+const DISC_W := 20.0       # value marker: faction-coloured disc...
+const DISC_R := 8.5
+const STAR_W := 28.0       # ...inside a gold star for Strategic Centers
+const STAR_R := 14.0
+const STAR_DISC_R := 7.5
 
 var forced_style := -1  # -1 = adaptive; otherwise a Style, for debug comparisons
 var zoom := 1.0
@@ -41,29 +48,77 @@ func set_style(s: Style) -> void:
 
 
 func _draw() -> void:
-	var inv := 1.0 / zoom
+	var inv := _badge_scale() / zoom
 	for copy in [-1, 0, 1]:
 		for tid in GameData.territories:
 			var stacks := GameStore.stacks(tid)
-			if stacks.is_empty():
+			var marker_w := _marker_width(tid)
+			if stacks.is_empty() and marker_w == 0.0:
 				continue
 			var groups: Array = []  # [owner, {type: count}] in stable faction order
 			for code in GameData.faction_order:
 				if stacks.has(code):
 					groups.append([code, stacks[code]])
 			var sizes: Array = []
-			var total_w := 0.0
+			var total_w := marker_w
 			for g in groups:
 				var sz := _group_size(g[1])
 				sizes.append(sz)
-				total_w += sz.x
-			total_w += 3.0 * (groups.size() - 1)
+				total_w += sz.x + (GAP if total_w > 0.0 else 0.0)
 			var anchor: Vector2 = GameData.label_points[tid] + Vector2(copy * GameData.map_w, 0)
-			draw_set_transform(anchor + Vector2(0, 8.0 * inv), 0.0, Vector2(inv, inv))
+			draw_set_transform(anchor + Vector2(0, 11.0 / zoom), 0.0, Vector2(inv, inv))
 			var x := -total_w * 0.5
+			if marker_w > 0.0:
+				_draw_value_marker(tid, Vector2(x + marker_w * 0.5, 10))
+				x += marker_w + GAP
 			for i in groups.size():
 				_draw_group(Vector2(x, 0), groups[i][0], groups[i][1], sizes[i])
-				x += sizes[i].x + 3.0
+				x += sizes[i].x + GAP
+
+
+## Zoomed in (Strip) the badges are drawn twice as large as the world-zoom
+## Flag badges, since a space is roomy enough by then.
+func _badge_scale() -> float:
+	return STRIP_SCALE if _style() == Style.STRIP else 1.0
+
+
+## Every land space gets a value marker once zoomed in; zoomed out only
+## Strategic Centers do (their star is the map's landmark). 0 = no marker.
+func _marker_width(tid: int) -> float:
+	var t: Dictionary = GameData.territories[tid]
+	if t["type"] != "land":
+		return 0.0
+	var sc: bool = t.get("strategic_center", false)
+	if _style() == Style.FLAG and not sc:
+		return 0.0
+	return STAR_W if sc else DISC_W
+
+
+## The territory's value in a disc of its owner's colour (cream for
+## neutrals); a Strategic Center's disc sits inside a gold star.
+func _draw_value_marker(tid: int, c: Vector2) -> void:
+	var t: Dictionary = GameData.territories[tid]
+	var owner := GameStore.owner_of(tid)
+	var col := GameStore.display_color(owner) if GameData.factions.has(owner) else Color(0.5, 0.5, 0.5)
+	var text_col := Color(0.15, 0.12, 0.05) if GameStore.is_neutral(owner) else Color.WHITE
+	var r := DISC_R
+	if t.get("strategic_center", false):
+		var pts := PackedVector2Array()
+		for i in 10:
+			var ang := -PI / 2.0 + i * PI / 5.0
+			pts.append(c + Vector2(cos(ang), sin(ang)) * (STAR_R if i % 2 == 0 else STAR_R * 0.5))
+		draw_colored_polygon(pts, Color(1.0, 0.82, 0.25))
+		pts.append(pts[0])
+		draw_polyline(pts, Color(0, 0, 0, 0.85), 1.5)
+		r = STAR_DISC_R
+	draw_circle(c, r + 1.0, Color(0, 0, 0, 0.85))
+	draw_circle(c, r, col)
+	var font := ThemeDB.fallback_font
+	var text := str(int(t.get("value", 0)))
+	var at := Vector2(c.x - r, c.y + 3.6)
+	if text_col == Color.WHITE:
+		draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_CENTER, r * 2.0, 10, 3, Color(0, 0, 0, 0.9))
+	draw_string(font, at, text, HORIZONTAL_ALIGNMENT_CENTER, r * 2.0, 10, text_col)
 
 
 func _sorted_types(by_type: Dictionary) -> Array:

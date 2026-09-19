@@ -15,6 +15,20 @@ func set_state(new_state: Dictionary) -> void:
 	state_changed.emit()
 
 
+## Neutral powers take no turns; their land is shown in cream rather than the
+## faction colour. (Mode is only known once a server state has arrived.)
+func is_neutral(code: String) -> bool:
+	return faction_state(code).get("mode", "") == "NEUTRAL"
+
+
+const NEUTRAL_COLOR := Color(0.93, 0.87, 0.68)
+
+
+## The colour a faction's land and markers are drawn in.
+func display_color(code: String) -> Color:
+	return NEUTRAL_COLOR if is_neutral(code) else GameData.factions[code].color
+
+
 func owner_of(tid: int) -> String:
 	if not state.is_empty():
 		var t = state["territories"].get(str(tid))

@@ -17,7 +17,7 @@ func _draw() -> void:
 			var owner := GameStore.owner_of(tid)
 			if owner == "" or not GameData.factions.has(owner):
 				continue
-			var col: Color = GameData.factions[owner].color
+			var col: Color = GameStore.display_color(owner)
 			col.a = 0.7
 			for poly in GameData.fill_shapes[tid]:
 				draw_colored_polygon(poly, col)
