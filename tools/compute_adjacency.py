@@ -12,6 +12,11 @@ outlines do not touch and missed ~125 that do (see tools/debug_adjacency.py).
 Consequence to know about: two land spaces separated by water (England/Benelux,
 Ireland/Scotland) are NOT adjacent; they connect through the sea zone between.
 
+On top of that, data/adjacency_overrides.json holds hand-confirmed corrections:
+'remove' pairs whose outlines touch but that are not adjacent in play, and 'add'
+pairs adjacent in play whose outlines do not touch. They are applied last, and
+the script says so if an entry has no effect (a stale correction).
+
 Needs data/territory_shapes.json, so tools/extract_territory_shapes.py runs first
 (tools/build_all.py has them in that order).
 
@@ -30,7 +35,21 @@ WIDTH = int(meta['reference_image_width_px'])
 HEIGHT = int(meta['reference_image_height_px'])
 territories = meta['spaces']
 
-edges = sorted(touching_pairs(label_image(spaces, shapes, WIDTH, HEIGHT)))
+touching = touching_pairs(label_image(spaces, shapes, WIDTH, HEIGHT))
+
+overrides = json.load(open('data/adjacency_overrides.json'))
+edges = set(touching)
+for a, b, *_ in overrides['remove']:
+    pair = (min(a, b), max(a, b))
+    if pair not in edges:
+        print(f'WARNING: override removes {pair}, which is not adjacent anyway (stale?)')
+    edges.discard(pair)
+for a, b, *_ in overrides['add']:
+    pair = (min(a, b), max(a, b))
+    if pair in edges:
+        print(f'WARNING: override adds {pair}, which is already adjacent (stale?)')
+    edges.add(pair)
+edges = sorted(edges)
 
 neighbors = {}
 for a, b in edges:
@@ -51,7 +70,8 @@ out = {
 }
 
 json.dump(out, open('data/adjacency.json', 'w'), indent=2)
-print(f'wrote data/adjacency.json: {len(nodes)} nodes, {len(edges)} edges')
+print(f'wrote data/adjacency.json: {len(nodes)} nodes, {len(edges)} edges '
+      f"({len(touching)} from outlines, -{len(overrides['remove'])} removed, +{len(overrides['add'])} added by hand)")
 
 isolated = [s['id'] for s in territories if s['id'] not in neighbors]
 if isolated:

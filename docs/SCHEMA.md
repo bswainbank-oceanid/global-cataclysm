@@ -44,12 +44,15 @@ as x=0; north-south does not wrap), and the touch test wraps too. It
 replaced a centre-point Delaunay triangulation: edges no longer depend on
 where a space's centre point happens to sit, and two land spaces
 separated by water are not adjacent (they connect through the sea zone).
+A short hand-maintained `data/adjacency_overrides.json` then removes pairs
+that touch but aren't adjacent in play (mostly a sea zone whose polygon merely
+overlaps a coast it doesn't border) and adds any that don't touch.
 
 ```
 {
   "reference_image_width_px": 3500,
   "wraps_east_west": true,
-  "node_count": 149, "edge_count": 420,
+  "node_count": 149, "edge_count": 403,
   "nodes": { "<id>": {"type": "land"|"sea", "name": string}, ... },
   "edges": [[a, b], ...],                    // sorted, deduped, order-independent
   "neighbors_ordered": { "<id>": [neighbor ids...], ... }  // sorted by id; order carries no meaning

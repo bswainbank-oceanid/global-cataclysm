@@ -19,7 +19,10 @@ which runs, in order:
    adjacent; they connect through the sea between. Fully regenerable —
    kept in `data/` rather than `derived/` because it's
    foundational/canonical enough to want reviewed directly, but nothing
-   in it is hand-edited.
+   in the generated file is hand-edited; the few hand corrections live in
+   `data/adjacency_overrides.json` (`remove`: outlines touch but the pair is not
+   adjacent in play; `add`: adjacent in play but the outlines don't touch), and
+   the script warns about any that no longer have an effect.
 2. `tools/compute_foreign_neighbors.py` — needs (1); `data/territories.json`
    + `data/adjacency.json` → `derived/adjacency_foreign.json`
 3. `tools/compute_faction_profile.py` — needs (2) →

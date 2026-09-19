@@ -1,0 +1,91 @@
+{
+ "_note": "Hand-confirmed corrections applied on top of the outline-derived adjacency (tools/compute_adjacency.py). 'remove': pairs whose outlines touch but that are NOT adjacent in play (the sea zone only overlaps the land, or touches a coastline it does not border). 'add': pairs that are adjacent in play but whose outlines do not touch (none yet). Each entry is [id, id, 'names']; only the ids are read. Source: reference/GC Adjacency.ods ('Wrong' column, the 'Missing' column was empty).",
+ "remove": [
+  [
+   4,
+   8,
+   "Baffin Bay / Karelia"
+  ],
+  [
+   1,
+   7,
+   "Arctic Ocean / Norway"
+  ],
+  [
+   62,
+   41,
+   "Eastern Mediterranean Sea / Romania"
+  ],
+  [
+   28,
+   49,
+   "France / Western Mediterranean Sea"
+  ],
+  [
+   60,
+   90,
+   "Sargasso Sea / West Africa"
+  ],
+  [
+   59,
+   90,
+   "North Atlantic / West Africa"
+  ],
+  [
+   96,
+   97,
+   "Gulf of Guinea / Nigeria"
+  ],
+  [
+   104,
+   137,
+   "Congo / South Atlantic"
+  ],
+  [
+   127,
+   126,
+   "Drake Passage / Chile"
+  ],
+  [
+   94,
+   117,
+   "Colombia / South Pacific"
+  ],
+  [
+   86,
+   78,
+   "Western Caribbean Sea / Mexico"
+  ],
+  [
+   80,
+   93,
+   "Panama / Southeast Pacific"
+  ],
+  [
+   68,
+   78,
+   "North-Central Pacific / Mexico"
+  ],
+  [
+   150,
+   11,
+   "Bering Strait / Hudson Bay"
+  ],
+  [
+   10,
+   11,
+   "Western Canada / Hudson Bay"
+  ],
+  [
+   99,
+   74,
+   "Arabian Sea / Indochina"
+  ],
+  [
+   124,
+   134,
+   "South-Eastern Indian Ocean / Eastern Australia"
+  ]
+ ],
+ "add": []
+}

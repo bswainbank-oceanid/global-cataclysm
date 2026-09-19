@@ -63,6 +63,11 @@ for tid in spaces:
         warnings.append(f"{tid} {spaces[tid]['name']} is completely covered by another space's outline")
 
 touching = touching_pairs(labels, args.touch_px)
+# data/adjacency_overrides.json's hand corrections are intended differences from the
+# outlines, so --diff expects them rather than flagging them.
+_ov = json.load(open('data/adjacency_overrides.json'))
+touching -= {(min(a, b), max(a, b)) for a, b, *_ in _ov['remove']}
+touching |= {(min(a, b), max(a, b)) for a, b, *_ in _ov['add']}
 R = args.touch_px
 
 confirmed = sorted(edges & touching)
