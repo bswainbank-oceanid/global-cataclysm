@@ -64,10 +64,17 @@ func stacks(tid: int) -> Dictionary:
 	var out := {}
 	for u in units_at(tid):
 		var by_type: Dictionary = out.get(u["owner"], {})
-		var key: String = u["unit_type"] + (PROMOTED_SUFFIX if u.get("promoted", false) else "")
+		# A land unit at sea is in Transport form: it shows as a Transport.
+		var key: String = "Transport" if in_transport_form(tid, u) else u["unit_type"] + (PROMOTED_SUFFIX if u.get("promoted", false) else "")
 		by_type[key] = by_type.get(key, 0) + 1
 		out[u["owner"]] = by_type
 	return out
+
+
+## True for a Land-category unit sitting in a sea zone: there it is a Transport
+## (rules.json water_movement_bonus_rule), one transport per unit.
+func in_transport_form(tid: int, unit: Dictionary) -> bool:
+	return GameData.territories[tid]["type"] == "sea" and GameData.units["units"][unit["unit_type"]]["category"] == "Land"
 
 
 ## Every unit in a space, as the server's unit dicts (unit_id, unit_type,

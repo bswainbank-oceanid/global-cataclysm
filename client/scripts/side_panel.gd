@@ -185,7 +185,7 @@ func show_space(tid: int) -> void:
 		var units: Array = by_owner[code]
 		units.sort_custom(_unit_before)
 		for u in units:
-			var tile := UnitTile.make(u)
+			var tile := UnitTile.make(u, GameStore.in_transport_form(tid, u))
 			tile.button_pressed = _selected_units.has(int(u["unit_id"]))
 			tile.toggled.connect(_on_unit_toggled.bind(int(u["unit_id"])))
 			flow.add_child(tile)

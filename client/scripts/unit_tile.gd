@@ -16,11 +16,13 @@ const HP_W := 7.0
 const XP_PIPS := 5  # rules.json promotion.xp_required
 
 var unit: Dictionary
+var in_transport := false  # a land unit at sea: drawn as a Transport carrying it, no XP/HP
 
 
-static func make(u: Dictionary) -> UnitTile:
+static func make(u: Dictionary, transport_form := false) -> UnitTile:
 	var tile := UnitTile.new()
 	tile.unit = u
+	tile.in_transport = transport_form
 	tile.custom_minimum_size = SIZE
 	tile.toggle_mode = true
 	tile.focus_mode = Control.FOCUS_NONE
@@ -37,6 +39,8 @@ func max_hp() -> int:
 
 
 func _describe() -> String:
+	if in_transport:
+		return "Transport carrying %s #%d" % [unit["unit_type"], int(unit["unit_id"])]
 	return "%s #%d\nHP %d/%d   XP %d/%d%s" % [
 		unit["unit_type"], int(unit["unit_id"]), int(unit["current_hp"]), max_hp(),
 		mini(int(unit.get("xp", 0)), XP_PIPS), XP_PIPS, "   (promoted)" if unit.get("promoted", false) else ""]
@@ -54,9 +58,14 @@ func _draw() -> void:
 	var icon_rect := Rect2(ICON_POS, Vector2(ICON, ICON))
 	draw_rect(icon_rect.grow(1.5), Color(0, 0, 0, 0.85))
 	draw_rect(icon_rect, owner_col.lightened(0.05))
-	var tex := UnitIcons.get_icon(unit["unit_type"])
+	var tex := UnitIcons.get_icon("Transport" if in_transport else unit["unit_type"])
 	if tex != null:
-		draw_texture_rect(tex, icon_rect.grow(-4), false)
+		# In transport form the ship sits low, leaving the deck free for its cargo box.
+		draw_texture_rect(tex, Rect2(icon_rect.position + Vector2(5, 10), Vector2(22, 22)) if in_transport else icon_rect.grow(-4), false)
+
+	if in_transport:
+		_draw_transport(icon_rect, owner_col)
+		return
 
 	# Promotion star above the unit.
 	if unit.get("promoted", false):
@@ -90,3 +99,15 @@ func _draw() -> void:
 		var r := Rect2(HP_X, y, HP_W, box_h)
 		draw_rect(r, Color.WHITE if i < hp else Color(0.9, 0.15, 0.15))
 		draw_rect(r, Color(0, 0, 0, 0.85), false, 1.0)
+
+
+## Transport form (the cargo ship is the tile's icon): the land unit it carries
+## in a visible box on its deck. (Nothing to show for XP or HP -- in transport form the
+## ship is what fights, and transported units earn no XP.)
+func _draw_transport(icon_rect: Rect2, owner_col: Color) -> void:
+	var box := Rect2(icon_rect.position + Vector2(7, 2), Vector2(18, 18))
+	draw_rect(box, owner_col.darkened(0.5))
+	draw_rect(box, Color(1, 1, 1, 0.95), false, 1.5)
+	var core := UnitIcons.get_icon(unit["unit_type"])
+	if core != null:
+		draw_texture_rect(core, box.grow(-2), false)
