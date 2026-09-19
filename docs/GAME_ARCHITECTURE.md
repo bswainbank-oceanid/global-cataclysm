@@ -193,7 +193,7 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 67 tests) — first vertical slice,
+- ⬜ WebSocket server (`server/`, 76 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
   (NAA and GPC both BOTs watched by a spectator client -- see the watch
   mode below; the human-play protocol described next is still in place and
@@ -354,6 +354,23 @@ the same JSON, not a parallel editing path.
   and before each battle on your own turn; the "yours" options are inert
   while there is no HUMAN faction. Unpaused phases run back to back with no
   added delay, waiting only for the previous phase's arrows to finish
+  **Human players:** the demo server now runs NAA as a HUMAN and GPC as a bot
+  (`python -m server.app --human none` for the old bots-only watch). A human
+  faction's phases go through the same queue: its Purchase queue carries
+  `engine.purchase_options` (treasury, each legal target's remaining capacity and
+  whether the next unit is priced at a Strategic Center, staged orders with exact
+  costs), and the client edits it with `stage_purchase` (the whole list; validated
+  by `submit_purchases`, answered with a refreshed `phase_queue` or an error plus
+  the unchanged queue); `next` confirms it, irreversibly. Its other phases stage
+  nothing (combat/non-combat move UIs are not built), so they are passes. In the
+  client the middle panel of the right column (`OrdersPanel`) is where orders are
+  made: select a territory you control or an adjacent sea zone on the map, and it
+  shows where units deploy (a sea zone is paid from, and limited by, its adjacent
+  territories, Strategic Centers first), a row per unit type with its price and
+  -/+ buttons, and the MCP budget (budget / queued / left). Queued purchases
+  appear in the lower box, each with a [-] link to remove one, and as the darker
+  box on the map. Submitting is a `HoldButton`: hold the mouse or Space for 1
+  second, a ring fills around the button, and releasing early cancels.
   shortening. While phases are running unpaused the Next button becomes a **Pause**
   button: it holds the phase in hand (or the next one, mid-execution) and
   offers Next as a scheduled pause would; after that Settings apply again. A battle that pauses because of the battle options (not an
