@@ -147,12 +147,12 @@ class UnitInstance:
         each other.
 
         air_superiority: True only for the pre-combat air-superiority
-        round -- Fighter steps its attack die up one size (stacking on
-        top of any promotion, same as round1_bonus would); Bomber steps
-        its attack die DOWN one size instead and its damage is fixed at
-        2 (an absolute override, not a relative one -- Bomber's normal
-        damage, 4, isn't touched by promotion either, so there's nothing
-        to stack against). Every other unit type is unaffected -- this
+        round -- Fighter steps its attack die up TWO sizes (D6 -> D10;
+        stacking on top of any promotion, same as round1_bonus would);
+        Bomber's die is unchanged (its base D8 already is the design doc's
+        "D8 attack") and its damage is fixed at 2 (an absolute override,
+        not a relative one -- Bomber's normal damage, 3, isn't touched by
+        promotion either, so there's nothing to stack against). Every other unit type is unaffected -- this
         never touches defense, so it plays no part in a target's
         defense_of computation, only the acting unit's own roll."""
         if self.in_transport_form:
@@ -189,11 +189,9 @@ class UnitInstance:
             defense = min(defense + 1, 10)
         if air_superiority:
             if self.unit_type == 'Fighter' and die is not None:
-                die = step_up_die(die)
+                die = step_up_die(step_up_die(die))  # two steps: D6 -> D10 (design doc: "D10 Attack")
             elif self.unit_type == 'Bomber':
-                if die is not None:
-                    die = step_down_die(die)
-                damage = 2
+                damage = 2  # die unchanged: its D8 IS the air-superiority die ("D8 Attack, 2 Damage")
         return {
             'attack_die': die,
             'defense': defense,

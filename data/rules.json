@@ -146,8 +146,8 @@
     "air_superiority_rounds": 1,
     "air_superiority_trigger": "occurs only if both sides in the battle have at least 1 air unit present AND at least one of the two sides has at least 1 Fighter present; two bomber-only air forces facing each other do not trigger it",
     "air_superiority_die_adjustments": {
-      "fighter": "attack die steps up one size for this round only (D8 -> D10), stacking on top of an existing promotion the same way first_round_bonuses would (a promoted Fighter, D8->D10 from promotion, steps to D12 for air superiority).",
-      "bomber": "attack die steps DOWN one size instead (D10 -> D8), and damage is fixed at 2 for this round -- an absolute override of Bomber's normal 4, not a relative one (promotion doesn't touch damage either, so there's nothing to stack against here).",
+      "fighter": "attack die steps up TWO sizes for this round only (D6 -> D10, the design doc's \"D10 Attack\"), stacking on top of an existing promotion the same way first_round_bonuses would (a promoted Fighter, D6->D8 from promotion, steps to D12 for air superiority).",
+      "bomber": "attack die is unchanged (its base D8 already is the design doc's \"D8 Attack\"; a promoted Bomber keeps its promotion die), and damage is fixed at 2 for this round -- an absolute override of Bomber's normal 3, not a relative one (promotion doesn't touch damage either, so there's nothing to stack against here). Before the design doc's aircraft die/damage reduction this was a one-size step DOWN (D10 -> D8); with the base die now D8 the step is gone.",
       "scope": "only the pre-combat air-superiority round (round_number 0) -- rounds 1-3 of main combat use each unit's normal stats. Never touches defense, only the acting unit's own die/damage.",
       "status": "implemented -- see UnitInstance.effective_stats' air_superiority parameter"
     },

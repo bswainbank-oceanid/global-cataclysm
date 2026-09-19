@@ -47,8 +47,8 @@
       "category": "Air",
       "cost": 10,
       "sc_cost": 7,
-      "attack_die": "D8",
-      "damage": 3,
+      "attack_die": "D6",
+      "damage": 2,
       "defense": 8,
       "hp": 2,
       "combat_move": 2,
@@ -62,15 +62,15 @@
       "category": "Air",
       "cost": 10,
       "sc_cost": 7,
-      "attack_die": "D10",
-      "damage": 4,
+      "attack_die": "D8",
+      "damage": 3,
       "defense": 7,
       "hp": 3,
       "combat_move": 3,
       "non_combat_move": 3,
       "purchasable": true,
       "special_abilities": [
-        "Air Superiority Defense: D8 attack, 2 damage in the pre-combat air superiority round"
+        "Air Superiority: D8 attack, 2 damage in the pre-combat air superiority round"
       ]
     },
     "Aircraft Carrier": {
