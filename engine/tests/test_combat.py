@@ -513,5 +513,49 @@ class TestSubmarineAirInvisibility(unittest.TestCase):
         self.assertEqual(target.unit_id, 1, 'a Cruiser (not Submarine or Air) can target a Submarine normally')
 
 
+class TestTransportFormInSeaBattles(unittest.TestCase):
+    """rules.json combat.transport_form_in_sea_battles: a Land-category unit in
+    a SEA battle is Transport cargo -- no attack, defense 6, 1 HP, no XP, and
+    it dies with one hit; a survivor gets its real HP back."""
+
+    def test_cargo_never_rolls(self):
+        escort = make(1, 'Cruiser', 'NAA')
+        cargo = make(2, 'Armor', 'NAA')
+        foe = make(3, 'Submarine', 'AAC')
+        events = drain([escort, cargo], [foe], 'sea', random.Random(1))
+        rollers = {e.unit_id for e in events if e.kind == EventKind.UNIT_ROLL}
+        self.assertNotIn(2, rollers)
+
+    def test_cargo_is_sunk_by_any_hit_whatever_its_own_hp(self):
+        cargo = make(1, 'Armor', 'NAA')  # 4 HP as a land unit
+        foe = make(2, 'Cruiser', 'AAC')  # D10, damage well under 4? one hit still kills a 1-HP transport
+        events = drain([cargo], [foe], 'sea', ScriptedRNG([10, 10, 10, 10]))
+        self.assertEqual(events[-1].eliminated_attacker_ids, [1])
+        self.assertLessEqual(cargo.current_hp, 0)
+
+    def test_cargo_has_defense_6_so_a_roll_of_5_misses_it(self):
+        cargo = make(1, 'Infantry', 'NAA')  # its land defense (5, +1 Dig In) is not what counts
+        foe = make(2, 'Submarine', 'AAC')  # D8
+        events = drain([cargo], [foe], 'sea', ScriptedRNG([5, 5, 5]))
+        rolls = [e for e in events if e.kind == EventKind.UNIT_ROLL]
+        self.assertTrue(rolls and all(not r.hit for r in rolls))
+
+    def test_surviving_cargo_gets_its_hp_back_and_no_xp(self):
+        cargo = make(1, 'Armor', 'NAA', hp=3)
+        escort = make(2, 'Cruiser', 'NAA')
+        foe = make(3, 'Submarine', 'AAC')
+        drain([cargo, escort], [foe], 'sea', ScriptedRNG([1] * 20))  # nobody hits anybody
+        self.assertEqual(cargo.current_hp, 3)
+        self.assertEqual(cargo.xp, 0)
+        self.assertFalse(cargo.in_transport_form)
+
+    def test_land_units_fight_normally_in_a_land_battle(self):
+        attacker = make(1, 'Armor', 'NAA')
+        defender = make(2, 'Infantry', 'AAC')
+        events = drain([attacker], [defender], 'land', ScriptedRNG([6, 1]))
+        self.assertIn(1, {e.unit_id for e in events if e.kind == EventKind.UNIT_ROLL})
+        self.assertFalse(attacker.in_transport_form)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -244,19 +244,19 @@ def _apply_xp_and_check_promotions(round_number, attackers_before, defenders_bef
     xp_required = promotion_cfg['xp_required']
     for side_label, units_before, hit_ids in (('attacker', attackers_before, attacker_hits), ('defender', defenders_before, defender_hits)):
         for unit in units_before:
-            if unit.current_hp <= 0:
-                continue  # eliminated this round -- no XP
+            if unit.current_hp <= 0 or unit.in_transport_form:
+                continue  # eliminated this round -- no XP (and transported units never earn any)
             unit.xp += 1  # survived the round
             if unit.unit_id in hit_ids:
                 unit.xp += 1  # dealt damage
     for killer_id, victim in killed_by.items():
         killer = next((u for u in attackers_before + defenders_before if u.unit_id == killer_id and u.current_hp > 0), None)
-        if killer is not None and victim.promoted:
+        if killer is not None and victim.promoted and not victim.in_transport_form:
             killer.xp += 1
 
     for unit, side_label in [(u, 'attacker') for u in attackers_before if u.current_hp > 0] + \
                              [(u, 'defender') for u in defenders_before if u.current_hp > 0]:
-        if not unit.promoted and unit.xp >= xp_required:
+        if not unit.promoted and not unit.in_transport_form and unit.xp >= xp_required:
             unit.promoted = True
             unit.current_hp += 1  # promotion grants +1 max HP; heal it in immediately
             yield BattleEvent(kind=EventKind.PROMOTION, round_number=round_number,
@@ -361,6 +361,31 @@ def resolve_battle(attacker_units, defender_units, battle_type, rng, current_glo
     A generator yielding BattleEvent -- drain it for auto-play, or step
     it with next() for an interactive reveal. The final event is always
     BATTLE_END."""
+    # Transport form: in a SEA battle every Land-category unit present is just
+    # Transport cargo (rules.json combat.transport_form_in_sea_battles) -- it
+    # cannot attack, has the Transport's defense (6) and 1 HP, earns no XP, and
+    # dies with its ship. Its real HP is put back afterwards if it survives.
+    cargo_hp = {}
+    if battle_type == 'sea':
+        for unit in list(attacker_units) + list(defender_units):
+            if unit_defs[unit.unit_type]['category'] == 'Land':
+                cargo_hp[unit.unit_id] = unit.current_hp
+                unit.in_transport_form = True
+                unit.current_hp = unit_defs['Transport']['hp']
+    try:
+        yield from _resolve_battle_inner(attacker_units, defender_units, battle_type, rng, current_global_turn,
+                                         unit_defs, rules, round1_bonus_side=round1_bonus_side)
+    finally:
+        for unit in list(attacker_units) + list(defender_units):
+            if unit.unit_id in cargo_hp:
+                unit.in_transport_form = False
+                if unit.current_hp > 0:
+                    unit.current_hp = cargo_hp[unit.unit_id]
+
+
+def _resolve_battle_inner(attacker_units, defender_units, battle_type, rng, current_global_turn, unit_defs, rules,
+                           round1_bonus_side=None):
+    """The battle itself; see resolve_battle."""
     combat_cfg = dict(rules['combat'])
     combat_cfg['_promotion_cfg'] = rules['promotion']
     resolution_order = combat_cfg['resolution_order'][battle_type]

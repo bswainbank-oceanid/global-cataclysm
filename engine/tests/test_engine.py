@@ -3349,27 +3349,26 @@ class TestAmphibiousLandingBonusInCombat(unittest.TestCase):
         # water (no land option that turn) -- exactly the case that
         # could slip through if the battle_type == 'land' gate were
         # missing, since it's genuinely a Land-category unit that
-        # "arrived amphibiously" by this test's construction. Armor
-        # (D8, defense 7, damage 4, hp 4) is used as the attacker so a
-        # roll of 7 is a normal defense check, not the D8 die-max bypass
-        # (8), which would hit regardless of any bonus and prove nothing.
+        # "arrived amphibiously" by this test's construction. (In a sea
+        # battle it is only Transport cargo and never rolls, so a
+        # Cruiser attacks alongside it; the cargo is what would wrongly
+        # trigger the defender's bonus.) The Cruiser's roll of 7 is a
+        # normal defense check against the defender's defense 7 -- and
+        # would MISS if the amphibious bonus were wrongly granted
+        # (defense 8); D10 die-max is 10, so 7 is no bypass.
         data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
-        attacker = make_unit('Armor', 'NAA')
-        attacker.has_moved_combat = True
-        attacker.arrived_amphibiously = True
+        cargo = make_unit('Armor', 'NAA')
+        cargo.has_moved_combat = True
+        cargo.arrived_amphibiously = True
+        escort = make_unit('Cruiser', 'NAA')
         defender = make_unit('Cruiser', 'AAC')  # defense 7, hp 5
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
-            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [cargo, escort, defender]},
         )
         engine = GameEngine(gs, data)
-        # Round 1: attacker rolls 7 -- hits (7 <= 7) an unboosted
-        # defense-7 defender, dealing 4 damage (hp 5 -> 1); would MISS
-        # if the amphibious bonus were wrongly granted here (defense 8).
-        # Defender survives either way (4 < 5 hp), so pad the rest to
-        # the 3-round cap with safe misses.
-        engine.resolve_combat('NAA', rng=ScriptedRNG([7, 1, 1, 1, 1, 1]))
-        self.assertEqual(defender.current_hp, 1, 'the sea battle must not have granted the land-only amphibious bonus')
+        engine.resolve_combat('NAA', rng=ScriptedRNG([7, 1, 1, 1, 1, 1, 1, 1]))
+        self.assertLess(defender.current_hp, 5, 'the sea battle must not have granted the land-only amphibious bonus')
 
 
 class TestAdvancePhase(unittest.TestCase):

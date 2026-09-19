@@ -239,6 +239,11 @@
       "search": "a one-hop search of the battle sea zone's adjacent territories (engine/movement.py's find_emergency_landing), not bounded by the aircraft's own move budget. Priority: an adjacent own carrier first, then adjacent own land, then adjacent allied land -- notably NOT an ally's carrier, which (unlike a voluntary non-combat landing declaration) is not treated as a safe home for a forced landing. Random choice among tied options within the same priority tier. If nothing qualifies, the aircraft is lost.",
       "engine_note": "find_emergency_landing itself is a pure spatial query with no opinion on when it should be called -- enforcing the timing (post-battle only) and scope (defender only) described above is engine.py's job, not movement.py's.",
       "status": "implemented -- see engine.engine.GameEngine._resolve_stranded_defender_aircraft, called once per sea battle after _apply_battle_outcome removes the dead."
+    },
+    "transport_form_in_sea_battles": {
+      "rule": "in a SEA battle every Land-category unit present (either side) is Transport cargo for that battle: it cannot attack (no attack die), has the Transport's stats from units.json (defense 6, 1 HP), earns no XP and cannot be promoted, and is eliminated by any single hit -- the cargo is lost with its ship. A cargo unit that survives gets its own HP back afterwards (transport damage never carries over to the land unit).",
+      "scope": "sea battles only; the same unit fights normally in a land battle. A round-1 combat bonus still adds +1 to its (Transport) defense; Dig In and promotion do not apply while in transport form.",
+      "status": "implemented -- see UnitInstance.in_transport_form / effective_stats and combat.resolve_battle. Before this the engine let land units fight at sea with their own dice, defense and HP, contradicting movement.transport_amphibious and this file's own transport notes."
     }
   },
   "movement": {

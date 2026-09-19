@@ -113,6 +113,9 @@ class UnitInstance:
     # tracker -- the bonus is one-shot, only for the turn a purely-
     # amphibious assault actually lands, confirmed this session.
     arrived_amphibiously: bool = False
+    # Transient, never serialized: True only while combat.resolve_battle has this
+    # LAND unit in a SEA battle, where it is Transport cargo (see effective_stats).
+    in_transport_form: bool = field(default=False, repr=False, compare=False)
 
     def effective_stats(self, unit_defs, round1_bonus=False, defending=False, air_superiority=False):
         """unit_defs: engine.data.units() (or an equivalent test fixture).
@@ -152,6 +155,20 @@ class UnitInstance:
         to stack against). Every other unit type is unaffected -- this
         never touches defense, so it plays no part in a target's
         defense_of computation, only the acting unit's own roll."""
+        if self.in_transport_form:
+            # A land unit in a sea battle is its Transport for the battle:
+            # units.json's Transport row (defense 6, 1 HP, no attack die or
+            # damage). Promotion, Dig In and the die adjustments don't apply;
+            # a round-1 bonus still hardens the defense of the side that has it.
+            ship = unit_defs['Transport']
+            defense = ship['defense']
+            if round1_bonus and defense is not None:
+                defense = min(defense + 1, 10)
+            return {
+                'attack_die': None, 'defense': defense, 'damage': None, 'max_hp': ship['hp'],
+                'category': ship['category'],
+                'combat_move': ship['combat_move'], 'non_combat_move': ship['non_combat_move'],
+            }
         base = unit_defs[self.unit_type]
         die = base['attack_die']
         defense = base['defense']
