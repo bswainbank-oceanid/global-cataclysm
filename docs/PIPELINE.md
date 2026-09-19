@@ -52,6 +52,12 @@ zones in stable pastels, land in faction colours, outlines dark) for eyeballing
 the extracted shapes. Like `exports/map.png` it is a gitignored reference image,
 regenerated on request.
 
+`tools/debug_adjacency.py` checks `data/adjacency.json` against the real
+outlines and draws `exports/adjacency_debug.png` (green = adjacent and touching,
+red = adjacent in the data but the outlines don't touch, magenta = touching but
+missing from the data); `--only land-sea` filters to one kind of pair. It also
+warns about outlines that are identical or fully hidden.
+
 ## Editing territory data via the spreadsheet
 
 `data/territories.json` is canonical, but you don't have to edit it by
