@@ -14,13 +14,16 @@ signal executed(header: String, events: Array)
 signal log_line(text: String)
 
 var button_text := "Connecting..."
-var button_enabled := false
+var button_enabled := false  # Next can execute the queued phase
+var button_active := false   # the button can be pressed at all: Next, or Pause while playing
 var game_over := false
 
 var _queued_faction := ""  # whose phase is queued now
 var _queued_phase := ""
 var busy := Callable()  # set by main: true while arrows are still animating
 var _last_queue: Dictionary = {}  # the queue message awaiting execution
+var _playing := false  # running unpaused: the button offers Pause instead of Next
+var _pause_requested := false  # Pause pressed mid-run; takes effect when the next phase is queued
 var _auto := false  # the queued phase should run by itself (Settings say not to pause)
 var _awaiting := false  # a `next` is in flight; the reply is the next queue
 
@@ -29,6 +32,7 @@ func _ready() -> void:
 	Settings.changed.connect(func():
 		if not _last_queue.is_empty() and not _awaiting:
 			_auto = not _should_pause(_last_queue)  # a live change applies to the phase waiting now
+			_playing = _auto
 			_refresh())
 	Net.raw_message.connect(_on_message)
 	Net.disconnected.connect(func():
@@ -44,7 +48,9 @@ func _on_message(msg: Dictionary) -> void:
 		"phase_queue":
 			_awaiting = false
 			_last_queue = msg
-			_auto = not _should_pause(msg)
+			_auto = not _should_pause(msg) and not _pause_requested
+			_pause_requested = false  # a manual pause is held for exactly one phase; settings decide after
+			_playing = _auto
 			_queued_faction = str(msg["faction"])
 			_queued_phase = str(msg["phase"])
 			GameStore.set_queued_purchase(msg["events"][0] if _queued_phase == "PURCHASE" and not msg["events"].is_empty() else {})
@@ -61,6 +67,7 @@ func _on_message(msg: Dictionary) -> void:
 		"game_over":
 			_awaiting = false
 			_auto = false
+			_playing = false
 			game_over = true
 			log_line.emit("[b]Game over[/b]")
 	_refresh()
@@ -72,13 +79,16 @@ static func _header(faction: String, phase: String) -> String:
 
 func _refresh() -> void:
 	button_enabled = false
+	button_active = false
 	if game_over:
 		button_text = "Game over"
-	elif _auto:
-		button_text = "Playing...  (%s)" % _header(_queued_faction, _queued_phase)
+	elif _playing:
+		button_text = "Pausing..." if _pause_requested else "Pause"
+		button_active = not _pause_requested
 	elif _queued_phase != "" and not _awaiting:
 		button_text = "Next  >  Execute %s" % _header(_queued_faction, _queued_phase)
 		button_enabled = true
+		button_active = true
 	elif _awaiting:
 		button_text = "Executing..."
 	else:
@@ -132,6 +142,21 @@ func _process(_delta: float) -> void:
 		if busy.is_null() or not busy.call():
 			_auto = false
 			_do_advance()
+
+
+## The button's press: Pause while phases are running by themselves, else Next.
+## Pause stops at the phase in hand (or, mid-execution, at the next one) and
+## offers Next exactly like a scheduled pause; after that Settings apply again.
+func button_pressed() -> void:
+	if not _playing:
+		advance()
+		return
+	if _auto and not _awaiting:
+		_auto = false
+		_playing = false
+	else:
+		_pause_requested = true
+	_refresh()
 
 
 ## One press: execute the queued phase and move on to the next.

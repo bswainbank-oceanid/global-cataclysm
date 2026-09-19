@@ -52,7 +52,7 @@ func _ready() -> void:
 	_next.shortcut = sc
 	_next.shortcut_in_tooltip = false
 	_next.tooltip_text = "Step to the next phase (Space)"
-	_next.pressed.connect(Stepper.advance)
+	_next.pressed.connect(Stepper.button_pressed)
 	add_child(_next)
 	Stepper.changed.connect(_sync_next)
 	_sync_next()
@@ -81,7 +81,7 @@ func _ready() -> void:
 
 func _sync_next() -> void:
 	_next.text = Stepper.button_text
-	_next.disabled = not Stepper.button_enabled
+	_next.disabled = not Stepper.button_active
 
 
 func _rich_text() -> RichTextLabel:

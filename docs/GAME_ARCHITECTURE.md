@@ -354,7 +354,9 @@ the same JSON, not a parallel editing path.
   and before each battle on your own turn; the "yours" options are inert
   while there is no HUMAN faction. Unpaused phases run back to back with no
   added delay, waiting only for the previous phase's arrows to finish
-  shortening. Saved in `user://settings.cfg`; `client_shot.py` takes
+  shortening. While phases are running unpaused the Next button becomes a **Pause**
+  button: it holds the phase in hand (or the next one, mid-execution) and
+  offers Next as a scheduled pause would; after that Settings apply again. Saved in `user://settings.cfg`; `client_shot.py` takes
   `--pause never|turn|phase` and `--pause_battle`.
   Run: `python tools/sync_client_data.py` (copies reference data into the
   gitignored `client/data`, `client/assets`), `python -m server.app`, then
