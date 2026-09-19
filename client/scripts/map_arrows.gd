@@ -146,7 +146,7 @@ static func _point_at(pts: PackedVector2Array, cum: PackedFloat32Array, s: float
 func _draw_arrow(a: Dictionary, progress: float) -> void:
 	var ends := _endpoints(a)
 	var col: Color = GameStore.display_color(a["faction"]).lightened(0.3)
-	col.a = 0.93
+	col.a = 1.0  # opaque, so the shaft and head overlap without a seam
 	var edge := Color(0, 0, 0, 0.8)
 	var inv := 1.0 / zoom
 	var width_px := clampf(3.0 + int(a["count"]) * 1.5, 3.0, 22.0)
@@ -167,21 +167,28 @@ func _draw_arrow(a: Dictionary, progress: float) -> void:
 		var head_scale := hl / head_l
 
 		var s_end := total - hl
-		if s_end - s0 > 0.5 * inv:
-			var ribbon := PackedVector2Array([_point_at(pts, cum, s0)])
-			for i in pts.size():
-				if cum[i] > s0 and cum[i] < s_end:
-					ribbon.append(pts[i])
-			ribbon.append(_point_at(pts, cum, s_end))
-			draw_polyline(ribbon, edge, (width_px + 3.0) * inv, true)
-			draw_polyline(ribbon, col, width_px * inv, true)
-
 		var tip := pts[pts.size() - 1]
 		var base := _point_at(pts, cum, s_end)
 		var dir := (tip - base).normalized()
 		var side := Vector2(-dir.y, dir.x) * head_w * 0.5 * head_scale
 		var head := PackedVector2Array([tip, base + side, base - side])
+		var head_loop := PackedVector2Array(head)
+		head_loop.append(head[0])
+
+		# Two passes -- every dark outline first, then every fill on top -- so
+		# no outline runs across the join between the shaft and the head.
+		var ribbon := PackedVector2Array()
+		var ribbon_fill := PackedVector2Array()
+		if s_end - s0 > 0.5 * inv:
+			ribbon.append(_point_at(pts, cum, s0))
+			for i in pts.size():
+				if cum[i] > s0 and cum[i] < s_end:
+					ribbon.append(pts[i])
+			ribbon.append(base)
+			ribbon_fill = ribbon.duplicate()
+			ribbon_fill.append(_point_at(pts, cum, s_end + hl * 0.5))  # tuck the shaft into the head
+			draw_polyline(ribbon, edge, (width_px + 3.0) * inv, true)
+		draw_polyline(head_loop, edge, 3.2 * inv, true)
+		if not ribbon_fill.is_empty():
+			draw_polyline(ribbon_fill, col, width_px * inv, true)
 		draw_colored_polygon(head, col)
-		var loop := PackedVector2Array(head)
-		loop.append(head[0])
-		draw_polyline(loop, edge, 1.6 * inv, true)
