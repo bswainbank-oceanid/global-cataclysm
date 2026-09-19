@@ -52,7 +52,7 @@ overlaps a coast it doesn't border) and adds any that don't touch.
 {
   "reference_image_width_px": 3500,
   "wraps_east_west": true,
-  "node_count": 149, "edge_count": 403,
+  "node_count": 149, "edge_count": 388,
   "nodes": { "<id>": {"type": "land"|"sea", "name": string}, ... },
   "edges": [[a, b], ...],                    // sorted, deduped, order-independent
   "neighbors_ordered": { "<id>": [neighbor ids...], ... }  // sorted by id; order carries no meaning

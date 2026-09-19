@@ -1,5 +1,5 @@
 {
- "_note": "Hand-confirmed corrections applied on top of the outline-derived adjacency (tools/compute_adjacency.py). 'remove': pairs whose outlines touch but that are NOT adjacent in play (mostly a sea zone whose polygon only overlaps a coast it does not border). 'add': pairs adjacent in play whose outlines do not touch. Each entry is [id, id, 'names']; only the ids are read. Source: reference/GC Adjacency.ods ('Wrong' and 'Missing' columns). Bering Strait / Hudson Bay (150, 11) was first marked wrong, then listed as Missing; its outlines touch, so it stays adjacent: it is simply no longer in 'remove' (no 'add' entry needed).",
+ "_note": "Hand-confirmed corrections applied on top of the outline-derived adjacency (tools/compute_adjacency.py). 'remove': pairs whose outlines touch but that are NOT adjacent in play (mostly a sea zone whose polygon only overlaps a coast it does not border). 'add': pairs adjacent in play whose outlines do not touch. Each entry is [id, id, 'names']; only the ids are read. Source: reference/GC Adjacency.ods ('Wrong' and 'Missing' columns). Bering Strait / Hudson Bay (150, 11) was first marked wrong, then listed as Missing and dropped from the Wrong list; its outlines touch, so it stays adjacent: it is simply no longer in 'remove' (no 'add' entry needed).",
  "remove": [
   [
    4,
@@ -150,6 +150,16 @@
    57,
    79,
    "Southern United States / Northeast Pacific"
+  ],
+  [
+   146,
+   100,
+   "Himalayan Bengal / Gulf of Tonkin"
+  ],
+  [
+   45,
+   65,
+   "Sea of Japan / Eastern China"
   ]
  ],
  "add": []
