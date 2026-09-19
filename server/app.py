@@ -9,7 +9,7 @@ just that faction's connection(s), no "to" key means every connection on
 this game (everyone sees the same board).
 
 First vertical slice, per docs/GAME_ARCHITECTURE.md: ONE hardcoded game
-(NAA and AAC both BOTs, every other faction NEUTRAL -- see
+(NAA and GPC both BOTs, every other faction NEUTRAL -- see
 _build_demo_session), built fresh each time this process starts, with
 randomize_play_order=False so NAA goes first. Clients connect as
 watchers ({"type": "watch"}) and step the game a phase at a time with
@@ -44,11 +44,11 @@ WATCHER = '*watchers'  # sockets_by_faction key for spectators (not a faction co
 def _build_demo_session():
     modes = {code: FactionMode.NEUTRAL for code in data_module.factions()}
     modes['NAA'] = FactionMode.BOT
-    modes['AAC'] = FactionMode.BOT
+    modes['GPC'] = FactionMode.BOT
     gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
     turn_log = TurnLog()
     engine = GameEngine(gs, data_module, turn_log=turn_log)
-    bots = {code: RandomBot(engine, code, rng=random.Random()) for code in ('NAA', 'AAC')}
+    bots = {code: RandomBot(engine, code, rng=random.Random()) for code in ('NAA', 'GPC')}
     return GameSession(engine, turn_log, bots)
 
 

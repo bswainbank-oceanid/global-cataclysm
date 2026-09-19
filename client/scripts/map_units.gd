@@ -113,7 +113,7 @@ func _marker_width(tid: int) -> float:
 	return STAR_W if sc else DISC_W
 
 
-## The territory's value in a disc of its owner's colour (cream for
+## The territory's value (Strategic Center bonus included) in a disc of its owner's colour (cream for
 ## neutrals); a Strategic Center's disc sits inside a gold star.
 func _draw_value_marker(tid: int, c: Vector2) -> void:
 	var t: Dictionary = GameData.territories[tid]
@@ -133,7 +133,7 @@ func _draw_value_marker(tid: int, c: Vector2) -> void:
 	draw_circle(c, r + 1.0, Color(0, 0, 0, 0.85))
 	draw_circle(c, r, col)
 	var font := ThemeDB.fallback_font
-	var text := str(int(t.get("value", 0)))
+	var text := str(int(t.get("value", 0)) + (2 if t.get("strategic_center", false) else 0))  # income/deploy value: SC bonus included
 	var at := Vector2(c.x - r, c.y + 3.6)
 	if text_col == Color.WHITE:
 		draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_CENTER, r * 2.0, 10, 3, Color(0, 0, 0, 0.9))

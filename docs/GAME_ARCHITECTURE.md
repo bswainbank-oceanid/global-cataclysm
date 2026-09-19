@@ -195,7 +195,7 @@ the same JSON, not a parallel editing path.
   input, same as every other order; a UI just needs to call them).
 - ⬜ WebSocket server (`server/`, 64 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
-  (NAA and AAC both BOTs watched by a spectator client -- see the watch
+  (NAA and GPC both BOTs watched by a spectator client -- see the watch
   mode below; the human-play protocol described next is still in place and
   tested, just no longer what the demo server runs). Every one
   of the 7 `turn_order` phases is now a real client decision (Combat
