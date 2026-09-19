@@ -8,6 +8,7 @@ signal hovered_changed(tid: int)
 signal selected_changed(tid: int)
 
 var fill: MapFill
+var _stripes: Array[MapContested] = []
 var units: MapUnits
 var labels: MapLabels
 var highlight: MapHighlight        # top pass: outlines (+ land fills); the source of truth for hover/selection
@@ -29,14 +30,23 @@ func _ready() -> void:
 	_sea_fill_under = MapHighlight.new()
 	_sea_fill_under.pass_kind = MapHighlight.Pass.UNDER_LAND
 	add_child(_sea_fill_under)
+	_add_stripes(MapContested.Kind.SEA)  # beneath the ownership fill, like the sea highlight
 	fill = MapFill.new()
 	add_child(fill)
+	_add_stripes(MapContested.Kind.LAND)
 	highlight = MapHighlight.new()
 	add_child(highlight)
 	units = MapUnits.new()
 	add_child(units)
 	labels = MapLabels.new()  # above the highlight so outlines never cut through text
 	add_child(labels)
+
+
+func _add_stripes(kind: MapContested.Kind) -> void:
+	var stripes := MapContested.new()
+	stripes.kind = kind
+	_stripes.append(stripes)
+	add_child(stripes)
 
 
 ## The base map with mipmaps generated at load, so it stays smooth when
@@ -52,6 +62,8 @@ func set_zoom(z: float) -> void:
 	units.set_zoom(z)
 	highlight.set_zoom(z)
 	_sea_fill_under.set_zoom(z)
+	for stripes in _stripes:
+		stripes.set_zoom(z)
 
 
 func set_hover_enabled(on: bool) -> void:

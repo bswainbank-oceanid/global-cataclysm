@@ -39,6 +39,7 @@ func _on_message(msg: Dictionary) -> void:
 			_queued_faction = str(msg["faction"])
 			_queued_phase = str(msg["phase"])
 			GameStore.set_queued_purchase(msg["events"][0] if _queued_phase == "PURCHASE" and not msg["events"].is_empty() else {})
+			GameStore.set_queued_attack(msg["events"][0] if _queued_phase == "COMBAT_MOVE" and not msg["events"].is_empty() else {})
 			queue_shown.emit(_header(_queued_faction, _queued_phase), msg.get("skipped", []), msg["events"])
 		"phase_result":
 			executed.emit(_header(str(msg["faction"]), str(msg["phase"])), msg["events"])

@@ -176,7 +176,8 @@ func _group_size(by_type: Dictionary) -> Vector2:
 
 func _draw_group(pos: Vector2, owner: String, by_type: Dictionary, size: Vector2, dark := false) -> void:
 	var col: Color = GameData.factions[owner].color
-	draw_rect(Rect2(pos - Vector2(1.5, 1.5), size + Vector2(3, 3)), Color(0, 0, 0, 0.85))
+	# Queued purchases get a white border to set them apart from units on the board.
+	draw_rect(Rect2(pos - Vector2(1.5, 1.5), size + Vector2(3, 3)), Color(1, 1, 1, 0.95) if dark else Color(0, 0, 0, 0.85))
 	draw_rect(Rect2(pos, size), col.darkened(0.5) if dark else col.lightened(0.05))
 	match _style():
 		Style.FLAG:

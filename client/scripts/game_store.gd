@@ -8,6 +8,7 @@ extends Node
 signal state_changed
 
 var queued_purchase := {}  # the purchase event awaiting execution, {} if none
+var queued_attack := {}    # the combat_move event awaiting execution, {} if none
 var state := {}  # last full GameState.to_dict() from the server, {} until one arrives
 
 
@@ -73,6 +74,24 @@ func _add_unit(out: Dictionary, owner: String, unit_type: String, qty: int) -> v
 	var by_type: Dictionary = out.get(owner, {})
 	by_type[unit_type] = int(by_type.get(unit_type, 0)) + qty
 	out[owner] = by_type
+
+
+## Every space that is contested now or will be once the queued combat moves
+## run (their destinations), as territory ids.
+func contested_spaces() -> Array:
+	var out := {}
+	for key in state.get("territories", {}):
+		if state["territories"][key].get("contested_by") != null:
+			out[int(key)] = true
+	for o in queued_attack.get("orders", []):
+		out[int(o["path"][o["path"].size() - 1])] = true
+	return out.keys()
+
+
+## The combat_move event a phase_queue is holding for execution ({} = none).
+func set_queued_attack(event: Dictionary) -> void:
+	queued_attack = event
+	state_changed.emit()
 
 
 ## The purchase event a phase_queue is holding for execution ({} = none).
