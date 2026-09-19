@@ -27,6 +27,7 @@ var unit: Dictionary
 var in_transport := false  # a land unit at sea: drawn as a Transport carrying it
 var max_hp_override := -1  # the battle board: HP as the battle counts it (a Transport has 1)
 var mark := 0              # BattleModel.Mark: 1 = hit but alive ("/"), 2 = eliminated ("X")
+var rolling := false       # the battle board: this unit's roll is the one on show
 
 
 static func make(u: Dictionary, transport_form := false) -> UnitTile:
@@ -86,6 +87,9 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(1.0, 0.82, 0.25), false, 2.0)
 	elif is_hovered():
 		draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, 0.5), false, 1.0)
+	if rolling:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(1.0, 0.9, 0.35, 0.22))
+		draw_rect(Rect2(Vector2.ZERO, size).grow(-1.0), Color(1.0, 0.9, 0.35), false, 3.0)
 
 	if not in_transport:
 		_draw_package(Vector2.ZERO, owner_col)

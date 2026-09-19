@@ -264,8 +264,12 @@ func _do_press() -> void:
 
 
 func _sync() -> void:
+	var rolling := {}  # the units whose rolls are on show get highlighted
+	for e in _model.last_rolls:
+		rolling[int(e["unit_id"])] = true
 	for id in _model.unit_order:
 		var u: Dictionary = _model.units[id]
+		_tiles[id].rolling = rolling.has(id)
 		_tiles[id].update_from_battle(u)
 		_tiles[id].visible = u["present"]
 	_button.disabled = false

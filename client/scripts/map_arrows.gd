@@ -154,7 +154,8 @@ func _draw_arrow(a: Dictionary, progress: float) -> void:
 	col.a = 1.0  # opaque, so the shaft and head overlap without a seam
 	var edge := Color(0, 0, 0, 0.8)
 	var inv := 1.0 / zoom
-	var width_px := clampf(3.0 + int(a["count"]) * 1.5, 3.0, 22.0)
+	# A single unit is a thin line; each further unit widens the arrow, up to a broad band.
+	var width_px := clampf(2.5 + (int(a["count"]) - 1) * 2.3, 2.5, 30.0)
 	var head_w := (width_px * 1.7 + 6.0) * inv
 	var head_l := head_w * 0.9
 
