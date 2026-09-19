@@ -328,7 +328,10 @@ func _layout(animate: bool) -> void:
 		var u: Dictionary = _model.units[id]
 		if not u["present"]:
 			continue
-		var row := _row_of(u, _model.rolling_side == u["side"])
+		# The attacker starts out placed by its attack die (before any roll,
+		# too); otherwise only the side that is rolling right now is.
+		var by_die: bool = _model.rolling_side == u["side"] or (u["side"] == "attacker" and _model.round_index < 0)
+		var row := _row_of(u, by_die)
 		cells[u["side"]][row].append(id)
 		_unit_row[id] = row
 
@@ -433,10 +436,21 @@ func _draw_table() -> void:
 		_centered(t, labels[i], Rect2(col_x[i], HEADER_H, col_x[i + 1] - col_x[i], HEADER_H), 12, HudStyle.TEXT_DIM)
 
 	# Body: row lines, defense numbers, die-band labels.
+	var band_starts := {}
+	for die_name in ["-", "D6", "D8", "D10", "D12"]:
+		for i in ROWS.size():
+			if ROWS[i]["die"] == die_name:
+				band_starts[i] = true
+				break
 	for i in ROWS.size():
 		var y: float = _row_y[i]
 		var h: float = _row_h[i]
-		t.draw_line(Vector2(0, y), Vector2(TABLE_W, y), line, 1.0)
+		# A band's inner row line stops short of the die columns, so it never
+		# cuts through the band's label (D6, D8).
+		if band_starts.has(i):
+			t.draw_line(Vector2(0, y), Vector2(TABLE_W, y), line, 1.0)
+		else:
+			t.draw_line(Vector2(col_x[1], y), Vector2(col_x[6], y), line, 1.0)
 		var d := str(ROWS[i]["defense"])
 		_centered(t, d, Rect2(col_x[1], y, COL_DEF, h), 15, text)
 		_centered(t, d, Rect2(col_x[5], y, COL_DEF, h), 15, text)

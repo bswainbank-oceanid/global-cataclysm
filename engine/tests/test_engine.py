@@ -3281,6 +3281,46 @@ class TestAmphibiousLandingBonusInCombat(unittest.TestCase):
             'the round-1 defense bonus should have saved the defender',
         )
 
+    def test_preview_reports_who_has_the_bonus_and_why_without_spending_anything(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        attacker = make_unit('Infantry', 'NAA')
+        attacker.has_moved_combat = True
+        attacker.arrived_amphibiously = True
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        engine = GameEngine(gs, data)
+        preview = engine.battle_preview('NAA', 1, 'land')
+        self.assertEqual(preview['round1_bonus'], {'side': 'defender', 'reason': 'amphibious landing'})
+
+    def test_preview_shows_the_ambush_bonus_but_leaves_the_flag_for_the_battle_to_spend(self):
+        data = FakeData(territories={1: {'type': 'sea'}}, adjacency={})
+        attacker = make_unit('Cruiser', 'NAA')
+        defender = make_unit('Cruiser', 'AAC')
+        gs = make_state(
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}}, units_by_territory={1: [attacker, defender]},
+        )
+        gs.territories[1].ambush_bonus_for.add('NAA')
+        engine = GameEngine(gs, data)
+        self.assertEqual(engine.battle_preview('NAA', 1, 'sea')['round1_bonus'], {'side': 'attacker', 'reason': 'sea-deploy ambush'})
+        self.assertIn('NAA', gs.territories[1].ambush_bonus_for)  # previewing spent nothing
+        engine.begin_combat_resolution('NAA')
+        engine.resolve_one_battle('NAA', 1, 'sea', ScriptedRNG([1] * 10))
+        self.assertNotIn('NAA', gs.territories[1].ambush_bonus_for)  # fighting it did
+
+    def test_preview_has_no_bonus_when_none_applies(self):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        gs = make_state(
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_RESOLUTION,
+            contested={1: {'NAA', 'AAC'}},
+            units_by_territory={1: [make_unit('Infantry', 'NAA'), make_unit('Infantry', 'AAC')]},
+        )
+        preview = GameEngine(gs, data).battle_preview('NAA', 1, 'land')
+        self.assertEqual(preview['round1_bonus'], {'side': None, 'reason': None})
+
     def test_bonus_does_not_apply_if_any_land_attacker_walked_in_overland(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         amphibious = make_unit('Infantry', 'NAA')

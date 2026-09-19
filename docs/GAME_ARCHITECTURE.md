@@ -363,8 +363,7 @@ the same JSON, not a parallel editing path.
   band), a Resolve setting per side (Entire Battle / Round / Side / Unit Type /
   Unit; default Unit Type, remembered) that sets how much one Next Roll reveals,
   top-down dice per roll, `/` on hit units and `X` on eliminated ones (marked at
-  the hit, as they still roll that round), XP and promotions applied at round
-  end, every unit brought back at the end with the result, and End Battle to
+  the hit, as they still roll that round), XP shown the moment it is earned (promotions at round end), the first-round combat bonus named in the Ready/Round label with its side and reason, an empty-territory capture skipping the board, every unit brought back at the end with the result, and End Battle to
   continue. The dice are already fixed by the engine: the first Next Roll has the
   server fight the battle, and the client holds back the resulting state and log
   until End Battle. The engine supports it with per-round `UNIT_STATS` events and

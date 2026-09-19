@@ -36,12 +36,19 @@ var roll_index := 0
 var rolling_side := ""     # the side placed by attack die right now; "" = everyone placed by defense
 var last_rolls: Array = [] # the latest chunk's UNIT_ROLL events (the dice on show)
 var round_label := ""
+var bonus_side := ""       # who gets the first-round combat bonus ("attacker" | "defender" | "")
+var bonus_reason := ""     # ...and why (amphibious landing, sea-deploy ambush, ...)
+var _damaged_this_round := {}  # unit_id -> true once it has dealt damage this round (its XP is in)
 
 
 static func from_preview(preview: Dictionary) -> BattleModel:
 	var m := BattleModel.new()
 	m.territory_id = int(preview["territory_id"])
 	m.battle_type = str(preview["battle_type"])
+	var bonus: Dictionary = preview.get("round1_bonus", {})
+	if bonus.get("side") != null:
+		m.bonus_side = str(bonus["side"])
+		m.bonus_reason = str(bonus["reason"])
 	for side_key in ["attackers", "defenders"]:
 		for row in preview[side_key]:
 			var u: Dictionary = (row as Dictionary).duplicate()
@@ -97,8 +104,16 @@ func round_title() -> String:
 	if finished:
 		return "Battle over"
 	if round_index < 0:
-		return "Ready"
+		return "Ready" + (" - %s in round 1" % _bonus_text() if bonus_side != "" else "")
+	if bonus_side != "" and int(rounds[round_index]["round"]) == 1:
+		return "%s - %s" % [round_label, _bonus_text()]
 	return round_label
+
+
+## "Defender (GPC) bonus: amphibious landing"
+func _bonus_text() -> String:
+	var who: Array = factions_by_side()[bonus_side]
+	return "%s (%s) bonus: %s" % [bonus_side.capitalize(), " / ".join(who), bonus_reason]
 
 
 ## One press of Next Roll. `resolve` = {"attacker": Resolve, "defender": Resolve}.
@@ -145,6 +160,7 @@ func _start_next_round() -> void:
 	var r: Dictionary = rounds[round_index]
 	roll_index = 0
 	last_rolls = []  # with Entire Battle only the final round's dice stay on show
+	_damaged_this_round = {}
 	for id in unit_order:
 		if units[id]["mark"] == Mark.HIT:
 			units[id]["mark"] = Mark.NONE
@@ -192,6 +208,15 @@ func _apply_roll(e: Dictionary) -> void:
 		var t: Dictionary = units[int(e["target_unit_id"])]
 		t["hp"] = maxi(int(e["target_hp_after"]), 0)
 		t["mark"] = Mark.DEAD if int(e["target_hp_after"]) <= 0 else Mark.HIT
+		# XP shows the moment it is earned (promotion still waits for the round's
+		# end): +1 for a unit's first damage this round, and +1 more for the
+		# killing blow on a promoted unit. The round-end snapshot then settles it.
+		var hitter: Dictionary = units[int(e["unit_id"])]
+		if not _damaged_this_round.has(hitter["unit_id"]):
+			_damaged_this_round[hitter["unit_id"]] = true
+			hitter["xp"] = int(hitter["xp"]) + 1
+		if int(e["target_hp_after"]) <= 0 and bool(t["promoted"]) and not bool(t["cargo"]):
+			hitter["xp"] = int(hitter["xp"]) + 1
 
 
 ## Exclusive end index of the chunk starting at `i` for this Resolve mode.

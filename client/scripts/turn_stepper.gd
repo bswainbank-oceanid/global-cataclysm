@@ -195,6 +195,8 @@ func _battle_in(msg: Dictionary) -> Dictionary:
 		return {}
 	for e in msg["events"]:
 		if str(e.get("kind", "")) == "battle_preview":
+			if e["defenders"].is_empty():
+				return {}  # walking into an empty territory: a capture, not a battle
 			return e
 	return {}
 

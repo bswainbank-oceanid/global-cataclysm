@@ -99,5 +99,34 @@ func _initialize() -> void:
 				_check(t["mark"] != BattleModel.Mark.NONE or m.finished, "a hit target carries a mark")
 				saw_hit = true
 		guard += 1
-	print("model test: saw_hit=%s, failures=%d" % [saw_hit, _failures])
+	# A first-round combat bonus is named in the label, for round 1 only.
+	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	data["preview"]["round1_bonus"] = {"side": "defender", "reason": "amphibious landing"}
+	var mb := BattleModel.from_preview(data["preview"])
+	mb.load_events(data["events"])
+	_check(mb.round_title().begins_with("Ready") and mb.round_title().contains("amphibious landing"), "Ready label names the bonus")
+	mb.press(_all(BattleModel.Resolve.UNIT))
+	_check(mb.round_title().begins_with("Round 1") and mb.round_title().contains("Defender") and mb.round_title().contains("amphibious landing"), "Round 1 label names side and reason: " + mb.round_title())
+	mb.press(_all(BattleModel.Resolve.ROUND))
+	mb.press(_all(BattleModel.Resolve.ROUND))
+	if not mb.finished and mb.round_index >= 1:
+		_check(not mb.round_title().contains("bonus"), "later rounds carry no bonus: " + mb.round_title())
+
+	# XP shows the moment a unit deals damage (promotion waits for the round's end).
+	m = _load(path)
+	var xp_checked := false
+	guard = 0
+	while not m.finished and guard < 100:
+		var before := {}
+		for id in m.unit_order:
+			before[id] = int(m.units[id]["xp"])
+		var same_round := m.round_index
+		m.press(_all(BattleModel.Resolve.UNIT))
+		if m.round_index == same_round and not m.last_rolls.is_empty():
+			var e: Dictionary = m.last_rolls[0]
+			if bool(e.get("hit", false)) and int(e["target_hp_after"]) > 0:
+				_check(int(m.units[int(e["unit_id"])]["xp"]) > before[int(e["unit_id"])] or m.round_index != same_round, "a hit shows XP at once")
+				xp_checked = true
+		guard += 1
+	print("model test: saw_hit=%s, xp_checked=%s, failures=%d" % [saw_hit, xp_checked, _failures])
 	quit(1 if _failures > 0 else 0)

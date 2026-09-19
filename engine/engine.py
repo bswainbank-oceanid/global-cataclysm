@@ -121,6 +121,12 @@ class NonCombatMoveOrder:
     destination: int
 
 
+# The reasons round1_bonus reports (shown to players on the battle board).
+ROUND1_RECLAIM = 'former-ally territory reclaim'
+ROUND1_AMBUSH = 'sea-deploy ambush'
+ROUND1_AMPHIBIOUS = 'amphibious landing'
+
+
 class GameEngine:
     def __init__(self, game_state, data_module=None, stats=None, combat_rng=None, turn_log=None):
         self.game_state = game_state
@@ -827,10 +833,12 @@ class GameEngine:
                     out[-1]['hp'] = out[-1]['max_hp']  # a Transport starts at full HP
             return out
 
+        side, reason = self.round1_bonus(faction, territory_id, battle_type, attackers, defenders)
         return {
             'kind': 'battle_preview', 'territory_id': territory_id, 'battle_type': battle_type,
             'attackers': rows('attacker', attackers),
             'defenders': rows('defender', defenders),
+            'round1_bonus': {'side': side, 'reason': reason},
         }
 
     def battle_previews(self, faction):
@@ -955,6 +963,28 @@ class GameEngine:
             raise ValueError(f'{faction} has already resolved combat this turn')
         self._combat_resolved.add(faction)
 
+    def round1_bonus(self, faction, territory_id, battle_type, attacker_units, defender_units):
+        """(side, reason) for combat.first_round_bonuses in the battle `faction`
+        is about to fight at `territory_id`: which side ('attacker' |
+        'defender', or None) gets it and why (a ROUND1_* text, or None). A pure
+        query -- resolve_one_battle spends the one-shot ambush flag itself --
+        so a battle board can say up front who has the bonus. Priority: a
+        former-ally reclaim, then a sea-deploy ambush, then an amphibious
+        landing (a battle only ever gets one)."""
+        t = self.game_state.territories[territory_id]
+        unit_defs = self.data.units()
+        if t.reclaim_bonus_for == faction:
+            return 'attacker', ROUND1_RECLAIM
+        if t.reclaim_bonus_for is not None and any(u.owner == t.reclaim_bonus_for for u in defender_units):
+            return 'defender', ROUND1_RECLAIM
+        if faction in t.ambush_bonus_for:
+            return 'attacker', ROUND1_AMBUSH
+        if battle_type == 'land':
+            land_attackers = [u for u in attacker_units if unit_defs[u.unit_type]['category'] == 'Land']
+            if land_attackers and all(u.has_moved_combat and u.arrived_amphibiously for u in land_attackers):
+                return 'defender', ROUND1_AMPHIBIOUS
+        return None, None
+
     def resolve_one_battle(self, faction, territory_id, battle_type, rng=None):
         """Fights ONE of `faction`'s declared_battles (see resolve_combat's
         docstring for the bonuses and outcome handling), applies its
@@ -968,18 +998,9 @@ class GameEngine:
         attacker_units, defender_units = self.gather_battle_units(territory_id, faction)
         t = self.game_state.territories[territory_id]
 
-        round1_bonus_side = None
-        if t.reclaim_bonus_for == faction:
-            round1_bonus_side = 'attacker'
-        elif t.reclaim_bonus_for is not None and any(u.owner == t.reclaim_bonus_for for u in defender_units):
-            round1_bonus_side = 'defender'
-        elif faction in t.ambush_bonus_for:
-            round1_bonus_side = 'attacker'
-            t.ambush_bonus_for.discard(faction)
-        elif battle_type == 'land':
-            land_attackers = [u for u in attacker_units if unit_defs[u.unit_type]['category'] == 'Land']
-            if land_attackers and all(u.has_moved_combat and u.arrived_amphibiously for u in land_attackers):
-                round1_bonus_side = 'defender'
+        round1_bonus_side, bonus_reason = self.round1_bonus(faction, territory_id, battle_type, attacker_units, defender_units)
+        if bonus_reason == ROUND1_AMBUSH:
+            t.ambush_bonus_for.discard(faction)  # one-shot: spent by fighting this battle
 
         events = list(resolve_battle(
             attacker_units, defender_units, battle_type, rng,
