@@ -12,6 +12,7 @@ var _hover_label: Label
 var _top: TopBar
 var _side: SidePanel
 var _battle_panel: BattlePanel
+var _view_before_battles := {}  # the camera before the first auto-zoom to a battle: {pos, zoom}
 
 
 func _ready() -> void:
@@ -77,7 +78,16 @@ func _ready() -> void:
 	add_child(battle_panel)
 	# A battle pause first zooms to the battle and selects it; the board itself
 	# opens when the player presses Next.
-	Stepper.battle_focus.connect(func(preview: Dictionary): _focus_territory(int(preview["territory_id"])))
+	Stepper.battle_focus.connect(func(preview: Dictionary):
+		if _view_before_battles.is_empty():  # remember where we were, to return after the last battle
+			_view_before_battles = {"pos": _cam.position, "zoom": _cam.zoom.x}
+		_focus_territory(int(preview["territory_id"])))
+	Stepper.combat_resolution_ended.connect(func():
+		if not _view_before_battles.is_empty():
+			_cam.jump_to(_view_before_battles["pos"], _view_before_battles["zoom"])
+			if Dbg.args.has("shot"):
+				print("[dbg] zoomed back out after combat resolution to zoom %.2f" % _cam.zoom.x)
+			_view_before_battles = {})
 	Stepper.battle_opened.connect(battle_panel.open)
 	Stepper.battle_result.connect(battle_panel.receive_events)
 	battle_panel.roll_requested.connect(Stepper.execute_open_battle)
@@ -133,9 +143,15 @@ func _start_view() -> void:
 		else:
 			await Stepper.wait_ready()
 		if Dbg.args.has("battle_rolls"):
-			if Stepper.has_pending_battle():
-				Stepper.button_pressed()  # the player's go-ahead, so the board opens
-			await _battle_panel.debug_press(int(Dbg.args["battle_rolls"]))
+			# Scripted play: n actions, each opening a paused battle's board (the
+			# player's go-ahead) and/or pressing the board's button once.
+			for i in int(Dbg.args["battle_rolls"]):
+				if Stepper.has_pending_battle():
+					Stepper.button_pressed()
+				if _battle_panel.visible:
+					await _battle_panel.debug_press(1)
+				else:
+					await get_tree().create_timer(0.3).timeout
 	await _scripted_input()
 	Dbg.scene_ready = true
 

@@ -358,7 +358,7 @@ the same JSON, not a parallel editing path.
   button: it holds the phase in hand (or the next one, mid-execution) and
   offers Next as a scheduled pause would; after that Settings apply again. A battle that pauses because of the battle options (not an
   ordinary phase pause) opens the **battle board** (`reference/GC Battle Board
-  Mockup.pdf`): the map first zooms to the territory and selects it, the Next button then reads "Open battle board", and pressing it pops up a chart with both
+  Mockup.pdf`): the map first zooms to the territory and selects it (and returns to the previous view once Combat Resolution ends), the Next button then reads "Open battle board", and pressing it pops up a chart with both
   sides' units placed by defense (the rolling side slides into its attack-die
   band), a Resolve setting per side (Entire Battle / Round / Side / Unit Type /
   Unit; default Unit Type, remembered) that sets how much one Next Roll reveals,

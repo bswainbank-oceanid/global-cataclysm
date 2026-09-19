@@ -14,6 +14,7 @@ signal executed(header: String, events: Array)
 signal log_line(text: String)
 signal battle_focus(preview: Dictionary)    # a battle paused: zoom the map to it and select it
 signal battle_opened(preview: Dictionary)   # the player asked for it: show the battle board
+signal combat_resolution_ended              # the phase moved on after battles were focused: zoom back out
 signal battle_result(events: Array)         # ...its fought events, for the board to reveal
 
 var button_text := "Connecting..."
@@ -28,6 +29,7 @@ var _last_queue: Dictionary = {}  # the queue message awaiting execution
 var _playing := false  # running unpaused: the button offers Pause instead of Next
 var _pause_requested := false  # Pause pressed mid-run; takes effect when the next phase is queued
 var _auto := false  # the queued phase should run by itself (Settings say not to pause)
+var _battle_zoomed := false        # the map was auto-zoomed to a battle during this Combat Resolution
 var _battle_pending: Dictionary = {}  # a battle is paused, map zoomed to it, awaiting the player's go-ahead
 var _battle_open := false          # the battle board is up: hold everything it would spoil
 var _held: Array = []              # messages received meanwhile (result, state, next queue)
@@ -58,6 +60,9 @@ func _on_message(msg: Dictionary) -> void:
 		"phase_queue":
 			_awaiting = false
 			_last_queue = msg
+			if _battle_zoomed and str(msg["phase"]) != "COMBAT_RESOLUTION":
+				_battle_zoomed = false
+				combat_resolution_ended.emit()
 			_auto = not _should_pause(msg) and not _pause_requested
 			if _battle_pause(msg) and not _pause_requested:
 				_open_battle(_battle_in(msg))  # sets _auto false; the board takes over from here
@@ -166,6 +171,7 @@ func _battle_pause(msg: Dictionary) -> bool:
 ## A battle paused: zoom to it and select it, then WAIT -- the board opens only
 ## when the player says so (the Next button).
 func _open_battle(preview: Dictionary) -> void:
+	_battle_zoomed = true
 	_battle_pending = preview
 	_auto = false
 	_playing = false
