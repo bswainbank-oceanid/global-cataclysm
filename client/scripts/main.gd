@@ -68,6 +68,7 @@ func _ready() -> void:
 	_hover_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	map_area.add_child(_hover_label)
 
+	_side.territory_clicked.connect(_focus_territory)
 	Stepper.log_line.connect(_side.log_line)
 	Stepper.queue_shown.connect(_side.show_queue)
 	Stepper.executed.connect(_side.log_events)
@@ -165,6 +166,16 @@ func _inject_button(pos: Vector2, pressed: bool) -> void:
 	ev.global_position = pos
 	ev.pressed = pressed
 	Input.parse_input_event(ev)
+
+
+## Select a territory and centre the map on it, zoomed to fit it (never
+## further out than the 1.0x zoom where the detailed badges show).
+func _focus_territory(tid: int) -> void:
+	_world.select(tid)
+	var box: Rect2 = GameData.bboxes[tid]
+	var vp := _viewport.size
+	var z := minf(vp.x / maxf(box.size.x * 1.6, 1.0), vp.y / maxf(box.size.y * 1.6, 1.0))
+	_cam.jump_to(GameData.label_points[tid], clampf(z, 1.0, 3.0))
 
 
 func _describe(tid: int) -> String:

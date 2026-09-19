@@ -7,6 +7,7 @@ extends Node
 
 signal state_changed
 
+var queued_purchase := {}  # the purchase event awaiting execution, {} if none
 var state := {}  # last full GameState.to_dict() from the server, {} until one arrives
 
 
@@ -51,6 +52,33 @@ func stacks(tid: int) -> Dictionary:
 		by_type[u["unit_type"]] = by_type.get(u["unit_type"], 0) + 1
 		out[u["owner"]] = by_type
 	return out
+
+
+## Purchases waiting to be deployed, {owner: {unit_type: count}}: those already
+## confirmed (the state's pending_deployment) plus the purchase currently
+## queued for execution. Shown on the map as a second, darker box.
+func pending(tid: int) -> Dictionary:
+	var out := {}
+	var t = state.get("territories", {}).get(str(tid))
+	if t != null:
+		for u in t["pending_deployment"]:
+			_add_unit(out, u["owner"], u["unit_type"], 1)
+	for o in queued_purchase.get("orders", []):
+		if int(o["deploy_at"]) == tid:
+			_add_unit(out, str(queued_purchase["faction"]), o["unit_type"], int(o["qty"]))
+	return out
+
+
+func _add_unit(out: Dictionary, owner: String, unit_type: String, qty: int) -> void:
+	var by_type: Dictionary = out.get(owner, {})
+	by_type[unit_type] = int(by_type.get(unit_type, 0)) + qty
+	out[owner] = by_type
+
+
+## The purchase event a phase_queue is holding for execution ({} = none).
+func set_queued_purchase(event: Dictionary) -> void:
+	queued_purchase = event
+	state_changed.emit()
 
 
 # ---- derived HUD stats ------------------------------------------------------

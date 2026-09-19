@@ -10,6 +10,8 @@ var _detail: VBoxContainer
 var _queue: RichTextLabel
 var _queue_head: Label
 var _log: RichTextLabel
+signal territory_clicked(tid: int)  # a territory name in the queue/log was clicked
+
 var _selected := -1
 var _next: Button
 
@@ -87,6 +89,9 @@ func _rich_text() -> RichTextLabel:
 	r.add_theme_font_size_override("normal_font_size", 12)
 	r.add_theme_font_size_override("bold_font_size", 12)  # default bold is larger, which made battle headings tower over the text
 	r.add_theme_color_override("default_color", HudStyle.TEXT)
+	r.meta_clicked.connect(func(meta): territory_clicked.emit(int(str(meta))))
+	r.meta_hover_started.connect(func(_m): r.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND)
+	r.meta_hover_ended.connect(func(_m): r.mouse_default_cursor_shape = Control.CURSOR_ARROW)
 	return r
 
 

@@ -14,6 +14,8 @@ const CATEGORY_ICON := {"Land": "Infantry", "Sea": "Cruiser", "Air": "Fighter"}
 
 const STRIP_MIN_ZOOM := 1.0
 const STRIP_SCALE := 2.0   # zoomed-in badges are drawn at this multiple of the Flag size
+const ROW_H := 20.0
+const ROW_GAP := 5.0       # between the units row and the queued-purchases row
 const GAP := 3.0           # between the value marker and the faction badges in a row
 const DISC_W := 20.0       # value marker: faction-coloured disc...
 const DISC_R := 8.5
@@ -51,29 +53,44 @@ func _draw() -> void:
 	var inv := _badge_scale() / zoom
 	for copy in [-1, 0, 1]:
 		for tid in GameData.territories:
-			var stacks := GameStore.stacks(tid)
+			var groups := _groups(GameStore.stacks(tid))
+			var queued := _groups(GameStore.pending(tid))
 			var marker_w := _marker_width(tid)
-			if stacks.is_empty() and marker_w == 0.0:
+			if groups.is_empty() and queued.is_empty() and marker_w == 0.0:
 				continue
-			var groups: Array = []  # [owner, {type: count}] in stable faction order
-			for code in GameData.faction_order:
-				if stacks.has(code):
-					groups.append([code, stacks[code]])
-			var sizes: Array = []
-			var total_w := marker_w
-			for g in groups:
-				var sz := _group_size(g[1])
-				sizes.append(sz)
-				total_w += sz.x + (GAP if total_w > 0.0 else 0.0)
 			var anchor: Vector2 = GameData.label_points[tid] + Vector2(copy * GameData.map_w, 0)
 			draw_set_transform(anchor + Vector2(0, 11.0 / zoom), 0.0, Vector2(inv, inv))
-			var x := -total_w * 0.5
-			if marker_w > 0.0:
-				_draw_value_marker(tid, Vector2(x + marker_w * 0.5, 10))
-				x += marker_w + GAP
-			for i in groups.size():
-				_draw_group(Vector2(x, 0), groups[i][0], groups[i][1], sizes[i])
-				x += sizes[i].x + GAP
+			_draw_row(tid, groups, 0.0, false, marker_w)
+			# Purchases not yet deployed: a second, darker box under the units.
+			if not queued.is_empty():
+				var y := 0.0 if groups.is_empty() and marker_w == 0.0 else ROW_H + ROW_GAP
+				_draw_row(tid, queued, y, true, 0.0)
+
+
+## [[owner, {unit_type: count}], ...] in stable faction order.
+func _groups(by_owner: Dictionary) -> Array:
+	var out: Array = []
+	for code in GameData.faction_order:
+		if by_owner.has(code):
+			out.append([code, by_owner[code]])
+	return out
+
+
+## One centred row of an optional value marker followed by faction badges.
+func _draw_row(tid: int, groups: Array, y: float, dark: bool, marker_w: float) -> void:
+	var sizes: Array = []
+	var total_w := marker_w
+	for g in groups:
+		var sz := _group_size(g[1])
+		sizes.append(sz)
+		total_w += sz.x + (GAP if total_w > 0.0 else 0.0)
+	var x := -total_w * 0.5
+	if marker_w > 0.0:
+		_draw_value_marker(tid, Vector2(x + marker_w * 0.5, y + 10))
+		x += marker_w + GAP
+	for i in groups.size():
+		_draw_group(Vector2(x, y), groups[i][0], groups[i][1], sizes[i], dark)
+		x += sizes[i].x + GAP
 
 
 ## Zoomed in (Strip) the badges are drawn twice as large as the world-zoom
@@ -89,6 +106,8 @@ func _marker_width(tid: int) -> float:
 	if t["type"] != "land":
 		return 0.0
 	var sc: bool = t.get("strategic_center", false)
+	if GameStore.is_neutral(GameStore.owner_of(tid)):
+		return 0.0  # neutrals take no part in the game; their value isn't shown
 	if _style() == Style.FLAG and not sc:
 		return 0.0
 	return STAR_W if sc else DISC_W
@@ -155,10 +174,10 @@ func _group_size(by_type: Dictionary) -> Vector2:
 			return Vector2(6 + 27 * _by_category(by_type).size(), 20)
 
 
-func _draw_group(pos: Vector2, owner: String, by_type: Dictionary, size: Vector2) -> void:
+func _draw_group(pos: Vector2, owner: String, by_type: Dictionary, size: Vector2, dark := false) -> void:
 	var col: Color = GameData.factions[owner].color
 	draw_rect(Rect2(pos - Vector2(1.5, 1.5), size + Vector2(3, 3)), Color(0, 0, 0, 0.85))
-	draw_rect(Rect2(pos, size), col.lightened(0.05))
+	draw_rect(Rect2(pos, size), col.darkened(0.5) if dark else col.lightened(0.05))
 	match _style():
 		Style.FLAG:
 			var types := _sorted_types(by_type)

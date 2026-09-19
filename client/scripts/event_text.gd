@@ -16,7 +16,10 @@ static func _fac(code: String) -> String:
 
 static func _terr(tid) -> String:
 	var id := int(tid)
-	return str(GameData.territories[id]["name"]) if GameData.territories.has(id) else str(id)
+	if not GameData.territories.has(id):
+		return str(id)
+	# A link: the side panel's log/queue centres the map on it when clicked.
+	return "[url=%d][color=#9fd0ff]%s[/color][/url]" % [id, GameData.territories[id]["name"]]
 
 
 ## [{unit_type: ...}, ...] -> "3x Armor, 2x Infantry" (most numerous first).
