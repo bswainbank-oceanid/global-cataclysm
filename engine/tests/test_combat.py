@@ -557,5 +557,52 @@ class TestTransportFormInSeaBattles(unittest.TestCase):
         self.assertFalse(attacker.in_transport_form)
 
 
+class TestUnitStatsEvents(unittest.TestCase):
+    """UNIT_STATS: per-round snapshots a battle board places units by."""
+
+    def stats_events(self, events, phase):
+        return [e for e in events if e.kind == EventKind.UNIT_STATS and e.stats_phase == phase]
+
+    def test_one_start_and_one_end_snapshot_per_round(self):
+        events = drain([make(1, 'Armor', 'NAA')], [make(2, 'Infantry', 'AAC')], 'land', ScriptedRNG([1] * 20))
+        starts = self.stats_events(events, 'start')
+        ends = self.stats_events(events, 'end')
+        self.assertEqual([e.round_number for e in starts], [1, 2, 3])
+        self.assertEqual([e.round_number for e in ends], [1, 2, 3])
+        # start snapshots come before that round's first roll, end ones after its casualties
+        kinds = [(e.kind, e.round_number) for e in events]
+        first_roll = kinds.index((EventKind.UNIT_ROLL, 1))
+        self.assertLess(events.index(starts[0]), first_roll)
+        self.assertGreater(events.index(ends[0]), kinds.index((EventKind.ROUND_CASUALTIES, 1)))
+
+    def test_snapshot_has_the_die_and_defense_each_unit_fights_with(self):
+        # Infantry defending: base defense 5, +1 Dig In = 6; Armor attacking: D8, defense 7
+        events = drain([make(1, 'Armor', 'NAA')], [make(2, 'Infantry', 'AAC')], 'land', ScriptedRNG([1] * 20))
+        rows = {r['unit_id']: r for r in self.stats_events(events, 'start')[0].unit_stats}
+        self.assertEqual((rows[1]['side'], rows[1]['die'], rows[1]['defense']), ('attacker', 'D8', 7))
+        self.assertEqual((rows[2]['side'], rows[2]['die'], rows[2]['defense']), ('defender', 'D6', 6))
+
+    def test_round_one_bonus_shows_up_in_the_round_one_snapshot_only(self):
+        events = drain([make(1, 'Armor', 'NAA')], [make(2, 'Cruiser', 'AAC')], 'sea', ScriptedRNG([1] * 20),
+                       round1_bonus_side='attacker')
+        r1, r2 = self.stats_events(events, 'start')[:2]
+        armor_r1 = next(r for r in r1.unit_stats if r['unit_id'] == 1)
+        cruiser_r1 = next(r for r in r1.unit_stats if r['unit_id'] == 2)
+        cruiser_r2 = next(r for r in r2.unit_stats if r['unit_id'] == 2)
+        self.assertIsNone(armor_r1['die'])  # cargo in a sea battle: no attack die
+        self.assertTrue(armor_r1['cargo'])
+        self.assertEqual(cruiser_r1['die'], 'D10')
+        self.assertEqual(cruiser_r2['die'], 'D10')
+
+    def test_end_snapshot_reflects_damage_and_xp(self):
+        attacker = make(1, 'Armor', 'NAA')
+        defender = make(2, 'Infantry', 'AAC')
+        events = drain([attacker], [defender], 'land', ScriptedRNG([6, 1]))
+        end = self.stats_events(events, 'end')[0]
+        rows = {r['unit_id']: r for r in end.unit_stats}
+        self.assertLessEqual(rows[2]['hp'], 0)  # the Infantry took the hit
+        self.assertGreater(rows[1]['xp'], 0)    # the Armor survived and dealt damage
+
+
 if __name__ == '__main__':
     unittest.main()

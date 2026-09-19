@@ -107,6 +107,8 @@ class TurnLog:
                     promoted_unit_id=e.promoted_unit_id, promoted_side=e.promoted_side,
                     owner=owner_by_id.get(e.promoted_unit_id),
                 )
+            elif e.kind == EventKind.UNIT_STATS:
+                entry.update(stats_phase=e.stats_phase, units=e.unit_stats)
             elif e.kind == EventKind.BATTLE_END:
                 entry.update(
                     outcome=e.outcome,

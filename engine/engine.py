@@ -73,7 +73,7 @@ import random
 from dataclasses import dataclass
 
 from . import data as _default_data
-from .combat import BattleResult, EventKind, resolve_battle
+from .combat import BattleResult, EventKind, resolve_battle, unit_stat_rows
 from .economy import compute_income
 from .movement import (
     _is_ally_or_self, find_emergency_landing, legal_air_move_destinations,
@@ -805,13 +805,32 @@ class GameEngine:
 
     def battle_preview(self, faction, territory_id, battle_type):
         """A 'battle_preview' event for one battle resolve_one_battle is about
-        to fight: who is on each side. (The dice haven't been rolled, so no
-        outcome.)"""
+        to fight: who is on each side, with the numbers a battle board places
+        them by -- attack die, defense (Dig In counted for the defending
+        side), HP, XP, promotion, and `cargo` for a land unit that is Transport
+        cargo in a sea battle. (The dice haven't been rolled, so no outcome.
+        Round-specific bonuses -- air superiority, first-round -- arrive with
+        the battle's UNIT_STATS events instead.)"""
         attackers, defenders = self.gather_battle_units(territory_id, faction)
+        unit_defs = self.data.units()
+
+        def rows(side, units):
+            out = []
+            for u in units:
+                cargo = battle_type == 'sea' and unit_defs[u.unit_type]['category'] == 'Land'
+                u.in_transport_form = cargo  # stats as the battle will use them; undone below
+                try:
+                    out.extend(unit_stat_rows(side, [u], unit_defs))
+                finally:
+                    u.in_transport_form = False
+                if cargo:
+                    out[-1]['hp'] = out[-1]['max_hp']  # a Transport starts at full HP
+            return out
+
         return {
             'kind': 'battle_preview', 'territory_id': territory_id, 'battle_type': battle_type,
-            'attackers': [{'unit_id': u.unit_id, 'unit_type': u.unit_type, 'owner': u.owner} for u in attackers],
-            'defenders': [{'unit_id': u.unit_id, 'unit_type': u.unit_type, 'owner': u.owner} for u in defenders],
+            'attackers': rows('attacker', attackers),
+            'defenders': rows('defender', defenders),
         }
 
     def battle_previews(self, faction):

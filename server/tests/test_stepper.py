@@ -145,6 +145,31 @@ class TestWatch(unittest.TestCase):
             return
         self.fail('no game in 14 seeds had a turn with 2+ battles')
 
+    def test_a_battle_preview_carries_the_numbers_a_battle_board_places_units_by(self):
+        for seed in range(1, 15):
+            session = _watch_session(seed)
+            messages = session.handle_message({'type': 'watch'})[1:]
+            for _ in range(80):
+                queue = _by_type(messages, 'phase_queue')[0]
+                if queue['phase'] == 'COMBAT_RESOLUTION' and queue['events']:
+                    break
+                messages = session.handle_message({'type': 'next'})
+            else:
+                continue
+            preview = queue['events'][0]
+            for row in preview['attackers'] + preview['defenders']:
+                for key in ('unit_id', 'unit_type', 'owner', 'side', 'die', 'defense', 'hp', 'max_hp', 'xp', 'promoted', 'cargo'):
+                    self.assertIn(key, row)
+                if row['cargo']:
+                    self.assertEqual((row['die'], row['defense'], row['max_hp']), (None, 6, 1))
+            # and the executed battle carries per-round UNIT_STATS events
+            result = _by_type(session.handle_message({'type': 'next'}), 'phase_result')[0]
+            stats = [e for e in result['events'] if e.get('event_kind') == 'UNIT_STATS']
+            self.assertTrue(stats)
+            self.assertEqual({e['stats_phase'] for e in stats}, {'start', 'end'})
+            return
+        self.fail('no game in 14 seeds reached a battle')
+
     def test_aircraft_flying_home_is_its_own_step_before_the_rest_of_non_combat_move(self):
         for seed in range(1, 15):
             session = _watch_session(seed)

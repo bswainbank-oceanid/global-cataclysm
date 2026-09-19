@@ -34,6 +34,7 @@ class EventKind(Enum):
     UNIT_ROLL = 'UNIT_ROLL'
     ROUND_CASUALTIES = 'ROUND_CASUALTIES'
     PROMOTION = 'PROMOTION'
+    UNIT_STATS = 'UNIT_STATS'
     BATTLE_END = 'BATTLE_END'
 
 
@@ -61,6 +62,14 @@ class BattleEvent:
     # PROMOTION
     promoted_unit_id: Optional[int] = None
     promoted_side: Optional[str] = None
+
+    # UNIT_STATS: a snapshot of every unit fighting this round (for a battle
+    # board that has to place units by attack die / defense). stats_phase is
+    # 'start' (just before the round's first roll: the die, defense and damage
+    # each unit fights with THIS round, bonuses included) or 'end' (after the
+    # round's casualties, XP and promotions: HP, XP and promoted state).
+    stats_phase: Optional[str] = None
+    unit_stats: Optional[list] = None
 
     # BATTLE_END
     outcome: Optional[str] = None  # 'attacker_eliminated' | 'defender_eliminated' | 'contested' | 'mutual_elimination'
@@ -233,6 +242,24 @@ def _roll_side(rng, side_label, acting_units, enemy_units, unit_defs, target_cfg
         )
 
 
+def unit_stat_rows(side_label, units, unit_defs, round1_bonus=False, air_superiority=False):
+    """One dict per unit -- die, defense, damage, HP, XP, promoted, cargo -- as
+    it fights (or is fought) THIS round: the same effective_stats call the
+    round's rolls and target selection use. `cargo` marks a land unit in
+    transport form (a sea battle)."""
+    rows = []
+    for u in units:
+        stats = u.effective_stats(unit_defs, round1_bonus=round1_bonus, defending=(side_label == 'defender'),
+                                  air_superiority=air_superiority)
+        rows.append({
+            'unit_id': u.unit_id, 'side': side_label, 'unit_type': u.unit_type, 'owner': u.owner,
+            'die': stats['attack_die'], 'defense': stats['defense'], 'damage': stats['damage'],
+            'hp': u.current_hp, 'max_hp': stats['max_hp'], 'xp': u.xp, 'promoted': u.promoted,
+            'cargo': u.in_transport_form,
+        })
+    return rows
+
+
 def _apply_xp_and_check_promotions(round_number, attackers_before, defenders_before,
                                     attacker_hits, defender_hits, killed_by, promotion_cfg, unit_defs):
     """Awards XP (survive the round: +1 to every unit still alive after
@@ -290,6 +317,12 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
     attacker_order = _resolution_sequence(attackers, unit_defs, resolution_order, round1_bonus=attacker_bonus, air_superiority=air_superiority)
     defender_order = _resolution_sequence(defenders, unit_defs, resolution_order, round1_bonus=defender_bonus, air_superiority=air_superiority)
 
+    yield BattleEvent(
+        kind=EventKind.UNIT_STATS, round_number=round_number, stats_phase='start',
+        unit_stats=(unit_stat_rows('attacker', attackers, unit_defs, attacker_bonus, air_superiority)
+                    + unit_stat_rows('defender', defenders, unit_defs, defender_bonus, air_superiority)),
+    )
+
     attacker_hit_ids = set()
     defender_hit_ids = set()
     killed_by = {}  # unit_id of the killer -> victim UnitInstance, for the promoted-victim XP bonus
@@ -327,6 +360,11 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
     yield from _apply_xp_and_check_promotions(
         round_number, attackers, defenders, attacker_hit_ids, defender_hit_ids, killed_by,
         combat_cfg['_promotion_cfg'], unit_defs,
+    )
+    yield BattleEvent(
+        kind=EventKind.UNIT_STATS, round_number=round_number, stats_phase='end',
+        unit_stats=(unit_stat_rows('attacker', attackers, unit_defs, attacker_bonus, air_superiority)
+                    + unit_stat_rows('defender', defenders, unit_defs, defender_bonus, air_superiority)),
     )
 
 
