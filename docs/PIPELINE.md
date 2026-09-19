@@ -33,7 +33,7 @@ which runs, in order:
 5. `tools/build_setup_tab.py` — needs (3) and (4); adds/replaces the
    'Initial Setup' tab on the same workbook from
    `data/scenarios/starting_setup_200ipc.json` + `data/units.json`
-6. `/mnt/skills/public/xlsx/scripts/recalc.py exports/GC1972_Territories.xlsx`
+6. `tools/recalc_xlsx.py exports/GC1972_Territories.xlsx`
    — recalculates all live formulas via LibreOffice so the workbook opens
    with correct cached values (openpyxl never evaluates formulas itself)
 7. `tools/validate_setup.py` — needs (3); checks the scenario against

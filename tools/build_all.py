@@ -25,7 +25,7 @@ STEPS = [
     ['python3', 'tools/compute_faction_profile.py'],
     ['python3', 'tools/build_master_xlsx.py'],
     ['python3', 'tools/build_setup_tab.py'],
-    ['python3', '/mnt/skills/public/xlsx/scripts/recalc.py', 'exports/GC1972_Territories.xlsx'],
+    ['python3', 'tools/recalc_xlsx.py', 'exports/GC1972_Territories.xlsx'],
     ['python3', 'tools/validate_setup.py'],
     ['python3', 'tools/render_map.py'],
 ]
