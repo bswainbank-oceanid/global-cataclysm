@@ -2,10 +2,13 @@ class_name MapLabels
 extends Node2D
 ## Territory labels, drawn at constant on-screen size (the transform is
 ## counter-scaled by 1/zoom). Compact ids only when zoomed out, id + name
-## when zoomed in, sea zones dimmer and only once zoomed in a bit.
+## when zoomed in, sea zones dimmer and only once zoomed in a bit. No labels
+## at all at the far zoomed-out world view, and neutral powers' land never
+## shows its id (just its name, once zoomed in).
 
 const LAND_FULL_NAME_ZOOM := 0.75
 const SEA_MIN_ZOOM := 0.55
+const LAND_MIN_ZOOM := 0.55
 const FONT_SIZE := 12
 
 var zoom := 1.0
@@ -28,9 +31,14 @@ func _draw() -> void:
 			var is_sea: bool = t["type"] == "sea"
 			if is_sea and zoom < SEA_MIN_ZOOM:
 				continue
+			if not is_sea and zoom < LAND_MIN_ZOOM:
+				continue
+			var neutral := not is_sea and GameStore.is_neutral(GameStore.owner_of(tid))
+			if neutral and zoom < LAND_FULL_NAME_ZOOM:
+				continue
 			var text := str(tid)
 			if zoom >= LAND_FULL_NAME_ZOOM:
-				text = "%d. %s" % [tid, t["name"]]
+				text = str(t["name"]) if neutral else "%d. %s" % [tid, t["name"]]
 			var p: Vector2 = GameData.label_points[tid] + Vector2(copy * GameData.map_w, 0)
 			draw_set_transform(p, 0.0, Vector2(inv, inv))
 			var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
