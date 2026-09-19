@@ -75,9 +75,10 @@ func _ready() -> void:
 	var battle_panel := BattlePanel.new()
 	_battle_panel = battle_panel
 	add_child(battle_panel)
-	Stepper.battle_opened.connect(func(preview: Dictionary):
-		_focus_territory(int(preview["territory_id"]))  # zoom in on the battle, then pop the board
-		battle_panel.open(preview))
+	# A battle pause first zooms to the battle and selects it; the board itself
+	# opens when the player presses Next.
+	Stepper.battle_focus.connect(func(preview: Dictionary): _focus_territory(int(preview["territory_id"])))
+	Stepper.battle_opened.connect(battle_panel.open)
 	Stepper.battle_result.connect(battle_panel.receive_events)
 	battle_panel.roll_requested.connect(Stepper.execute_open_battle)
 	battle_panel.closed.connect(Stepper.release_battle)
@@ -132,6 +133,8 @@ func _start_view() -> void:
 		else:
 			await Stepper.wait_ready()
 		if Dbg.args.has("battle_rolls"):
+			if Stepper.has_pending_battle():
+				Stepper.button_pressed()  # the player's go-ahead, so the board opens
 			await _battle_panel.debug_press(int(Dbg.args["battle_rolls"]))
 	await _scripted_input()
 	Dbg.scene_ready = true

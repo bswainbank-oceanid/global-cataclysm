@@ -12,7 +12,8 @@ signal changed
 signal queue_shown(header: String, skipped: Array, events: Array)
 signal executed(header: String, events: Array)
 signal log_line(text: String)
-signal battle_opened(preview: Dictionary)   # a battle paused: show the battle board
+signal battle_focus(preview: Dictionary)    # a battle paused: zoom the map to it and select it
+signal battle_opened(preview: Dictionary)   # the player asked for it: show the battle board
 signal battle_result(events: Array)         # ...its fought events, for the board to reveal
 
 var button_text := "Connecting..."
@@ -27,6 +28,7 @@ var _last_queue: Dictionary = {}  # the queue message awaiting execution
 var _playing := false  # running unpaused: the button offers Pause instead of Next
 var _pause_requested := false  # Pause pressed mid-run; takes effect when the next phase is queued
 var _auto := false  # the queued phase should run by itself (Settings say not to pause)
+var _battle_pending: Dictionary = {}  # a battle is paused, map zoomed to it, awaiting the player's go-ahead
 var _battle_open := false          # the battle board is up: hold everything it would spoil
 var _held: Array = []              # messages received meanwhile (result, state, next queue)
 var _held_result: Dictionary = {}
@@ -35,7 +37,7 @@ var _awaiting := false  # a `next` is in flight; the reply is the next queue
 
 func _ready() -> void:
 	Settings.changed.connect(func():
-		if not _last_queue.is_empty() and not _awaiting and not _battle_open:
+		if not _last_queue.is_empty() and not _awaiting and not _battle_open and _battle_pending.is_empty():
 			_auto = not _should_pause(_last_queue)  # a live change applies to the phase waiting now
 			_playing = _auto
 			_refresh())
@@ -98,6 +100,9 @@ func _refresh() -> void:
 		button_text = "Game over"
 	elif _battle_open:
 		button_text = "Battle in progress..."
+	elif not _battle_pending.is_empty():
+		button_text = "Next  >  Open battle board  (%s)" % GameData.territories[int(_battle_pending["territory_id"])]["name"]
+		button_active = true
 	elif _playing:
 		button_text = "Pausing..." if _pause_requested else "Pause"
 		button_active = not _pause_requested
@@ -158,13 +163,29 @@ func _battle_pause(msg: Dictionary) -> bool:
 	return false
 
 
+## A battle paused: zoom to it and select it, then WAIT -- the board opens only
+## when the player says so (the Next button).
 func _open_battle(preview: Dictionary) -> void:
+	_battle_pending = preview
+	_auto = false
+	_playing = false
+	battle_focus.emit(preview)
+
+
+## Next was pressed on a paused battle: bring up its board.
+func _show_battle_board() -> void:
+	var preview := _battle_pending
+	_battle_pending = {}
 	_battle_open = true
 	_held = []
 	_held_result = {}
-	_auto = false
-	_playing = false
 	battle_opened.emit(preview)
+	_refresh()
+
+
+## Dev/scripted: is a battle paused, waiting for its board to be opened?
+func has_pending_battle() -> bool:
+	return not _battle_pending.is_empty()
 
 
 ## The board asked for the battle to be fought (its first Next Roll).
@@ -215,6 +236,9 @@ func _process(_delta: float) -> void:
 ## Pause stops at the phase in hand (or, mid-execution, at the next one) and
 ## offers Next exactly like a scheduled pause; after that Settings apply again.
 func button_pressed() -> void:
+	if not _battle_pending.is_empty():
+		_show_battle_board()
+		return
 	if not _playing:
 		advance()
 		return
@@ -242,7 +266,7 @@ func _do_advance() -> void:
 ## Waits (bounded) until a press is possible, for scripted runs.
 func wait_ready(max_seconds: float = 15.0) -> void:
 	var waited := 0.0
-	while not button_enabled and not game_over and not _battle_open and waited < max_seconds:
+	while not button_enabled and not game_over and not _battle_open and _battle_pending.is_empty() and waited < max_seconds:
 		await get_tree().process_frame
 		waited += get_process_delta_time()
 
