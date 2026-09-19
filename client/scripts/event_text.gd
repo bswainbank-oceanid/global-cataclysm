@@ -95,6 +95,11 @@ static func describe(e: Dictionary) -> String:
 			if e["orders"].is_empty():
 				return ""
 			return "%s repositions:\n%s" % [_fac(e["faction"]), _move_lines(e["orders"], func(o): return _terr(o["destination"]))]
+		"return_to_base":
+			if e["orders"].is_empty():
+				return ""
+			return "%s aircraft return to base:
+%s" % [_fac(e["faction"]), _move_lines(e["orders"], func(o): return _terr(o["to"]))]
 		"battle_summary":
 			var lines := ["[b]Battle at %s[/b] (%s)" % [_terr(e["territory_id"]), e["battle_type"]]]
 			lines.append("  Attackers: " + _by_owner(e["attackers"]))

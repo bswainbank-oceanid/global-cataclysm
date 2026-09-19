@@ -60,6 +60,17 @@ class TurnLog:
             'orders': [self._order_entry(o, unit_info, {'destination': o.destination}) for o in orders],
         })
 
+    def record_return_to_base(self, faction, moves):
+        """The automatic return-to-base step at the start of Non-Combat Move:
+        `moves` is [(unit_id, unit_type, from_territory_id, to_territory_id), ...]
+        for each air unit that actually moved (ones already home aren't
+        listed). Same 'from'/'unit_type' order shape as a real move, with
+        'to' as the destination."""
+        self.events.append({
+            'kind': 'return_to_base', 'faction': faction,
+            'orders': [{'unit_id': uid, 'unit_type': ut, 'from': src, 'to': dst} for uid, ut, src, dst in moves],
+        })
+
     @staticmethod
     def _order_entry(order, unit_info, extra):
         entry = {'unit_id': order.unit_id, **extra}

@@ -20,7 +20,9 @@ Server -> client (always broadcast to watchers):
     {"type": "phase_queue", "faction": "AAC", "phase": "PURCHASE",
      "events": [...], "skipped": ["COMBAT_MOVE"]}
         What `faction` WILL do this phase, in turn_log's event shapes
-        (purchase / combat_move / noncombat_move / alliance_plan), plus
+        (purchase / combat_move / noncombat_move / alliance_plan; for
+        Non-Combat Move also a return_to_base event -- air units the game
+        already sent home automatically when the phase opened), plus
         'battle_preview' (the battles about to be fought and who is in
         them) for Combat Resolution, or -- for the automatic Capture and
         Deploy + Income phases -- the events a dry run of the phase
@@ -101,7 +103,14 @@ class PhaseStepper:
         return messages + [self._queue, self._state_message()]
 
     def _commit(self, faction, phase):
+        """Executes the queued phase. A faction can be eliminated during its
+        OWN turn (its territory handed to an ally at Capture drops it to <=1
+        Strategic Center): active_factions() then excludes it and every
+        remaining phase call for it would raise, so those become no-ops --
+        except the global elimination check and the game-over check, which
+        still run (same handling as engine.bots.driver)."""
         engine, bot = self.engine, self.bots[faction]
+        active = faction in engine.game_state.active_factions()
         if phase == Phase.PURCHASE:
             engine.confirm_purchases(faction)
         elif phase == Phase.COMBAT_MOVE:
@@ -111,13 +120,18 @@ class PhaseStepper:
         elif phase == Phase.NONCOMBAT_MOVE:
             engine.confirm_noncombat_moves(faction)
         elif phase == Phase.CAPTURE:
-            engine.process_capture_territory(faction)
+            if active:
+                engine.process_capture_territory(faction)
             engine.process_elimination_check()
         elif phase == Phase.DEPLOY_INCOME:
-            engine.deploy_and_collect_income(faction)
+            if active:
+                engine.deploy_and_collect_income(faction)
         elif phase == Phase.ALLIANCES:
-            bot.commit_alliance_phase(self._alliance_plan)
-            engine.process_game_end_check(faction)
+            if active:
+                bot.commit_alliance_phase(self._alliance_plan)
+                engine.process_game_end_check(faction)
+            else:
+                engine.game_state.game_over = engine.would_game_end()
 
     # ---- plan ------------------------------------------------------------
 
@@ -128,7 +142,9 @@ class PhaseStepper:
         faction, phase = gs.active_faction, gs.phase
         bot = self.bots[faction]
 
-        if phase == Phase.PURCHASE:
+        if faction not in gs.active_factions():
+            events = []  # eliminated during its own turn; nothing left to do (see _commit)
+        elif phase == Phase.PURCHASE:
             bot.plan_purchase_phase()
             events = [engine.staged_purchase_event(faction)]
         elif phase == Phase.COMBAT_MOVE:
@@ -137,8 +153,10 @@ class PhaseStepper:
         elif phase == Phase.COMBAT_RESOLUTION:
             events = engine.battle_previews(faction)
         elif phase == Phase.NONCOMBAT_MOVE:
-            bot.plan_noncombat_move_phase()
-            events = [engine.staged_noncombat_move_event(faction)]
+            start = len(self.turn_log.events)
+            bot.plan_noncombat_move_phase()  # starts with the automatic return-to-base
+            returns = [e for e in self.turn_log.events[start:] if e['kind'] == 'return_to_base']
+            events = returns + [engine.staged_noncombat_move_event(faction)]
         elif phase == Phase.CAPTURE:
             events = self._dry_run(lambda sim: (
                 sim.process_capture_territory(faction), sim.process_elimination_check()))

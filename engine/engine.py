@@ -1196,6 +1196,7 @@ class GameEngine:
             u.unit_id for t in self.game_state.territories.values() for u in t.units
             if u.owner == faction and u.combat_move_origin is not None
         ]
+        moved = []
         for unit_id in pending_unit_ids:
             unit, current_id = self._find_unit(self.game_state, unit_id, faction)
             target = self._resolve_return_to_base_target(unit, faction)
@@ -1206,7 +1207,10 @@ class GameEngine:
             if target != current_id:
                 self.game_state.territories[current_id].units.remove(unit)
                 self.game_state.territories[target].units.append(unit)
+                moved.append((unit.unit_id, unit.unit_type, current_id, target))
             unit.has_moved_noncombat = True
+        if moved and self.turn_log is not None:
+            self.turn_log.record_return_to_base(faction, moved)
 
     def _resolve_return_to_base_target(self, unit, faction):
         """Where `unit` should snap back to, or None if that's no

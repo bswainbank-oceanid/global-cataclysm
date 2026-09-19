@@ -117,6 +117,24 @@ class TestWatch(unittest.TestCase):
         session = GameSession(engine, turn_log, {'AAC': RandomBot(engine, 'AAC', rng=random.Random(1))})
         self.assertEqual(session.handle_message({'type': 'watch'})[0]['type'], 'error')
 
+    def test_a_faction_eliminated_during_its_own_turn_just_ends_the_turn(self):
+        # Capture can hand the active faction's own territory to an ally and
+        # drop it to <=1 Strategic Center; every later phase call for it
+        # would raise ("not an active faction"), so they must be no-ops.
+        session = _watch_session()
+        session.handle_message({'type': 'watch'})
+        for _ in range(3):
+            session.handle_message({'type': 'next'})  # Capture is now queued
+        session.engine.game_state.factions['NAA'].eliminated = True
+        seen = []
+        for _ in range(4):
+            messages = session.handle_message({'type': 'next'})
+            self.assertNotIn('error', [m['type'] for m in messages])
+            seen += [m['type'] for m in messages]
+            if 'game_over' in seen:
+                break
+        self.assertIn('game_over', seen)
+
     def test_a_long_game_steps_cleanly_to_the_end_or_forty_turns(self):
         session = _watch_session(seed=3)
         session.handle_message({'type': 'watch'})

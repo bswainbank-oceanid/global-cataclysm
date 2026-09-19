@@ -4,6 +4,7 @@ import unittest
 from engine import data as real_data
 from engine.combat import BattleResult
 from engine.engine import GameEngine, PurchaseOrder, CombatMoveOrder, NonCombatMoveOrder
+from engine.turn_log import TurnLog
 from engine.state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode, Phase
 from engine.stats import GameStats
 
@@ -1923,6 +1924,21 @@ class TestReturnToBase(unittest.TestCase):
         self.assertIn(flyer, gs.territories[1].units)
         self.assertTrue(flyer.has_moved_noncombat)
         self.assertIsNone(flyer.combat_move_origin)
+
+    def test_return_to_base_is_logged_with_where_the_unit_went_from_and_to(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
+        flyer = make_unit('Fighter', 'NAA')
+        flyer.combat_move_origin = 1
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE,
+            units_by_territory={2: [flyer]},
+        )
+        log = TurnLog()
+        GameEngine(gs, data, turn_log=log).process_return_to_base('NAA')
+        self.assertEqual(log.events, [{
+            'kind': 'return_to_base', 'faction': 'NAA',
+            'orders': [{'unit_id': flyer.unit_id, 'unit_type': 'Fighter', 'from': 2, 'to': 1}],
+        }])
 
     def test_carrier_takeoff_returns_to_carrier_wherever_it_now_is(self):
         # Flyer departed carrier's original zone (territory 1). The

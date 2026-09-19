@@ -72,6 +72,10 @@ func _ready() -> void:
 	Stepper.log_line.connect(_side.log_line)
 	Stepper.queue_shown.connect(_side.show_queue)
 	Stepper.executed.connect(_side.log_events)
+	# The executed reply arrives just before the next phase's queue: play the
+	# old arrows out, then show the new ones.
+	Stepper.executed.connect(func(_h, _e): _world.arrows.play_queued())
+	Stepper.queue_shown.connect(func(_h, _s, events): _world.arrows.show_queued(MapArrows.from_events(events)))
 
 	await get_tree().process_frame
 	await get_tree().process_frame

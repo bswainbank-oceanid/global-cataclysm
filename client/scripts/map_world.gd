@@ -8,6 +8,7 @@ signal hovered_changed(tid: int)
 signal selected_changed(tid: int)
 
 var fill: MapFill
+var arrows: MapArrows
 var _stripes: Array[MapContested] = []
 var units: MapUnits
 var labels: MapLabels
@@ -36,6 +37,8 @@ func _ready() -> void:
 	_add_stripes(MapContested.Kind.LAND)
 	highlight = MapHighlight.new()
 	add_child(highlight)
+	arrows = MapArrows.new()
+	add_child(arrows)
 	units = MapUnits.new()
 	add_child(units)
 	labels = MapLabels.new()  # above the highlight so outlines never cut through text
@@ -60,6 +63,7 @@ func _load_base_texture() -> Texture2D:
 func set_zoom(z: float) -> void:
 	labels.set_zoom(z)
 	units.set_zoom(z)
+	arrows.set_zoom(z)
 	highlight.set_zoom(z)
 	_sea_fill_under.set_zoom(z)
 	for stripes in _stripes:
