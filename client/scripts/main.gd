@@ -69,6 +69,17 @@ func _ready() -> void:
 	map_area.add_child(_hover_label)
 
 	_side.territory_clicked.connect(_focus_territory)
+	Stepper.busy = func(): return _world.arrows.is_playing()
+
+	var settings_panel := SettingsPanel.new()
+	settings_panel.visible = false
+	settings_panel.z_index = 100
+	settings_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	settings_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	settings_panel.offset_top = 104
+	settings_panel.offset_right = -10
+	add_child(settings_panel)
+	_top.settings_pressed.connect(func(): settings_panel.visible = not settings_panel.visible)
 	Stepper.log_line.connect(_side.log_line)
 	Stepper.queue_shown.connect(_side.show_queue)
 	Stepper.executed.connect(_side.log_events)

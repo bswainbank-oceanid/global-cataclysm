@@ -117,6 +117,34 @@ class TestWatch(unittest.TestCase):
         session = GameSession(engine, turn_log, {'AAC': RandomBot(engine, 'AAC', rng=random.Random(1))})
         self.assertEqual(session.handle_message({'type': 'watch'})[0]['type'], 'error')
 
+    def test_combat_resolution_is_queued_and_fought_one_battle_at_a_time(self):
+        for seed in range(1, 15):
+            session = _watch_session(seed)
+            messages = session.handle_message({'type': 'watch'})[1:]
+            for _ in range(80):
+                queue = _by_type(messages, 'phase_queue')[0]
+                if queue['phase'] == 'COMBAT_RESOLUTION' and queue.get('battle', {}).get('count', 0) >= 2:
+                    break
+                messages = session.handle_message({'type': 'next'})
+            else:
+                continue
+            count = queue['battle']['count']
+            gs = session.engine.game_state
+            for i in range(count):
+                self.assertEqual((queue['phase'], queue['battle']['index']), ('COMBAT_RESOLUTION', i))
+                self.assertEqual(len(queue['events']), 1)
+                self.assertEqual(queue['events'][0]['kind'], 'battle_preview')
+                messages = session.handle_message({'type': 'next'})
+                result = _by_type(messages, 'phase_result')[0]
+                summaries = [e for e in result['events'] if e['kind'] == 'battle_summary']
+                self.assertEqual(len(summaries), 1)  # exactly this battle
+                self.assertEqual(summaries[0]['territory_id'], queue['events'][0]['territory_id'])
+                queue = _by_type(messages, 'phase_queue')[0]
+            self.assertEqual(queue['phase'], 'NONCOMBAT_MOVE' if queue['phase'] != 'RETURN_TO_BASE' else 'RETURN_TO_BASE')
+            self.assertNotIn(queue['phase'], ('COMBAT_RESOLUTION',))
+            return
+        self.fail('no game in 14 seeds had a turn with 2+ battles')
+
     def test_aircraft_flying_home_is_its_own_step_before_the_rest_of_non_combat_move(self):
         for seed in range(1, 15):
             session = _watch_session(seed)

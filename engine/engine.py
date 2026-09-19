@@ -803,19 +803,21 @@ class GameEngine:
         scratch.record_noncombat_move(faction, orders, self._unit_info(o.unit_id for o in orders))
         return scratch.events[0]
 
+    def battle_preview(self, faction, territory_id, battle_type):
+        """A 'battle_preview' event for one battle resolve_one_battle is about
+        to fight: who is on each side. (The dice haven't been rolled, so no
+        outcome.)"""
+        attackers, defenders = self.gather_battle_units(territory_id, faction)
+        return {
+            'kind': 'battle_preview', 'territory_id': territory_id, 'battle_type': battle_type,
+            'attackers': [{'unit_id': u.unit_id, 'unit_type': u.unit_type, 'owner': u.owner} for u in attackers],
+            'defenders': [{'unit_id': u.unit_id, 'unit_type': u.unit_type, 'owner': u.owner} for u in defenders],
+        }
+
     def battle_previews(self, faction):
-        """One 'battle_preview' event per battle resolve_combat(faction) is
-        about to fight, in resolution order: who is on each side. (The dice
-        haven't been rolled, so no outcome.)"""
-        previews = []
-        for territory_id, battle_type in self.declared_battles(faction):
-            attackers, defenders = self.gather_battle_units(territory_id, faction)
-            previews.append({
-                'kind': 'battle_preview', 'territory_id': territory_id, 'battle_type': battle_type,
-                'attackers': [{'unit_id': u.unit_id, 'unit_type': u.unit_type, 'owner': u.owner} for u in attackers],
-                'defenders': [{'unit_id': u.unit_id, 'unit_type': u.unit_type, 'owner': u.owner} for u in defenders],
-            })
-        return previews
+        """One battle_preview per battle resolve_combat(faction) is about to
+        fight, in resolution order."""
+        return [self.battle_preview(faction, tid, bt) for tid, bt in self.declared_battles(faction)]
 
     def declared_battles(self, faction):
         """Every battle `faction`'s own Combat Resolution phase must
@@ -914,6 +916,18 @@ class GameEngine:
         `rng` overrides self._combat_rng for just this one call (tests
         use this with a ScriptedRNG); leave it out to draw from the
         engine's own persistent combat_rng stream instead."""
+        self.begin_combat_resolution(faction)
+        return [
+            self.resolve_one_battle(faction, territory_id, battle_type, rng)
+            for territory_id, battle_type in self.declared_battles(faction)
+        ]
+
+    def begin_combat_resolution(self, faction):
+        """The once-per-turn gate resolve_combat goes through first (and what
+        a caller resolving battles one at a time via resolve_one_battle --
+        the watch-mode stepper -- calls before the first one): validates the
+        phase and marks `faction`'s Combat Resolution as started, so a second
+        resolve_combat this turn is refused."""
         if faction not in self.game_state.active_factions():
             raise ValueError(f'{faction} is not an active faction')
         if self.game_state.phase != Phase.COMBAT_RESOLUTION:
@@ -922,39 +936,43 @@ class GameEngine:
             raise ValueError(f'{faction} has already resolved combat this turn')
         self._combat_resolved.add(faction)
 
+    def resolve_one_battle(self, faction, territory_id, battle_type, rng=None):
+        """Fights ONE of `faction`'s declared_battles (see resolve_combat's
+        docstring for the bonuses and outcome handling), applies its
+        consequences, and returns its BattleResult. resolve_combat is
+        begin_combat_resolution plus this for each declared battle, in order;
+        a caller pacing battles itself does the same, calling
+        begin_combat_resolution once first."""
         rng = rng or self._combat_rng
         unit_defs = self.data.units()
         rules = self.data.rules()
-        results = []
-        for territory_id, battle_type in self.declared_battles(faction):
-            attacker_units, defender_units = self.gather_battle_units(territory_id, faction)
-            t = self.game_state.territories[territory_id]
+        attacker_units, defender_units = self.gather_battle_units(territory_id, faction)
+        t = self.game_state.territories[territory_id]
 
-            round1_bonus_side = None
-            if t.reclaim_bonus_for == faction:
-                round1_bonus_side = 'attacker'
-            elif t.reclaim_bonus_for is not None and any(u.owner == t.reclaim_bonus_for for u in defender_units):
+        round1_bonus_side = None
+        if t.reclaim_bonus_for == faction:
+            round1_bonus_side = 'attacker'
+        elif t.reclaim_bonus_for is not None and any(u.owner == t.reclaim_bonus_for for u in defender_units):
+            round1_bonus_side = 'defender'
+        elif faction in t.ambush_bonus_for:
+            round1_bonus_side = 'attacker'
+            t.ambush_bonus_for.discard(faction)
+        elif battle_type == 'land':
+            land_attackers = [u for u in attacker_units if unit_defs[u.unit_type]['category'] == 'Land']
+            if land_attackers and all(u.has_moved_combat and u.arrived_amphibiously for u in land_attackers):
                 round1_bonus_side = 'defender'
-            elif faction in t.ambush_bonus_for:
-                round1_bonus_side = 'attacker'
-                t.ambush_bonus_for.discard(faction)
-            elif battle_type == 'land':
-                land_attackers = [u for u in attacker_units if unit_defs[u.unit_type]['category'] == 'Land']
-                if land_attackers and all(u.has_moved_combat and u.arrived_amphibiously for u in land_attackers):
-                    round1_bonus_side = 'defender'
 
-            events = list(resolve_battle(
-                attacker_units, defender_units, battle_type, rng,
-                self.game_state.global_turn, unit_defs, rules,
-                round1_bonus_side=round1_bonus_side,
-            ))
-            result = BattleResult.from_events(events)
-            self._record_combat_stats(events, attacker_units, defender_units, battle_type)
-            if self.turn_log is not None:
-                self.turn_log.record_battle_events(territory_id, battle_type, events, attacker_units, defender_units)
-            self._apply_battle_outcome(territory_id, battle_type, faction, result, rng)
-            results.append(result)
-        return results
+        events = list(resolve_battle(
+            attacker_units, defender_units, battle_type, rng,
+            self.game_state.global_turn, unit_defs, rules,
+            round1_bonus_side=round1_bonus_side,
+        ))
+        result = BattleResult.from_events(events)
+        self._record_combat_stats(events, attacker_units, defender_units, battle_type)
+        if self.turn_log is not None:
+            self.turn_log.record_battle_events(territory_id, battle_type, events, attacker_units, defender_units)
+        self._apply_battle_outcome(territory_id, battle_type, faction, result, rng)
+        return result
 
     def _record_combat_stats(self, events, attacker_units, defender_units, battle_type):
         """Promotions and kills come straight off the event stream

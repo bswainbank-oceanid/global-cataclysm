@@ -6,6 +6,8 @@ extends PanelContainer
 ## allies). Rebuilt whenever GameStore's state changes; the acting
 ## faction's panel gets a gold edge.
 
+signal settings_pressed
+
 var _row: HBoxContainer
 
 
@@ -25,6 +27,13 @@ func _rebuild() -> void:
 	_row.add_child(_title_block())
 	for code in GameStore.seated_factions():
 		_row.add_child(_faction_panel(code))
+	var settings := Button.new()
+	settings.text = "Settings"
+	settings.focus_mode = Control.FOCUS_NONE
+	settings.custom_minimum_size = Vector2(84, 0)
+	settings.tooltip_text = "Playback settings"
+	settings.pressed.connect(settings_pressed.emit)
+	_row.add_child(settings)
 
 
 func _title_block() -> Control:

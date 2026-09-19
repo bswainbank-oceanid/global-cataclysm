@@ -193,7 +193,7 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 65 tests) — first vertical slice,
+- ⬜ WebSocket server (`server/`, 66 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
   (NAA and GPC both BOTs watched by a spectator client -- see the watch
   mode below; the human-play protocol described next is still in place and
@@ -346,7 +346,16 @@ the same JSON, not a parallel editing path.
   commits the queue (`confirm_*` / `resolve_combat` / ...), sends
   `phase_result` (what executing logged: rolls and per-battle participants
   and casualties), a fresh `state` (so the map/HUD update after every phase)
-  and the following `phase_queue`. `--steps N` drives it in scripted runs.
+  and the following `phase_queue`. `--steps N` drives it in scripted runs (Combat Resolution is queued and fought one battle at a
+  time.) A **Settings** button (top bar) opens playback options that decide
+  when the client waits for Next instead of executing the queued phase
+  itself: opponents' turns pause never / once per turn / every phase, plus
+  optional pauses before each battle (or only battles involving your units),
+  and before each battle on your own turn; the "yours" options are inert
+  while there is no HUMAN faction. Unpaused phases run back to back with no
+  added delay, waiting only for the previous phase's arrows to finish
+  shortening. Saved in `user://settings.cfg`; `client_shot.py` takes
+  `--pause never|turn|phase` and `--pause_battle`.
   Run: `python tools/sync_client_data.py` (copies reference data into the
   gitignored `client/data`, `client/assets`), `python -m server.app`, then
   `godot --path client -- --server`. Scripted UI verification without a

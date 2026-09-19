@@ -58,6 +58,11 @@ static func from_events(events: Array) -> Array:
 	return groups.values()
 
 
+## True while executed arrows are still shortening.
+func is_playing() -> bool:
+	return not _playing.is_empty()
+
+
 func show_queued(arrows: Array) -> void:
 	_queued = arrows
 	queue_redraw()

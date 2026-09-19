@@ -30,6 +30,9 @@ Server -> client (always broadcast to watchers):
     two steps: first phase "RETURN_TO_BASE" (not a GameState phase; its
     events are the return_to_base flights the game makes automatically),
     then the ordinary "NONCOMBAT_MOVE" queue, planned once they have landed.
+    Combat Resolution is queued one battle at a time: each phase_queue holds
+    that battle's battle_preview and a "battle": {"index": i, "count": n};
+    "next" fights it, and the phase stays Combat Resolution until the last.
     {"type": "phase_result", "faction": ..., "phase": ..., "events": [...]}
         What executing that phase actually logged (for Combat Resolution:
         the roll-by-roll events and one battle_summary per battle).
@@ -57,6 +60,8 @@ class PhaseStepper:
         self._queue = None  # the phase_queue message awaiting "next"
         self._skipped_before = []
         self._alliance_plan = None
+        self._battles = None       # the current Combat Resolution's [(territory_id, battle_type), ...]
+        self._battle_index = 0     # which of them is queued now
 
     # ---- protocol entry points -------------------------------------------
 
@@ -91,6 +96,7 @@ class PhaseStepper:
         faction, queued = self._queue['faction'], self._queue['phase']
         start = len(self.turn_log.events)
         messages = []
+        stay = False  # True: the phase isn't over (more battles to fight), so don't advance it
         if queued == RETURN_TO_BASE:
             # Its own step, ahead of the rest of Non-Combat Move: air units
             # that fought this turn fly home. GameState.phase doesn't move.
@@ -98,12 +104,12 @@ class PhaseStepper:
             phase = None
         else:
             phase = gs.phase
-            self._commit(faction, phase)
+            stay = self._commit(faction, phase)
         messages.append({'type': 'phase_result', 'faction': faction, 'phase': queued,
                          'events': self.turn_log.events[start:]})
 
         self._queue = None
-        if phase is None:
+        if phase is None or stay:
             self._skipped_before = []
         elif phase == Phase.ALLIANCES:
             if gs.game_over:
@@ -131,7 +137,7 @@ class PhaseStepper:
         elif phase == Phase.COMBAT_MOVE:
             engine.confirm_combat_moves(faction)
         elif phase == Phase.COMBAT_RESOLUTION:
-            engine.resolve_combat(faction)
+            return self._commit_one_battle(faction)
         elif phase == Phase.NONCOMBAT_MOVE:
             engine.confirm_noncombat_moves(faction)
         elif phase == Phase.CAPTURE:
@@ -147,6 +153,27 @@ class PhaseStepper:
                 engine.process_game_end_check(faction)
             else:
                 engine.game_state.game_over = engine.would_game_end()
+        return False
+
+    def _commit_one_battle(self, faction):
+        """Combat Resolution goes battle by battle (each its own queue step, so
+        a watcher can pause between them): fights the queued one. Returns True
+        while more battles remain in the phase. With none declared, just runs
+        the (empty) resolution so the phase is marked done."""
+        engine = self.engine
+        if not self._battles:
+            engine.resolve_combat(faction)
+            self._battles = None
+            return False
+        if self._battle_index == 0:
+            engine.begin_combat_resolution(faction)
+        territory_id, battle_type = self._battles[self._battle_index]
+        engine.resolve_one_battle(faction, territory_id, battle_type)
+        self._battle_index += 1
+        if self._battle_index < len(self._battles):
+            return True
+        self._battles = None
+        return False
 
     # ---- plan ------------------------------------------------------------
 
@@ -166,7 +193,12 @@ class PhaseStepper:
             bot.plan_combat_move_phase()
             events = [engine.staged_combat_move_event(faction)]
         elif phase == Phase.COMBAT_RESOLUTION:
-            events = engine.battle_previews(faction)
+            if self._battles is None:
+                self._battles = engine.declared_battles(faction)
+                self._battle_index = 0
+            events = []
+            if self._battles:
+                events = [engine.battle_preview(faction, *self._battles[self._battle_index])]
         elif phase == Phase.NONCOMBAT_MOVE:
             if not engine.has_processed_return_to_base(faction):
                 homeward = self._dry_run(lambda sim: sim.process_return_to_base(faction))
@@ -189,6 +221,8 @@ class PhaseStepper:
 
         self._queue = {'type': 'phase_queue', 'faction': faction, 'phase': phase.value,
                        'events': events, 'skipped': [p.value for p in self._skipped_before]}
+        if phase == Phase.COMBAT_RESOLUTION and self._battles:
+            self._queue['battle'] = {'index': self._battle_index, 'count': len(self._battles)}
 
     def _dry_run(self, action):
         """The events `action(sim_engine)` would log, run against a private

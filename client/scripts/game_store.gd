@@ -23,6 +23,18 @@ func is_neutral(code: String) -> bool:
 	return faction_state(code).get("mode", "") == "NEUTRAL"
 
 
+## A "player" faction is one in HUMAN mode; in a bot-vs-bot game there is none.
+func is_player(code: String) -> bool:
+	return faction_state(code).get("mode", "") == "HUMAN"
+
+
+func has_player() -> bool:
+	for code in state.get("factions", {}):
+		if is_player(code):
+			return true
+	return false
+
+
 const NEUTRAL_COLOR := Color(0.93, 0.87, 0.68)
 
 
