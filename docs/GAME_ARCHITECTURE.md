@@ -193,7 +193,7 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 66 tests) — first vertical slice,
+- ⬜ WebSocket server (`server/`, 67 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
   (NAA and GPC both BOTs watched by a spectator client -- see the watch
   mode below; the human-play protocol described next is still in place and
@@ -356,7 +356,22 @@ the same JSON, not a parallel editing path.
   added delay, waiting only for the previous phase's arrows to finish
   shortening. While phases are running unpaused the Next button becomes a **Pause**
   button: it holds the phase in hand (or the next one, mid-execution) and
-  offers Next as a scheduled pause would; after that Settings apply again. Saved in `user://settings.cfg`; `client_shot.py` takes
+  offers Next as a scheduled pause would; after that Settings apply again. A battle that pauses because of the battle options (not an
+  ordinary phase pause) opens the **battle board** (`reference/GC Battle Board
+  Mockup.pdf`): the map zooms to the territory and a chart pops up with both
+  sides' units placed by defense (the rolling side slides into its attack-die
+  band), a Resolve setting per side (Entire Battle / Round / Side / Unit Type /
+  Unit; default Unit Type, remembered) that sets how much one Next Roll reveals,
+  top-down dice per roll, `/` on hit units and `X` on eliminated ones (marked at
+  the hit, as they still roll that round), XP and promotions applied at round
+  end, every unit brought back at the end with the result, and End Battle to
+  continue. The dice are already fixed by the engine: the first Next Roll has the
+  server fight the battle, and the client holds back the resulting state and log
+  until End Battle. The engine supports it with per-round `UNIT_STATS` events and
+  richer `battle_preview` rows; in a sea battle land units are Transport cargo
+  (defense 6, 1 HP, no attack, no XP; sunk = lost). `BattleModel`
+  (`client/scripts/battle_model.gd`) holds the stepping logic and is checked
+  headlessly: `godot --headless --path client -s res://tests/battle_model_test.gd`. Saved in `user://settings.cfg`; `client_shot.py` takes
   `--pause never|turn|phase` and `--pause_battle`.
   Run: `python tools/sync_client_data.py` (copies reference data into the
   gitignored `client/data`, `client/assets`), `python -m server.app`, then
