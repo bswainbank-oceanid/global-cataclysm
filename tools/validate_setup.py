@@ -4,8 +4,11 @@ data/rules.json: exact budget spend, per-territory stacking cap (EVERY
 unit purchased at a territory counts, including naval units and
 carrier-escorted aircraft -- a starting-purchase limit, not an in-game
 one; see data/rules.json setup.stacking_cap_scope), coastal-only naval
-purchase, every Aircraft Carrier has an escorting Fighter/Bomber, no two
-factions share a sea zone, every land territory with a foreign neighbor
+purchase, every naval deployment lands in a sea zone ADJACENT to the
+territory it was bought at (checked against data/adjacency.json, so a
+hand-picked naval_deploy_overrides zone can't silently go stale when
+adjacency changes), every Aircraft Carrier has an escorting Fighter/Bomber,
+no two factions share a sea zone, every land territory with a foreign neighbor
 has at least 1 land unit (Infantry, Mechanized Infantry, or Armor -- not
 necessarily Infantry), and each faction purchases at least N of the 8
 purchasable unit types (setup.unit_diversity_rule).
@@ -71,6 +74,10 @@ for s in territories_data:
     if s['type'] == 'sea':
         SEA_IDS_BY_NAME.setdefault(s['name'], []).append(s['id'])
 
+_adj_raw = json.load(open('data/adjacency.json'))['neighbors_ordered']
+ADJ = {int(k): set(v) for k, v in _adj_raw.items()}
+
+
 def _dist(a, b):
     return ((a['x'] - b['x']) ** 2 + (a['y'] - b['y']) ** 2) ** 0.5
 
@@ -108,6 +115,10 @@ for fac, entries in DESIGN.items():
                     errors.append(f"{fac}: naval {unit} at non-coastal {prof['name']}")
                 override_name = NAVAL_OVERRIDES.get(fac, {}).get(str(tid), {}).get(unit)
                 zone_id = resolve_zone_id(tid, override_name) if override_name else prof['sea_zone']
+                if zone_id not in ADJ.get(tid, ()):
+                    errors.append(f"{fac}: {unit} bought at {prof['name']} ({tid}) deploys to "
+                                  f"{zone_id}. {SPACE_BY_ID[zone_id]['name']}, which is not adjacent to it "
+                                  f"(adjacent seas: {[(n, SPACE_BY_ID[n]['name']) for n in sorted(ADJ.get(tid, ())) if SPACE_BY_ID[n]['type'] == 'sea']})")
                 if zone_id in args.exclude_zone:
                     errors.append(f"{fac}: {unit} deployed to excluded zone {zone_id}. {SPACE_BY_ID[zone_id]['name']}")
                 sea_zone_usage.setdefault(zone_id, set()).add(fac)

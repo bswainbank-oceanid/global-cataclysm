@@ -241,6 +241,15 @@
     ],
     "UER": [
       {
+        "territory_id": 2,
+        "units": [
+          {
+            "unit": "Infantry",
+            "qty": 1
+          }
+        ]
+      },
+      {
         "territory_id": 6,
         "units": [
           {
@@ -328,10 +337,6 @@
       {
         "territory_id": 81,
         "units": [
-          {
-            "unit": "Infantry",
-            "qty": 1
-          },
           {
             "unit": "Submarine",
             "qty": 1
@@ -512,6 +517,10 @@
           {
             "unit": "Cruiser",
             "qty": 1
+          },
+          {
+            "unit": "Infantry",
+            "qty": 1
           }
         ]
       },
@@ -520,10 +529,6 @@
         "units": [
           {
             "unit": "Armor",
-            "qty": 1
-          },
-          {
-            "unit": "Infantry",
             "qty": 1
           },
           {

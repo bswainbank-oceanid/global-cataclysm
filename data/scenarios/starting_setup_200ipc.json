@@ -1199,7 +1199,7 @@
   "naval_deploy_overrides": {
     "UER": {
       "7": {
-        "Cruiser": "Arctic Ocean"
+        "Cruiser": "Baffin Bay"
       }
     }
   }
