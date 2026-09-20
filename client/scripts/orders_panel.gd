@@ -95,7 +95,9 @@ func _add_alliance_options() -> void:
 		status = "You are allied with: %s." % ", ".join(others)
 	else:
 		status = "You are not in an alliance."
-	var status_l := HudStyle.label(status + "  One action per turn: invite OR withdraw.", 11, HudStyle.TEXT_DIM)
+	var rules := "Leaving alliances is %s; rejoining one you left is %s." % [
+		"allowed" if GameStore.can_withdraw_from_alliances() else "off", "allowed" if GameStore.can_rejoin_alliances() else "off"]
+	var status_l := HudStyle.label(status + "  One action per turn: invite OR withdraw. " + rules, 11, HudStyle.TEXT_DIM)
 	status_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_content.add_child(status_l)
 	if ha["game_would_end"]:
@@ -106,9 +108,13 @@ func _add_alliance_options() -> void:
 	_content.add_child(_choice("Do nothing", "", staged["action"] == "none", true, "", func(): Stepper.alliance_stage("none")))
 	if members.size() > 1:
 		var can: bool = ha["options"]["can_withdraw"]
-		_content.add_child(_choice("Withdraw from the alliance", "", staged["action"] == "withdraw", can,
-			"" if can else "Not allowed now: a unit of yours is on an ally's Strategic Center, or withdrawing is disabled.",
-			func(): Stepper.alliance_stage("withdraw")))
+		var why := ""
+		if not GameStore.can_withdraw_from_alliances():
+			why = "Withdrawing from alliances is turned off in this game."
+		elif not can:
+			why = "Not allowed now: a unit of yours is standing on an ally's Strategic Center."
+		var text := "Withdraw from the alliance" if why == "" else "Withdraw from the alliance  (not allowed)"
+		_content.add_child(_choice(text, "", staged["action"] == "withdraw", can, why, func(): Stepper.alliance_stage("withdraw")))
 	var targets: Array = ha["options"]["eligible_invite_targets"]
 	for code in targets:
 		var c := str(code)
@@ -117,6 +123,10 @@ func _add_alliance_options() -> void:
 			"They answer when the phase runs.", func(): Stepper.alliance_stage("invite", c)))
 	if targets.is_empty() and members.size() <= 1:
 		_content.add_child(HudStyle.label("No one can be invited right now.", 11, HudStyle.TEXT_DIM))
+	for pair in GameStore.uninvitable_reasons(me, members, targets):
+		var l := HudStyle.label("Can't invite %s: %s." % [pair[0], pair[1]], 11, HudStyle.TEXT_DIM)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_content.add_child(l)
 
 
 func _choice(text: String, faction: String, selected: bool, enabled: bool, tip: String, action: Callable) -> Control:

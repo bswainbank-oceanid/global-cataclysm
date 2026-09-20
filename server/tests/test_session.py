@@ -638,7 +638,7 @@ class TestAllianceActionPlayback(unittest.TestCase):
         _advance_to_alliances(session)
         messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'withdraw'})
         self.assertIsNone(gs.factions['NAA'].alliance)
-        self.assertEqual(gs.factions['UE'].alliance, 'pact')
+        self.assertIsNone(gs.factions['UE'].alliance)  # a pair dissolves: no one-member alliance is left
         types = [m['type'] for m in messages]
         self.assertEqual(types, ['state', 'your_turn'])
 

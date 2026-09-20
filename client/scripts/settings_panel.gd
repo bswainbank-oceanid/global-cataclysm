@@ -59,8 +59,7 @@ func _check(parent: Control, text: String, setter: Callable) -> CheckBox:
 	var c := CheckBox.new()
 	c.text = text
 	c.focus_mode = Control.FOCUS_NONE
-	for icon_colour in ["icon_normal_color", "icon_pressed_color", "icon_hover_color", "icon_hover_pressed_color", "icon_focus_color"]:
-		c.add_theme_color_override(icon_colour, Color(0.95, 0.97, 1.0))  # the default tint is near-invisible on this dark panel
+	HudStyle.style_checkbox(c)
 	c.toggled.connect(func(on: bool):
 		setter.call(on)
 		Settings.commit())

@@ -38,6 +38,20 @@ func _initialize() -> void:
 		"faction, strategy and behavior default to random")
 	_check(s["seats"][1]["alliance"] == 0, "starting alliance defaults to none")
 
+	# The alliance rules: withdraw defaults to yes, rejoin to no; rejoining needs withdrawing.
+	_check(s["can_withdraw"] == true and s["can_rejoin"] == false, "withdraw defaults to yes, rejoin to no")
+	_check(not screen._can_rejoin.disabled, "rejoin is choosable while withdrawing is allowed")
+	screen._can_withdraw.button_pressed = false
+	screen._changed()
+	_check(screen._can_rejoin.disabled, "rejoin is greyed out when withdrawing is off")
+	_check(screen.settings()["can_withdraw"] == false, "the withdraw choice is sent")
+	screen._can_withdraw.button_pressed = true
+	screen._can_rejoin.button_pressed = true
+	screen._changed()
+	_check(screen.settings()["can_rejoin"] == true and screen.settings()["can_withdraw"] == true, "the rejoin choice is sent")
+	screen._can_rejoin.button_pressed = false
+	screen._changed()
+
 	# At least two players.
 	_pick(screen, 1, "mode", 3)  # the bot becomes Neutral
 	_check(not screen.problems().is_empty(), "one player alone can't start")

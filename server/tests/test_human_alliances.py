@@ -155,3 +155,76 @@ class TestABotInvitingTheHuman(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def _allied_session(can_withdraw=True, can_rejoin=False, seed=1):
+    """A human NAA starting allied with the (independent) bot UE, and a third bot GPC."""
+    def seat(mode, faction, alliance=0):
+        return {'mode': mode, 'faction': faction, 'alliance': alliance, 'strategy': 'independent', 'behavior': 'loyal'}
+    seats = [seat('HUMAN', 'NAA', 1), seat('BOT', 'UE', 1), seat('BOT', 'GPC')] + \
+        [seat('NEUTRAL', f) for f in ('UER', 'PAF', 'AAC')]
+    session, _ = build_session({'seats': seats, 'randomize_order': False,
+                                'can_withdraw': can_withdraw, 'can_rejoin': can_rejoin}, random.Random(seed))
+    return session
+
+
+class TestAllianceRuleSettingsAreEnforced(unittest.TestCase):
+    def test_with_withdrawing_off_the_human_is_offered_no_withdrawal_and_the_server_refuses_it(self):
+        session = _allied_session(can_withdraw=False)
+        queue = _advance_to(session, 'NAA', 'ALLIANCES')
+        self.assertEqual(queue['human']['members'], ['NAA', 'UE'])
+        self.assertFalse(queue['human']['options']['can_withdraw'])
+        reply = session.handle_message({'type': 'stage_alliance', 'faction': 'NAA', 'action': 'withdraw'})
+        self.assertEqual([m['type'] for m in reply], ['error', 'phase_queue'])
+        self.assertIn('disabled', reply[0]['message'])
+        self.assertIsNotNone(session.engine.game_state.factions['NAA'].alliance)
+
+    def test_with_withdrawing_on_the_human_can_leave(self):
+        session = _allied_session(can_withdraw=True)
+        queue = _advance_to(session, 'NAA', 'ALLIANCES')
+        self.assertTrue(queue['human']['options']['can_withdraw'])
+        session.handle_message({'type': 'stage_alliance', 'faction': 'NAA', 'action': 'withdraw'})
+        session.handle_message({'type': 'next'})
+        self.assertIsNone(session.engine.game_state.factions['NAA'].alliance)
+
+    def test_bots_do_not_withdraw_when_it_is_off(self):
+        # Treacherous/opportunistic bots would leave; with the rule off none may, in any game.
+        def seat(mode, faction, alliance=0, behavior='treacherous'):
+            return {'mode': mode, 'faction': faction, 'alliance': alliance, 'strategy': 'aggressive', 'behavior': behavior}
+        for seed in range(6):
+            seats = [seat('BOT', 'NAA', 1), seat('BOT', 'UE', 1), seat('BOT', 'GPC'), seat('BOT', 'AAC')] + \
+                [seat('NEUTRAL', f) for f in ('UER', 'PAF')]
+            session, _ = build_session({'seats': seats, 'randomize_order': False, 'can_withdraw': False}, random.Random(seed))
+            messages = session.handle_message({'type': 'watch'})
+            for _ in range(200):
+                messages = session.handle_message({'type': 'next'})
+                for m in _by_type(messages, 'phase_result'):
+                    self.assertNotIn('alliance_withdrawal', [e['kind'] for e in m['events']])
+                if 'game_over' in [m['type'] for m in messages]:
+                    break
+
+    def _after_withdrawing(self, can_rejoin):
+        session = _allied_session(can_withdraw=True, can_rejoin=can_rejoin)
+        _advance_to(session, 'NAA', 'ALLIANCES')
+        session.handle_message({'type': 'stage_alliance', 'faction': 'NAA', 'action': 'withdraw'})
+        session.handle_message({'type': 'next'})
+        messages = session.handle_message({'type': 'watch'})
+        for _ in range(80):
+            queue = _by_type(messages, 'phase_queue')[0]
+            if (queue['faction'], queue['phase']) == ('NAA', 'ALLIANCES'):
+                return session, queue
+            messages = session.handle_message({'type': 'next'})
+        raise AssertionError('never reached NAA Alliances again')
+
+    def test_with_rejoining_off_a_former_ally_cannot_be_invited_again(self):
+        session, queue = self._after_withdrawing(can_rejoin=False)
+        self.assertNotIn('UE', queue['human']['options']['eligible_invite_targets'])
+        self.assertIn('GPC', queue['human']['options']['eligible_invite_targets'])
+        reply = session.handle_message({'type': 'stage_alliance', 'faction': 'NAA', 'action': 'invite', 'target': 'UE'})
+        self.assertEqual([m['type'] for m in reply], ['error', 'phase_queue'])
+
+    def test_with_rejoining_on_a_former_ally_can_be_invited_again(self):
+        session, queue = self._after_withdrawing(can_rejoin=True)
+        self.assertIn('UE', queue['human']['options']['eligible_invite_targets'])
+        reply = session.handle_message({'type': 'stage_alliance', 'faction': 'NAA', 'action': 'invite', 'target': 'UE'})
+        self.assertEqual([m['type'] for m in reply], ['phase_queue'])

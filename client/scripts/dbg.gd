@@ -14,6 +14,7 @@ extends Node
 ##   --resolve=entire|round|side|type|unit   battle board Resolve setting, both sides
 ##   --launch[=HUMAN:NAA,BOT,...]  show the launch screen (and play its Start with these seats)
 ##   --resume            go straight to the game running on the server
+##   --start_allied, --no_withdraw, --rejoin   alliance options for a scripted launch
 ##   --fixed_order, --combat_first_turn   launch options for scripted runs
 ##   --alliance=none|withdraw|invite:UE   a scripted player's Alliances choice
 ##   --after_steps=<n>   with --invite_answer: press Next n more times afterwards

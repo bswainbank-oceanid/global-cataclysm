@@ -22,6 +22,8 @@ const PATH := "user://launch.cfg"
 
 var _rows: Array = []  # per seat: {mode, faction, chip, alliance, strategy, behavior}
 var _randomize: CheckBox
+var _can_withdraw: CheckBox
+var _can_rejoin: CheckBox
 var _message: Label
 var _start: Button
 var _resume: Button
@@ -70,8 +72,24 @@ func _ready() -> void:
 	_randomize.text = "Randomize turn order"
 	_randomize.button_pressed = true
 	_randomize.focus_mode = Control.FOCUS_NONE
+	_check_style(_randomize)
 	_randomize.toggled.connect(func(_on): _changed())
 	v.add_child(_randomize)
+
+	_can_withdraw = CheckBox.new()
+	_can_withdraw.text = "Players can withdraw from alliances"
+	_can_withdraw.button_pressed = true
+	_can_withdraw.focus_mode = Control.FOCUS_NONE
+	_check_style(_can_withdraw)
+	_can_withdraw.toggled.connect(func(_on): _changed())
+	v.add_child(_can_withdraw)
+	_can_rejoin = CheckBox.new()
+	_can_rejoin.text = "Players can rejoin alliances they left"
+	_can_rejoin.button_pressed = false
+	_can_rejoin.focus_mode = Control.FOCUS_NONE
+	_check_style(_can_rejoin)
+	_can_rejoin.toggled.connect(func(_on): _changed())
+	v.add_child(_can_rejoin)
 
 	_message = HudStyle.label("", 12, Color(1.0, 0.6, 0.5))
 	_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -93,6 +111,10 @@ func _ready() -> void:
 
 	_load()
 	_changed()
+
+
+func _check_style(c: CheckBox) -> void:
+	HudStyle.style_checkbox(c)
 
 
 func _button(text: String) -> Button:
@@ -168,7 +190,8 @@ func settings() -> Dictionary:
 			"strategy": STRATEGIES[(row["strategy"] as OptionButton).selected],
 			"behavior": BEHAVIORS[(row["behavior"] as OptionButton).selected],
 		})
-	var s := {"seats": seats, "randomize_order": _randomize.button_pressed}
+	var s := {"seats": seats, "randomize_order": _randomize.button_pressed,
+		"can_withdraw": _can_withdraw.button_pressed, "can_rejoin": _can_rejoin.button_pressed}
 	if Dbg.args.has("combat_first_turn"):
 		s["dev"] = {"combat_first_turn": true}  # scripted runs only: the rules skip it
 	return s
@@ -229,6 +252,7 @@ func _changed() -> void:
 		(row["alliance"] as OptionButton).disabled = not player
 		(row["strategy"] as OptionButton).disabled = mode != "BOT"
 		(row["behavior"] as OptionButton).disabled = mode != "BOT"
+	_can_rejoin.disabled = not _can_withdraw.button_pressed  # nobody leaves, so nobody rejoins
 	var p := problems()
 	_message.text = "\n".join(p) if not p.is_empty() else ""
 	_start.disabled = not p.is_empty()
@@ -259,6 +283,8 @@ func _save() -> void:
 	var cfg := ConfigFile.new()
 	var s := settings()
 	cfg.set_value("launch", "randomize_order", s["randomize_order"])
+	cfg.set_value("launch", "can_withdraw", s["can_withdraw"])
+	cfg.set_value("launch", "can_rejoin", s["can_rejoin"])
 	for i in SEATS:
 		var row: Dictionary = _rows[i]
 		for key in ["mode", "faction", "alliance", "strategy", "behavior"]:
@@ -274,6 +300,8 @@ func _load() -> void:
 		return
 	_loading = true
 	_randomize.button_pressed = bool(cfg.get_value("launch", "randomize_order", true))
+	_can_withdraw.button_pressed = bool(cfg.get_value("launch", "can_withdraw", true))
+	_can_rejoin.button_pressed = bool(cfg.get_value("launch", "can_rejoin", false))
 	for i in SEATS:
 		var row: Dictionary = _rows[i]
 		for key in ["mode", "faction", "alliance", "strategy", "behavior"]:

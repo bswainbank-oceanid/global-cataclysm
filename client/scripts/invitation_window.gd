@@ -82,6 +82,11 @@ func _sync() -> void:
 	_title.text = "%s invites you to an alliance" % from
 	var text := "[b]%s[/b] asks you to join [b]%s[/b]." % [GameData.factions[from].name, "their alliance" if members.size() > 1 else "an alliance with them"]
 	text += "\n\nIf you accept, the alliance is: %s and [b]you[/b]." % ", ".join(others)
-	text += "\n\nAllies don't fight each other and defend together. The game ends when every remaining faction is allied. You can withdraw later, on your own Alliances phase."
+	text += "\n\nAllies don't fight each other and defend together. The game ends when every remaining faction is allied."
+	if GameStore.can_withdraw_from_alliances():
+		text += " You can withdraw later, on your own Alliances phase"
+		text += " (and rejoin those you left)." if GameStore.can_rejoin_alliances() else " (but you couldn't rejoin those you left)."
+	else:
+		text += " In this game an alliance can't be left once joined."
 	_body.text = text
 	_panel.tooltip_text = "Answer to continue"

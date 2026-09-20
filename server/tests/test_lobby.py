@@ -164,3 +164,29 @@ class TestGameHost(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestAllianceRuleSettings(unittest.TestCase):
+    def _game(self, **kw):
+        session, _ = build_session(settings(seat('HUMAN'), seat('BOT'), **kw), random.Random(1))
+        return session.engine.game_state
+
+    def test_the_defaults_are_withdraw_yes_rejoin_no(self):
+        gs = self._game()
+        self.assertTrue(gs.can_withdraw_from_alliances)
+        self.assertFalse(gs.can_rejoin_alliances)
+
+    def test_the_settings_reach_the_game(self):
+        gs = self._game(can_withdraw=False, can_rejoin=True)
+        self.assertFalse(gs.can_withdraw_from_alliances)
+        self.assertTrue(gs.can_rejoin_alliances)
+
+    def test_they_are_in_the_state_the_client_receives(self):
+        session, _ = build_session(settings(seat('HUMAN'), seat('BOT'), can_withdraw=False, can_rejoin=True), random.Random(1))
+        state = session.handle_message({'type': 'watch'})[0]['game_state']
+        self.assertFalse(state['can_withdraw_from_alliances'])
+        self.assertTrue(state['can_rejoin_alliances'])
+
+    def test_non_boolean_values_are_rejected(self):
+        self.assertTrue(check_settings(settings(seat('HUMAN'), seat('BOT'), can_withdraw='yes')))
+        self.assertTrue(check_settings(settings(seat('HUMAN'), seat('BOT'), can_rejoin=1)))

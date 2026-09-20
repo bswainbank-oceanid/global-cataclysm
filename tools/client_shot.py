@@ -45,6 +45,9 @@ def main():
     ap.add_argument('--buy')
     ap.add_argument('--hold')
     ap.add_argument('--alliance')
+    ap.add_argument('--start_allied', action='store_true')
+    ap.add_argument('--no_withdraw', action='store_true')
+    ap.add_argument('--rejoin', action='store_true')
     ap.add_argument('--after_steps')
     ap.add_argument('--invite_answer')
     ap.add_argument('--launch', nargs='?', const='true')
@@ -63,7 +66,7 @@ def main():
 
     subprocess.run([sys.executable, str(ROOT / 'tools' / 'sync_client_data.py')], check=True)
     user_args = [f'--shot={Path(a.out).resolve()}', f'--wait={a.wait}']
-    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click', 'state', 'badges', 'server', 'steps', 'pause', 'pause_battle', 'battle_rolls', 'resolve', 'buy', 'hold', 'move_to', 'recall', 'select2', 'drag_hold', 'launch', 'fixed_order', 'combat_first_turn', 'alliance', 'invite_answer', 'after_steps'):
+    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click', 'state', 'badges', 'server', 'steps', 'pause', 'pause_battle', 'battle_rolls', 'resolve', 'buy', 'hold', 'move_to', 'recall', 'select2', 'drag_hold', 'launch', 'fixed_order', 'combat_first_turn', 'alliance', 'invite_answer', 'after_steps', 'start_allied', 'no_withdraw', 'rejoin'):
         if getattr(a, key):
             val = getattr(a, key)
             user_args.append(f'--{key}={Path(val).resolve() if key == "state" else val}')

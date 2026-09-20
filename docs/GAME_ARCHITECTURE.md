@@ -382,7 +382,17 @@ the same JSON, not a parallel editing path.
   or more members and can't be every player (the ceiling on alliance size is raised
   to fit the largest group). Every faction is in exactly one seat: explicit picks
   first, random seats take what is left; Defense seats use the 100-IPC setup, as
-  before. The screen checks live, the server re-checks. Settings are remembered
+  before. Two more game settings, "Players can withdraw from alliances" (default yes)
+  and "Players can rejoin alliances they left" (default no; greyed out when
+  withdrawing is off) -- the engine has always enforced both
+  (`can_withdraw_from_alliances` / `can_rejoin_alliances` on `GameState`: the legal
+  options a human is offered, the dry-run check on `stage_alliance`, and the bots'
+  own choices all follow them); the client shows them in the Alliances panel (a
+  disabled Withdraw with the reason, and a "Can't invite X: ..." line for former
+  allies or already-allied factions) and in the invitation window's wording. A
+  two-member alliance now dissolves when either member withdraws (the other used to
+  keep a one-member tag, which made it impossible to invite again, so rejoining
+  could never work for a pair). The screen checks live, the server re-checks. Settings are remembered
   between launches; "New game..." in Settings returns to the screen (the running
   game stays until you start another, and "Resume" goes back to it).
   **Human players:** the demo server now runs NAA as a HUMAN and GPC as a bot

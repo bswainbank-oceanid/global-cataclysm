@@ -54,6 +54,37 @@ func set_invitation(inv: Dictionary) -> void:
 	alliance_changed.emit()
 
 
+## This game's alliance rules (chosen on the launch screen), from the server's state.
+func can_withdraw_from_alliances() -> bool:
+	return bool(state.get("can_withdraw_from_alliances", true))
+
+
+func can_rejoin_alliances() -> bool:
+	return bool(state.get("can_rejoin_alliances", false))
+
+
+## Active factions the player cannot invite right now, with why: [[code, reason], ...].
+## (The server's eligible list is authoritative; this only explains the gaps.)
+func uninvitable_reasons(me: String, members: Array, eligible: Array) -> Array:
+	var out := []
+	var mine: Array = members
+	for code in active_factions():
+		var c := str(code)
+		if c == me or mine.has(c) or eligible.has(c):
+			continue
+		var f := faction_state(c)
+		if f.get("alliance") != null:
+			out.append([c, "already in an alliance"])
+		elif not can_rejoin_alliances():
+			var banned := []
+			for m in f.get("former_allies", []):
+				if mine.has(str(m)):
+					banned.append(str(m))
+			if not banned.is_empty():
+				out.append([c, "left an alliance with %s (rejoining is off)" % ", ".join(banned)])
+	return out
+
+
 func human_alliance_active() -> bool:
 	return not human_alliance.is_empty()
 

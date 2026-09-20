@@ -2503,7 +2503,9 @@ class TestGameEndCheck(unittest.TestCase):
         self.assertFalse(result)
         self.assertFalse(gs.game_over)
         self.assertIsNone(gs.factions['NAA'].alliance)
-        self.assertEqual(gs.factions['UE'].alliance, 'pact', "withdrawal only affects the faction whose turn it is")
+        # A pair's other member is freed too: an alliance of one is no alliance (see
+        # withdraw_from_alliance), so UE can be invited again, and can invite.
+        self.assertIsNone(gs.factions['UE'].alliance)
 
     def test_not_withdrawing_lets_the_game_end(self):
         # Confirms there's no automatic/implicit save here -- if the
@@ -3747,3 +3749,27 @@ class TestFullTurnLoopIntegration(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestWithdrawingFromAPairDissolvesIt(unittest.TestCase):
+    def _setup(self, members):
+        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
+        modes = {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}
+        gs = make_state(data, {1: 'NAA'}, modes, phase=Phase.ALLIANCES)
+        gs.active_faction = 'NAA'
+        for code in members:
+            gs.factions[code].alliance = 'ALLIANCE_1'
+        return GameEngine(gs, data), gs
+
+    def test_leaving_a_two_member_alliance_frees_the_other_member_too(self):
+        engine, gs = self._setup(['NAA', 'UE'])
+        engine.withdraw_from_alliance('NAA')
+        self.assertIsNone(gs.factions['NAA'].alliance)
+        self.assertIsNone(gs.factions['UE'].alliance)  # no one-member alliance left behind
+        self.assertIn('UE', gs.factions['NAA'].former_allies)
+
+    def test_leaving_a_larger_alliance_leaves_the_rest_allied(self):
+        engine, gs = self._setup(['NAA', 'UE', 'GPC'])
+        engine.withdraw_from_alliance('NAA')
+        self.assertEqual(gs.factions['UE'].alliance, 'ALLIANCE_1')
+        self.assertEqual(gs.factions['GPC'].alliance, 'ALLIANCE_1')

@@ -11,6 +11,8 @@ Settings (the "new_game" message's "settings"):
                  "behavior": "random" | loyal | opportunistic | treacherous | variable},                  # bots only
                 ... exactly six ...],
      "randomize_order": true,                            # default true
+     "can_withdraw": true,                               # players may leave an alliance (default true)
+     "can_rejoin": false,                                # ...and may re-ally with those they left (default false)
      "dev": {"combat_first_turn": false}}                # optional, testing only
 
 Every faction is in exactly one seat: explicit picks are honoured first (and must
@@ -75,6 +77,10 @@ def check_settings(settings):
             if seat.get('behavior', 'random') not in ('random',) + tuple(BEHAVIORS):
                 problems.append(f'seat {i}: unknown alliance behavior {seat.get("behavior")!r}')
 
+    for key in ('randomize_order', 'can_withdraw', 'can_rejoin'):
+        if key in settings and not isinstance(settings[key], bool):
+            problems.append(f'{key} must be true or false')
+
     players = [i for i, s in enumerate(seats, 1) if s.get('mode') in PLAYER_MODES]
     humans = [i for i, s in enumerate(seats, 1) if s.get('mode') == 'HUMAN']
     if len(players) < 2:
@@ -138,6 +144,8 @@ def build_session(settings, rng=None):
         alliance_strategies={a['faction']: a['strategy'] for a in assignments if a['mode'] == 'BOT'},
         alliance_behaviors={a['faction']: a['behavior'] for a in assignments if a['mode'] == 'BOT'},
         starting_alliances=groups,
+        can_withdraw_from_alliances=bool(settings.get('can_withdraw', True)),
+        can_rejoin_alliances=bool(settings.get('can_rejoin', False)),
         allow_combat_moves_first_turn=bool(settings.get('dev', {}).get('combat_first_turn', False)),
     )
     turn_log = TurnLog()

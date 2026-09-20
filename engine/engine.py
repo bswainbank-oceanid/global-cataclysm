@@ -1860,6 +1860,11 @@ class GameEngine:
             fstate.former_allies.add(other)
             self.game_state.factions[other].former_allies.add(faction)
         fstate.alliance = None
+        if len(former_members) == 1:
+            # An alliance of one is no alliance: the last remaining member is free again
+            # (it can be invited, and can invite), rather than stuck under a one-member tag.
+            (last,) = former_members
+            self.game_state.factions[last].alliance = None
         if self.stats is not None:
             self.stats.record_alliance_withdrawal(self.game_state.global_turn, faction, former_tag, former_members)
         if self.turn_log is not None:

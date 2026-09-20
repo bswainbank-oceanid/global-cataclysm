@@ -328,7 +328,11 @@ func _launch_scripted() -> void:
 			"strategy": parts[2] if parts.size() > 2 else "random", "behavior": "random"})
 	while seats.size() < LaunchScreen.SEATS:
 		seats.append({"mode": "NEUTRAL", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "random"})
-	var s := {"seats": seats, "randomize_order": not Dbg.args.has("fixed_order")}
+	if Dbg.args.has("start_allied"):  # the first two seats start in Alliance 1
+		seats[0]["alliance"] = 1
+		seats[1]["alliance"] = 1
+	var s := {"seats": seats, "randomize_order": not Dbg.args.has("fixed_order"),
+		"can_withdraw": not Dbg.args.has("no_withdraw"), "can_rejoin": Dbg.args.has("rejoin")}
 	if Dbg.args.has("combat_first_turn"):
 		s["dev"] = {"combat_first_turn": true}
 	Net.send_msg({"type": "new_game", "settings": s})
