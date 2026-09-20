@@ -388,7 +388,7 @@ the same JSON, not a parallel editing path.
   size** setting (default 3; choosable from 2 up to the number of players minus
   one, greyed out below three players; `max_alliance_size` in the `new_game`
   settings, validated by `server/lobby.py`; the engine still caps it by the number of
-  factions still in play). Every faction is in exactly one seat: explicit picks
+  factions still in play). A game can be seeded (`seed` in the `new_game` settings, `--seed` for the demo server and scripted client runs): setup, the bots and the dice all come from it, so the game replays exactly whatever Python's hash seed is (`server/tests/test_reproducible.py` checks that under different `PYTHONHASHSEED`s; the lobby used to leave the dice unseeded, which was the only source of variation). Every faction is in exactly one seat: explicit picks
   first, random seats take what is left; Defense seats use the 100-IPC setup, as
   before. Two more game settings, "Players can withdraw from alliances" (default yes)
   and "Players can rejoin alliances they left" (default no; greyed out when

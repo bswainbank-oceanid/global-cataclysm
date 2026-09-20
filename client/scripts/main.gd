@@ -343,6 +343,8 @@ func _launch_scripted() -> void:
 		seats[1]["alliance"] = 1
 	var s := {"seats": seats, "randomize_order": not Dbg.args.has("fixed_order"),
 		"can_withdraw": not Dbg.args.has("no_withdraw"), "can_rejoin": Dbg.args.has("rejoin")}
+	if Dbg.args.has("seed"):  # --seed=<n>: a game that replays exactly
+		s["seed"] = int(Dbg.args["seed"])
 	if Dbg.args.has("max_alliance"):  # --max_alliance=<n>
 		s["max_alliance_size"] = int(Dbg.args["max_alliance"])
 	if Dbg.args.has("combat_first_turn"):

@@ -44,18 +44,19 @@ logger = logging.getLogger('server')
 WATCHER = '*watchers'  # sockets_by_faction key for spectators (not a faction code)
 
 
-def _build_demo_session(human='NAA', combat_first_turn=False):
+def _build_demo_session(human='NAA', combat_first_turn=False, seed=None):
     """NAA vs GPC, everyone else NEUTRAL. `human`: the faction a player controls
     (its phases wait for the client's orders); None makes both bots, for
     watching."""
     modes = {code: FactionMode.NEUTRAL for code in data_module.factions()}
     modes['NAA'] = FactionMode.HUMAN if human == 'NAA' else FactionMode.BOT
     modes['GPC'] = FactionMode.HUMAN if human == 'GPC' else FactionMode.BOT
+    rng = random.Random(seed)  # seed=None: a fresh, unrepeatable game; otherwise it replays exactly
     gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False,
-                          allow_combat_moves_first_turn=combat_first_turn)
+                          allow_combat_moves_first_turn=combat_first_turn, rng=rng)
     turn_log = TurnLog()
-    engine = GameEngine(gs, data_module, turn_log=turn_log)
-    bots = {code: RandomBot(engine, code, rng=random.Random())
+    engine = GameEngine(gs, data_module, turn_log=turn_log, combat_rng=random.Random(rng.random()))
+    bots = {code: RandomBot(engine, code, rng=random.Random(rng.random()))
             for code in ('NAA', 'GPC') if modes[code] == FactionMode.BOT}
     return GameSession(engine, turn_log, bots)
 
@@ -115,8 +116,8 @@ class Server:
             await asyncio.gather(*(ws.send(payload) for ws in targets), return_exceptions=True)
 
 
-async def main(host, port, demo, human, combat_first_turn):
-    game_host = GameHost(_build_demo_session(human, combat_first_turn) if demo else None)
+async def main(host, port, demo, human, combat_first_turn, seed=None):
+    game_host = GameHost(_build_demo_session(human, combat_first_turn, seed) if demo else None)
     server = Server(game_host)
     async with websockets.serve(server.handle_connection, host, port):
         logger.info('listening on ws://%s:%s', host, port)
@@ -134,6 +135,8 @@ if __name__ == '__main__':
                         help="with --demo: the faction a player controls (default NAA); 'none' = both bots")
     parser.add_argument('--combat-first-turn', action='store_true',
                         help='dev/testing: allow Combat Move on a faction\'s first turn (the rules skip it)')
+    parser.add_argument('--seed', type=int, default=None,
+                        help='with --demo: seed the game (bots and dice) so it replays exactly')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(message)s')
-    asyncio.run(main(args.host, args.port, args.demo, None if args.human == 'none' else args.human, args.combat_first_turn))
+    asyncio.run(main(args.host, args.port, args.demo, None if args.human == 'none' else args.human, args.combat_first_turn, args.seed))

@@ -14,6 +14,7 @@ Settings (the "new_game" message's "settings"):
      "can_withdraw": true,                               # players may leave an alliance (default true)
      "can_rejoin": false,                                # ...and may re-ally with those they left (default false)
      "max_alliance_size": 3,                             # most factions in one alliance (default 3; 2 .. players-1)
+     "seed": 12345,                                      # optional: a seeded game replays exactly (setup, bots AND dice)
      "dev": {"combat_first_turn": false}}                # optional, testing only
 
 Every faction is in exactly one seat: explicit picks are honoured first (and must
@@ -79,6 +80,8 @@ def check_settings(settings):
             if seat.get('behavior', 'random') not in ('random',) + tuple(BEHAVIORS):
                 problems.append(f'seat {i}: unknown alliance behavior {seat.get("behavior")!r}')
 
+    if 'seed' in settings and (not isinstance(settings['seed'], int) or isinstance(settings['seed'], bool)):
+        problems.append('seed must be a whole number')
     for key in ('randomize_order', 'can_withdraw', 'can_rejoin'):
         if key in settings and not isinstance(settings[key], bool):
             problems.append(f'{key} must be true or false')
@@ -146,7 +149,7 @@ def resolve_settings(settings, rng=None):
 def build_session(settings, rng=None):
     """The GameSession for `settings`, plus the resolved seat list for the client.
     Returns (session, seats); raises LobbyError."""
-    rng = rng or random.Random()
+    rng = rng or random.Random(settings.get('seed'))
     assignments, groups, randomize = resolve_settings(settings, rng)
     modes = {a['faction']: FactionMode[a['mode']] for a in assignments}
     gs = build_game_state(
@@ -160,7 +163,8 @@ def build_session(settings, rng=None):
         allow_combat_moves_first_turn=bool(settings.get('dev', {}).get('combat_first_turn', False)),
     )
     turn_log = TurnLog()
-    engine = GameEngine(gs, data_module, turn_log=turn_log)
+    # The dice come from the same seed as everything else, so a seeded game replays exactly.
+    engine = GameEngine(gs, data_module, turn_log=turn_log, combat_rng=random.Random(rng.random()))
     bots = {a['faction']: RandomBot(engine, a['faction'], rng=random.Random(rng.random()))
             for a in assignments if a['mode'] == 'BOT'}
     seats = [dict(a, seat=i) for i, a in enumerate(assignments, 1)]
