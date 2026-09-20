@@ -188,6 +188,9 @@ func _start_view() -> void:
 				await get_tree().create_timer(0.5).timeout
 				if Dbg.args.has("after_steps"):  # --after_steps=<n>: press Next n more times once answered
 					await Stepper.press(int(Dbg.args["after_steps"]))
+		if Dbg.args.has("select2"):  # --select2=<id>: select a space (then --move_to drops its units)
+			_side.show_space(int(Dbg.args["select2"]))
+			await get_tree().create_timer(0.3).timeout
 		if Dbg.args.has("move_to"):  # --move_to=<territory id>: drop the selected units there (a scripted player)
 			await Stepper.wait_ready()
 			await get_tree().create_timer(0.3).timeout
@@ -197,9 +200,6 @@ func _start_view() -> void:
 			for uid in str(Dbg.args["recall"]).split(","):
 				Stepper.move_recall([int(uid)])
 				await get_tree().create_timer(0.4).timeout
-		if Dbg.args.has("select2"):  # --select2=<id>: select another space after the moves (e.g. the destination)
-			_side.show_space(int(Dbg.args["select2"]))
-			await get_tree().create_timer(0.3).timeout
 		if Dbg.args.has("hold"):  # --hold=<seconds>: hold the submit button that long (the ring fills)
 			await _side.debug_hold(float(Dbg.args["hold"]))
 		if Dbg.args.has("battle_rolls"):
@@ -258,13 +258,15 @@ func _inject_all() -> void:
 		if not Dbg.args.has("drag_hold"):  # --drag_hold: leave the button pressed (to capture the drag in progress)
 			_inject_button(b, false)
 			await get_tree().process_frame
-	if Dbg.args.has("click"):
-		var c: PackedStringArray = Dbg.args["click"].split(",")
-		var p := Vector2(float(c[0]), float(c[1]))
-		_inject_button(p, true)
-		await get_tree().process_frame
-		_inject_button(p, false)
-		await get_tree().process_frame
+	if Dbg.args.has("click"):  # x,y  or several: x,y;x,y;...
+		for spot in str(Dbg.args["click"]).split(";"):
+			var c: PackedStringArray = spot.split(",")
+			var p := Vector2(float(c[0]), float(c[1]))
+			_inject_button(p, true)
+			await get_tree().process_frame
+			_inject_button(p, false)
+			for i in 4:
+				await get_tree().process_frame
 
 
 func _inject_button(pos: Vector2, pressed: bool) -> void:

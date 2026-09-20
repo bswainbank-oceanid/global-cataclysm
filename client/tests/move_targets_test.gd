@@ -96,5 +96,25 @@ func _initialize() -> void:
 	store.set_human_move("NAA", {})
 	_check(not store.human_move_active(), "leaving the move phase clears it")
 
+	# Fighters on a carrier ride along with it (the engine sweeps them): a selected
+	# carrier's targets don't depend on where the fighter could fly, and the
+	# fighter gets no order of its own.
+	var fleet := {
+		"5": {"unit_type": "Aircraft Carrier", "territory_id": 58, "destinations": {"57": [58, 57], "59": [58, 59]}},
+		"6": {"unit_type": "Fighter", "territory_id": 58, "destinations": {"10": [58, 10], "20": [58, 20]}},
+		"7": {"unit_type": "Submarine", "territory_id": 58, "destinations": {"57": [58, 57]}},
+	}
+	store.set_human_move("NAA", _block("noncombat", fleet))
+	store.move_origin = 58
+	_select([5, 6, 7])
+	t = store.move_targets()
+	_check(t.has(57) and not t.has(59) and not t.has(10), "carrier group: targets are what the ships reach (57)")
+	_check(t[57]["orders"].size() == 2 and t[57]["count"] == 3, "the fighter rides: no order of its own, still counted (%d/%d)" % [t[57]["orders"].size(), t[57]["count"]])
+	_select([5])
+	t = store.move_targets()
+	_check(t.has(57) and t.has(59) and t[57]["count"] == 2, "a carrier alone still takes the fighter along")
+	_select([6])
+	t = store.move_targets()
+	_check(t.has(10) and t.has(20) and t[10]["orders"].size() == 1, "the fighter alone flies on its own")
 	print("move targets test: failures=%d" % _failures)
 	quit(1 if _failures > 0 else 0)

@@ -308,19 +308,35 @@ func _tiles_for(tid: int, units: Array, mine: bool) -> Control:
 			tile.tooltip_text += "\nQueued to move - click to recall"
 			tile.pressed.connect(func(): move_recall.emit([uid]))
 		elif mine and movable.has(uid):
-			tile.button_pressed = GameStore.move_selected.has(uid)
+			tile.button_pressed = GameStore.move_selected.has(uid) or GameStore.ride_along_ids().has(uid)
+			if GameStore.ride_along_ids().has(uid):
+				tile.tooltip_text += "\nRides along with the selected carrier"
 			tile.toggled.connect(func(on: bool): GameStore.toggle_move_unit(uid, on))
 			if tile.button_pressed:
 				tile.drag_payload = {"kind": "move_units"}
 		elif mine:
 			tile.toggle_mode = false
 			tile.dimmed = true
-			tile.tooltip_text += "\nNo legal move this phase"
+			if _rides_with_queued_carrier(tid, u):
+				tile.tooltip_text += "\nRides along with its carrier (queued to move)"
+			else:
+				tile.tooltip_text += "\nNo legal move this phase"
 		else:
 			tile.button_pressed = _selected_units.has(uid)
 			tile.toggled.connect(_on_unit_toggled.bind(uid))
 		flow.add_child(tile)
 	return flow
+
+
+## An air unit left behind at `tid` while an Aircraft Carrier there is queued to
+## move: the engine carries the air units along with the carrier.
+func _rides_with_queued_carrier(tid: int, u: Dictionary) -> bool:
+	if str(GameData.units["units"][GameStore.base_type(str(u["unit_type"]))]["category"]) != "Air":
+		return false
+	for o in GameStore.committed_from(tid):
+		if o["unit_type"] == "Aircraft Carrier":
+			return true
+	return false
 
 
 ## Units queued to move INTO this space (from elsewhere): shown so they can be

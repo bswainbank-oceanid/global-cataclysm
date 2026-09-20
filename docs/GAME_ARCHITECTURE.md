@@ -423,7 +423,10 @@ the same JSON, not a parallel editing path.
   works out the highlighted spaces (green): every selected unit must reach the
   target, except that in an amphibious group (land + sea units) a land target only
   needs the land/air units to reach it, and the sea units that can escort them to
-  the last sea zone of the landing path do. Drag from the selected units (tile) or
+  the last sea zone of the landing path do. Air units in the space of a selected
+  Aircraft Carrier ride along with it (the engine sweeps them, `carrier_ride_along`),
+  so they are left out of that requirement (`GameStore.ride_along_ids`); an air
+  unit selected alone flies on its own. Drag from the selected units (tile) or
   from the origin space on the map (dragging elsewhere still pans) onto a target:
   the arrow that will accompany the move follows the drag, and on release the
   move is queued. Committed units show dimmed with an arrow badge at the origin

@@ -351,6 +351,28 @@ func all_move_selected() -> bool:
 	return not ids.is_empty() and ids.all(func(uid): return move_selected.has(uid))
 
 
+## Air units at the origin that ride along with a selected Aircraft Carrier: the
+## engine sweeps every one of the mover's air units in the carrier's space along
+## with it (rules.json carrier_ride_along), so they neither need to reach the
+## target themselves nor can they be left behind by deselecting them. Air units
+## that already have an order of their own are not in the options, so not here.
+func ride_along_ids() -> Array:
+	var out := []
+	if human_move.is_empty() or move_selected.is_empty():
+		return out
+	var opts: Dictionary = human_move["options"]
+	var carrier := false
+	for uid in move_selected:
+		if opts.has(uid) and opts[uid]["unit_type"] == "Aircraft Carrier":
+			carrier = true
+	if not carrier:
+		return out
+	for uid in opts:
+		if int(opts[uid]["origin"]) == move_origin and _category(opts[uid]["unit_type"]) == "Air":
+			out.append(uid)
+	return out
+
+
 func _category(unit_type: String) -> String:
 	return str(GameData.units["units"][unit_type]["category"])
 
@@ -381,9 +403,10 @@ func move_targets() -> Dictionary:
 		return out
 	var opts: Dictionary = human_move["options"]
 	var kind: String = human_move["kind"]
+	var riders := ride_along_ids()
 	var ids := []
 	for uid in move_selected:
-		if opts.has(uid):
+		if opts.has(uid) and not riders.has(uid):
 			ids.append(uid)
 	if ids.is_empty():
 		return out
@@ -422,7 +445,7 @@ func move_targets() -> Dictionary:
 				for uid in escorts:
 					if opts[uid]["dests"].has(zone):
 						orders.append(_order_for(kind, uid, opts[uid]["dests"][zone]))
-		out[d] = {"orders": orders, "count": orders.size()}
+		out[d] = {"orders": orders, "count": orders.size() + riders.size()}
 	return out
 
 
