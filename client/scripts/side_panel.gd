@@ -251,7 +251,7 @@ func show_space(tid: int) -> void:
 	_detail.add_child(facts)
 	if t["type"] == "land":
 		var bits := ["value %d" % int(t.get("value", 0))]
-		if t.get("strategic_center", false):
+		if GameStore.is_sc(tid):
 			bits.append("Strategic Center")
 		_detail.add_child(HudStyle.label(", ".join(bits), 12))
 	var contested = _territory_field(tid, "contested_by")

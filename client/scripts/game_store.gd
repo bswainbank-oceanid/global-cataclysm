@@ -553,9 +553,23 @@ func territory_count(code: String) -> int:
 func sc_count(code: String) -> int:
 	var n := 0
 	for tid in GameData.land_ids:
-		if owner_of(tid) == code and GameData.territories[tid].get("strategic_center", false):
+		if owner_of(tid) == code and is_sc(tid):
 			n += 1
 	return n
+
+
+## Whether the territory counts as a Strategic Center as shown: it is one on the
+## map, and its owner can use it (a Defensive power has no Strategic Centers: it
+## never buys or deploys; whoever captures the territory gets the SC).
+func is_sc(tid: int) -> bool:
+	if not GameData.territories[tid].get("strategic_center", false):
+		return false
+	return faction_state(owner_of(tid)).get("mode", "") != "DEFENSIVE"
+
+
+## The territory's value as shown on the map: its value plus 2 for a Strategic Center.
+func display_value(tid: int) -> int:
+	return int(GameData.territories[tid].get("value", 0)) + (2 if is_sc(tid) else 0)
 
 
 ## Total purchase cost of the faction's deployed units (matches the bots'

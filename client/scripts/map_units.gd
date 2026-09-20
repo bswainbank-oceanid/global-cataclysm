@@ -99,29 +99,26 @@ func _badge_scale() -> float:
 	return STRIP_SCALE if _style() == Style.STRIP else 1.0
 
 
-## Every land space gets a value marker once zoomed in; zoomed out only
-## Strategic Centers do (their star is the map's landmark). 0 = no marker.
+## Every land space with a value gets a marker, at every zoom level. 0 = no marker.
 func _marker_width(tid: int) -> float:
 	var t: Dictionary = GameData.territories[tid]
 	if t["type"] != "land":
 		return 0.0
-	var sc: bool = t.get("strategic_center", false)
 	if GameStore.is_neutral(GameStore.owner_of(tid)):
 		return 0.0  # neutrals take no part in the game; their value isn't shown
-	if _style() == Style.FLAG and not sc:
+	if GameStore.display_value(tid) <= 0:
 		return 0.0
-	return STAR_W if sc else DISC_W
+	return STAR_W if GameStore.is_sc(tid) else DISC_W
 
 
 ## The territory's value (Strategic Center bonus included) in a disc of its owner's colour (cream for
 ## neutrals); a Strategic Center's disc sits inside a gold star.
 func _draw_value_marker(tid: int, c: Vector2) -> void:
-	var t: Dictionary = GameData.territories[tid]
 	var owner := GameStore.owner_of(tid)
 	var col := GameStore.display_color(owner) if GameData.factions.has(owner) else Color(0.5, 0.5, 0.5)
 	var text_col := Color(0.15, 0.12, 0.05) if GameStore.is_neutral(owner) else Color.WHITE
 	var r := DISC_R
-	if t.get("strategic_center", false):
+	if GameStore.is_sc(tid):
 		var pts := HudStyle.star_points(c, STAR_R)
 		draw_colored_polygon(pts, Color(1.0, 0.82, 0.25))
 		pts.append(pts[0])
@@ -130,7 +127,7 @@ func _draw_value_marker(tid: int, c: Vector2) -> void:
 	draw_circle(c, r + 1.0, Color(0, 0, 0, 0.85))
 	draw_circle(c, r, col)
 	var font := ThemeDB.fallback_font
-	var text := str(int(t.get("value", 0)) + (2 if t.get("strategic_center", false) else 0))  # income/deploy value: SC bonus included
+	var text := str(GameStore.display_value(tid))  # income/deploy value: SC bonus included
 	var at := Vector2(c.x - r, c.y + 3.6)
 	if text_col == Color.WHITE:
 		draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_CENTER, r * 2.0, 10, 3, Color(0, 0, 0, 0.9))

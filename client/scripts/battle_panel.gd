@@ -228,7 +228,7 @@ func _set_header() -> void:
 	var lines := ["Battle: %d. %s" % [tid, t["name"]]]
 	if t["type"] == "land":
 		var value := int(t.get("value", 0))
-		if t.get("strategic_center", false):
+		if GameStore.is_sc(tid):
 			lines.append("Strategic Center - %d" % (value + 2))
 		else:
 			lines.append("Territory - value %d" % value)

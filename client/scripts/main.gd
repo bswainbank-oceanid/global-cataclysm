@@ -451,7 +451,7 @@ func _describe(tid: int) -> String:
 	var line := "%d. %s  (%s)" % [tid, t["name"], t["type"]]
 	if owner != "":
 		line += "  owner: %s" % owner
-	if t.get("strategic_center", false):
+	if GameStore.is_sc(tid):
 		line += "  [SC]"
 	return line
 
