@@ -436,8 +436,8 @@ the same JSON, not a parallel editing path.
   offers Next as a scheduled pause would; after that Settings apply again. A battle that pauses because of the battle options (not an
   ordinary phase pause) opens the **battle board** (`reference/GC Battle Board
   Mockup.pdf`): the map first zooms to the territory and selects it (and returns to the previous view once Combat Resolution ends), the Next button then reads "Open battle board", and pressing it pops up a chart with both
-  sides' units placed by defense (the rolling side slides into its attack-die
-  band), a Resolve setting per side (Entire Battle / Round / Side / Unit Type /
+  sides' units in the row of their **defense** value (5-10; no attack-die columns, units never move, except that a unit promoted
+  mid-battle goes up a row at once), a Resolve setting per side (Entire Battle / Round / Side / Unit Type /
   Unit; default Unit Type, remembered) that sets how much one Next Roll reveals,
   top-down dice per roll, `/` on hit units and `X` on eliminated ones (marked at
   the hit, as they still roll that round), XP shown the moment it is earned (promotions at round end), the first-round combat bonus named in the Ready/Round label with its side and reason, an empty-territory capture skipping the board, every unit brought back at the end with the result, and End Battle to
@@ -448,7 +448,7 @@ the same JSON, not a parallel editing path.
   (defense 6, 1 HP, no attack, no XP; sunk = lost). `BattleModel`
   (`client/scripts/battle_model.gd`) holds the stepping logic and is checked
   headlessly: `godot --headless --path client -s res://tests/battle_model_test.gd`. Saved in `user://settings.cfg`; `client_shot.py` takes
-  `--pause never|turn|phase` and `--pause_battle`.
+  `--pause never|turn|phase` and `--pause_battle`. The original layout (attack-die columns, the rolling side sliding into its die's band) is kept as the **Battle board layout** setting "Die bands (classic)" in the Settings panel (`Settings.battle_layout`; `--classic_board` for scripted runs); the dice and their order are the same in both. Layout checks: `godot --headless --path client -s res://tests/battle_layout_test.gd`.
   Run: `python tools/sync_client_data.py` (copies reference data into the
   gitignored `client/data`, `client/assets`), `python -m server.app`, then
   `godot --path client -- --server`. Scripted UI verification without a

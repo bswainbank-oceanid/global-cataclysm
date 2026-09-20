@@ -7,6 +7,7 @@ extends PanelContainer
 var _opp: OptionButton
 var _opp_battle: CheckBox
 var _opp_battle_mine: CheckBox
+var _layout: OptionButton
 var _your_battle: CheckBox
 var _note: Label
 signal new_game_pressed
@@ -34,6 +35,17 @@ func _ready() -> void:
 	v.add_child(_opp)
 	_opp_battle = _check(v, "Pause for each battle", func(on): Settings.opp_pause_battle = on)
 	_opp_battle_mine = _check(v, "Pause for each battle involving your units", func(on): Settings.opp_pause_battle_mine = on)
+
+	v.add_child(HSeparator.new())
+	v.add_child(HudStyle.label("Battle board layout:", 13))
+	_layout = OptionButton.new()
+	_layout.add_item("Defense rows", Settings.BattleLayout.DEFENSE)
+	_layout.add_item("Die bands (classic)", Settings.BattleLayout.DIE_BANDS)
+	_layout.tooltip_text = "Defense rows: every unit stays in the row of its defense value. Die bands: the original board, with attack-die columns; the side that is rolling slides into its die's band."
+	_layout.item_selected.connect(func(idx: int):
+		Settings.battle_layout = _layout.get_item_id(idx)
+		Settings.commit())
+	v.add_child(_layout)
 
 	v.add_child(HSeparator.new())
 	v.add_child(HudStyle.label("Your turn:", 13))
@@ -68,6 +80,7 @@ func _check(parent: Control, text: String, setter: Callable) -> CheckBox:
 
 
 func _sync() -> void:
+	_layout.select(_layout.get_item_index(Settings.battle_layout))
 	_opp.select(_opp.get_item_index(Settings.opp_pause))
 	_opp_battle.set_pressed_no_signal(Settings.opp_pause_battle)
 	_opp_battle_mine.set_pressed_no_signal(Settings.opp_pause_battle_mine)

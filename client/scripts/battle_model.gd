@@ -184,8 +184,13 @@ func _end_round() -> void:
 	var r: Dictionary = rounds[round_index]
 	for row in r["end"]:
 		var u: Dictionary = units[int(row["unit_id"])]
+		var was_promoted: bool = bool(u["promoted"])
 		for k in ["hp", "max_hp", "xp", "promoted"]:
 			u[k] = row[k]
+		if bool(u["promoted"]) and not was_promoted and not bool(u["cargo"]):
+			# +1 defense at once, so the unit moves up a row on the board now; the
+			# next round's start snapshot carries the same value (the engine's cap is 10).
+			u["defense"] = mini(int(u["defense"]) + 1, 10)
 		if int(row["hp"]) <= 0:
 			u["mark"] = Mark.DEAD
 
