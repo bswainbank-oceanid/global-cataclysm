@@ -567,6 +567,50 @@ class TestContestedPurchaseLostFallback(unittest.TestCase):
         self.assertEqual(len(gs.territories[2].units), 0)
         self.assertEqual(len(gs.territories[1].units), 0)
 
+    def sea_fallback_state(self, enemy_in_sea=None):
+        # 1 (Infantry pending, lost to AAC) with sea zones 3 and 4 next to it and no controlled land.
+        data = FakeData(
+            territories={1: {'type': 'land', 'value': 5}, 3: {'type': 'sea'}, 4: {'type': 'sea'}},
+            adjacency={1: [3, 4]},
+        )
+        return data, make_state(
+            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.DEPLOY_INCOME,
+            units_by_territory={tid: [make_unit('Cruiser', 'AAC')] for tid in (enemy_in_sea or [])},
+            pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1)]},
+        )
+
+    def test_a_quiet_sea_zone_is_preferred_to_one_holding_enemy_ships(self):
+        data, gs = self.sea_fallback_state(enemy_in_sea=[3])  # the lower id is the hostile one
+        GameEngine(gs, data).deploy_and_collect_income('NAA')
+        self.assertEqual(len(gs.territories[4].units), 1)
+        self.assertEqual(len(gs.territories[3].units), 1)  # only the enemy cruiser
+        self.assertFalse(gs.territories[4].contested_by)
+
+    def test_landing_among_enemy_ships_is_a_contest_not_silent_co_occupation(self):
+        data, gs = self.sea_fallback_state(enemy_in_sea=[3, 4])  # nowhere quiet
+        GameEngine(gs, data).deploy_and_collect_income('NAA')
+        self.assertEqual(len(gs.territories[3].units), 2)
+        self.assertEqual(gs.territories[3].contested_by, {'NAA', 'AAC'})
+        self.assertEqual(gs.territories[3].ambush_bonus_for, {'AAC'})
+
+    def test_a_lost_purchase_prefers_land_over_water_and_is_recorded_where_it_lands(self):
+        data = FakeData(
+            territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 3}, 3: {'type': 'sea'}},
+            adjacency={1: [2, 3]},
+        )
+        gs = make_state(
+            data, {1: 'AAC', 2: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.DEPLOY_INCOME,
+            pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1)]},
+        )
+        log = TurnLog()
+        engine = GameEngine(gs, data, turn_log=log)
+        engine.deploy_and_collect_income('NAA')
+        deploys = [e for e in log.events if e['kind'] == 'unit_deployed']
+        self.assertEqual([(e['territory_id'], e['qty']) for e in deploys], [(2, 1)])
+        self.assertEqual(len(gs.territories[3].units), 0)
+
     def test_still_owned_territory_is_unaffected(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
         gs = make_state(
@@ -577,6 +621,59 @@ class TestContestedPurchaseLostFallback(unittest.TestCase):
         engine = GameEngine(gs, data)
         engine.deploy_and_collect_income('NAA')
         self.assertEqual(len(gs.territories[1].units), 1, 'still-owned (even if contested) territory needs no fallback')
+
+
+class TestLostContestedPurchaseOverAWholeTurn(unittest.TestCase):
+    """The whole turn on the real map: Infantry bought into a contested territory that is then
+    lost in the same turn's combat still get deployed nearby (adjacent land, else adjacent sea)."""
+
+    def play(self, hand_over_to_gpc=()):
+        from engine.setup import build_game_state
+        modes = {f: FactionMode.BOT for f in real_data.factions()}
+        gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
+        engine = GameEngine(gs, real_data, combat_rng=random.Random(1))
+        T = 10  # Western Canada, NAA's, with one NAA Mech Inf in it
+        for i in range(4):  # GPC's promoted Armor holds it against that lone defender
+            gs.territories[T].units.append(UnitInstance(unit_id=9000 + i, unit_type='Armor', owner='GPC', current_hp=4, promotions=3))
+        gs.territories[T].contested_by = {'GPC', 'NAA'}
+        for n in hand_over_to_gpc:
+            gs.territories[n].owner = 'GPC'
+        count = lambda: {tid: sum(1 for u in t.units if u.owner == 'NAA' and u.unit_type == 'Infantry') for tid, t in gs.territories.items()}
+        before = count()
+        engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, T)])
+        engine.confirm_purchases('NAA')
+        while gs.active_faction == 'NAA' and gs.phase != Phase.ALLIANCES:
+            ph = gs.phase
+            if ph == Phase.COMBAT_MOVE:
+                engine.confirm_combat_moves('NAA')
+            elif ph == Phase.COMBAT_RESOLUTION:
+                engine.resolve_combat('NAA')
+            elif ph == Phase.NONCOMBAT_MOVE:
+                engine.process_return_to_base('NAA')
+                engine.confirm_noncombat_moves('NAA')
+            elif ph == Phase.CAPTURE:
+                engine.process_capture_territory('NAA')
+                engine.process_elimination_check()
+                self.assertEqual(gs.territories[T].owner, 'GPC', 'the battle was lost, and with it the territory')
+            elif ph == Phase.DEPLOY_INCOME:
+                engine.deploy_and_collect_income('NAA')
+            engine.advance_phase()
+        after = count()
+        return {tid: after[tid] - before[tid] for tid in after if after[tid] != before[tid]}
+
+    def test_the_infantry_fall_back_to_an_adjacent_territory_still_held(self):
+        placed = self.play()
+        self.assertEqual(list(placed.values()), [1])
+        tid = next(iter(placed))
+        self.assertEqual(real_data.territories()[tid]['type'], 'land')
+        self.assertIn(tid, real_data.adjacency()[10])
+
+    def test_with_no_adjacent_land_left_they_go_into_an_adjacent_sea_zone(self):
+        placed = self.play(hand_over_to_gpc=(20, 46, 56, 69, 6))
+        self.assertEqual(list(placed.values()), [1])
+        tid = next(iter(placed))
+        self.assertEqual(real_data.territories()[tid]['type'], 'sea')
+        self.assertIn(tid, real_data.adjacency()[10])
 
 
 class TestCarrierlessAirDeployFallback(unittest.TestCase):

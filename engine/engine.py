@@ -422,10 +422,15 @@ class GameEngine:
         # territory in the first place) -- purchase.
         # contested_purchase_lost_during_turn_fallback's chain.
         fallback = self._find_fallback_for_lost_purchase(tid, faction)
-        if fallback is not None:
-            self.game_state.territories[fallback].units.extend(pending)
-            self._record_deploys(faction, fallback, pending)
-        # else: no adjacent controlled territory or sea zone -- lost outright, never placed.
+        if fallback is None:
+            return  # no adjacent controlled territory or sea zone -- lost outright, never placed
+        if self.data.territories()[fallback]['type'] == 'sea':
+            # An ordinary sea deployment: it records the deploy, and lands among enemy ships
+            # as a contested zone (purchase.hostile_sea_deploy_creates_contested) rather than silently.
+            self._deploy_to_sea(fallback, pending, faction)
+            return
+        self.game_state.territories[fallback].units.extend(pending)
+        self._record_deploys(faction, fallback, pending)
 
     def _record_deploys(self, faction, territory_id, units):
         if self.stats is not None:
@@ -451,7 +456,11 @@ class GameEngine:
         )
         if controlled_land:
             return controlled_land[0]
-        sea = sorted(n for n in neighbors if terrs[n]['type'] == 'sea')
+        # (No tie-break is specified among sea zones; a quiet one beats one holding enemy
+        # ships -- those would make the landing a contest -- then the lowest id.)
+        def hostile(n):
+            return any(not _is_ally_or_self(self.game_state, faction, u.owner) for u in self.game_state.territories[n].units)
+        sea = sorted((n for n in neighbors if terrs[n]['type'] == 'sea'), key=lambda n: (hostile(n), n))
         return sea[0] if sea else None
 
     def _deploy_to_sea(self, tid, pending, faction):
