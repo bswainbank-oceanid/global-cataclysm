@@ -116,5 +116,32 @@ func _initialize() -> void:
 	_select([6])
 	t = store.move_targets()
 	_check(t.has(10) and t.has(20) and t[10]["orders"].size() == 1, "the fighter alone flies on its own")
+	# A stack is limited to the range of its slowest member: only the spaces EVERY selected
+	# unit can reach are targets, whatever the faster ones could do alone.
+	var stack := {
+		"21": {"unit_type": "Infantry", "territory_id": 56, "destinations": {"10": [56, 10]}},                       # range 1
+		"22": {"unit_type": "Mechanized Infantry", "territory_id": 56, "destinations": {"10": [56, 10], "13": [56, 10, 13]}},  # range 2
+		"23": {"unit_type": "Armor", "territory_id": 56, "destinations": {"10": [56, 10], "20": [56, 20]}},           # range 1, elsewhere
+	}
+	store.set_human_move("NAA", _block("combat", stack))
+	store.move_origin = 56
+	_select([22])
+	t = store.move_targets()
+	_check(t.has(10) and t.has(13), "the Mech alone reaches two hops out")
+	_select([21, 22])
+	t = store.move_targets()
+	_check(t.has(10) and not t.has(13) and t.size() == 1, "with an Infantry along, only its one-hop range is left: %s" % str(t.keys()))
+	_check(t[10]["orders"].size() == 2, "and both units are ordered there")
+	_select([21, 22, 23])
+	t = store.move_targets()
+	_check(t.has(10) and t.size() == 1, "a third unit that can't reach the other spaces narrows it further: %s" % str(t.keys()))
+	store.set_human_move("NAA", _block("noncombat", {
+		"31": {"unit_type": "Cruiser", "territory_id": 85, "destinations": {"86": [85, 86], "87": [85, 87]}},
+		"32": {"unit_type": "Submarine", "territory_id": 85, "destinations": {"86": [85, 86]}}}))
+	store.move_origin = 85
+	_select([31, 32])
+	t = store.move_targets()
+	_check(t.size() == 1 and t.has(86), "the same holds for non-combat moves: %s" % str(t.keys()))
+
 	print("move targets test: failures=%d" % _failures)
 	quit(1 if _failures > 0 else 0)
