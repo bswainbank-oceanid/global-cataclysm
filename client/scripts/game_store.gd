@@ -589,6 +589,20 @@ func sc_count(code: String) -> int:
 	return n
 
 
+## What the faction's territory is worth: the value of every land territory it owns that
+## isn't contested (Strategic Center bonus included) -- its income, not its cash on hand.
+func territory_income(code: String) -> int:
+	var total := 0
+	for tid in GameData.land_ids:
+		if owner_of(tid) != code:
+			continue
+		var contested = state["territories"][str(tid)].get("contested_by")
+		if contested != null and not contested.is_empty():
+			continue
+		total += display_value(tid)
+	return total
+
+
 ## Whether the territory counts as a Strategic Center as shown: it is one on the
 ## map, and its owner can use it (a Defensive power has no Strategic Centers: it
 ## never buys or deploys; whoever captures the territory gets the SC).

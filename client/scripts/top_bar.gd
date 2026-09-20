@@ -2,7 +2,7 @@ class_name TopBar
 extends PanelContainer
 ## Top strip from the mockup: a title / round / acting-faction / phase block
 ## on the left, then one stats panel per active faction (T = territories,
-## MCP = treasury, SC = strategic centers, UV = deployed unit value, plus
+## MCP = the value of the uncontested territory held -- the income, not the treasury --, SC = strategic centers, UV = deployed unit value, plus
 ## allies). Rebuilt whenever GameStore's state changes; the acting
 ## faction's panel gets a gold edge.
 
@@ -88,10 +88,11 @@ func _faction_panel(code: String) -> Control:
 	grid.add_theme_constant_override("v_separation", 0)
 	for h in ["T", "MCP", "SC", "UV"]:
 		grid.add_child(HudStyle.label(h, 11, HudStyle.TEXT_DIM))
-	var f := GameStore.faction_state(code)
-	for val in [GameStore.territory_count(code), int(f["treasury_mpc"]), GameStore.sc_count(code), GameStore.unit_value(code)]:
+	# MCP here is the worth of the territories held (uncontested land, SC bonus included), not the treasury.
+	for val in [GameStore.territory_count(code), GameStore.territory_income(code), GameStore.sc_count(code), GameStore.unit_value(code)]:
 		grid.add_child(HudStyle.label(str(val), 14))
 	v.add_child(grid)
+	p.tooltip_text += "\nT territories - MCP value of the uncontested territories held (the income) - SC strategic centers - UV value of the units"
 
 	var allies := GameStore.allies_of(code)
 	if eliminated:
