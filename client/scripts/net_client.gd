@@ -25,6 +25,11 @@ func start(server_url: String = "") -> void:
 	if server_url != "":
 		url = server_url
 	_enabled = true
+	# The default 64 KB inbound buffer is smaller than a full game state (~80 KB with
+	# four or more armies), and Godot drops the connection on an oversized message.
+	_ws.inbound_buffer_size = 16 * 1024 * 1024
+	_ws.outbound_buffer_size = 1024 * 1024
+	_ws.max_queued_packets = 4096
 	var err := _ws.connect_to_url(url)
 	if err != OK:
 		raw_message.emit({"type": "error", "message": "could not connect to %s (error %d)" % [url, err]})

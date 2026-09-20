@@ -315,7 +315,7 @@ func _fit_whole_map() -> void:
 ## seat is written MODE:FACTION[:STRATEGY], e.g. HUMAN:NAA,BOT:GPC:aggressive,NEUTRAL).
 func _launch_scripted() -> void:
 	var waited := 0.0
-	while not _launch.visible and waited < 10.0:
+	while (not _launch.visible or not Net.is_open()) and waited < 10.0:
 		await get_tree().process_frame
 		waited += get_process_delta_time()
 	var spec: String = Dbg.args["launch"]
