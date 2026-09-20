@@ -213,6 +213,47 @@ class TestEnemyTransportsDoNotBlock(unittest.TestCase):
         self.assertIn(2, dest)
 
 
+class TestCombatMoveIntoOwnContestedLand(unittest.TestCase):
+    """Own land that someone is fighting over is a legal combat-move destination (joining
+    the fight); uncontested own land still isn't (nothing to attack)."""
+
+    def setUp(self):
+        # 1 (own, origin) -- 2 (own, contested by AAC) -- 4 (own, beyond it), 3 (sea) touches 1 and 2.
+        self.data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'sea'}, 4: {'type': 'land'}},
+            adjacency={1: [2, 3], 2: [1, 3, 4], 3: [1, 2], 4: [2]},
+        )
+        self.modes = {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}
+
+    def state(self, contested=True):
+        return make_state(
+            self.data, {1: 'NAA', 2: 'NAA', 4: 'NAA'}, self.modes,
+            contested={2: {'AAC', 'NAA'}} if contested else None,
+            units_by_territory={1: [enemy_unit(1, 'Infantry', 'NAA')], 2: [enemy_unit(9, 'Infantry', 'AAC')]},
+        )
+
+    def test_land_units_may_join_the_fight_for_their_own_contested_land(self):
+        self.assertIn(2, legal_combat_move_destinations('Infantry', 'NAA', 1, self.state(), self.data))
+
+    def test_it_is_still_no_attack_when_nothing_is_contested(self):
+        self.assertNotIn(2, legal_combat_move_destinations('Infantry', 'NAA', 1, self.state(contested=False), self.data))
+
+    def test_the_move_is_a_join_not_a_safe_landing_and_marks_nothing_en_route(self):
+        gs = self.state()
+        trace = trace_combat_move('Infantry', 'NAA', [1, 2], gs, self.data)
+        self.assertEqual(trace.final_kind, 'join_contest')
+        # ...and passing THROUGH it to attack 4 (Mech Inf, 2 moves) doesn't count as entering enemy land
+        gs = make_state(
+            self.data, {1: 'NAA', 2: 'NAA', 4: 'AAC'}, self.modes, contested={2: {'AAC', 'NAA'}},
+            units_by_territory={1: [enemy_unit(1, 'Mechanized Infantry', 'NAA')], 4: [enemy_unit(9, 'Infantry', 'AAC')]},
+        )
+        trace = trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 4], gs, self.data)
+        self.assertEqual((trace.entered_en_route, trace.final_kind), ([], 'attack'))
+
+    def test_planes_could_already_do_it(self):
+        self.assertIn(2, legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', self.state(), self.data))
+
+
 class TestAmphibiousThroughOccupiedWater(unittest.TestCase):
     def test_land_unit_can_fight_through_occupied_water_onto_adjacent_land(self):
         # 1 (land, origin) -- 2 (sea, enemy warship present) -- 3 (land, beyond)

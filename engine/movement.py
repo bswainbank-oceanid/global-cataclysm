@@ -204,8 +204,10 @@ def _classify_combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_s
         # Own or allied territory -- freely transitable regardless of
         # contested status (checked before the generic contested check
         # below, so this doesn't get swallowed by it); attacking your
-        # own or an ally's land isn't a thing.
-        return PASS_ONLY
+        # own or an ally's land isn't a thing. But when it is contested
+        # (someone is fighting for it), a combat move may end here to
+        # join that fight -- and still pass on through, like any own land.
+        return STOP_AND_PASS if contested else PASS_ONLY
 
     if contested:
         # Joining or continuing a fight already in progress -- a legal
@@ -524,7 +526,7 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
         else:
             if not hop.pass_through:
                 raise ValueError(f'{unit_type} cannot continue past {next_id}')
-            if hop.stop and neighbor_is_land:
+            if hop.stop and neighbor_is_land and not _is_ally_or_self(game_state, owner, game_state.territories[next_id].owner):
                 # The only way a mid-path hop is BOTH a legal stop and
                 # continuable is Mechanized Infantry's empty-foreign-land
                 # blitz (STOP_AND_PASS) -- own/allied land is pass-only
@@ -538,7 +540,7 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
     final_id = path[-1]
     final_state = game_state.territories[final_id]
     final_is_land = territories[final_id]['type'] == 'land'
-    if final_is_land and _is_ally_or_self(game_state, owner, final_state.owner):
+    if final_is_land and _is_ally_or_self(game_state, owner, final_state.owner) and not final_state.contested_by:
         final_kind = 'safe_landing'
     elif final_state.contested_by:
         final_kind = 'join_contest'
