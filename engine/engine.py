@@ -1699,6 +1699,11 @@ class GameEngine:
         )
         return {'eligible_invite_targets': sorted(targets), 'can_withdraw': can_withdraw}
 
+    def alliance_members(self, faction):
+        """Every faction in `faction`'s alliance, itself included (just {faction}
+        when it has none)."""
+        return self._alliance_members(faction)
+
     def _new_alliance_tag(self):
         tag = f'ALLIANCE_{self.game_state._next_alliance_id}'
         self.game_state._next_alliance_id += 1
@@ -1774,6 +1779,8 @@ class GameEngine:
 
         self._alliance_action_taken.add(faction)
         if not target_accepts:
+            if self.turn_log is not None:
+                self.turn_log.record_alliance_declined(self.game_state.global_turn, faction, target)
             return False
 
         existing_tag = self.game_state.factions[faction].alliance

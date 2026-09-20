@@ -15,6 +15,9 @@ extends Node
 ##   --launch[=HUMAN:NAA,BOT,...]  show the launch screen (and play its Start with these seats)
 ##   --resume            go straight to the game running on the server
 ##   --fixed_order, --combat_first_turn   launch options for scripted runs
+##   --alliance=none|withdraw|invite:UE   a scripted player's Alliances choice
+##   --after_steps=<n>   with --invite_answer: press Next n more times afterwards
+##   --invite_answer=accept|decline|wait  answer (or just wait for) a bot's invitation
 ##   --buy=Unit:territory,...  add units to the human's purchase queue (a scripted player)
 ##   --move_to=<id>     drop the selected units on that space (Combat/Non-Combat Move)
 ##   --recall=<unit,..> take units out of the queued moves

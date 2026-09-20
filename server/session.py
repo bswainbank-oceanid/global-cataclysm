@@ -282,6 +282,10 @@ class GameSession:
             return self.stepper.watch()
         if msg_type == 'next':
             return self.stepper.next()
+        if msg_type == 'stage_alliance':
+            return self.stepper.stage_alliance(faction, msg.get('action'), msg.get('target'))
+        if msg_type == 'respond_invitation':
+            return self.stepper.respond_invitation(faction, msg.get('accept'))
         if msg_type == 'stage_moves':
             return self.stepper.stage_moves(faction, msg.get('orders') or [])
         if msg_type == 'stage_purchase':

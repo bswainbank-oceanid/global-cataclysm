@@ -6,6 +6,7 @@ extends Node
 ## falls back to the static starting owners in territories.json.
 
 signal state_changed
+signal alliance_changed  # the human player's Alliances options or a pending invitation changed
 signal move_changed  # the human player's move queue, options or selection changed
 signal purchase_changed  # the human player's purchase queue/options changed
 
@@ -14,6 +15,8 @@ var tile_drag_armed := false  # a selected unit tile was pressed: a move drag ma
 var move_origin := -1     # the space whose units are being picked to move
 var move_selected := {}   # unit_id -> true: the units picked (all uncommitted ones by default)
 var _unit_index := {}     # unit_id -> unit dict, rebuilt with every state
+var human_alliance := {}  # the human's Alliances phase: {faction, members, options{eligible_invite_targets, can_withdraw}, staged{action, target?}, game_would_end}
+var invitation := {}      # a bot's invitation awaiting the human's answer: {from, to, members, answered, accepts}
 var human_purchase := {}  # the human's Purchase phase in progress: {faction, treasury, total_cost, targets{tid: {remaining, next_sc, sources}}, orders[], contested[]}
 var queued_purchase := {}  # the purchase event awaiting execution, {} if none
 var queued_attack := {}    # the combat_move event awaiting execution, {} if none
@@ -29,12 +32,45 @@ func set_state(new_state: Dictionary) -> void:
 	state_changed.emit()
 
 
+## The server's Alliances options for the human's Alliances phase ({} = not in one).
+func set_human_alliance(faction: String, block: Dictionary) -> void:
+	if block.is_empty() or str(block.get("kind", "")) != "alliance":
+		if not human_alliance.is_empty():
+			human_alliance = {}
+			alliance_changed.emit()
+		return
+	human_alliance = {
+		"faction": faction, "members": block["members"], "options": block["options"],
+		"staged": block["staged"], "game_would_end": bool(block["game_would_end"]),
+	}
+	alliance_changed.emit()
+
+
+## A bot's invitation to a player, from the phase queue ({} = none pending).
+func set_invitation(inv: Dictionary) -> void:
+	if inv == invitation:
+		return
+	invitation = inv
+	alliance_changed.emit()
+
+
+func human_alliance_active() -> bool:
+	return not human_alliance.is_empty()
+
+
+## True while a player must still answer an invitation before the phase can run.
+func invitation_pending() -> bool:
+	return not invitation.is_empty() and not bool(invitation.get("answered", false)) and is_player(str(invitation["to"]))
+
+
 ## Forget everything about the game in progress (a new game is starting).
 func reset() -> void:
 	state = {}
 	_unit_index.clear()
 	human_purchase = {}
 	human_move = {}
+	human_alliance = {}
+	invitation = {}
 	move_origin = -1
 	move_selected.clear()
 	queued_purchase = {}
@@ -43,6 +79,7 @@ func reset() -> void:
 	state_changed.emit()
 	purchase_changed.emit()
 	move_changed.emit()
+	alliance_changed.emit()
 
 
 ## A unit's dict (as the server sent it) by id, {} if there is none.

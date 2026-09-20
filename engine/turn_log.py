@@ -171,6 +171,9 @@ class TurnLog:
             'tag': tag, 'new_alliance': new_alliance,
         })
 
+    def record_alliance_declined(self, turn, faction, target):
+        self.events.append({'kind': 'alliance_declined', 'turn': turn, 'faction': faction, 'target': target})
+
     def record_alliance_withdrawal(self, turn, faction, tag, former_members):
         self.events.append({
             'kind': 'alliance_withdrawal', 'turn': turn, 'faction': faction,

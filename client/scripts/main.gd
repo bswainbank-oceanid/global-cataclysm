@@ -102,6 +102,10 @@ func _ready() -> void:
 	battle_panel.roll_requested.connect(Stepper.execute_open_battle)
 	battle_panel.closed.connect(Stepper.release_battle)
 
+	var invitation_window := InvitationWindow.new()
+	add_child(invitation_window)
+	invitation_window.answered.connect(Stepper.invitation_respond)
+
 	var settings_panel := SettingsPanel.new()
 	settings_panel.visible = false
 	settings_panel.z_index = 100
@@ -168,6 +172,22 @@ func _start_view() -> void:
 				else:
 					Stepper.purchase_add(parts[0], int(parts[1]))
 				await get_tree().create_timer(0.25).timeout
+		if Dbg.args.has("alliance"):  # --alliance=none | withdraw | invite:UE   (a scripted player's Alliances choice)
+			await Stepper.wait_ready()
+			var a := str(Dbg.args["alliance"]).split(":")
+			Stepper.alliance_stage(a[0], a[1] if a.size() > 1 else "")
+			await get_tree().create_timer(0.5).timeout
+		if Dbg.args.has("invite_answer"):  # --invite_answer=accept|decline
+			var waited := 0.0
+			while not GameStore.invitation_pending() and waited < 5.0:
+				await get_tree().process_frame
+				waited += get_process_delta_time()
+			await get_tree().create_timer(0.4).timeout
+			if Dbg.args["invite_answer"] != "wait":
+				Stepper.invitation_respond(Dbg.args["invite_answer"] == "accept")
+				await get_tree().create_timer(0.5).timeout
+				if Dbg.args.has("after_steps"):  # --after_steps=<n>: press Next n more times once answered
+					await Stepper.press(int(Dbg.args["after_steps"]))
 		if Dbg.args.has("move_to"):  # --move_to=<territory id>: drop the selected units there (a scripted player)
 			await Stepper.wait_ready()
 			await get_tree().create_timer(0.3).timeout
@@ -292,7 +312,7 @@ func _fit_whole_map() -> void:
 
 ## Dev/scripted: wait for the launch screen, then start the game it describes
 ## (--launch=HUMAN,BOT,NEUTRAL,... one mode per seat, factions random unless the
-## seat is written MODE:FACTION, e.g. HUMAN:NAA,BOT:GPC,NEUTRAL).
+## seat is written MODE:FACTION[:STRATEGY], e.g. HUMAN:NAA,BOT:GPC:aggressive,NEUTRAL).
 func _launch_scripted() -> void:
 	var waited := 0.0
 	while not _launch.visible and waited < 10.0:
@@ -304,7 +324,8 @@ func _launch_scripted() -> void:
 	var seats := []
 	for item in spec.split(","):
 		var parts := item.split(":")
-		seats.append({"mode": parts[0], "faction": parts[1] if parts.size() > 1 else "random", "alliance": 0, "strategy": "random", "behavior": "random"})
+		seats.append({"mode": parts[0], "faction": parts[1] if parts.size() > 1 else "random", "alliance": 0,
+			"strategy": parts[2] if parts.size() > 2 else "random", "behavior": "random"})
 	while seats.size() < LaunchScreen.SEATS:
 		seats.append({"mode": "NEUTRAL", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "random"})
 	var s := {"seats": seats, "randomize_order": not Dbg.args.has("fixed_order")}

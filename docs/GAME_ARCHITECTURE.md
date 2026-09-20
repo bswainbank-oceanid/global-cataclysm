@@ -193,7 +193,7 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 103 tests) — first vertical slice,
+- ⬜ WebSocket server (`server/`, 112 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
   (NAA and GPC both BOTs watched by a spectator client -- see the watch
   mode below; the human-play protocol described next is still in place and
@@ -354,6 +354,22 @@ the same JSON, not a parallel editing path.
   and before each battle on your own turn; the "yours" options are inert
   while there is no HUMAN faction. Unpaused phases run back to back with no
   added delay, waiting only for the previous phase's arrows to finish
+  **Alliances (human):** the human's Alliances queue carries `human: {kind:
+  "alliance", members, options {eligible_invite_targets, can_withdraw}, staged,
+  game_would_end}`; the client picks the turn's one action -- do nothing, withdraw
+  from the alliance, or invite one of the eligible factions (bots included) -- in the
+  middle panel with `stage_alliance` (checked by a dry run of the engine call, so an
+  invite that would break the alliance-size limit is refused at once), and
+  holding the submit button executes it. An invited bot answers by its own alliance
+  strategy when the phase runs (the queue does not reveal it); the result log says
+  whether it joined or declined (`alliance_declined` is a new turn-log event). The
+  other direction: when a BOT's Alliances phase invites the human, its queue carries
+  an `invitation`, the client opens an invitation window (`InvitationWindow`: who
+  invites, who is in the alliance, what it becomes -- it doesn't block the map, so
+  you can look at the board first) and the phase cannot be executed until the player
+  answers with `respond_invitation`; the answer is folded into the same queued plan.
+  Withdrawing is disabled when the engine says so (a unit on an ally's Strategic
+  Center). Bots invite only other bots or the human, since at most one human plays.
   **Launch screen:** the client opens on a launch screen (`LaunchScreen`); the server
   starts idle and a `GameHost` (`server/host.py`) builds the game the screen
   describes (`server/lobby.py`; `--demo` starts the old hardcoded NAA-vs-GPC game

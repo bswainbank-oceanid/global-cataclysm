@@ -41,6 +41,7 @@ func _ready() -> void:
 
 	GameStore.purchase_changed.connect(_rebuild)
 	GameStore.move_changed.connect(_rebuild)
+	GameStore.alliance_changed.connect(_rebuild)
 	GameStore.state_changed.connect(_rebuild)
 	_rebuild()
 
@@ -55,6 +56,10 @@ func _rebuild() -> void:
 	for c in _content.get_children():
 		_content.remove_child(c)
 		c.queue_free()
+	if GameStore.human_alliance_active():
+		_content.visible = true
+		_add_alliance_options()
+		return
 	if GameStore.human_move_active():
 		_content.visible = true
 		_add_move_summary()
@@ -72,6 +77,76 @@ func _rebuild() -> void:
 	else:
 		_add_site(info)
 	_add_budget()
+
+
+## Alliances: this turn's one optional action -- invite a faction, or withdraw from
+## the alliance you are in, or nothing. The staged choice is highlighted.
+func _add_alliance_options() -> void:
+	var ha: Dictionary = GameStore.human_alliance
+	_content.add_child(HudStyle.label("Alliances", 14, HudStyle.GOLD))
+	var members: Array = ha["members"]
+	var me := str(ha["faction"])
+	var status: String
+	if members.size() > 1:
+		var others := []
+		for m in members:
+			if str(m) != me:
+				others.append(str(m))
+		status = "You are allied with: %s." % ", ".join(others)
+	else:
+		status = "You are not in an alliance."
+	var status_l := HudStyle.label(status + "  One action per turn: invite OR withdraw.", 11, HudStyle.TEXT_DIM)
+	status_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_content.add_child(status_l)
+	if ha["game_would_end"]:
+		var warn := HudStyle.label("Every remaining faction is allied: the game ends at the end of this phase unless you withdraw.", 11, Color(1.0, 0.6, 0.45))
+		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_content.add_child(warn)
+	var staged: Dictionary = ha["staged"]
+	_content.add_child(_choice("Do nothing", "", staged["action"] == "none", true, "", func(): Stepper.alliance_stage("none")))
+	if members.size() > 1:
+		var can: bool = ha["options"]["can_withdraw"]
+		_content.add_child(_choice("Withdraw from the alliance", "", staged["action"] == "withdraw", can,
+			"" if can else "Not allowed now: a unit of yours is on an ally's Strategic Center, or withdrawing is disabled.",
+			func(): Stepper.alliance_stage("withdraw")))
+	var targets: Array = ha["options"]["eligible_invite_targets"]
+	for code in targets:
+		var c := str(code)
+		var label: String = "Invite %s" % GameData.factions[c].name
+		_content.add_child(_choice(label, c, staged["action"] == "invite" and str(staged.get("target", "")) == c, true,
+			"They answer when the phase runs.", func(): Stepper.alliance_stage("invite", c)))
+	if targets.is_empty() and members.size() <= 1:
+		_content.add_child(HudStyle.label("No one can be invited right now.", 11, HudStyle.TEXT_DIM))
+
+
+func _choice(text: String, faction: String, selected: bool, enabled: bool, tip: String, action: Callable) -> Control:
+	var b := Button.new()
+	b.text = "   " + text
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.disabled = not enabled
+	b.tooltip_text = tip
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(0, 26)
+	b.add_theme_font_size_override("font_size", 12)
+	var edge := HudStyle.GOLD if selected else HudStyle.EDGE
+	var bg := Color(0.2, 0.17, 0.06) if selected else Color(0.11, 0.13, 0.17)
+	b.add_theme_stylebox_override("normal", HudStyle.box(edge, bg, 2 if selected else 1))
+	b.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.2, 0.22, 0.27), 1))
+	b.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, bg, 2))
+	b.add_theme_stylebox_override("disabled", HudStyle.box(Color(0.16, 0.19, 0.24), Color(0.09, 0.105, 0.135), 1))
+	b.add_theme_color_override("font_color", HudStyle.GOLD if selected else HudStyle.TEXT)
+	b.pressed.connect(action)
+	if faction != "":
+		var chip := ColorRect.new()
+		chip.color = GameData.factions[faction].color
+		chip.custom_minimum_size = Vector2(6, 0)
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chip.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+		chip.custom_minimum_size = Vector2(6, 20)
+		b.add_child(chip)
+		chip.position = Vector2(4, 3)
+		chip.size = Vector2(6, 20)
+	return b
 
 
 ## Combat / Non-Combat Move: what to do, and where the selection stands.

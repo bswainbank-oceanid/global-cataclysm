@@ -20,6 +20,15 @@ Client -> server:
                         Non-Combat Move ({"unit_id", "destination"}): replace the
                         staged move list with this COMPLETE one, one order per unit.
                         Same validation/reply/commit pattern as stage_purchase.
+    {"type": "stage_alliance", "action": "none"|"invite"|"withdraw", "target": "UE"}
+                        a HUMAN faction's Alliances phase: choose its one optional
+                        action (invite a faction / withdraw from its alliance /
+                        nothing). Checked by a dry run of the engine call, so an
+                        illegal pick (e.g. it would exceed the alliance size limit)
+                        is an "error" plus the unchanged queue.
+    {"type": "respond_invitation", "faction": "NAA", "accept": true}
+                        the HUMAN target of a bot's invitation answering it (see
+                        below); "next" is refused until it does.
     {"type": "stage_purchase", "orders": [{"unit_type", "qty", "deploy_at"}, ...]}
                         a HUMAN faction's Purchase phase: replace the staged
                         purchase list (the COMPLETE list, like the human
@@ -31,7 +40,15 @@ Client -> server:
 A faction in HUMAN mode is a player, not a bot: its phases are queued the same
 way, but nothing is decided for it. Its Purchase queue carries a "human" block
 (engine.purchase_options: treasury, legal targets with remaining capacity,
-staged orders with costs); its other phases stage nothing, so "next" passes.
+staged orders with costs); its Combat/Non-Combat Move queues carry the legal moves
+and staged moves; its Alliances queue carries {kind: "alliance", members, options
+(eligible_invite_targets, can_withdraw), staged (the chosen action),
+game_would_end}. Its Capture and Deploy phases are automatic.
+
+A bot's Alliances phase that INVITES a human faction cannot be resolved by policy:
+its phase_queue carries an "invitation" {from, to, members, answered, accepts},
+the human answers with respond_invitation, the queue is re-sent with the answer
+(shown in its alliance_plan event), and only then will "next" execute it.
 
 Server -> client (always broadcast to watchers):
     {"type": "phase_queue", "faction": "AAC", "phase": "PURCHASE",
@@ -59,6 +76,7 @@ Server -> client (always broadcast to watchers):
 """
 import copy
 
+from engine.bots.alliance_policy import accepts_invite
 from engine.engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from engine.state import FactionMode, Phase
 from engine.turn_log import TurnLog
@@ -80,6 +98,8 @@ class PhaseStepper:
         self._alliance_plan = None
         self._battles = None       # the current Combat Resolution's [(territory_id, battle_type), ...]
         self._battle_index = 0     # which of them is queued now
+        self._alliance_plan_for = None  # (faction, global_turn) the current _alliance_plan belongs to
+        self._invitation = None    # a bot's invitation to a human awaiting its answer: {from, to, answered}
 
     # ---- protocol entry points -------------------------------------------
 
@@ -152,6 +172,50 @@ class PhaseStepper:
         self._plan_current_phase()
         return [self._queue]
 
+    def stage_alliance(self, faction, action, target):
+        """A human's one Alliances-phase choice."""
+        gs = self.engine.game_state
+        problem = self._check_all_bots()
+        if problem:
+            return [self._error(problem)]
+        if self._queue is None:
+            self._plan_current_phase()
+        if faction not in gs.factions or not self._is_human(faction):
+            return [self._error(f'{faction} is not a human-controlled faction')]
+        if faction != gs.active_faction or gs.phase != Phase.ALLIANCES or self._queue['phase'] != Phase.ALLIANCES.value:
+            return [self._error(f"it is not {faction}'s Alliances phase")]
+        if action not in ('none', 'invite', 'withdraw'):
+            return [self._error(f'unknown alliance action {action!r}'), self._queue]
+        plan = {'action': action}
+        try:
+            if action == 'invite':
+                if not target:
+                    raise ValueError("'invite' needs a target")
+                if target not in self.engine.legal_alliance_options(faction)['eligible_invite_targets']:
+                    raise ValueError(f'{target} is not a legal invite target for {faction} right now')
+                self._dry_run(lambda sim: sim.invite_to_alliance(faction, target, True))  # would it be legal to accept?
+                plan['target'] = target
+            elif action == 'withdraw':
+                self._dry_run(lambda sim: sim.withdraw_from_alliance(faction))
+        except ValueError as e:
+            return [self._error(str(e)), self._queue]
+        self._alliance_plan = plan
+        self._alliance_plan_for = self._alliance_key(faction)
+        self._plan_current_phase()
+        return [self._queue]
+
+    def respond_invitation(self, faction, accept):
+        """The human target of a bot's invitation answers it."""
+        inv = self._invitation
+        if inv is None or inv['to'] != faction or inv['answered']:
+            return [self._error('no invitation is waiting for your answer')]
+        if accept is None:
+            return [self._error("'accept' is required (true or false)"), self._queue]
+        self._alliance_plan['accepts'] = bool(accept)
+        inv['answered'] = True
+        self._plan_current_phase()
+        return [self._queue]
+
     def next(self):
         problem = self._check_all_bots()
         if problem:
@@ -161,6 +225,8 @@ class PhaseStepper:
             return [{'type': 'game_over'}]
         if self._queue is None:
             self._plan_current_phase()
+        if self._invitation is not None and not self._invitation['answered']:
+            return [self._error(f"{self._invitation['to']} must answer {self._invitation['from']}'s invitation first"), self._queue]
         return self._execute_queued_phase()
 
     # ---- execute ---------------------------------------------------------
@@ -183,6 +249,10 @@ class PhaseStepper:
                          'events': self.turn_log.events[start:]})
 
         self._queue = None
+        if phase == Phase.ALLIANCES:
+            self._alliance_plan = None
+            self._alliance_plan_for = None
+            self._invitation = None
         if phase is None or stay:
             self._skipped_before = []
         elif phase == Phase.ALLIANCES:
@@ -223,12 +293,33 @@ class PhaseStepper:
                 engine.deploy_and_collect_income(faction)
         elif phase == Phase.ALLIANCES:
             if active:
-                if bot is not None:
-                    bot.commit_alliance_phase(self._alliance_plan)
+                self._apply_alliance(faction, bot)
                 engine.process_game_end_check(faction)
             else:
                 engine.game_state.game_over = engine.would_game_end()
         return False
+
+    def _apply_alliance(self, faction, bot):
+        """Executes the queued Alliances action: a bot's through its own commit, a
+        human's staged choice directly. An invite to a BOT is decided by that bot's
+        own policy at this moment; one to the HUMAN uses their answer."""
+        plan = self._alliance_plan or {'action': 'none'}
+        if bot is not None:
+            bot.commit_alliance_phase(plan)
+            return
+        try:
+            if plan['action'] == 'invite':
+                accepts = plan.get('accepts')
+                if accepts is None:
+                    accepts = accepts_invite(self.engine, plan['target'], faction)
+                self.engine.invite_to_alliance(faction, plan['target'], accepts)
+            elif plan['action'] == 'withdraw':
+                self.engine.withdraw_from_alliance(faction)
+        except ValueError:
+            pass  # no longer legal by the time it runs: the turn simply ends with no action, as for a bot
+
+    def _alliance_key(self, faction):
+        return (faction, self.engine.game_state.global_turn)
 
     def _commit_one_battle(self, faction):
         """Combat Resolution goes battle by battle (each its own queue step, so
@@ -308,8 +399,24 @@ class PhaseStepper:
         elif phase == Phase.DEPLOY_INCOME:
             events = self._dry_run(lambda sim: sim.deploy_and_collect_income(faction))
         else:  # ALLIANCES
-            self._alliance_plan = {'action': 'none'} if human else bot.plan_alliance_phase()
+            key = self._alliance_key(faction)
+            if self._alliance_plan_for != key or self._alliance_plan is None:
+                # A fresh plan for this turn (re-planning after a staging/answer must
+                # keep the one already made -- a bot's pick is random).
+                self._alliance_plan = {'action': 'none'} if human else bot.plan_alliance_phase()
+                self._alliance_plan_for = key
+                self._invitation = None
+                target = self._alliance_plan.get('target')
+                if not human and self._alliance_plan['action'] == 'invite' and self._is_human(target):
+                    self._alliance_plan['accepts'] = None  # only the player can say
+                    self._invitation = {'from': faction, 'to': target, 'answered': False}
             events = [{'kind': 'alliance_plan', 'faction': faction, **self._alliance_plan}]
+            if human:
+                extra['human'] = self._alliance_block(faction)
+            if self._invitation is not None:
+                members = sorted(engine.alliance_members(faction))
+                extra['invitation'] = {**self._invitation, 'members': members,
+                                       'accepts': self._alliance_plan.get('accepts')}
 
         self._queue = {'type': 'phase_queue', 'faction': faction, 'phase': phase.value,
                        'events': events, 'skipped': [p.value for p in self._skipped_before], **extra}
@@ -331,6 +438,17 @@ class PhaseStepper:
         return sim.turn_log.events
 
     # ---- helpers ---------------------------------------------------------
+
+    def _alliance_block(self, faction):
+        """The 'human' block of an Alliances queue."""
+        engine = self.engine
+        return {
+            'kind': 'alliance',
+            'members': sorted(engine.alliance_members(faction)),
+            'options': engine.legal_alliance_options(faction),
+            'staged': dict(self._alliance_plan or {'action': 'none'}),
+            'game_would_end': engine.would_game_end(),
+        }
 
     def _move_block(self, faction, kind):
         """The 'human' block of a move-phase queue: what is still legal per unit

@@ -128,6 +128,8 @@ static func describe(e: Dictionary) -> String:
 		"alliance_plan":
 			match str(e["action"]):
 				"invite":
+					if e.get("accepts") == null:
+						return "%s invites %s" % [_fac(e["faction"]), _fac(str(e["target"]))]
 					return "%s invites %s (%s)" % [_fac(e["faction"]), _fac(str(e["target"])),
 						"they would accept" if e["accepts"] else "they would decline"]
 				"withdraw":
@@ -143,6 +145,8 @@ static func describe(e: Dictionary) -> String:
 			return "[b]%s is eliminated![/b]" % _fac(e["faction"])
 		"alliance_joined":
 			return "%s and %s form an alliance" % [_fac(e["faction"]), _fac(e["target"])]
+		"alliance_declined":
+			return "%s declines %s's invitation" % [_fac(str(e["target"])), _fac(e["faction"])]
 		"alliance_withdrawal":
 			return "%s withdraws from its alliance" % _fac(e["faction"])
 	return ""

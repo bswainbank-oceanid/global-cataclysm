@@ -64,11 +64,19 @@ func _on_message(msg: Dictionary) -> void:
 			_awaiting = false
 			_last_queue = msg
 			var block: Dictionary = msg.get("human", {})
-			if block.has("kind"):  # a move phase (Combat / Non-Combat Move)
+			var kind := str(block.get("kind", ""))
+			GameStore.set_invitation(msg.get("invitation", {}))
+			if kind == "alliance":
 				GameStore.set_human_purchase("", {})
+				GameStore.set_human_move("", {})
+				GameStore.set_human_alliance(str(msg["faction"]), block)
+			elif block.has("kind"):  # a move phase (Combat / Non-Combat Move)
+				GameStore.set_human_purchase("", {})
+				GameStore.set_human_alliance("", {})
 				GameStore.set_human_move(str(msg["faction"]), block)
 			else:
 				GameStore.set_human_move("", {})
+				GameStore.set_human_alliance("", {})
 				GameStore.set_human_purchase(str(msg["faction"]), block)
 			_edit_orders = []
 			for o in GameStore.human_purchase.get("orders", []):
@@ -119,6 +127,8 @@ func _refresh() -> void:
 	needs_hold = false
 	if game_over:
 		button_text = "Game over"
+	elif GameStore.invitation_pending():
+		button_text = "Answer %s's alliance invitation" % str(GameStore.invitation["from"])
 	elif _battle_open:
 		button_text = "Battle in progress..."
 	elif not _battle_pending.is_empty():
@@ -144,6 +154,9 @@ func _refresh() -> void:
 
 ## Whether the queued phase waits for the Next button, per Settings.
 func _should_pause(msg: Dictionary) -> bool:
+	var inv: Dictionary = msg.get("invitation", {})
+	if not inv.is_empty() and not bool(inv.get("answered", false)) and GameStore.is_player(str(inv["to"])):
+		return true  # the player has to answer an invitation first
 	var faction := str(msg["faction"])
 	var battle := _battle_in(msg)
 	if GameStore.is_player(faction):
@@ -299,6 +312,7 @@ func _queue_reset() -> void:
 	_held = []
 	_held_result = {}
 	_edit_orders = []
+	GameStore.set_invitation({})
 
 
 ## The player's purchase edits: send the whole staged list to the server, which
@@ -326,6 +340,22 @@ func _change_purchase(unit_type: String, tid: int, delta: int) -> void:
 		_edit_orders.append({"unit_type": unit_type, "qty": 1, "deploy_at": tid})
 	_edit_orders = _edit_orders.filter(func(o): return int(o["qty"]) > 0)
 	Net.send_msg({"type": "stage_purchase", "faction": GameStore.human_purchase["faction"], "orders": _edit_orders})
+
+
+## The player's Alliances choice: "none", "invite" (a target faction) or "withdraw".
+func alliance_stage(action: String, target: String = "") -> void:
+	if not GameStore.human_alliance_active():
+		return
+	var msg := {"type": "stage_alliance", "faction": GameStore.human_alliance["faction"], "action": action}
+	if target != "":
+		msg["target"] = target
+	Net.send_msg(msg)
+
+
+## The player's answer to a bot's invitation.
+func invitation_respond(accept: bool) -> void:
+	if GameStore.invitation_pending():
+		Net.send_msg({"type": "respond_invitation", "faction": GameStore.invitation["to"], "accept": accept})
 
 
 ## Send the human's whole staged move list (the server validates it and answers
