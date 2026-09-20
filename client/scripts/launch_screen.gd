@@ -29,6 +29,7 @@ var _start: Button
 var _resume: Button
 var _game_running := false
 var _loading := false
+var remember := true  # keep the last setup in user://launch.cfg (off for scripted runs and tests)
 
 
 func _ready() -> void:
@@ -278,7 +279,7 @@ func show_error(message: String) -> void:
 # ---- remembering the last setup ---------------------------------------------------------
 
 func _save() -> void:
-	if Dbg.args.has("shot"):
+	if Dbg.args.has("shot") or not remember:
 		return
 	var cfg := ConfigFile.new()
 	var s := settings()
@@ -293,7 +294,7 @@ func _save() -> void:
 
 
 func _load() -> void:
-	if Dbg.args.has("shot"):
+	if Dbg.args.has("shot") or not remember:
 		return
 	var cfg := ConfigFile.new()
 	if cfg.load(PATH) != OK:

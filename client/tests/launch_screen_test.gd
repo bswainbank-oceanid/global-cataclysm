@@ -26,6 +26,7 @@ func _initialize() -> void:
 	await process_frame  # autoloads (GameData loads the map data) come up
 	# Loaded at runtime: compiling it needs the autoloads, which a -s script only has once running.
 	var screen = load("res://scripts/launch_screen.gd").new()
+	screen.remember = false  # the defaults, not whatever the last real game used
 	root.add_child(screen)
 	await process_frame
 
