@@ -103,6 +103,13 @@ func _initialize() -> void:
 	_pick(screen, 2, "mode", 3)
 	_check(screen.settings()["seats"][2]["alliance"] == 0, "non-players send no alliance")
 
+	# Bot AI: the heuristic bot by default, the random baseline on request; only bots have one.
+	_check(screen.settings()["seats"][1]["ai"] == "strategy", "a bot plays the heuristic AI by default")
+	_check(not (_row(screen, 1)["ai"] as OptionButton).disabled and (_row(screen, 0)["ai"] as OptionButton).disabled, "a bot seat can choose; a human's can't")
+	_pick(screen, 1, "ai", 1)
+	_check(screen.settings()["seats"][1]["ai"] == "random", "the random baseline can be chosen: %s" % str(screen.settings()["seats"][1]["ai"]))
+	_pick(screen, 1, "ai", 0)
+
 	# Maximum alliance size: 2 .. players-1, default 3.
 	var size: OptionButton = screen._max_alliance
 	_pick(screen, 2, "mode", 1)  # three players: sizes 2 only

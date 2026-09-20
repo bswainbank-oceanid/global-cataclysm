@@ -178,7 +178,7 @@ the same JSON, not a parallel editing path.
   (`engine/stats.py`) for per-turn/per-game reporting. The full Alliance
   System (invite/accept/withdraw, the Strategic-Center withdrawal lock,
   the rejoin ban, an elimination-aware max-alliance-size cap, and bot
-  decision policy for all of it -- an inviting bot rotates through the legal
+  decision policy for all of it -- the heuristic strategy bots (styles, objectives, risk checks; `docs/BOT_STRATEGY.md`) sit beside the random baseline, chosen per seat; an inviting bot rotates through the legal
   targets, asking whoever it asked least recently, so a decliner waits for everyone
   else, and it gives up on a faction after 5 declines: `alliance_policy._pick_target`), all three of `combat.
   first_round_bonuses`' cases (amphibious landing, sea-deploy ambush,

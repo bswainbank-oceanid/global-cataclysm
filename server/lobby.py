@@ -8,6 +8,7 @@ Settings (the "new_game" message's "settings"):
                  "faction": "random" | "NAA" | "UE" | "UER" | "GPC" | "PAF" | "AAC",
                  "alliance": 0 | 1 | 2 | 3,             # 0 = none; players only
                  "strategy": "random" | aggressive | passive | counterweight | independent | variable,   # bots only
+                 "ai": "strategy" | "random",                                                             # bots only: the heuristic bot (default) or the random baseline
                  "behavior": "random" | loyal | opportunistic | treacherous | variable},                  # bots only
                 ... exactly six ...],
      "randomize_order": true,                            # default true
@@ -34,6 +35,8 @@ import random
 from engine import data as data_module
 from engine.bots.alliance_policy import BEHAVIORS, STRATEGIES
 from engine.bots.random_bot import RandomBot
+from engine.bots.planner import DEFAULT_BUDGET
+from engine.bots.strategy_bot import StrategyBot
 from engine.engine import GameEngine
 from engine.setup import build_game_state
 from engine.state import FactionMode
@@ -44,6 +47,8 @@ SEAT_COUNT = 6
 MODES = ('HUMAN', 'BOT', 'DEFENSIVE', 'NEUTRAL')
 ALLIANCE_NUMBERS = (1, 2, 3)
 PLAYER_MODES = ('HUMAN', 'BOT')
+BOT_AIS = ('strategy', 'random')  # the heuristic bot (engine/bots/strategy_bot.py) and the random baseline
+DEFAULT_BOT_AI = 'strategy'
 DEFAULT_MAX_ALLIANCE_SIZE = 3
 
 
@@ -75,6 +80,8 @@ def check_settings(settings):
             else:
                 picked[f] = i
         if seat['mode'] == 'BOT':
+            if seat.get('ai', DEFAULT_BOT_AI) not in BOT_AIS:
+                problems.append(f'seat {i}: bot ai must be one of {", ".join(BOT_AIS)}')
             if seat.get('strategy', 'random') not in ('random',) + tuple(STRATEGIES):
                 problems.append(f'seat {i}: unknown alliance strategy {seat.get("strategy")!r}')
             if seat.get('behavior', 'random') not in ('random',) + tuple(BEHAVIORS):
@@ -137,6 +144,7 @@ def resolve_settings(settings, rng=None):
         assignments.append({
             'faction': faction, 'mode': seat['mode'],
             'strategy': seat.get('strategy', 'random'), 'behavior': seat.get('behavior', 'random'),
+            'ai': seat.get('ai', DEFAULT_BOT_AI),
         })
     by_number = {}
     for seat, a in zip(seats, assignments):
@@ -165,7 +173,15 @@ def build_session(settings, rng=None):
     turn_log = TurnLog()
     # The dice come from the same seed as everything else, so a seeded game replays exactly.
     engine = GameEngine(gs, data_module, turn_log=turn_log, combat_rng=random.Random(rng.random()))
-    bots = {a['faction']: RandomBot(engine, a['faction'], rng=random.Random(rng.random()))
-            for a in assignments if a['mode'] == 'BOT'}
+    budget = int(settings.get('dev', {}).get('bot_budget', DEFAULT_BUDGET))  # the heuristic bots' planning effort per pass
+    bots = {}
+    for a in assignments:
+        if a['mode'] != 'BOT':
+            continue
+        bot_rng = random.Random(rng.random())
+        if a['ai'] == 'random':
+            bots[a['faction']] = RandomBot(engine, a['faction'], rng=bot_rng)
+        else:
+            bots[a['faction']] = StrategyBot(engine, a['faction'], rng=bot_rng, budget=budget)
     seats = [dict(a, seat=i) for i, a in enumerate(assignments, 1)]
     return GameSession(engine, turn_log, bots), seats

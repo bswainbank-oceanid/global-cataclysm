@@ -18,9 +18,10 @@ const MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Defense", "DEFENSIVE"], ["
 const ALLIANCES := ["None", "Alliance 1", "Alliance 2", "Alliance 3"]
 const STRATEGIES := ["random", "aggressive", "passive", "counterweight", "independent", "variable"]
 const BEHAVIORS := ["random", "loyal", "opportunistic", "treacherous", "variable"]
+const BOT_AIS := [["Strategy", "strategy"], ["Random", "random"]]  # [label, server value]: the heuristic bot (default) and the random baseline
 const PATH := "user://launch.cfg"
 
-var _rows: Array = []  # per seat: {mode, faction, chip, alliance, strategy, behavior}
+var _rows: Array = []  # per seat: {mode, faction, chip, alliance, strategy, behavior, ai}
 var _randomize: CheckBox
 var _can_withdraw: CheckBox
 var _can_rejoin: CheckBox
@@ -63,11 +64,11 @@ func _ready() -> void:
 	v.add_child(HSeparator.new())
 
 	var grid := GridContainer.new()
-	grid.columns = 7
+	grid.columns = 8
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 6)
 	v.add_child(grid)
-	for h in ["Seat", "Type", "Faction", "", "Starting alliance", "Alliance strategy", "Alliance behavior"]:
+	for h in ["Seat", "Type", "Faction", "", "Starting alliance", "Alliance strategy", "Alliance behavior", "Bot AI"]:
 		grid.add_child(HudStyle.label(h, 12, HudStyle.TEXT_DIM))
 	for i in SEATS:
 		_add_row(grid, i)
@@ -179,7 +180,10 @@ func _add_row(grid: GridContainer, i: int) -> void:
 	grid.add_child(strategy)
 	var behavior := _option(BEHAVIORS.map(func(s): return str(s).capitalize()), 150)
 	grid.add_child(behavior)
-	_rows.append({"mode": mode, "faction": faction, "chip": chip, "alliance": alliance, "strategy": strategy, "behavior": behavior})
+	var ai := _option(BOT_AIS.map(func(a): return a[0]), 120)
+	ai.tooltip_text = "Strategy: the heuristic bot (styles, objectives, risk checks).\nRandom: the baseline bot, for comparison."
+	grid.add_child(ai)
+	_rows.append({"mode": mode, "faction": faction, "chip": chip, "alliance": alliance, "strategy": strategy, "behavior": behavior, "ai": ai})
 
 
 # ---- reading the screen -----------------------------------------------------------
@@ -204,6 +208,7 @@ func settings() -> Dictionary:
 			"alliance": (row["alliance"] as OptionButton).selected if player else 0,
 			"strategy": STRATEGIES[(row["strategy"] as OptionButton).selected],
 			"behavior": BEHAVIORS[(row["behavior"] as OptionButton).selected],
+			"ai": BOT_AIS[(row["ai"] as OptionButton).selected][1],
 		})
 	var s := {"seats": seats, "randomize_order": _randomize.button_pressed,
 		"can_withdraw": _can_withdraw.button_pressed, "can_rejoin": _can_rejoin.button_pressed}
@@ -271,6 +276,7 @@ func _changed() -> void:
 		(row["alliance"] as OptionButton).disabled = not player
 		(row["strategy"] as OptionButton).disabled = mode != "BOT"
 		(row["behavior"] as OptionButton).disabled = mode != "BOT"
+		(row["ai"] as OptionButton).disabled = mode != "BOT"
 	_can_rejoin.disabled = not _can_withdraw.button_pressed  # nobody leaves, so nobody rejoins
 	_refresh_max_alliance()
 	var p := problems()
@@ -327,7 +333,7 @@ func _save() -> void:
 	cfg.set_value("launch", "max_alliance_size", _max_pref)
 	for i in SEATS:
 		var row: Dictionary = _rows[i]
-		for key in ["mode", "faction", "alliance", "strategy", "behavior"]:
+		for key in ["mode", "faction", "alliance", "strategy", "behavior", "ai"]:
 			cfg.set_value("seat%d" % i, key, (row[key] as OptionButton).selected)
 	cfg.save(PATH)
 
@@ -346,7 +352,7 @@ func _load() -> void:
 	_max_size = _max_pref
 	for i in SEATS:
 		var row: Dictionary = _rows[i]
-		for key in ["mode", "faction", "alliance", "strategy", "behavior"]:
+		for key in ["mode", "faction", "alliance", "strategy", "behavior", "ai"]:
 			var o: OptionButton = row[key]
 			var idx := int(cfg.get_value("seat%d" % i, key, o.selected))
 			if idx >= 0 and idx < o.item_count:

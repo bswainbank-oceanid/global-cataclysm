@@ -192,6 +192,20 @@ class TestAllianceRuleSettings(unittest.TestCase):
         self.assertTrue(check_settings(settings(seat('HUMAN'), seat('BOT'), can_rejoin=1)))
 
 
+class TestBotAi(unittest.TestCase):
+    def test_bots_play_the_heuristic_ai_unless_told_otherwise(self):
+        from engine.bots.random_bot import RandomBot
+        from engine.bots.strategy_bot import StrategyBot
+        session, seats = build_session(settings(seat('HUMAN'), seat('BOT'), {**seat('BOT'), 'ai': 'random'}, seat('BOT', 'AAC')), random.Random(1))
+        kinds = {a['faction']: type(session.bots[a['faction']]) for a in seats if a['mode'] == 'BOT'}
+        self.assertEqual(sorted(k.__name__ for k in kinds.values()), ['RandomBot', 'StrategyBot', 'StrategyBot'])
+        self.assertEqual([a['ai'] for a in seats if a['mode'] == 'BOT'].count('random'), 1)
+
+    def test_an_unknown_ai_is_rejected(self):
+        self.assertTrue(check_settings(settings(seat('HUMAN'), {**seat('BOT'), 'ai': 'genius'})))
+        self.assertEqual(check_settings(settings(seat('HUMAN'), {**seat('BOT'), 'ai': 'random'})), [])
+
+
 class TestMaxAllianceSize(unittest.TestCase):
     def four_players(self, **kw):
         return settings(seat('HUMAN'), seat('BOT'), seat('BOT'), seat('BOT'), **kw)
