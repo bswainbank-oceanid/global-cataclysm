@@ -25,10 +25,81 @@ const STAR_DISC_R := 7.5
 
 var forced_style := -1  # -1 = adaptive; otherwise a Style, for debug comparisons
 var zoom := 1.0
+var pulse_spaces := {}  # territory id -> true: the player's spaces with a unit that can still move this phase
+var _pulse_layer: Node2D
 
 
 func _ready() -> void:
 	GameStore.state_changed.connect(queue_redraw)
+	GameStore.state_changed.connect(_refresh_pulse)
+	GameStore.move_changed.connect(_refresh_pulse)
+	_pulse_layer = _PulseLayer.new()
+	_pulse_layer.units = self
+	_pulse_layer.show_behind_parent = true  # the glow sits behind the badges
+	add_child(_pulse_layer)
+	_refresh_pulse()
+
+
+## During a move phase of the player's, the spaces where at least one of their units
+## could still make a legal move (the server's options leave out units already ordered).
+func _refresh_pulse() -> void:
+	pulse_spaces = {}
+	if GameStore.human_move_active():
+		for uid in GameStore.human_move["options"]:
+			pulse_spaces[int(GameStore.human_move["options"][uid]["origin"])] = true
+	_pulse_layer.set_process(not pulse_spaces.is_empty())
+	_pulse_layer.queue_redraw()
+
+
+## Where the faction's badge group sits in a space, in the badge row's own units (the row
+## is centred under the label point, scaled by _badge_scale() / zoom -- see _draw).
+func group_rect(tid: int, owner: String) -> Rect2:
+	var groups := _groups(GameStore.stacks(tid))
+	var marker_w := _marker_width(tid)
+	var sizes: Array = []
+	var total_w := marker_w
+	for g in groups:
+		var sz := _group_size(g[1])
+		sizes.append(sz)
+		total_w += sz.x + (GAP if total_w > 0.0 else 0.0)
+	var x := -total_w * 0.5
+	if marker_w > 0.0:
+		x += marker_w + GAP
+	for i in groups.size():
+		if groups[i][0] == owner:
+			return Rect2(Vector2(x, 0.0), sizes[i])
+		x += sizes[i].x + GAP
+	return Rect2()
+
+
+## A soft gold glow that breathes around the player's movable badge groups, at every zoom.
+class _PulseLayer extends Node2D:
+	const PERIOD := 2.4  # seconds per breath
+
+	var units: MapUnits
+
+	func _ready() -> void:
+		set_process(false)
+
+	func _process(_delta: float) -> void:
+		queue_redraw()
+
+	func _draw() -> void:
+		if units == null or units.pulse_spaces.is_empty():
+			return
+		var breath := 0.5 + 0.5 * sin(float(Time.get_ticks_msec()) / 1000.0 * TAU / PERIOD)
+		var owner := GameStore.move_faction()
+		var inv := units._badge_scale() / units.zoom
+		for copy in [-1, 0, 1]:
+			for tid in units.pulse_spaces:
+				var rect := units.group_rect(int(tid), owner)
+				if rect.size == Vector2.ZERO:
+					continue
+				var anchor: Vector2 = GameData.label_points[int(tid)] + Vector2(copy * GameData.map_w, 0)
+				draw_set_transform(anchor + Vector2(0, 11.0 / units.zoom), 0.0, Vector2(inv, inv))
+				var glow := rect.grow(2.5)
+				draw_rect(glow, Color(1.0, 0.9, 0.5, 0.05 + 0.14 * breath))
+				draw_rect(glow, Color(1.0, 0.9, 0.5, 0.25 + 0.5 * breath), false, 1.5)
 
 
 func _style() -> int:
