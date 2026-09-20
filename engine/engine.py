@@ -1779,7 +1779,11 @@ class GameEngine:
                 )
 
         self._alliance_action_taken.add(faction)
+        asker = self.game_state.factions[faction]
+        asker.invites_sent += 1
+        asker.last_invited[target] = asker.invites_sent
         if not target_accepts:
+            asker.invites_declined[target] = asker.invites_declined.get(target, 0) + 1
             if self.turn_log is not None:
                 self.turn_log.record_alliance_declined(self.game_state.global_turn, faction, target)
             return False

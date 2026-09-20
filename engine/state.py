@@ -347,6 +347,15 @@ class FactionState:
     # the moment it's read there, whether or not the withdrawal actually
     # went through.
     pending_treacherous_withdrawal: bool = False
+    # Invitation history (GameEngine.invite_to_alliance keeps it; alliance_policy.
+    # choose_invite_target reads it): how many invitations this faction has sent,
+    # the sequence number of the latest one to each target, and how many times each
+    # target has turned it down. A bot asks whoever it asked LEAST recently (so a
+    # declined target waits until every other legal target has been asked), and stops
+    # asking a target that has declined MAX_INVITE_DECLINES times.
+    invites_sent: int = 0
+    last_invited: dict = field(default_factory=dict)      # target code -> invites_sent when last asked
+    invites_declined: dict = field(default_factory=dict)  # target code -> declines so far
 
     def to_dict(self):
         return {
@@ -362,6 +371,9 @@ class FactionState:
             'current_alliance_strategy': self.current_alliance_strategy,
             'current_alliance_behavior': self.current_alliance_behavior,
             'pending_treacherous_withdrawal': self.pending_treacherous_withdrawal,
+            'invites_sent': self.invites_sent,
+            'last_invited': dict(self.last_invited),
+            'invites_declined': dict(self.invites_declined),
         }
 
     @staticmethod
@@ -379,6 +391,9 @@ class FactionState:
             current_alliance_strategy=d.get('current_alliance_strategy'),
             current_alliance_behavior=d.get('current_alliance_behavior'),
             pending_treacherous_withdrawal=d.get('pending_treacherous_withdrawal', False),
+            invites_sent=d.get('invites_sent', 0),
+            last_invited=dict(d.get('last_invited', {})),
+            invites_declined=dict(d.get('invites_declined', {})),
         )
 
 

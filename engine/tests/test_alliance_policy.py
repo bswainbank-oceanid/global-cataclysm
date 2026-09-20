@@ -196,6 +196,80 @@ class TestChooseInviteTarget(unittest.TestCase):
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
 
 
+class TestInvitationRotationAndGivingUp(unittest.TestCase):
+    """A declined target waits until every other legal target has been asked, and a
+    target that has declined five times is never asked again."""
+
+    def ask_and_get_declined(self, engine, rng, times):
+        asked = []
+        for _ in range(times):
+            engine._alliance_action_taken.clear()  # a new Alliances phase
+            target = alliance_policy.choose_invite_target(engine, 'NAA', rng)
+            if target is None:
+                asked.append(None)
+                continue
+            asked.append(target)
+            engine.invite_to_alliance('NAA', target, False)
+        return asked
+
+    def four(self, **kw):
+        return make_engine(
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            strategies={'NAA': 'aggressive'}, **kw)
+
+    def test_everyone_else_is_asked_before_a_decliner_is_asked_again(self):
+        for seed in range(10):
+            engine, gs = self.four()
+            asked = self.ask_and_get_declined(engine, random.Random(seed), 9)
+            self.assertEqual(set(asked[:3]), {'UE', 'GPC', 'AAC'}, asked)
+            self.assertEqual(asked[3:6], asked[:3], asked)  # the same round again, in the same order
+            self.assertEqual(asked[6:9], asked[:3], asked)
+
+    def test_a_target_that_was_never_asked_comes_before_one_asked_long_ago(self):
+        engine, gs = self.four()
+        f = gs.factions['NAA']
+        f.invites_sent = 2
+        f.last_invited = {'UE': 1, 'GPC': 2}  # AAC never asked
+        self.assertEqual(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)), 'AAC')
+        f.last_invited['AAC'] = 3
+        self.assertEqual(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)), 'UE')
+
+    def test_five_declines_and_the_bot_stops_asking_that_faction(self):
+        engine, gs = make_engine(
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT},
+            strategies={'NAA': 'aggressive'})
+        gs.factions['NAA'].invites_declined = {'UE': 4}
+        gs.factions['NAA'].last_invited = {'UE': 1, 'GPC': 2}
+        engine._alliance_action_taken.clear()
+        self.assertEqual(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)), 'UE')
+        engine.invite_to_alliance('NAA', 'UE', False)  # its fifth refusal
+        self.assertEqual(gs.factions['NAA'].invites_declined['UE'], 5)
+        for seed in range(20):
+            engine._alliance_action_taken.clear()
+            self.assertEqual(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(seed)), 'GPC')
+
+    def test_with_nobody_left_to_ask_it_does_nothing(self):
+        engine, gs = make_engine(
+            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT},
+            strategies={'NAA': 'aggressive'})
+        gs.factions['NAA'].invites_declined = {'UE': 5, 'GPC': 5}
+        self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
+
+    def test_only_declines_are_counted_and_the_history_survives_a_save(self):
+        engine, gs = self.four()
+        asked = self.ask_and_get_declined(engine, random.Random(3), 4)
+        f = gs.factions['NAA']
+        self.assertEqual(f.invites_sent, 4)
+        self.assertEqual(sum(f.invites_declined.values()), 4)
+        again = type(f).from_dict(f.to_dict())
+        self.assertEqual((again.invites_sent, again.last_invited, again.invites_declined),
+                         (f.invites_sent, f.last_invited, f.invites_declined))
+        engine._alliance_action_taken.clear()
+        target = next(c for c in ('UE', 'GPC', 'AAC') if c not in f.invites_declined or f.invites_declined[c] < 2)
+        engine.invite_to_alliance('NAA', target, True)  # accepted: not a decline
+        self.assertEqual(sum(f.invites_declined.values()), 4)
+
+
 class TestAcceptsInvite(unittest.TestCase):
     def test_independent_never_accepts(self):
         engine, gs = make_engine(

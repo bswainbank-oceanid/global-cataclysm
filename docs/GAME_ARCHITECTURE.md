@@ -178,7 +178,9 @@ the same JSON, not a parallel editing path.
   (`engine/stats.py`) for per-turn/per-game reporting. The full Alliance
   System (invite/accept/withdraw, the Strategic-Center withdrawal lock,
   the rejoin ban, an elimination-aware max-alliance-size cap, and bot
-  decision policy for all of it), all three of `combat.
+  decision policy for all of it -- an inviting bot rotates through the legal
+  targets, asking whoever it asked least recently, so a decliner waits for everyone
+  else, and it gives up on a faction after 5 declines: `alliance_policy._pick_target`), all three of `combat.
   first_round_bonuses`' cases (amphibious landing, sea-deploy ambush,
   former-ally reclaim — recurring, not one-shot, and exempted from true
   territory loss while a betrayal reclaim is in progress), and `combat.

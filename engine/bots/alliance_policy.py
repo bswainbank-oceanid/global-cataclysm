@@ -17,6 +17,11 @@ the accepting decision belongs to the TARGET's own strategy, not the
 inviter's.
 
 Five strategies (game_start setting, per bot):
+- Invitations (aggressive and counterweight) rotate through the legal targets: a
+  bot asks whoever it asked least recently (never-asked first), so a faction that
+  declines waits until every other legal target has been asked, and one that has
+  declined MAX_INVITE_DECLINES (5) times is never asked again (see _pick_target;
+  the history lives on FactionState.last_invited/invites_declined).
 - aggressive: always invites a random eligible faction (capped by
   GameEngine._effective_max_alliance_size() -- game_start_settings.
   max_alliance_size, further capped by the CURRENT number of active
@@ -74,6 +79,9 @@ alliance_strategy/alliance_behavior directly -- that's the one place
 so none of the actual decision logic needs to know 'variable' exists at
 all.
 """
+# A bot stops inviting a faction once that faction has turned it down this many times.
+MAX_INVITE_DECLINES = 5
+
 STRATEGIES = ('aggressive', 'passive', 'counterweight', 'independent', 'variable')
 BEHAVIORS = ('loyal', 'opportunistic', 'treacherous', 'variable')
 
@@ -197,10 +205,19 @@ def choose_invite_target(engine, faction, rng):
         if not others or own_size >= max(others):
             return None
 
-    candidates = _eligible_invite_targets(engine, faction)
+    return _pick_target(gs.factions[faction], _eligible_invite_targets(engine, faction), rng)
+
+
+def _pick_target(fstate, candidates, rng):
+    """Whom to ask among the legal `candidates`: never a faction that has already
+    declined MAX_INVITE_DECLINES times, and of the rest whoever was asked LEAST
+    recently (never-asked first, ties at random) -- so once someone declines, every
+    other legal target is asked before that faction is asked again."""
+    candidates = [c for c in candidates if fstate.invites_declined.get(c, 0) < MAX_INVITE_DECLINES]
     if not candidates:
         return None
-    return rng.choice(candidates)
+    oldest = min(fstate.last_invited.get(c, 0) for c in candidates)
+    return rng.choice([c for c in candidates if fstate.last_invited.get(c, 0) == oldest])
 
 
 def accepts_invite(engine, faction, inviter):
