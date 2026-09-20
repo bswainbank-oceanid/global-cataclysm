@@ -173,6 +173,46 @@ class TestOccupiedTerritoryStopsMovement(unittest.TestCase):
         self.assertIn(3, dest, 'a Transport alone should not block passage through its sea zone')
 
 
+class TestEnemyTransportsDoNotBlock(unittest.TestCase):
+    """A land unit afloat IS a Transport (no separate unit type): an enemy one never
+    blocks a non-combat move or forces a combat move to stop, though it can still be attacked."""
+
+    def setUp(self):
+        # 1 -- 2 (an enemy Infantry afloat) -- 3 (a warship), all sea.
+        self.data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'sea'}, 3: {'type': 'sea'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        self.modes = {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}
+
+    def state(self, warship=True):
+        units = {2: [enemy_unit(1, 'Infantry', 'AAC')]}
+        if warship:
+            units[3] = [enemy_unit(2, 'Cruiser', 'AAC')]
+        return make_state(self.data, {}, self.modes, units_by_territory=units)
+
+    def test_a_combat_move_passes_through_afloat_land_units(self):
+        dest = legal_combat_move_destinations('Submarine', 'NAA', 1, self.state(), self.data)
+        self.assertIn(3, dest)
+
+    def test_the_transports_themselves_can_be_attacked(self):
+        dest = legal_combat_move_destinations('Submarine', 'NAA', 1, self.state(warship=False), self.data)
+        self.assertIn(2, dest)
+
+    def test_a_non_combat_move_is_not_blocked(self):
+        dest = legal_noncombat_move_destinations('Submarine', 'NAA', 1, self.state(), self.data)
+        self.assertIn(2, dest)
+        self.assertNotIn(3, dest)  # 3 holds a warship
+
+    def test_a_warship_still_blocks_a_non_combat_move(self):
+        gs = make_state(self.data, {}, self.modes, units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')]})
+        self.assertNotIn(2, legal_noncombat_move_destinations('Submarine', 'NAA', 1, gs, self.data))
+
+    def test_planes_can_attack_afloat_transports(self):
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', self.state(warship=False), self.data)
+        self.assertIn(2, dest)
+
+
 class TestAmphibiousThroughOccupiedWater(unittest.TestCase):
     def test_land_unit_can_fight_through_occupied_water_onto_adjacent_land(self):
         # 1 (land, origin) -- 2 (sea, enemy warship present) -- 3 (land, beyond)

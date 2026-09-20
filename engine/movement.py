@@ -112,11 +112,30 @@ def _is_ally_or_self(game_state, mover_faction, other_faction):
     return mover_alliance is not None and mover_alliance == game_state.factions[other_faction].alliance
 
 
-def _enemies_present(territory_id, mover_faction, game_state):
+def _is_transport(unit, territory_id, territories, unit_defs):
+    """A land unit in a sea zone IS a Transport (one per unit -- see
+    rules.json water_movement_bonus_rule); there is no separate
+    'Transport' unit type on the board."""
+    if unit.unit_type == 'Transport':
+        return True
+    return territories[territory_id]['type'] == 'sea' and unit_defs.get(unit.unit_type, {}).get('category') == 'Land'
+
+
+def _enemies_present(territory_id, mover_faction, game_state, territories, unit_defs):
     """Combatants belonging to a faction that's neither the mover nor
-    one of its allies -- Transports never count as an occupying
-    presence, per enemy_occupation_stop_rule."""
-    return any(not _is_ally_or_self(game_state, mover_faction, u.owner) and u.unit_type != 'Transport'
+    one of its allies -- Transports (land units afloat) never count as
+    an occupying presence, per enemy_occupation_stop_rule: they neither
+    block a non-combat move nor force a combat move to stop."""
+    return any(not _is_ally_or_self(game_state, mover_faction, u.owner)
+               and not _is_transport(u, territory_id, territories, unit_defs)
+               for u in game_state.territories[territory_id].units)
+
+
+def _enemy_transports_present(territory_id, mover_faction, game_state, territories, unit_defs):
+    """True if a non-allied Transport is in the zone. They don't block
+    anything, but they are still something a combat move can attack."""
+    return any(not _is_ally_or_self(game_state, mover_faction, u.owner)
+               and _is_transport(u, territory_id, territories, unit_defs)
                for u in game_state.territories[territory_id].units)
 
 
@@ -154,7 +173,7 @@ STOP_AND_PASS = _Hop(stop=True, pass_through='any')
 STOP_AND_PASS_LAND_ONLY = _Hop(stop=True, pass_through='land_only')
 
 
-def _classify_combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_state, territories):
+def _classify_combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_state, territories, unit_defs):
     if _is_neutral(dest_id, game_state):
         return BLOCKED
 
@@ -163,7 +182,7 @@ def _classify_combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_s
     contested = _is_contested(dest_id, game_state)
     own_or_ally_land = is_land and _is_ally_or_self(game_state, mover_faction, dest.owner)
 
-    if not is_land and is_land_unit and (contested or _enemies_present(dest_id, mover_faction, game_state)):
+    if not is_land and is_land_unit and (contested or _enemies_present(dest_id, mover_faction, game_state, territories, unit_defs)):
         # Hostile (occupied OR contested) sea zone, land unit currently
         # in transit (i.e. riding a Transport): must be prepared to
         # fight/rejoin the naval battle here, but may continue straight
@@ -194,7 +213,7 @@ def _classify_combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_s
         # attack, not walk past one; never a pass-through.
         return STOP_ONLY
 
-    if _enemies_present(dest_id, mover_faction, game_state):
+    if _enemies_present(dest_id, mover_faction, game_state, territories, unit_defs):
         return STOP_ONLY  # occupied foreign territory (or occupied sea for a non-land unit): attack, stop here
 
     # Empty (no defenders, not contested). For sea zones this is just
@@ -203,13 +222,17 @@ def _classify_combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_s
     # is defending: capturable, and only Mechanized Infantry may
     # continue past it in the same move.
     if not is_land:
+        # Open sea, or sea holding only enemy Transports: never blocks, but the
+        # Transports can be attacked by ending the move here.
+        if _enemy_transports_present(dest_id, mover_faction, game_state, territories, unit_defs):
+            return STOP_AND_PASS
         return PASS_ONLY
     if unit_type == 'Mechanized Infantry':
         return STOP_AND_PASS
     return STOP_ONLY
 
 
-def _classify_noncombat_hop(dest_id, mover_faction, game_state, territories):
+def _classify_noncombat_hop(dest_id, mover_faction, game_state, territories, unit_defs):
     """Noncombat move: own or allied land (contested or not), any
     territory already contested (regardless of who owns it or who's
     contesting it -- unqualified), or open/allied-occupied sea. Never a
@@ -226,7 +249,7 @@ def _classify_noncombat_hop(dest_id, mover_faction, game_state, territories):
         if _is_ally_or_self(game_state, mover_faction, dest.owner) or _is_contested(dest_id, game_state):
             return STOP_AND_PASS
         return BLOCKED  # clean, non-allied foreign land
-    if _enemies_present(dest_id, mover_faction, game_state):
+    if _enemies_present(dest_id, mover_faction, game_state, territories, unit_defs):
         return BLOCKED  # non-ally-occupied water -- would need to be a combat move
     return STOP_AND_PASS
 
@@ -308,9 +331,9 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
             new_path = current_path + [neighbor_id]
 
             if move_type == 'combat':
-                hop = _classify_combat_hop(neighbor_id, mover_faction, unit_type, is_land_unit, game_state, territories)
+                hop = _classify_combat_hop(neighbor_id, mover_faction, unit_type, is_land_unit, game_state, territories, unit_defs)
             else:
-                hop = _classify_noncombat_hop(neighbor_id, mover_faction, game_state, territories)
+                hop = _classify_noncombat_hop(neighbor_id, mover_faction, game_state, territories, unit_defs)
             # Landing on this neighbor via the hostile-water escape/
             # amphibious exception is always a legal stop, even when the
             # neighbor's own ordinary classification wouldn't otherwise
@@ -494,7 +517,7 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
             land_only_restricted = False
             continue
 
-        hop = _classify_combat_hop(next_id, owner, unit_type, is_land_unit, game_state, territories)
+        hop = _classify_combat_hop(next_id, owner, unit_type, is_land_unit, game_state, territories, unit_defs)
         if is_last:
             if not hop.stop:
                 raise ValueError(f'{next_id} is not a legal place to end this combat move')
@@ -519,7 +542,7 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
         final_kind = 'safe_landing'
     elif final_state.contested_by:
         final_kind = 'join_contest'
-    elif _enemies_present(final_id, owner, game_state):
+    elif _enemies_present(final_id, owner, game_state, territories, unit_defs):
         final_kind = 'attack'
     elif final_is_land:
         final_kind = 'capture'
@@ -639,7 +662,7 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
             # isolation, so it has no way to know, and per this rule
             # shouldn't try to guess, what order a player will submit
             # the rest of their moves in.
-            if _enemies_present(tid, owner, game_state):
+            if _enemies_present(tid, owner, game_state, territories, unit_defs):
                 return False
             own_carrier = lambda u: u.unit_type == 'Aircraft Carrier' and u.owner == owner
             return any(own_carrier(u) for u in dest.units) or any(own_carrier(u) for u in dest.pending_deployment)
@@ -652,7 +675,9 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
     # capture (per the turn-order rule), so an undefended foreign
     # territory isn't a legal air combat-move destination either.
     def is_attack_target(tid):
-        return _is_contested(tid, game_state) or _enemies_present(tid, owner, game_state)
+        # (enemy Transports don't block a flight, but a plane may still attack them)
+        return (_is_contested(tid, game_state) or _enemies_present(tid, owner, game_state, territories, unit_defs)
+                or _enemy_transports_present(tid, owner, game_state, territories, unit_defs))
     return {tid for tid in reachable if is_attack_target(tid)}
 
 

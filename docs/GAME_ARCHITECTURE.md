@@ -447,7 +447,7 @@ the same JSON, not a parallel editing path.
   continue. The dice are already fixed by the engine: the first Next Roll has the
   server fight the battle, and the client holds back the resulting state and log
   until End Battle. The engine supports it with per-round `UNIT_STATS` events and
-  richer `battle_preview` rows; in a sea battle land units are Transport cargo
+  richer `battle_preview` rows; land units afloat are Transports, and enemy Transports never block a move (combat or non-combat) or force a stop, though they can still be attacked (`movement._is_transport`); in a sea battle land units are Transport cargo
   (defense 6, 1 HP, no attack, no XP; sunk = lost). `BattleModel`
   (`client/scripts/battle_model.gd`) holds the stepping logic and is checked
   headlessly: `godot --headless --path client -s res://tests/battle_model_test.gd`. Saved in `user://settings.cfg`; `client_shot.py` takes
