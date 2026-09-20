@@ -22,6 +22,15 @@ def _watch_session(seed=1):
     return GameSession(engine, turn_log, bots)
 
 
+def _watch(session):
+    """Joins as a watcher and steps past the Start of Turn announcement that opens the
+    first turn; returns [state, the Purchase queue], like a plain watch used to."""
+    messages = session.handle_message({'type': 'watch'})
+    assert messages[1]['phase'] == 'START_OF_TURN', messages[1]['phase']
+    after = session.handle_message({'type': 'next'})
+    return [after[2], after[1]]
+
+
 def _by_type(messages, msg_type):
     return [m for m in messages if m['type'] == msg_type]
 
@@ -29,7 +38,7 @@ def _by_type(messages, msg_type):
 class TestWatch(unittest.TestCase):
     def test_watch_answers_with_state_and_the_first_queue(self):
         session = _watch_session()
-        messages = session.handle_message({'type': 'watch'})
+        messages = _watch(session)
         self.assertEqual([m['type'] for m in messages], ['state', 'phase_queue'])
         queue = messages[1]
         self.assertEqual((queue['faction'], queue['phase']), ('NAA', 'PURCHASE'))
@@ -37,9 +46,9 @@ class TestWatch(unittest.TestCase):
 
     def test_queued_orders_are_not_executed_until_next(self):
         session = _watch_session()
-        session.handle_message({'type': 'watch'})
+        _watch(session)
         gs = session.engine.game_state
-        self.assertEqual(session.turn_log.events, [])  # queued, not logged
+        self.assertEqual([e for e in session.turn_log.events if e['kind'] != 'start_of_turn'], [])  # queued, not logged
         treasury = gs.factions['NAA'].treasury_mpc
 
         messages = session.handle_message({'type': 'next'})
@@ -51,15 +60,15 @@ class TestWatch(unittest.TestCase):
 
     def test_the_executed_purchase_is_exactly_what_was_queued(self):
         session = _watch_session()
-        queued = session.handle_message({'type': 'watch'})[1]['events'][0]
+        queued = _watch(session)[1]['events'][0]
         executed = _by_type(session.handle_message({'type': 'next'}), 'phase_result')[0]['events'][0]
         self.assertEqual(queued, executed)
 
     def test_each_next_moves_one_phase_and_a_full_turn_hands_over_to_the_next_faction(self):
         session = _watch_session()
-        session.handle_message({'type': 'watch'})
+        _watch(session)
         seen = []
-        for _ in range(6):
+        for _ in range(7):
             messages = session.handle_message({'type': 'next'})
             self.assertEqual([m['type'] for m in messages], ['phase_result', 'phase_queue', 'state'])
             queue = messages[1]
@@ -67,19 +76,42 @@ class TestWatch(unittest.TestCase):
         naa_phases = [p for f, p in seen if f == 'NAA']
         aac_phases = [p for f, p in seen if f == 'AAC']
         self.assertEqual(naa_phases, ['COMBAT_RESOLUTION', 'NONCOMBAT_MOVE', 'CAPTURE', 'DEPLOY_INCOME', 'ALLIANCES'])
-        self.assertEqual(aac_phases[0], 'PURCHASE')
-        self.assertLess(seen.index(('NAA', 'ALLIANCES')), seen.index(('AAC', 'PURCHASE')))
+        self.assertEqual(aac_phases, ['START_OF_TURN', 'PURCHASE'])
+        self.assertLess(seen.index(('NAA', 'ALLIANCES')), seen.index(('AAC', 'START_OF_TURN')))
+
+    def test_every_turn_opens_with_a_start_of_turn_naming_the_round_and_turn(self):
+        session = _watch_session()
+        queue = session.handle_message({'type': 'watch'})[1]
+        self.assertEqual((queue['faction'], queue['phase'], queue['skipped']), ('NAA', 'START_OF_TURN', []))
+        self.assertEqual(queue['events'], [{'kind': 'start_of_turn', 'faction': 'NAA', 'round': 1, 'turn': 1, 'turns_in_round': 2}])
+        result = _by_type(session.handle_message({'type': 'next'}), 'phase_result')[0]
+        self.assertEqual((result['phase'], result['events']), ('START_OF_TURN', queue['events']))
+        self.assertEqual(session.engine.game_state.phase, Phase.PURCHASE)  # an announcement, not an engine phase
+        seen = []
+        for _ in range(30):
+            messages = session.handle_message({'type': 'next'})
+            q = _by_type(messages, 'phase_queue')[0]
+            if q['phase'] == 'START_OF_TURN':
+                seen.append((q['faction'], q['events'][0]['round'], q['events'][0]['turn']))
+        self.assertEqual(seen[:3], [('AAC', 1, 2), ('NAA', 2, 1), ('AAC', 2, 2)])
+
+    def test_the_announcement_does_not_repeat_when_the_turn_is_replanned(self):
+        session = _watch_session()
+        session.handle_message({'type': 'watch'})
+        session.handle_message({'type': 'next'})
+        queue = session.handle_message({'type': 'watch'})[1]
+        self.assertEqual(queue['phase'], 'PURCHASE')
 
     def test_a_skipped_first_turn_combat_move_is_reported_on_the_next_queue(self):
         session = _watch_session()
-        session.handle_message({'type': 'watch'})
+        _watch(session)
         queue = _by_type(session.handle_message({'type': 'next'}), 'phase_queue')[0]
         self.assertEqual(queue['phase'], 'COMBAT_RESOLUTION')
         self.assertEqual(queue['skipped'], ['COMBAT_MOVE'])
 
     def test_capture_and_deploy_queues_preview_what_executing_them_does(self):
         session = _watch_session()
-        session.handle_message({'type': 'watch'})
+        _watch(session)
         previews = {}
         for _ in range(20):
             messages = session.handle_message({'type': 'next'})
@@ -91,7 +123,7 @@ class TestWatch(unittest.TestCase):
 
     def test_dry_run_of_a_preview_leaves_the_real_game_untouched(self):
         session = _watch_session()
-        session.handle_message({'type': 'watch'})
+        _watch(session)
         for _ in range(4):
             session.handle_message({'type': 'next'})  # up to CAPTURE/DEPLOY queued
         gs = session.engine.game_state
@@ -120,7 +152,7 @@ class TestWatch(unittest.TestCase):
     def test_combat_resolution_is_queued_and_fought_one_battle_at_a_time(self):
         for seed in range(1, 15):
             session = _watch_session(seed)
-            messages = session.handle_message({'type': 'watch'})[1:]
+            messages = _watch(session)[1:]
             for _ in range(80):
                 queue = _by_type(messages, 'phase_queue')[0]
                 if queue['phase'] == 'COMBAT_RESOLUTION' and queue.get('battle', {}).get('count', 0) >= 2:
@@ -148,7 +180,7 @@ class TestWatch(unittest.TestCase):
     def test_a_battle_preview_carries_the_numbers_a_battle_board_places_units_by(self):
         for seed in range(1, 15):
             session = _watch_session(seed)
-            messages = session.handle_message({'type': 'watch'})[1:]
+            messages = _watch(session)[1:]
             for _ in range(80):
                 queue = _by_type(messages, 'phase_queue')[0]
                 if queue['phase'] == 'COMBAT_RESOLUTION' and queue['events']:
@@ -173,7 +205,7 @@ class TestWatch(unittest.TestCase):
     def test_aircraft_flying_home_is_its_own_step_before_the_rest_of_non_combat_move(self):
         for seed in range(1, 15):
             session = _watch_session(seed)
-            messages = session.handle_message({'type': 'watch'})[1:]
+            messages = _watch(session)[1:]
             for _ in range(60):
                 queue = _by_type(messages, 'phase_queue')[0]
                 if queue['phase'] == 'RETURN_TO_BASE':
@@ -207,7 +239,7 @@ class TestWatch(unittest.TestCase):
         # drop it to <=1 Strategic Center; every later phase call for it
         # would raise ("not an active faction"), so they must be no-ops.
         session = _watch_session()
-        session.handle_message({'type': 'watch'})
+        _watch(session)
         for _ in range(3):
             session.handle_message({'type': 'next'})  # Capture is now queued
         session.engine.game_state.factions['NAA'].eliminated = True
@@ -222,7 +254,7 @@ class TestWatch(unittest.TestCase):
 
     def test_a_long_game_steps_cleanly_to_the_end_or_forty_turns(self):
         session = _watch_session(seed=3)
-        session.handle_message({'type': 'watch'})
+        _watch(session)
         combat_results = 0
         for _ in range(7 * 2 * 40):
             messages = session.handle_message({'type': 'next'})
@@ -253,7 +285,7 @@ def _human_session(seed=1):
 class TestHumanPurchase(unittest.TestCase):
     def _watch(self):
         session = _human_session()
-        messages = session.handle_message({'type': 'watch'})
+        messages = _watch(session)
         return session, _by_type(messages, 'phase_queue')[0]
 
     def test_a_human_purchase_queue_carries_the_options_and_nothing_is_decided_for_them(self):
@@ -339,10 +371,10 @@ class TestHumanPurchase(unittest.TestCase):
             self.assertNotIn('error', [m['type'] for m in messages])
             queue = _by_type(messages, 'phase_queue')[0]
             seen.append((queue['faction'], queue['phase']))
-            if queue['faction'] == 'GPC':
+            if queue['faction'] == 'GPC' and queue['phase'] == 'PURCHASE':
                 break
         self.assertIn(('NAA', 'ALLIANCES'), seen)
-        self.assertEqual(seen[-1], ('GPC', 'PURCHASE'))
+        self.assertEqual(seen[-2:], [('GPC', 'START_OF_TURN'), ('GPC', 'PURCHASE')])
 
     def test_purchase_options_list_a_sea_zone_target_with_its_sources(self):
         session, queue = self._watch()
@@ -363,7 +395,7 @@ def _human_moves_session(seed=1):
     turn_log = TurnLog()
     engine = GameEngine(gs, None, turn_log=turn_log, combat_rng=random.Random(seed))
     session = GameSession(engine, turn_log, {'GPC': RandomBot(engine, 'GPC', rng=random.Random(seed))})
-    session.handle_message({'type': 'watch'})
+    _watch(session)
     messages = session.handle_message({'type': 'next'})  # NAA's Purchase (nothing bought) -> Combat Move
     return session, _by_type(messages, 'phase_queue')[0]
 

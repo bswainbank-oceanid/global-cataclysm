@@ -18,6 +18,7 @@ var _unit_index := {}     # unit_id -> unit dict, rebuilt with every state
 var human_alliance := {}  # the human's Alliances phase: {faction, members, options{eligible_invite_targets, can_withdraw}, staged{action, target?}, game_would_end}
 var invitation := {}      # a bot's invitation awaiting the human's answer: {from, to, members, answered, accepts}
 var human_purchase := {}  # the human's Purchase phase in progress: {faction, treasury, total_cost, targets{tid: {remaining, next_sc, sources}}, orders[], contested[]}
+var queued_step := ""  # a queue step that isn't a game phase (START_OF_TURN, RETURN_TO_BASE) while it is up, else ""
 var queued_purchase := {}  # the purchase event awaiting execution, {} if none
 var queued_attack := {}    # the combat_move event awaiting execution, {} if none
 var state := {}  # last full GameState.to_dict() from the server, {} until one arrives
@@ -104,6 +105,7 @@ func reset() -> void:
 	invitation = {}
 	move_origin = -1
 	move_selected.clear()
+	queued_step = ""
 	queued_purchase = {}
 	queued_attack = {}
 	tile_drag_armed = false
@@ -510,6 +512,7 @@ func set_queued_purchase(event: Dictionary) -> void:
 # ---- derived HUD stats ------------------------------------------------------
 
 const PHASE_LABELS := {
+	"START_OF_TURN": "Start of Turn",  # a queue step of its own before Purchase
 	"PURCHASE": "Purchase",
 	"COMBAT_MOVE": "Combat Move",
 	"COMBAT_RESOLUTION": "Combat Resolution",
@@ -627,4 +630,12 @@ func round_number() -> int:
 
 
 func phase_label() -> String:
+	if queued_step != "":
+		return PHASE_LABELS.get(queued_step, "")
 	return PHASE_LABELS.get(str(state.get("phase", "")), "")
+
+
+func set_queued_step(step: String) -> void:
+	if step != queued_step:
+		queued_step = step
+		state_changed.emit()

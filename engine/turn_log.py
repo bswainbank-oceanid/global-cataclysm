@@ -71,6 +71,17 @@ class TurnLog:
             'orders': [{'unit_id': uid, 'unit_type': ut, 'from': src, 'to': dst} for uid, ut, src, dst in moves],
         })
 
+    def record_start_of_turn(self, faction, round_number, turn, turns_in_round):
+        """The announcement that opens a faction's turn (a queue step of its own in
+        server/stepper.py, not an engine phase): which round it is and which of
+        the round's turns is starting."""
+        self.events.append(self.start_of_turn_event(faction, round_number, turn, turns_in_round))
+
+    @staticmethod
+    def start_of_turn_event(faction, round_number, turn, turns_in_round):
+        return {'kind': 'start_of_turn', 'faction': faction, 'round': round_number,
+                'turn': turn, 'turns_in_round': turns_in_round}
+
     @staticmethod
     def _order_entry(order, unit_info, extra):
         entry = {'unit_id': order.unit_id, **extra}

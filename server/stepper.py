@@ -60,6 +60,10 @@ Server -> client (always broadcast to watchers):
         Deploy + Income phases -- the events a dry run of the phase
         produces. `skipped`: phases the game passed over just before this
         one (e.g. Combat Move on a faction's first turn).
+    Every faction's turn opens with a phase "START_OF_TURN" (also not a
+    GameState phase): its one event, start_of_turn {faction, round, turn,
+    turns_in_round}, just says which round and which turn is starting;
+    executing it changes nothing but moves on to that faction's Purchase.
     A Non-Combat Move whose faction has aircraft to send home is queued as
     two steps: first phase "RETURN_TO_BASE" (not a GameState phase; its
     events are the return_to_base flights the game makes automatically),
@@ -86,6 +90,8 @@ _PHASES = list(Phase)
 # A queue step of its own, not a GameState phase: the automatic return-to-base
 # that opens Non-Combat Move (see PhaseStepper._plan_current_phase).
 RETURN_TO_BASE = 'RETURN_TO_BASE'
+# Another: the announcement that opens each faction's turn, ahead of Purchase.
+START_OF_TURN = 'START_OF_TURN'
 
 
 class PhaseStepper:
@@ -100,6 +106,7 @@ class PhaseStepper:
         self._battle_index = 0     # which of them is queued now
         self._alliance_plan_for = None  # (faction, global_turn) the current _alliance_plan belongs to
         self._invitation = None    # a bot's invitation to a human awaiting its answer: {from, to, answered}
+        self._turn_announced = None  # (faction, global_turn) whose Start of Turn has been executed
 
     # ---- protocol entry points -------------------------------------------
 
@@ -237,7 +244,12 @@ class PhaseStepper:
         start = len(self.turn_log.events)
         messages = []
         stay = False  # True: the phase isn't over (more battles to fight), so don't advance it
-        if queued == RETURN_TO_BASE:
+        if queued == START_OF_TURN:
+            # Announcement only: record it and go on to Purchase. GameState.phase doesn't move.
+            self._turn_announced = self._turn_key(faction)
+            self.turn_log.events.append(self._queue['events'][0])
+            phase = None
+        elif queued == RETURN_TO_BASE:
             # Its own step, ahead of the rest of Non-Combat Move: air units
             # that fought this turn fly home. GameState.phase doesn't move.
             self.engine.process_return_to_base(faction)
@@ -352,6 +364,10 @@ class PhaseStepper:
         human = self._is_human(faction)
         extra = {}
 
+        if phase == Phase.PURCHASE and faction in gs.active_factions() and self._turn_announced != self._turn_key(faction):
+            self._queue = {'type': 'phase_queue', 'faction': faction, 'phase': START_OF_TURN,
+                           'events': [self._start_of_turn_event(faction)], 'skipped': []}
+            return
         if faction not in gs.active_factions():
             events = []  # eliminated during its own turn; nothing left to do (see _commit)
         elif phase == Phase.PURCHASE:
@@ -422,6 +438,17 @@ class PhaseStepper:
                        'events': events, 'skipped': [p.value for p in self._skipped_before], **extra}
         if phase == Phase.COMBAT_RESOLUTION and self._battles:
             self._queue['battle'] = {'index': self._battle_index, 'count': len(self._battles)}
+
+    def _turn_key(self, faction):
+        return (faction, self.engine.game_state.global_turn)
+
+    def _start_of_turn_event(self, faction):
+        """Round and turn, in the client's own terms: a round is one turn for each
+        faction still in play, and the turn is this faction's place in it."""
+        gs = self.engine.game_state
+        order = gs.active_factions()
+        n = max(1, len(order))
+        return TurnLog.start_of_turn_event(faction, gs.global_turn // n + 1, order.index(faction) + 1, n)
 
     def _dry_run(self, action):
         """The events `action(sim_engine)` would log, run against a private

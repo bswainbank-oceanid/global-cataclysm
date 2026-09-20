@@ -86,6 +86,8 @@ static func describe_editable_purchase(orders: Array, total: int, treasury: int)
 
 static func describe(e: Dictionary) -> String:
 	match str(e.get("kind", "")):
+		"start_of_turn":
+			return "[b]Round %d, turn %d of %d[/b]: %s begins its turn" % [int(e["round"]), int(e["turn"]), int(e["turns_in_round"]), _fac(str(e["faction"]))]
 		"purchase":
 			if e["orders"].is_empty():
 				return "%s buys nothing" % _fac(e["faction"])

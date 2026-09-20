@@ -346,7 +346,10 @@ the same JSON, not a parallel editing path.
   commits the queue (`confirm_*` / `resolve_combat` / ...), sends
   `phase_result` (what executing logged: rolls and per-battle participants
   and casualties), a fresh `state` (so the map/HUD update after every phase)
-  and the following `phase_queue`. `--steps N` drives it in scripted runs (Combat Resolution is queued and fought one battle at a
+  and the following `phase_queue`. Every faction's turn opens with a `START_OF_TURN`
+  queue step (like `RETURN_TO_BASE`, a step of the queue rather than an engine
+  phase): its `start_of_turn` event says which round and which turn is starting, and
+  Settings' "Turn" pause now stops there. `--steps N` drives it in scripted runs (Combat Resolution is queued and fought one battle at a
   time.) A **Settings** button (top bar) opens playback options that decide
   when the client waits for Next instead of executing the queued phase
   itself: opponents' turns pause never / once per turn / every phase, plus

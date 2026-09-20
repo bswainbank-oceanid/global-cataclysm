@@ -91,6 +91,7 @@ func _on_message(msg: Dictionary) -> void:
 			_playing = _auto
 			_queued_faction = str(msg["faction"])
 			_queued_phase = str(msg["phase"])
+			GameStore.set_queued_step(_queued_phase if ["START_OF_TURN", "RETURN_TO_BASE"].has(_queued_phase) else "")
 			GameStore.set_queued_purchase(msg["events"][0] if _queued_phase == "PURCHASE" and not msg["events"].is_empty() else {})
 			GameStore.set_queued_attack(msg["events"][0] if _queued_phase == "COMBAT_MOVE" and not msg["events"].is_empty() else {})
 			var header := _header(_queued_faction, _queued_phase)
@@ -141,6 +142,8 @@ func _refresh() -> void:
 		needs_hold = GameStore.is_player(_queued_faction) and ["PURCHASE", "COMBAT_MOVE", "NONCOMBAT_MOVE", "ALLIANCES"].has(_queued_phase)
 		if needs_hold:
 			button_text = "Hold to submit  -  %s" % _header(_queued_faction, _queued_phase)
+		elif _queued_phase == "START_OF_TURN":
+			button_text = "Next  >  Start %s's turn" % _queued_faction
 		else:
 			button_text = "Next  >  Execute %s" % _header(_queued_faction, _queued_phase)
 		button_enabled = true
@@ -169,7 +172,7 @@ func _should_pause(msg: Dictionary) -> bool:
 		Settings.OppPause.PHASE:
 			return true
 		Settings.OppPause.TURN:
-			if str(msg["phase"]) == "PURCHASE":
+			if str(msg["phase"]) == "START_OF_TURN":
 				return true  # one pause per turn, before it starts
 	if battle.is_empty():
 		return false
