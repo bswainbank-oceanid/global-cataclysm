@@ -323,7 +323,7 @@
       "NEUTRAL"
     ],
     "human_bot": "functionally identical to the engine -- both get full turns through the same order-submission API, full budget/production; differ only in who/what submits orders",
-    "defensive": "seeded via the 100-IPC/no-SC scenario ruleset (see data/scenarios/starting_setup_100ipc.json). Never receives a turn: no purchases, no movement, no reinforcement, can't join alliances. Its territory IS capturable and its starting units DO fight back normally as an ordinary defender when attacked.",
+    "defensive": "seeded via the 100-IPC/no-SC scenario ruleset (see data/scenarios/starting_setup_100ipc.json). Never receives a turn: no purchases, no movement, no reinforcement, can't join alliances. Its territory IS capturable and its starting units DO fight back normally as an ordinary defender when attacked. None of its territories is ever a Strategic Center: they are switched off at game start (TerritoryState.sc_disabled, GameState.is_strategic_center) -- no +2 income, no SC prices or deploy capacity, no SC count toward elimination -- and they stay non-SC when another faction captures them.",
     "neutral": "zero units, zero turns. Its territory is a hard exclusion from every other faction's legal move/attack targets -- not a combatant, an impassable region."
   },
   "alliances": {

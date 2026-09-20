@@ -197,7 +197,10 @@ def build_game_state(scenario_name, faction_modes, defensive_scenario_name='star
 
     for tid, t in data.territories().items():
         owner = t.get('faction') if t['type'] == 'land' else None
-        gs.territories[tid] = TerritoryState(territory_id=tid, owner=owner)
+        # A Defensive power has no Strategic Centers, and its territory keeps that status
+        # for good -- even once someone else captures it.
+        defensive_home = owner is not None and faction_modes.get(owner) == FactionMode.DEFENSIVE
+        gs.territories[tid] = TerritoryState(territory_id=tid, owner=owner, sc_disabled=defensive_home)
 
     faction_codes = list(data.factions())
     if randomize_play_order:

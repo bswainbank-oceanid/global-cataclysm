@@ -186,7 +186,7 @@ class GameEngine:
 
         def sort_key(tid):
             terr = terrs[tid]
-            is_sc = bool(terr.get('strategic_center'))
+            is_sc = self.game_state.is_strategic_center(tid, terr)
             cap = terr['value'] + (2 if is_sc else 0)
             return (0 if is_sc else 1, -cap, tid)
         return sorted(owned_land, key=sort_key)
@@ -208,7 +208,7 @@ class GameEngine:
         gs = self.game_state
 
         owned_land = [tid for tid, t in gs.territories.items() if terrs[tid]['type'] == 'land' and t.owner == faction]
-        sc_targets = {tid for tid in owned_land if terrs[tid].get('strategic_center')}
+        sc_targets = {tid for tid in owned_land if gs.is_strategic_center(tid, terrs[tid])}
         other_targets = set(owned_land) - sc_targets
 
         sea_candidates = set()
@@ -218,7 +218,7 @@ class GameEngine:
                     sea_candidates.add(n)
         for sea_tid in sea_candidates:
             sources = self._purchase_sources(sea_tid, faction)
-            if any(terrs[s].get('strategic_center') for s in sources):
+            if any(gs.is_strategic_center(s, terrs[s]) for s in sources):
                 sc_targets.add(sea_tid)
             else:
                 other_targets.add(sea_tid)
@@ -227,12 +227,12 @@ class GameEngine:
 
     def _deploy_cap(self, territory_id):
         terr = self.data.territories()[territory_id]
-        return terr['value'] + (2 if terr.get('strategic_center') else 0)
+        return terr['value'] + (2 if self.game_state.is_strategic_center(territory_id, terr) else 0)
 
     def _unit_cost(self, unit_type, territory_id):
         terr = self.data.territories()[territory_id]
         unit_def = self.data.units()[unit_type]
-        return unit_def['sc_cost'] if terr.get('strategic_center') else unit_def['cost']
+        return unit_def['sc_cost'] if self.game_state.is_strategic_center(territory_id, terr) else unit_def['cost']
 
     def _resolve_and_cost(self, orders, faction):
         """Shared validation/costing pass -- one run through `orders`,
@@ -831,7 +831,7 @@ class GameEngine:
             nxt = next((s for s, n in left if n > 0), None)
             targets[tid] = {
                 'remaining': sum(max(n, 0) for _, n in left),
-                'next_sc': bool(nxt is not None and terrs[nxt].get('strategic_center')),
+                'next_sc': bool(nxt is not None and self.game_state.is_strategic_center(nxt, terrs[nxt])),
                 'sources': list(sources),
             }
         detail = []
@@ -1632,7 +1632,7 @@ class GameEngine:
         terrs = self.data.territories()
         sc_counts = {}
         for tid, t in self.game_state.territories.items():
-            if terrs[tid]['type'] != 'land' or not terrs[tid].get('strategic_center'):
+            if terrs[tid]['type'] != 'land' or not self.game_state.is_strategic_center(tid, terrs[tid]):
                 continue
             if t.owner:
                 sc_counts[t.owner] = sc_counts.get(t.owner, 0) + 1
@@ -1817,7 +1817,7 @@ class GameEngine:
         (not itself) -- the design doc's SC lock on withdrawal."""
         terrs = self.data.territories()
         for tid, t in self.game_state.territories.items():
-            if terrs[tid]['type'] != 'land' or not terrs[tid].get('strategic_center'):
+            if terrs[tid]['type'] != 'land' or not self.game_state.is_strategic_center(tid, terrs[tid]):
                 continue
             if t.owner is None or t.owner == faction:
                 continue

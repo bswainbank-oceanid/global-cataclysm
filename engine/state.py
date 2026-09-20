@@ -268,6 +268,11 @@ class TerritoryState:
     # attacks here, whatever the outcome; every other still-queued
     # faction's entry is untouched.
     ambush_bonus_for: set = field(default_factory=set)
+    # True for a territory that started out in a DEFENSIVE power's hands: it is never a
+    # Strategic Center in this game, whoever holds it -- capturing it doesn't turn it
+    # into one. (territories.json's strategic_center is only the map's starting fact;
+    # GameState.is_strategic_center is the answer the rules use.)
+    sc_disabled: bool = False
 
     def to_dict(self):
         return {
@@ -278,6 +283,7 @@ class TerritoryState:
             'pending_deployment': [u.to_dict() for u in self.pending_deployment],
             'reclaim_bonus_for': self.reclaim_bonus_for,
             'ambush_bonus_for': sorted(self.ambush_bonus_for),
+            'sc_disabled': self.sc_disabled,
         }
 
     @staticmethod
@@ -290,6 +296,7 @@ class TerritoryState:
             pending_deployment=[UnitInstance.from_dict(u) for u in d['pending_deployment']],
             reclaim_bonus_for=d.get('reclaim_bonus_for'),
             ambush_bonus_for=set(d.get('ambush_bonus_for', [])),
+            sc_disabled=d.get('sc_disabled', False),
         )
 
 
@@ -451,6 +458,13 @@ class GameState:
         uid = self._next_unit_id
         self._next_unit_id += 1
         return uid
+
+    def is_strategic_center(self, territory_id, terr):
+        """Whether the territory counts as a Strategic Center in this game: it is one on the
+        map (`terr` is its territories.json entry) and hasn't been switched off -- a territory
+        that started out in a DEFENSIVE power's hands never is one (TerritoryState.sc_disabled),
+        even after another faction captures it."""
+        return bool(terr.get('strategic_center')) and not self.territories[territory_id].sc_disabled
 
     def active_factions(self):
         """Faction codes with mode HUMAN or BOT, and not yet eliminated

@@ -207,7 +207,7 @@ class RandomBot:
         if unit.unit_type != 'Infantry':
             return False
         terr = self.engine.data.territories().get(origin_id)
-        if terr is None or terr['type'] != 'land' or not terr.get('strategic_center'):
+        if terr is None or terr['type'] != 'land' or not game_state.is_strategic_center(origin_id, terr):
             return False
         return game_state.territories[origin_id].owner == self.faction
 

@@ -604,13 +604,16 @@ func territory_income(code: String) -> int:
 	return total
 
 
-## Whether the territory counts as a Strategic Center as shown: it is one on the
-## map, and its owner can use it (a Defensive power has no Strategic Centers: it
-## never buys or deploys; whoever captures the territory gets the SC).
+## Whether the territory is a Strategic Center in this game: it is one on the map, and
+## the engine hasn't switched it off -- a territory that started out in a Defensive
+## power's hands never is one (`sc_disabled`), whoever holds it now.
 func is_sc(tid: int) -> bool:
 	if not GameData.territories[tid].get("strategic_center", false):
 		return false
-	return faction_state(owner_of(tid)).get("mode", "") != "DEFENSIVE"
+	if state.is_empty():
+		return true
+	var t = state["territories"].get(str(tid))
+	return t == null or not bool(t.get("sc_disabled", false))
 
 
 ## The territory's value as shown on the map: its value plus 2 for a Strategic Center.

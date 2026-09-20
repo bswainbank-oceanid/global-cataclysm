@@ -188,3 +188,67 @@ class TestStartingAlliances(unittest.TestCase):
             with self.assertRaises(ValueError, msg=name):
                 build_game_state('starting_setup_200ipc', modes, randomize_play_order=False,
                                  max_alliance_size=size, starting_alliances=groups)
+
+
+class TestDefensivePowersHaveNoStrategicCenters(unittest.TestCase):
+    """A Defensive power's territory is never a Strategic Center -- and stays a non-SC when
+    another faction captures it."""
+
+    def setUp(self):
+        from engine import data as real_data
+        from engine.economy import compute_income
+        from engine.engine import GameEngine
+        from engine.state import GameState, FactionMode
+        modes = {f: FactionMode.BOT for f in real_data.factions()}
+        modes['UER'] = FactionMode.DEFENSIVE
+        self.gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
+        self.data = real_data
+        self.terrs = real_data.territories()
+        self.compute_income = compute_income
+        self.GameEngine = GameEngine
+        self.GameState = GameState
+
+    def uer_scs(self):
+        return [tid for tid, t in self.terrs.items() if t['type'] == 'land' and t.get('faction') == 'UER' and t.get('strategic_center')]
+
+    def test_its_home_territories_are_switched_off_at_setup(self):
+        scs = self.uer_scs()
+        self.assertTrue(scs)  # the map has some
+        for tid in scs:
+            self.assertTrue(self.gs.territories[tid].sc_disabled)
+            self.assertFalse(self.gs.is_strategic_center(tid, self.terrs[tid]))
+        # Other powers' Strategic Centers are untouched.
+        other = next(tid for tid, t in self.terrs.items() if t['type'] == 'land' and t.get('faction') == 'NAA' and t.get('strategic_center'))
+        self.assertTrue(self.gs.is_strategic_center(other, self.terrs[other]))
+
+    def test_capturing_one_does_not_make_it_a_strategic_center(self):
+        tid = self.uer_scs()[0]
+        before = self.compute_income('NAA', self.gs, self.data)
+        self.gs.territories[tid].owner = 'NAA'
+        self.assertFalse(self.gs.is_strategic_center(tid, self.terrs[tid]))
+        self.assertEqual(self.compute_income('NAA', self.gs, self.data), before + self.terrs[tid]['value'])  # its value, no +2
+
+    def test_it_does_not_count_toward_the_captors_strategic_center_total(self):
+        from engine.state import Phase
+        tid = self.uer_scs()[0]
+        engine = self.GameEngine(self.gs, self.data)
+        engine.game_state.phase = Phase.CAPTURE
+        naa_scs = sum(1 for t, ts in self.gs.territories.items() if ts.owner == 'NAA' and self.gs.is_strategic_center(t, self.terrs[t]))
+        self.gs.territories[tid].owner = 'NAA'
+        again = sum(1 for t, ts in self.gs.territories.items() if ts.owner == 'NAA' and self.gs.is_strategic_center(t, self.terrs[t]))
+        self.assertEqual(naa_scs, again)
+
+    def test_the_status_survives_a_save(self):
+        tid = self.uer_scs()[0]
+        again = self.GameState.from_dict(self.gs.to_dict())
+        self.assertTrue(again.territories[tid].sc_disabled)
+        self.assertFalse(again.is_strategic_center(tid, self.terrs[tid]))
+
+    def test_a_purchase_there_pays_the_ordinary_price_and_capacity(self):
+        # A captured former-Defensive SC is an ordinary territory for buying too.
+        tid = self.uer_scs()[0]
+        self.gs.territories[tid].owner = 'NAA'
+        engine = self.GameEngine(self.gs, self.data)
+        unit = self.data.units()['Infantry']
+        self.assertEqual(engine._unit_cost('Infantry', tid), unit['cost'])
+        self.assertEqual(engine._deploy_cap(tid), self.terrs[tid]['value'])

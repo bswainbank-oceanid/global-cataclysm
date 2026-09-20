@@ -23,5 +23,5 @@ def compute_income(faction, game_state, data_module):
         terr = terrs[tid]
         if terr['type'] != 'land':
             continue
-        total += terr['value'] + (2 if terr.get('strategic_center') else 0)
+        total += terr['value'] + (2 if game_state.is_strategic_center(tid, terr) else 0)
     return total
