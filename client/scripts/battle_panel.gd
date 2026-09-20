@@ -411,28 +411,79 @@ func _show_dice() -> void:
 		d.queue_free()
 	_dice.clear()
 	var roll_x := _die_w() + COL_DEF + _units_col_w()
-	var used := {}  # "side|row" -> dice already placed there
-	for e in _model.last_rolls:
-		var id := int(e["unit_id"])
-		if not _unit_row.has(id):
+	var half := COL_ROLL * 0.5
+	for side in ["attacker", "defender"]:
+		# The dice each unit row rolled, in row order.
+		var by_row := {}
+		for e in _model.last_rolls:
+			var id := int(e["unit_id"])
+			if str(e["side"]) == side and _unit_row.has(id):
+				var row: int = _unit_row[id]
+				if not by_row.has(row):
+					by_row[row] = []
+				by_row[row].append(e)
+		if by_row.is_empty():
 			continue
-		var side := str(e["side"])
-		var row: int = _unit_row[id]
-		var key := "%s|%d" % [side, row]
-		var n: int = used.get(key, 0)
-		used[key] = n + 1
-		var half := COL_ROLL * 0.5
-		var step := minf(DieView.SIZE + 2.0, (half - 8.0 - DieView.SIZE) / 2.0)
-		var x := roll_x + (4.0 if side == "attacker" else half + 4.0) + minf(n, 2) * step
-		var y := float(_row_y[row]) + (float(_row_h[row]) - DieView.TOTAL_H) * 0.5 + (n / 3) * 8.0
-		var die := DieView.make(str(e["die"]), int(e["roll"]), bool(e["hit"]), bool(e.get("bypass_hit", false)) if e.get("bypass_hit") != null else false,
-			GameData.factions[str(e["owner"])].color)
-		die.position = Vector2(x, y)
-		die.tooltip_text = _describe_roll(e)
-		die.modulate.a = 0.0
-		_table.add_child(die)
-		die.create_tween().tween_property(die, "modulate:a", 1.0, 0.15)
-		_dice.append(die)
+		var rows: Array = by_row.keys()
+		rows.sort()
+		var origin_x := roll_x + (0.0 if side == "attacker" else half)
+		var layout := _dice_layout(rows, by_row, half)
+		for r in rows:
+			var block: Dictionary = layout["blocks"][r]
+			var cols: int = layout["cols"]
+			var sc: float = layout["scale"]
+			var step_x: float = (DieView.SIZE + 2.0) * sc
+			var step_y: float = DieView.TOTAL_H * sc + 2.0
+			var list: Array = by_row[r]
+			var used_cols := mini(cols, list.size())
+			var x0: float = origin_x + (half - float(used_cols) * step_x + 2.0 * sc) * 0.5
+			for i in list.size():
+				var e: Dictionary = list[i]
+				var die := DieView.make(str(e["die"]), int(e["roll"]), bool(e["hit"]), bool(e.get("bypass_hit", false)) if e.get("bypass_hit") != null else false,
+					GameData.factions[str(e["owner"])].color)
+				die.scale = Vector2.ONE * sc
+				die.position = Vector2(x0 + float(i % cols) * step_x, float(block["top"]) + float(i / cols) * step_y)
+				die.tooltip_text = _describe_roll(e)
+				die.modulate.a = 0.0
+				_table.add_child(die)
+				die.create_tween().tween_property(die, "modulate:a", 1.0, 0.15)
+				_dice.append(die)
+
+
+## Where one side's dice go: each unit row's dice fill a grid in that row's half of
+## the Roll column, centred on the row. A grid taller than its cell spills into the
+## rows above and below, and neighbouring grids are pushed apart so no two dice
+## overlap; if the whole set still doesn't fit the table, the dice shrink until it
+## does. Returns {"scale", "cols", "blocks": {row: {"top", "height"}}}.
+func _dice_layout(rows: Array, by_row: Dictionary, half: float) -> Dictionary:
+	var body_top := HEADER_H * 2.0 + 2.0
+	var body_bottom: float = float(_row_y.back()) + float(_row_h.back()) - 2.0
+	var result := {}
+	for scale in [1.0, 0.85, 0.7, 0.55, 0.45]:
+		var cols := maxi(1, int((half - 8.0) / ((DieView.SIZE + 2.0) * scale)))
+		var step_y: float = DieView.TOTAL_H * scale + 2.0
+		var tops := []
+		var heights := []
+		for r in rows:
+			var lines := int(ceil(float((by_row[r] as Array).size()) / float(cols)))
+			var h := float(lines) * step_y - 2.0
+			heights.append(h)
+			tops.append(float(_row_y[r]) + (float(_row_h[r]) - h) * 0.5)
+		for i in tops.size():  # push down past the grid above...
+			var floor_y: float = body_top if i == 0 else float(tops[i - 1]) + float(heights[i - 1]) + 4.0
+			tops[i] = maxf(float(tops[i]), floor_y)
+		var last := tops.size() - 1
+		tops[last] = minf(float(tops[last]), body_bottom - float(heights[last]))
+		for i in range(last - 1, -1, -1):  # ...then back up if that ran off the table
+			tops[i] = minf(float(tops[i]), float(tops[i + 1]) - 4.0 - float(heights[i]))
+		var fits: bool = float(tops[0]) >= body_top - 0.5
+		var blocks := {}
+		for i in rows.size():
+			blocks[rows[i]] = {"top": tops[i], "height": heights[i]}
+		result = {"scale": scale, "cols": cols, "blocks": blocks}
+		if fits:
+			break
+	return result
 
 
 func _describe_roll(e: Dictionary) -> String:

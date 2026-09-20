@@ -39,6 +39,39 @@ func _initialize() -> void:
 	_check(panel._row_of({"die": "D6", "defense": 9}, true) != panel._row_of({"die": "D6", "defense": 9}, false), "classic: the rolling side slides into its die's band")
 	panel.free()
 
+	# Dice fill their row's cell in a grid; grids taller than the cell spill into the
+	# neighbouring rows, never overlap each other, and shrink to fit the table.
+	var panel2 = load("res://scripts/battle_panel.gd").new()
+	var y := 52.0
+	for i in 6:
+		panel2._row_y.append(y)
+		panel2._row_h.append(56.0)
+		y += 56.0
+	var dice := func(n: int) -> Array:
+		var out := []
+		for i in n:
+			out.append({})
+		return out
+	var lay: Dictionary = panel2._dice_layout([2], {2: dice.call(1)}, 110.0)
+	_check(lay["scale"] == 1.0 and lay["cols"] == 2, "one die: full size, a two-wide grid")
+	var b: Dictionary = lay["blocks"][2]
+	_check(absf(float(b["top"]) + float(b["height"]) * 0.5 - (52.0 + 2 * 56.0 + 28.0)) < 0.5, "one die is centred in its row")
+	lay = panel2._dice_layout([2], {2: dice.call(6)}, 110.0)  # 3 lines of dice: taller than the 56px row
+	b = lay["blocks"][2]
+	_check(float(b["height"]) > 56.0 and float(b["top"]) < 52.0 + 2 * 56.0, "six dice spill above their row")
+	# Neighbouring rows with several dice each: no overlap, in order, inside the table.
+	lay = panel2._dice_layout([1, 2, 3], {1: dice.call(4), 2: dice.call(5), 3: dice.call(4)}, 110.0)
+	var prev_bottom := 0.0
+	for r in [1, 2, 3]:
+		var blk: Dictionary = lay["blocks"][r]
+		_check(float(blk["top"]) >= prev_bottom, "row %d's dice start below the row above's" % r)
+		prev_bottom = float(blk["top"]) + float(blk["height"])
+	_check(prev_bottom <= 52.0 + 6 * 56.0, "and end inside the table")
+	# Far too many dice for the table at full size: they shrink.
+	lay = panel2._dice_layout([0, 1, 2, 3, 4, 5], {0: dice.call(8), 1: dice.call(8), 2: dice.call(8), 3: dice.call(8), 4: dice.call(8), 5: dice.call(8)}, 110.0)
+	_check(float(lay["scale"]) < 1.0, "a huge roll shrinks the dice (%.2f)" % float(lay["scale"]))
+	panel2.free()
+
 	# A promotion during a battle raises the unit's defense by one at once.
 	var data = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/battle_multi.json"))
 	var m := BattleModel.from_preview(data["preview"])

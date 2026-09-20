@@ -445,7 +445,7 @@ the same JSON, not a parallel editing path.
   sides' units in the row of their **defense** value (5-10; no attack-die columns, units never move, except that a unit promoted
   mid-battle goes up a row at once), a Resolve setting per side (Entire Battle / Round / Side / Unit Type /
   Unit; default Unit Type, remembered) that sets how much one Next Roll reveals,
-  top-down dice per roll, `/` on hit units and `X` on eliminated ones (marked at
+  top-down dice per roll (each unit row's dice fill a grid in that row's half of the Roll column; a grid taller than the cell spills into the rows above and below, neighbours are pushed apart so no dice overlap, and a huge roll shrinks the dice to fit -- `_dice_layout`), `/` on hit units and `X` on eliminated ones (marked at
   the hit, as they still roll that round), XP shown the moment it is earned (promotions at round end), the first-round combat bonus named in the Ready/Round label with its side and reason, an empty-territory capture skipping the board, every unit brought back at the end with the result, and End Battle to
   continue. The dice are already fixed by the engine: the first Next Roll has the
   server fight the battle, and the client holds back the resulting state and log
