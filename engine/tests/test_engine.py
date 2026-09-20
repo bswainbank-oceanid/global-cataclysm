@@ -2402,7 +2402,7 @@ class TestEliminationCheck(unittest.TestCase):
         engine.process_elimination_check()
         self.assertFalse(gs.factions['PAF'].eliminated)
 
-    def test_defensive_faction_can_be_eliminated(self):
+    def test_defensive_factions_are_never_eliminated_and_keep_their_units(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         stranded = make_unit('Infantry', 'AAC')
         gs = make_state(
@@ -2411,8 +2411,8 @@ class TestEliminationCheck(unittest.TestCase):
         )
         engine = GameEngine(gs, data)
         engine.process_elimination_check()
-        self.assertTrue(gs.factions['AAC'].eliminated)
-        self.assertNotIn(stranded, gs.territories[1].units)
+        self.assertFalse(gs.factions['AAC'].eliminated)
+        self.assertIn(stranded, gs.territories[1].units)
 
     def test_calling_twice_is_idempotent(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})

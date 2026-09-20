@@ -1593,15 +1593,16 @@ class GameEngine:
         return max(by_owner, key=sort_key)
 
     def process_elimination_check(self):
-        """victory.elimination_rule: any HUMAN/BOT/DEFENSIVE faction
+        """victory.elimination_rule: any HUMAN/BOT faction
         currently controlling <=1 Strategic Center (original or
         captured; a contested one still counts, since its
         TerritoryState.owner doesn't change until the contest actually
         resolves in Capture Territory -- see combat.contested_territory_rule)
         is eliminated -- FactionState.eliminated is set True, and every
         unit it still has anywhere on the board is removed immediately.
-        NEUTRAL is skipped -- it never had turns to lose, and the
-        concept doesn't meaningfully apply.
+        NEUTRAL and DEFENSIVE are skipped: neither ever had turns to lose,
+        and a Defensive power has no Strategic Centers -- its units stay in
+        play until they are individually killed.
 
         Ownership only ever changes via process_capture_territory, so
         this should run right after it, once per turn -- automatic, no
@@ -1628,7 +1629,7 @@ class GameEngine:
                 sc_counts[t.owner] = sc_counts.get(t.owner, 0) + 1
 
         for code, fstate in self.game_state.factions.items():
-            if fstate.eliminated or fstate.mode == FactionMode.NEUTRAL:
+            if fstate.eliminated or fstate.mode in (FactionMode.NEUTRAL, FactionMode.DEFENSIVE):
                 continue
             if sc_counts.get(code, 0) <= 1:
                 fstate.eliminated = True
