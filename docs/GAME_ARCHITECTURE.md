@@ -193,7 +193,7 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 82 tests) — first vertical slice,
+- ⬜ WebSocket server (`server/`, 103 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
   (NAA and GPC both BOTs watched by a spectator client -- see the watch
   mode below; the human-play protocol described next is still in place and
@@ -354,6 +354,21 @@ the same JSON, not a parallel editing path.
   and before each battle on your own turn; the "yours" options are inert
   while there is no HUMAN faction. Unpaused phases run back to back with no
   added delay, waiting only for the previous phase's arrows to finish
+  **Launch screen:** the client opens on a launch screen (`LaunchScreen`); the server
+  starts idle and a `GameHost` (`server/host.py`) builds the game the screen
+  describes (`server/lobby.py`; `--demo` starts the old hardcoded NAA-vs-GPC game
+  instead, for scripted runs). Six seats, each Human / Bot / Defense / Neutral;
+  players (humans and bots) choose a faction (or random) and a starting alliance
+  (none, 1, 2 or 3 -- seats sharing a number start allied, which needed a new
+  `starting_alliances` option in `build_game_state`); bots also choose an alliance
+  strategy and behavior (default random); "Randomize turn order" defaults on. Rules:
+  at least two players, at most one human, each faction once, an alliance needs two
+  or more members and can't be every player (the ceiling on alliance size is raised
+  to fit the largest group). Every faction is in exactly one seat: explicit picks
+  first, random seats take what is left; Defense seats use the 100-IPC setup, as
+  before. The screen checks live, the server re-checks. Settings are remembered
+  between launches; "New game..." in Settings returns to the screen (the running
+  game stays until you start another, and "Resume" goes back to it).
   **Human players:** the demo server now runs NAA as a HUMAN and GPC as a bot
   (`python -m server.app --human none` for the old bots-only watch). A human
   faction's phases go through the same queue: its Purchase queue carries

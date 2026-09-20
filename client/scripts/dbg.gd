@@ -12,6 +12,9 @@ extends Node
 ##   --steps=<n>             press the Next button n times (needs --server)
 ##   --pause=never|turn|phase, --pause_battle   playback settings for this run
 ##   --resolve=entire|round|side|type|unit   battle board Resolve setting, both sides
+##   --launch[=HUMAN:NAA,BOT,...]  show the launch screen (and play its Start with these seats)
+##   --resume            go straight to the game running on the server
+##   --fixed_order, --combat_first_turn   launch options for scripted runs
 ##   --buy=Unit:territory,...  add units to the human's purchase queue (a scripted player)
 ##   --move_to=<id>     drop the selected units on that space (Combat/Non-Combat Move)
 ##   --recall=<unit,..> take units out of the queued moves

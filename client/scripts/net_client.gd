@@ -14,19 +14,16 @@ signal disconnected
 signal raw_message(msg: Dictionary)
 
 var url := "ws://localhost:8765"
-var faction := "NAA"
-var watcher := true  # spectate an all-bot game ("watch") rather than join as `faction`
+var auto_watch := false  # send "watch" on connecting (resuming a running game); else the launch screen decides
 
 var _ws := WebSocketPeer.new()
 var _open := false
 var _enabled := false
 
 
-func start(server_url: String = "", as_faction: String = "") -> void:
+func start(server_url: String = "") -> void:
 	if server_url != "":
 		url = server_url
-	if as_faction != "":
-		faction = as_faction
 	_enabled = true
 	var err := _ws.connect_to_url(url)
 	if err != OK:
@@ -51,7 +48,8 @@ func _process(_delta: float) -> void:
 			if not _open:
 				_open = true
 				connected.emit()
-				send_msg({"type": "watch"} if watcher else {"type": "join", "faction": faction})
+				if auto_watch:
+					send_msg({"type": "watch"})
 			while _ws.get_available_packet_count() > 0:
 				var msg = JSON.parse_string(_ws.get_packet().get_string_from_utf8())
 				if typeof(msg) == TYPE_DICTIONARY:

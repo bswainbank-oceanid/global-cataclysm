@@ -197,6 +197,16 @@ func show_queue_again() -> void:
 		show_queue(_last_queue["header"], _last_queue["skipped"], _last_queue["events"])
 
 
+## A new game: empty the queue and the executed log, and deselect.
+func reset_logs() -> void:
+	_queue.clear()
+	_log.clear()
+	_last_queue = {}
+	_expanded.clear()
+	_queue_head.text = "Queued orders"
+	show_space(-1)
+
+
 func log_line(text: String) -> void:
 	_log.append_text(text + "\n")
 

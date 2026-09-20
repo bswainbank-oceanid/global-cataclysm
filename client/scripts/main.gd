@@ -16,6 +16,7 @@ var _tile_drag_label: PanelContainer
 var _tile_drag_travel := 0.0
 var _tile_dragging := false
 var _view_before_battles := {}  # the camera before the first auto-zoom to a battle: {pos, zoom}
+var _launch: LaunchScreen
 
 
 func _ready() -> void:
@@ -58,6 +59,7 @@ func _ready() -> void:
 
 	_cam.zoom_changed.connect(_world.set_zoom)
 	_setup_move_dragging()
+	_setup_launch_screen()
 	_cam.clicked.connect(func(p: Vector2): _world.select(_world.space_at_world(p)))
 	_container.mouse_entered.connect(func(): _world.set_hover_enabled(true))
 	_container.mouse_exited.connect(func(): _world.set_hover_enabled(false))
@@ -109,6 +111,9 @@ func _ready() -> void:
 	settings_panel.offset_right = -10
 	add_child(settings_panel)
 	_top.settings_pressed.connect(func(): settings_panel.visible = not settings_panel.visible)
+	settings_panel.new_game_pressed.connect(func():
+		settings_panel.visible = false
+		Net.send_msg({"type": "lobby"}))  # the reply reopens the launch screen
 	Stepper.log_line.connect(_side.log_line)
 	Stepper.queue_shown.connect(_side.show_queue)
 	Stepper.executed.connect(_side.log_events)
@@ -144,7 +149,12 @@ func _start_view() -> void:
 		_side.show_space(int(Dbg.args["select"]))
 	if Dbg.args.has("server"):
 		var url: String = Dbg.args["server"]
+		# Scripted runs (and --resume) go straight to the game running on the server;
+		# otherwise the launch screen (opened by the server's "lobby" message) comes first.
+		Net.auto_watch = Dbg.args.has("resume") or (Dbg.args.has("shot") and not Dbg.args.has("launch"))
 		Net.start("" if url == "true" else url)
+		if Dbg.args.has("launch"):  # --launch=<seat modes, e.g. HUMAN,BOT,NEUTRAL,...>: play the launch screen's Start
+			await _launch_scripted()
 		if Dbg.args.has("steps"):
 			await Stepper.press(int(Dbg.args["steps"]))
 		else:
@@ -244,6 +254,63 @@ func _inject_button(pos: Vector2, pressed: bool) -> void:
 	ev.global_position = pos
 	ev.pressed = pressed
 	Input.parse_input_event(ev)
+
+
+# ---- the launch screen ------------------------------------------------------------
+
+func _setup_launch_screen() -> void:
+	_launch = LaunchScreen.new()
+	add_child(_launch)
+	_launch.start_requested.connect(func(s: Dictionary): Net.send_msg({"type": "new_game", "settings": s}))
+	_launch.resume_requested.connect(func():
+		Net.send_msg({"type": "watch"})
+		_launch.close())
+	Net.raw_message.connect(_on_launch_message)
+	Stepper.game_reset.connect(func():
+		_side.reset_logs()
+		_world.arrows.reset()
+		_view_before_battles = {}
+		_world.set_move_targets([], -1)
+		_fit_whole_map())
+
+
+func _on_launch_message(msg: Dictionary) -> void:
+	var kind := str(msg.get("type", ""))
+	if kind == "lobby":
+		if not Net.auto_watch:
+			_launch.open(bool(msg.get("game_running", false)))
+	elif kind == "game_started":
+		_launch.close()
+	elif kind == "error" and _launch.visible:
+		_launch.show_error(str(msg.get("message", "")))
+
+
+func _fit_whole_map() -> void:
+	var vp := _viewport.size
+	_cam.jump_to(Vector2(GameData.map_w, GameData.map_h) * 0.5, maxf(vp.x / GameData.map_w, vp.y / GameData.map_h))
+
+
+## Dev/scripted: wait for the launch screen, then start the game it describes
+## (--launch=HUMAN,BOT,NEUTRAL,... one mode per seat, factions random unless the
+## seat is written MODE:FACTION, e.g. HUMAN:NAA,BOT:GPC,NEUTRAL).
+func _launch_scripted() -> void:
+	var waited := 0.0
+	while not _launch.visible and waited < 10.0:
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+	var spec: String = Dbg.args["launch"]
+	if spec == "true" or spec == "":
+		return  # just show the screen
+	var seats := []
+	for item in spec.split(","):
+		var parts := item.split(":")
+		seats.append({"mode": parts[0], "faction": parts[1] if parts.size() > 1 else "random", "alliance": 0, "strategy": "random", "behavior": "random"})
+	while seats.size() < LaunchScreen.SEATS:
+		seats.append({"mode": "NEUTRAL", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "random"})
+	var s := {"seats": seats, "randomize_order": not Dbg.args.has("fixed_order")}
+	if Dbg.args.has("combat_first_turn"):
+		s["dev"] = {"combat_first_turn": true}
+	Net.send_msg({"type": "new_game", "settings": s})
 
 
 # ---- dragging units to a move target -------------------------------------------

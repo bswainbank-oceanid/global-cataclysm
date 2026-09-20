@@ -44,6 +44,9 @@ def main():
     ap.add_argument('--battle_rolls')
     ap.add_argument('--buy')
     ap.add_argument('--hold')
+    ap.add_argument('--launch', nargs='?', const='true')
+    ap.add_argument('--fixed_order', action='store_true')
+    ap.add_argument('--combat_first_turn', action='store_true')
     ap.add_argument('--drag_hold', action='store_true')
     ap.add_argument('--move_to')
     ap.add_argument('--recall')
@@ -57,7 +60,7 @@ def main():
 
     subprocess.run([sys.executable, str(ROOT / 'tools' / 'sync_client_data.py')], check=True)
     user_args = [f'--shot={Path(a.out).resolve()}', f'--wait={a.wait}']
-    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click', 'state', 'badges', 'server', 'steps', 'pause', 'pause_battle', 'battle_rolls', 'resolve', 'buy', 'hold', 'move_to', 'recall', 'select2', 'drag_hold'):
+    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click', 'state', 'badges', 'server', 'steps', 'pause', 'pause_battle', 'battle_rolls', 'resolve', 'buy', 'hold', 'move_to', 'recall', 'select2', 'drag_hold', 'launch', 'fixed_order', 'combat_first_turn'):
         if getattr(a, key):
             val = getattr(a, key)
             user_args.append(f'--{key}={Path(val).resolve() if key == "state" else val}')

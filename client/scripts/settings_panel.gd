@@ -9,6 +9,7 @@ var _opp_battle: CheckBox
 var _opp_battle_mine: CheckBox
 var _your_battle: CheckBox
 var _note: Label
+signal new_game_pressed
 
 
 func _ready() -> void:
@@ -41,6 +42,14 @@ func _ready() -> void:
 	_note = HudStyle.label("No human player in this game: you're watching bots, so the options for your own units and turns do nothing.", 11, HudStyle.TEXT_DIM)
 	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(_note)
+
+	v.add_child(HSeparator.new())
+	var new_game := Button.new()
+	new_game.text = "New game..."
+	new_game.focus_mode = Control.FOCUS_NONE
+	new_game.tooltip_text = "Back to the launch screen (the running game stays until you start another)"
+	new_game.pressed.connect(func(): new_game_pressed.emit())
+	v.add_child(new_game)
 
 	GameStore.state_changed.connect(_sync)
 	_sync()

@@ -98,11 +98,38 @@ def _apply_promotions(scenario, faction, bought_at):
                 break
 
 
+def _check_starting_alliances(groups, faction_modes, max_alliance_size):
+    """Raises ValueError for a starting-alliance list the game could not start
+    from: a group needs at least two members, every member must be an active
+    faction (HUMAN or BOT), no faction may be in two groups, no group may exceed
+    max_alliance_size, and no group may contain EVERY active faction (that alliance
+    would be the game ending -- see GameEngine.would_game_end)."""
+    if not groups:
+        return
+    active = {c for c, m in faction_modes.items() if m in (FactionMode.HUMAN, FactionMode.BOT)}
+    seen = set()
+    for members in groups:
+        members = list(members)
+        if len(members) < 2:
+            raise ValueError(f'a starting alliance needs at least two members, got {members}')
+        for code in members:
+            if code not in active:
+                raise ValueError(f'{code} cannot be in a starting alliance: it is not a HUMAN or BOT faction')
+            if code in seen:
+                raise ValueError(f'{code} is in more than one starting alliance')
+            seen.add(code)
+        if len(members) > max_alliance_size:
+            raise ValueError(f'starting alliance {members} is larger than max_alliance_size {max_alliance_size}')
+        if set(members) >= active:
+            raise ValueError('a starting alliance of every active faction would end the game at once')
+
+
 def build_game_state(scenario_name, faction_modes, defensive_scenario_name='starting_setup_100ipc',
                       randomize_play_order=True, allow_combat_moves_first_turn=False,
                       allow_noncombat_moves_first_turn=True, max_alliance_size=2,
                       can_withdraw_from_alliances=True, can_rejoin_alliances=False,
-                      alliance_strategies=None, alliance_behaviors=None, rng=None):
+                      alliance_strategies=None, alliance_behaviors=None, rng=None,
+                      starting_alliances=None):
     """scenario_name: e.g. 'starting_setup_200ipc', used for every HUMAN/
     BOT faction. faction_modes: {faction_code: FactionMode}, one entry per
     faction in data.factions(). Returns a fresh GameState at global_turn 0
@@ -135,6 +162,10 @@ def build_game_state(scenario_name, faction_modes, defensive_scenario_name='star
       setup -- so passing something like 5 in a 3-faction game is
       harmless, not an error; the effective cap starts at 2 either way.
 
+    starting_alliances: optional list of lists of faction codes; each inner list
+    starts the game already allied (one shared alliance tag, as if formed by
+    invitations). See _check_starting_alliances for what is rejected.
+
     alliance_strategies / alliance_behaviors: optional {faction_code: str}
     -- per-BOT game-start settings (engine.bots.alliance_policy), each
     value one of that module's STRATEGIES/BEHAVIORS (now including
@@ -154,6 +185,7 @@ def build_game_state(scenario_name, faction_modes, defensive_scenario_name='star
     factions; HUMAN/DEFENSIVE/NEUTRAL factions never consult this policy
     layer, so their fields stay None."""
     rng = rng or random.Random()
+    _check_starting_alliances(starting_alliances, faction_modes, max_alliance_size)
     gs = GameState(
         global_turn=0, phase=Phase.PURCHASE,
         allow_combat_moves_first_turn=allow_combat_moves_first_turn,
@@ -216,6 +248,12 @@ def build_game_state(scenario_name, faction_modes, defensive_scenario_name='star
         else:  # HUMAN or BOT
             bought_at = _place_faction_units(gs, code, main_scenario, name_to_id)
             _apply_promotions(main_scenario, code, bought_at)
+
+    for members in starting_alliances or []:
+        tag = f'ALLIANCE_{gs._next_alliance_id}'  # same tags GameEngine._new_alliance_tag hands out mid-game
+        gs._next_alliance_id += 1
+        for code in members:
+            gs.factions[code].alliance = tag
 
     active = gs.active_factions()
     gs.active_faction = active[0] if active else None

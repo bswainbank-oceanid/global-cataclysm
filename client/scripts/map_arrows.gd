@@ -72,6 +72,15 @@ func clear_preview() -> void:
 		queue_redraw()
 
 
+## A new game: no arrows at all.
+func reset() -> void:
+	_queued = []
+	_playing = []
+	_preview = {}
+	set_process(false)
+	queue_redraw()
+
+
 ## True while executed arrows are still shortening.
 func is_playing() -> bool:
 	return not _playing.is_empty()

@@ -29,6 +29,22 @@ func set_state(new_state: Dictionary) -> void:
 	state_changed.emit()
 
 
+## Forget everything about the game in progress (a new game is starting).
+func reset() -> void:
+	state = {}
+	_unit_index.clear()
+	human_purchase = {}
+	human_move = {}
+	move_origin = -1
+	move_selected.clear()
+	queued_purchase = {}
+	queued_attack = {}
+	tile_drag_armed = false
+	state_changed.emit()
+	purchase_changed.emit()
+	move_changed.emit()
+
+
 ## A unit's dict (as the server sent it) by id, {} if there is none.
 func unit_of(unit_id: int) -> Dictionary:
 	return _unit_index.get(unit_id, {})

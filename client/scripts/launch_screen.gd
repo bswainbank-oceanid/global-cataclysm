@@ -1,0 +1,284 @@
+class_name LaunchScreen
+extends Control
+## The game launch screen: six seats, each a Human, Bot, Defense or Neutral, and for
+## players (humans and bots) a faction (or random), a starting alliance, and for
+## bots an alliance strategy and behavior; plus whether to randomise the turn order.
+## "Start Game" sends the settings to the server (server/lobby.py builds the game and
+## re-checks everything); "Resume" goes back to a game already running there.
+##
+## The rules mirrored here for instant feedback: at least two players, at most one
+## human, each faction picked once, and a starting alliance needs two or more
+## members and can't include every player.
+
+signal start_requested(settings: Dictionary)
+signal resume_requested
+
+const SEATS := 6
+const MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Defense", "DEFENSIVE"], ["Neutral", "NEUTRAL"]]
+const ALLIANCES := ["None", "Alliance 1", "Alliance 2", "Alliance 3"]
+const STRATEGIES := ["random", "aggressive", "passive", "counterweight", "independent", "variable"]
+const BEHAVIORS := ["random", "loyal", "opportunistic", "treacherous", "variable"]
+const PATH := "user://launch.cfg"
+
+var _rows: Array = []  # per seat: {mode, faction, chip, alliance, strategy, behavior}
+var _randomize: CheckBox
+var _message: Label
+var _start: Button
+var _resume: Button
+var _game_running := false
+var _loading := false
+
+
+func _ready() -> void:
+	z_index = 500
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	visible = false
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var bg := ColorRect.new()
+	bg.color = Color(0.045, 0.06, 0.085)
+	add_child(bg)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var center := CenterContainer.new()
+	add_child(center)
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", HudStyle.box(HudStyle.GOLD, Color(0.07, 0.085, 0.11), 2))
+	center.add_child(panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	panel.add_child(v)
+
+	var title := HudStyle.label("Global Cataclysm: 1972", 26, HudStyle.GOLD)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(title)
+	var sub := HudStyle.label("New game", 15, HudStyle.TEXT_DIM)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(sub)
+	v.add_child(HSeparator.new())
+
+	var grid := GridContainer.new()
+	grid.columns = 7
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 6)
+	v.add_child(grid)
+	for h in ["Seat", "Type", "Faction", "", "Starting alliance", "Alliance strategy", "Alliance behavior"]:
+		grid.add_child(HudStyle.label(h, 12, HudStyle.TEXT_DIM))
+	for i in SEATS:
+		_add_row(grid, i)
+
+	_randomize = CheckBox.new()
+	_randomize.text = "Randomize turn order"
+	_randomize.button_pressed = true
+	_randomize.focus_mode = Control.FOCUS_NONE
+	_randomize.toggled.connect(func(_on): _changed())
+	v.add_child(_randomize)
+
+	_message = HudStyle.label("", 12, Color(1.0, 0.6, 0.5))
+	_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_message.custom_minimum_size = Vector2(760, 34)
+	v.add_child(_message)
+
+	var buttons := HBoxContainer.new()
+	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
+	buttons.add_theme_constant_override("separation", 14)
+	v.add_child(buttons)
+	_resume = _button("Resume current game")
+	_resume.pressed.connect(func(): resume_requested.emit())
+	buttons.add_child(_resume)
+	_start = _button("Start Game")
+	_start.pressed.connect(func():
+		_save()
+		start_requested.emit(settings()))
+	buttons.add_child(_start)
+
+	_load()
+	_changed()
+
+
+func _button(text: String) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(220, 44)
+	b.add_theme_font_size_override("font_size", 15)
+	b.add_theme_color_override("font_color", HudStyle.GOLD)
+	b.add_theme_color_override("font_hover_color", Color.WHITE)
+	b.add_theme_color_override("font_disabled_color", HudStyle.TEXT_DIM)
+	b.add_theme_stylebox_override("normal", HudStyle.box(HudStyle.GOLD, Color(0.16, 0.14, 0.05), 2))
+	b.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.24, 0.2, 0.06), 2))
+	b.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, Color(0.3, 0.25, 0.08), 2))
+	b.add_theme_stylebox_override("disabled", HudStyle.box(HudStyle.EDGE, HudStyle.BG, 1))
+	return b
+
+
+func _option(items: Array, width: float) -> OptionButton:
+	var o := OptionButton.new()
+	o.focus_mode = Control.FOCUS_NONE
+	o.custom_minimum_size = Vector2(width, 30)
+	for it in items:
+		o.add_item(str(it))
+	o.item_selected.connect(func(_i): _changed())
+	return o
+
+
+func _add_row(grid: GridContainer, i: int) -> void:
+	grid.add_child(HudStyle.label("%d" % (i + 1), 15, HudStyle.GOLD))
+	var mode := _option(MODES.map(func(m): return m[0]), 110)
+	mode.select(0 if i == 0 else 1 if i == 1 else 3)  # a Human, a Bot, the rest Neutral
+	grid.add_child(mode)
+
+	var faction := _option(["Random"], 250)
+	for code in GameData.faction_order:
+		faction.add_item("%s  -  %s" % [code, GameData.factions[code].name])
+		faction.set_item_metadata(faction.item_count - 1, code)
+	grid.add_child(faction)
+	var chip := ColorRect.new()
+	chip.custom_minimum_size = Vector2(14, 30)
+	grid.add_child(chip)
+
+	var alliance := _option(ALLIANCES, 120)
+	grid.add_child(alliance)
+	var strategy := _option(STRATEGIES.map(func(s): return str(s).capitalize()), 140)
+	grid.add_child(strategy)
+	var behavior := _option(BEHAVIORS.map(func(s): return str(s).capitalize()), 150)
+	grid.add_child(behavior)
+	_rows.append({"mode": mode, "faction": faction, "chip": chip, "alliance": alliance, "strategy": strategy, "behavior": behavior})
+
+
+# ---- reading the screen -----------------------------------------------------------
+
+func _mode_of(row: Dictionary) -> String:
+	return MODES[(row["mode"] as OptionButton).selected][1]
+
+
+func _faction_of(row: Dictionary) -> String:
+	var o: OptionButton = row["faction"]
+	return "random" if o.selected == 0 else str(o.get_item_metadata(o.selected))
+
+
+func settings() -> Dictionary:
+	var seats := []
+	for row in _rows:
+		var mode := _mode_of(row)
+		var player: bool = mode == "HUMAN" or mode == "BOT"
+		seats.append({
+			"mode": mode,
+			"faction": _faction_of(row),
+			"alliance": (row["alliance"] as OptionButton).selected if player else 0,
+			"strategy": STRATEGIES[(row["strategy"] as OptionButton).selected],
+			"behavior": BEHAVIORS[(row["behavior"] as OptionButton).selected],
+		})
+	var s := {"seats": seats, "randomize_order": _randomize.button_pressed}
+	if Dbg.args.has("combat_first_turn"):
+		s["dev"] = {"combat_first_turn": true}  # scripted runs only: the rules skip it
+	return s
+
+
+## The reasons this setup can't start (empty = it can). Mirrors server/lobby.py.
+func problems() -> Array:
+	var out := []
+	var players := 0
+	var humans := 0
+	var groups := {}
+	for i in SEATS:
+		var mode := _mode_of(_rows[i])
+		if mode == "HUMAN":
+			humans += 1
+		if mode == "HUMAN" or mode == "BOT":
+			players += 1
+			var a: int = (_rows[i]["alliance"] as OptionButton).selected
+			if a > 0:
+				groups[a] = int(groups.get(a, 0)) + 1
+	if players < 2:
+		out.append("At least two players (humans or bots) are needed.")
+	if humans > 1:
+		out.append("At most one human player.")
+	for a in groups:
+		if groups[a] < 2:
+			out.append("Alliance %d has only one member: an alliance needs two or more." % a)
+		elif groups[a] >= players and players >= 2:
+			out.append("Alliance %d would contain every player, which ends the game at once." % a)
+	return out
+
+
+# ---- keeping the controls consistent --------------------------------------------------
+
+func _changed() -> void:
+	if _loading:
+		return
+	var human_seat := -1
+	var taken := {}
+	for i in SEATS:
+		if _mode_of(_rows[i]) == "HUMAN" and human_seat < 0:
+			human_seat = i
+		var f := _faction_of(_rows[i])
+		if f != "random":
+			taken[f] = i
+	for i in SEATS:
+		var row: Dictionary = _rows[i]
+		var mode := _mode_of(row)
+		var mode_o: OptionButton = row["mode"]
+		mode_o.set_item_disabled(0, human_seat >= 0 and human_seat != i)  # at most one human
+		var fac_o: OptionButton = row["faction"]
+		for k in range(1, fac_o.item_count):
+			var code := str(fac_o.get_item_metadata(k))
+			fac_o.set_item_disabled(k, taken.has(code) and taken[code] != i)
+		var f := _faction_of(row)
+		(row["chip"] as ColorRect).color = GameData.factions[f].color if f != "random" else Color(0.3, 0.34, 0.4)
+		var player: bool = mode == "HUMAN" or mode == "BOT"
+		(row["alliance"] as OptionButton).disabled = not player
+		(row["strategy"] as OptionButton).disabled = mode != "BOT"
+		(row["behavior"] as OptionButton).disabled = mode != "BOT"
+	var p := problems()
+	_message.text = "\n".join(p) if not p.is_empty() else ""
+	_start.disabled = not p.is_empty()
+	_resume.visible = _game_running
+
+
+## Show the screen (again). `game_running`: the server has a game to go back to.
+func open(game_running: bool) -> void:
+	_game_running = game_running
+	_changed()
+	visible = true
+
+
+func close() -> void:
+	visible = false
+
+
+## A server rejection of the settings: show its reasons.
+func show_error(message: String) -> void:
+	_message.text = message
+
+
+# ---- remembering the last setup ---------------------------------------------------------
+
+func _save() -> void:
+	if Dbg.args.has("shot"):
+		return
+	var cfg := ConfigFile.new()
+	var s := settings()
+	cfg.set_value("launch", "randomize_order", s["randomize_order"])
+	for i in SEATS:
+		var row: Dictionary = _rows[i]
+		for key in ["mode", "faction", "alliance", "strategy", "behavior"]:
+			cfg.set_value("seat%d" % i, key, (row[key] as OptionButton).selected)
+	cfg.save(PATH)
+
+
+func _load() -> void:
+	if Dbg.args.has("shot"):
+		return
+	var cfg := ConfigFile.new()
+	if cfg.load(PATH) != OK:
+		return
+	_loading = true
+	_randomize.button_pressed = bool(cfg.get_value("launch", "randomize_order", true))
+	for i in SEATS:
+		var row: Dictionary = _rows[i]
+		for key in ["mode", "faction", "alliance", "strategy", "behavior"]:
+			var o: OptionButton = row[key]
+			var idx := int(cfg.get_value("seat%d" % i, key, o.selected))
+			if idx >= 0 and idx < o.item_count:
+				o.select(idx)
+	_loading = false

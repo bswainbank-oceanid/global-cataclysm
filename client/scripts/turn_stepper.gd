@@ -12,6 +12,7 @@ signal changed
 signal queue_shown(header: String, skipped: Array, events: Array)
 signal executed(header: String, events: Array)
 signal log_line(text: String)
+signal game_reset  # a new game is starting: clear whatever belonged to the old one
 signal battle_focus(preview: Dictionary)    # a battle paused: zoom the map to it and select it
 signal battle_opened(preview: Dictionary)   # the player asked for it: show the battle board
 signal combat_resolution_ended              # the phase moved on after battles were focused: zoom back out
@@ -97,6 +98,8 @@ func _on_message(msg: Dictionary) -> void:
 		"error":
 			_awaiting = false
 			log_line.emit("[color=#ff7060]server: %s[/color]" % str(msg.get("message", "")))
+		"game_started":
+			reset()
 		"game_over":
 			_awaiting = false
 			_auto = false
@@ -271,6 +274,31 @@ func button_pressed() -> void:
 	else:
 		_pause_requested = true
 	_refresh()
+
+
+## A new game replaces the running one: drop every trace of it.
+func reset() -> void:
+	game_over = false
+	_queue_reset()
+	GameStore.reset()
+	game_reset.emit()
+	_refresh()
+
+
+func _queue_reset() -> void:
+	_last_queue = {}
+	_queued_faction = ""
+	_queued_phase = ""
+	_awaiting = false
+	_auto = false
+	_playing = false
+	_pause_requested = false
+	_battle_pending = {}
+	_battle_open = false
+	_battle_zoomed = false
+	_held = []
+	_held_result = {}
+	_edit_orders = []
 
 
 ## The player's purchase edits: send the whole staged list to the server, which

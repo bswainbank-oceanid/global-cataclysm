@@ -8,13 +8,14 @@ messages come back to the right sockets -- a "to": faction_code key means
 just that faction's connection(s), no "to" key means every connection on
 this game (everyone sees the same board).
 
-First vertical slice, per docs/GAME_ARCHITECTURE.md: ONE hardcoded game
-(NAA a HUMAN player by default, GPC a BOT, every other faction NEUTRAL -- see
-_build_demo_session; `--human none` makes both bots), built fresh each time this
-process starts, with randomize_play_order=False so NAA goes first. Clients
-connect as watchers ({"type": "watch"}) and step the game a phase at a time
-with {"type": "next"}; a human faction's orders arrive as "stage_purchase"
-etc. -- see server/stepper.py. Not yet: multiple
+ONE game at a time, held by a GameHost (server/host.py): the server starts idle
+and the client's launch screen builds the game ({"type": "new_game"}, see
+server/lobby.py), replacing any running one. `--demo` instead starts the old
+hardcoded game (NAA a HUMAN player by default, GPC a BOT, every other faction
+NEUTRAL, NAA first -- see _build_demo_session; `--human none` makes both bots),
+for scripted runs. Clients watch ({"type": "watch"}) and step the game a phase
+at a time with {"type": "next"}; a human faction's orders arrive as
+"stage_purchase" etc. -- see server/stepper.py. Not yet: multiple
 simultaneous games, persistence, real auth (a "join" message is trusted
 at face value for now).
 
@@ -35,6 +36,7 @@ from engine.engine import GameEngine
 from engine.setup import build_game_state
 from engine.state import FactionMode
 from engine.turn_log import TurnLog
+from .host import GameHost
 from .session import GameSession
 
 logger = logging.getLogger('server')
@@ -59,8 +61,8 @@ def _build_demo_session(human='NAA', combat_first_turn=False):
 
 
 class Server:
-    def __init__(self, session):
-        self.session = session
+    def __init__(self, host):
+        self.host = host  # GameHost: the current game (if any) and the launch-screen protocol
         self.sockets_by_faction = {}  # faction_code -> set[ServerConnection]
 
     async def handle_connection(self, websocket):
@@ -72,6 +74,7 @@ class Server:
         doesn't forbid that, matching this slice's "no real auth yet")."""
         joined_as = None
         try:
+            await websocket.send(json.dumps(self.host.lobby_message()))
             async for raw in websocket:
                 try:
                     msg = json.loads(raw)
@@ -86,7 +89,12 @@ class Server:
                     joined_as = msg['faction']
                     self.sockets_by_faction.setdefault(joined_as, set()).add(websocket)
 
-                outgoing = self.session.handle_message(msg)
+                direct, outgoing, joins = self.host.handle(msg)
+                for reply in direct:
+                    await websocket.send(json.dumps(reply))
+                if joins:
+                    joined_as = WATCHER
+                    self.sockets_by_faction.setdefault(joined_as, set()).add(websocket)
                 await self._deliver(outgoing)
         except websockets.ConnectionClosed:
             pass
@@ -107,9 +115,9 @@ class Server:
             await asyncio.gather(*(ws.send(payload) for ws in targets), return_exceptions=True)
 
 
-async def main(host, port, human, combat_first_turn):
-    session = _build_demo_session(human, combat_first_turn)
-    server = Server(session)
+async def main(host, port, demo, human, combat_first_turn):
+    game_host = GameHost(_build_demo_session(human, combat_first_turn) if demo else None)
+    server = Server(game_host)
     async with websockets.serve(server.handle_connection, host, port):
         logger.info('listening on ws://%s:%s', host, port)
         await asyncio.Future()  # run until killed
@@ -119,10 +127,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--host', default='localhost')
     parser.add_argument('--port', type=int, default=8765)
+    parser.add_argument('--demo', action='store_true',
+                        help='start with the hardcoded NAA-vs-GPC game already running (dev/scripted runs); '
+                             'without it the server waits for the launch screen to start a game')
     parser.add_argument('--human', choices=['NAA', 'GPC', 'none'], default='NAA',
-                        help="the faction a player controls (default NAA); 'none' = both bots, just watch")
+                        help="with --demo: the faction a player controls (default NAA); 'none' = both bots")
     parser.add_argument('--combat-first-turn', action='store_true',
                         help='dev/testing: allow Combat Move on a faction\'s first turn (the rules skip it)')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(message)s')
-    asyncio.run(main(args.host, args.port, None if args.human == 'none' else args.human, args.combat_first_turn))
+    asyncio.run(main(args.host, args.port, args.demo, None if args.human == 'none' else args.human, args.combat_first_turn))
