@@ -382,8 +382,11 @@ the same JSON, not a parallel editing path.
   `starting_alliances` option in `build_game_state`); bots also choose an alliance
   strategy and behavior (default random); "Randomize turn order" defaults on. Rules:
   at least two players, at most one human, each faction once, an alliance needs two
-  or more members and can't be every player (the ceiling on alliance size is raised
-  to fit the largest group). Every faction is in exactly one seat: explicit picks
+  or more members, can't be every player, and can't exceed the **Maximum alliance
+  size** setting (default 3; choosable from 2 up to the number of players minus
+  one, greyed out below three players; `max_alliance_size` in the `new_game`
+  settings, validated by `server/lobby.py`; the engine still caps it by the number of
+  factions still in play). Every faction is in exactly one seat: explicit picks
   first, random seats take what is left; Defense seats use the 100-IPC setup, as
   before. Two more game settings, "Players can withdraw from alliances" (default yes)
   and "Players can rejoin alliances they left" (default no; greyed out when

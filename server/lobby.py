@@ -13,6 +13,7 @@ Settings (the "new_game" message's "settings"):
      "randomize_order": true,                            # default true
      "can_withdraw": true,                               # players may leave an alliance (default true)
      "can_rejoin": false,                                # ...and may re-ally with those they left (default false)
+     "max_alliance_size": 3,                             # most factions in one alliance (default 3; 2 .. players-1)
      "dev": {"combat_first_turn": false}}                # optional, testing only
 
 Every faction is in exactly one seat: explicit picks are honoured first (and must
@@ -23,7 +24,7 @@ turns, and NEUTRAL seats are impassable (see data/rules.json power_modes).
 The rules the screen enforces (and the server re-checks, being the authority):
 at least two players, at most one human, distinct explicit factions, and each
 starting alliance (seats sharing an alliance number) has two or more members and
-does not include every player. Bots' strategy/behavior "random" is resolved once
+does not include every player, and fits within max_alliance_size. Bots' strategy/behavior "random" is resolved once
 by the engine at game start. All problems are reported together in
 LobbyError.problems.
 """
@@ -42,6 +43,7 @@ SEAT_COUNT = 6
 MODES = ('HUMAN', 'BOT', 'DEFENSIVE', 'NEUTRAL')
 ALLIANCE_NUMBERS = (1, 2, 3)
 PLAYER_MODES = ('HUMAN', 'BOT')
+DEFAULT_MAX_ALLIANCE_SIZE = 3
 
 
 class LobbyError(ValueError):
@@ -80,6 +82,11 @@ def check_settings(settings):
     for key in ('randomize_order', 'can_withdraw', 'can_rejoin'):
         if key in settings and not isinstance(settings[key], bool):
             problems.append(f'{key} must be true or false')
+    max_size = settings.get('max_alliance_size', DEFAULT_MAX_ALLIANCE_SIZE)
+    size_ok = isinstance(max_size, int) and not isinstance(max_size, bool)
+    if not size_ok:
+        problems.append('max_alliance_size must be a whole number')
+        max_size = DEFAULT_MAX_ALLIANCE_SIZE
 
     players = [i for i, s in enumerate(seats, 1) if s.get('mode') in PLAYER_MODES]
     humans = [i for i, s in enumerate(seats, 1) if s.get('mode') == 'HUMAN']
@@ -88,6 +95,8 @@ def check_settings(settings):
     if len(humans) > 1:
         problems.append('at most one human player is supported')
 
+    if 'max_alliance_size' in settings and size_ok and len(players) >= 3 and not 2 <= max_size <= len(players) - 1:
+        problems.append(f'the maximum alliance size must be between 2 and {len(players) - 1} (the number of players minus one)')
     groups = {}
     for i in players:
         n = int(seats[i - 1].get('alliance') or 0)
@@ -100,6 +109,8 @@ def check_settings(settings):
             problems.append(f'Alliance {n} has only one member (seat {members[0]}): an alliance needs two or more')
         elif len(members) >= len(players) and len(players) >= 2:
             problems.append(f'Alliance {n} would contain every player, which ends the game at once')
+        elif len(members) > max_size:
+            problems.append(f'Alliance {n} has {len(members)} members, more than the maximum alliance size ({max_size})')
     return problems
 
 
@@ -140,7 +151,7 @@ def build_session(settings, rng=None):
     modes = {a['faction']: FactionMode[a['mode']] for a in assignments}
     gs = build_game_state(
         'starting_setup_200ipc', modes, randomize_play_order=randomize, rng=rng,
-        max_alliance_size=max([2] + [len(g) for g in groups]),
+        max_alliance_size=int(settings.get('max_alliance_size', DEFAULT_MAX_ALLIANCE_SIZE)),
         alliance_strategies={a['faction']: a['strategy'] for a in assignments if a['mode'] == 'BOT'},
         alliance_behaviors={a['faction']: a['behavior'] for a in assignments if a['mode'] == 'BOT'},
         starting_alliances=groups,

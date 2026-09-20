@@ -96,7 +96,7 @@ class TestResolveAndBuild(unittest.TestCase):
         self.assertEqual(set(session.bots), {'UE', 'GPC'})
         self.assertEqual([s['seat'] for s in seats], [1, 2, 3, 4, 5, 6])
 
-    def test_a_three_member_alliance_raises_the_size_ceiling(self):
+    def test_a_three_member_alliance_fits_the_default_size_limit(self):
         session, _ = build_session(settings(
             seat('BOT', 'NAA', alliance=1), seat('BOT', 'UE', alliance=1), seat('BOT', 'GPC', alliance=1),
             seat('BOT', 'AAC')), random.Random(1))
@@ -190,3 +190,42 @@ class TestAllianceRuleSettings(unittest.TestCase):
     def test_non_boolean_values_are_rejected(self):
         self.assertTrue(check_settings(settings(seat('HUMAN'), seat('BOT'), can_withdraw='yes')))
         self.assertTrue(check_settings(settings(seat('HUMAN'), seat('BOT'), can_rejoin=1)))
+
+
+class TestMaxAllianceSize(unittest.TestCase):
+    def four_players(self, **kw):
+        return settings(seat('HUMAN'), seat('BOT'), seat('BOT'), seat('BOT'), **kw)
+
+    def test_the_default_is_three(self):
+        session, _ = build_session(self.four_players(), random.Random(1))
+        self.assertEqual(session.engine.game_state.max_alliance_size, 3)
+
+    def test_the_chosen_size_reaches_the_game(self):
+        session, _ = build_session(self.four_players(max_alliance_size=2), random.Random(1))
+        self.assertEqual(session.engine.game_state.max_alliance_size, 2)
+        state = session.handle_message({'type': 'watch'})[0]['game_state']
+        self.assertEqual(state['max_alliance_size'], 2)
+
+    def test_it_can_be_at_most_the_number_of_players_minus_one(self):
+        self.assertEqual(check_settings(self.four_players(max_alliance_size=3)), [])
+        self.assertTrue(check_settings(self.four_players(max_alliance_size=4)))
+        self.assertTrue(check_settings(self.four_players(max_alliance_size=1)))
+        three = settings(seat('HUMAN'), seat('BOT'), seat('BOT'), max_alliance_size=2)
+        self.assertEqual(check_settings(three), [])
+        self.assertTrue(check_settings(settings(seat('HUMAN'), seat('BOT'), seat('BOT'), max_alliance_size=3)))
+
+    def test_a_two_player_game_takes_the_default_without_complaint(self):
+        self.assertEqual(check_settings(settings(seat('HUMAN'), seat('BOT'))), [])
+
+    def test_it_must_be_a_whole_number(self):
+        self.assertTrue(check_settings(self.four_players(max_alliance_size='3')))
+        self.assertTrue(check_settings(self.four_players(max_alliance_size=True)))
+
+    def test_a_starting_alliance_may_not_exceed_it(self):
+        big = self.four_players(max_alliance_size=2)
+        for i in range(3):
+            big['seats'][i]['alliance'] = 1
+        problems = check_settings(big)
+        self.assertTrue(any('maximum alliance size' in p for p in problems), problems)
+        big['max_alliance_size'] = 3
+        self.assertEqual(check_settings(big), [])

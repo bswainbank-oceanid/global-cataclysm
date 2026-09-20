@@ -103,5 +103,32 @@ func _initialize() -> void:
 	_pick(screen, 2, "mode", 3)
 	_check(screen.settings()["seats"][2]["alliance"] == 0, "non-players send no alliance")
 
+	# Maximum alliance size: 2 .. players-1, default 3.
+	var size: OptionButton = screen._max_alliance
+	_pick(screen, 2, "mode", 1)  # three players: sizes 2 only
+	_check(not size.disabled and size.item_count == 1 and size.get_item_text(0) == "2", "three players: the only size is 2")
+	_pick(screen, 3, "mode", 1)
+	_pick(screen, 4, "mode", 1)
+	_pick(screen, 5, "mode", 1)  # six players: 2..5
+	_check(size.item_count == 4 and size.get_item_text(3) == "5", "six players: sizes 2 to 5")
+	_check(size.get_item_text(size.selected) == "3" and screen.settings()["max_alliance_size"] == 3, "the default is 3")
+	size.select(3)
+	size.item_selected.emit(3)
+	_check(screen.settings()["max_alliance_size"] == 5, "the chosen size is sent")
+	_pick(screen, 5, "mode", 3)  # back to five players: the choice is clamped to players-1 = 4
+	_pick(screen, 4, "mode", 3)  # four players: max 3
+	_check(size.item_count == 2 and screen.settings()["max_alliance_size"] == 3, "the size follows the player count (%d)" % int(screen.settings()["max_alliance_size"]))
+	size.select(0)
+	size.item_selected.emit(0)  # size 2
+	_pick(screen, 2, "alliance", 0)
+	_pick(screen, 0, "alliance", 1)
+	_pick(screen, 1, "alliance", 1)
+	_check(screen.problems().is_empty(), "an alliance of two fits a maximum of 2")
+	_pick(screen, 2, "alliance", 1)
+	_check(not screen.problems().is_empty(), "an alliance of three does not fit a maximum of 2: %s" % str(screen.problems()))
+	size.select(1)
+	size.item_selected.emit(1)  # size 3
+	_check(screen.problems().is_empty(), "...but fits 3")
+
 	print("launch screen test: failures=%d" % _failures)
 	quit(1 if _failures > 0 else 0)
