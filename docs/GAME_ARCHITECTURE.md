@@ -444,17 +444,16 @@ the same JSON, not a parallel editing path.
   Mockup.pdf`): the map first zooms to the territory and selects it (and returns to the previous view once Combat Resolution ends), the Next button then reads "Open battle board", and pressing it pops up a chart with both
   sides' units in the row of their **defense** value (5-10; no attack-die columns, units never move, except that a unit promoted
   mid-battle goes up a row at once), a Resolve setting per side (Entire Battle / Round / Side / Unit Type /
-  Unit; default Unit Type, remembered) that sets how much one Next Roll reveals,
+  Unit; default Unit Type, remembered) that sets how much one press (a "pulse") reveals, and with the finer ones (Side / Unit Type / Unit) a pause at the start of each side (a press that rolls nothing and says what that side is about to do; Round and Entire Battle run straight through),
   top-down dice per roll (each unit row's dice fill a grid in that row's half of the Roll column; a grid taller than the cell spills into the rows above and below, neighbours are pushed apart so no dice overlap, and a huge roll shrinks the dice to fit -- `_dice_layout`), `/` on hit units and `X` on eliminated ones (marked at
-  the hit, as they still roll that round), XP shown the moment it is earned (promotions at round end), the first-round combat bonus named in the Ready/Round label with its side and reason, an empty-territory capture skipping the board, every unit brought back at the end with the result, and End Battle to
-  continue. The dice are already fixed by the engine: the first Next Roll has the
+  the hit, as they still roll that round), XP shown the moment it is earned (promotions at round end), the first-round combat bonus named in the Ready/Round label with its side and reason, an empty-territory capture skipping the board, and a text box under the chart saying what the last pulse did (rolls, hits, units that had no legal target, round-end casualties and promotions) and what happens next, with the button labelled to match ("Start Defender's side", "Roll Attacker's Cruisers", ...). Every unit is brought back at the end, and the final End Battle state shows the battle summary at the bottom of that box. The dice are already fixed by the engine: the first Next Roll has the
   server fight the battle, and the client holds back the resulting state and log
-  until End Battle. The engine supports it with per-round `UNIT_STATS` events and
+  until End Battle. The engine supports it with per-round `UNIT_STATS` events, `SIDE_START` (a side with armed units is about to roll), `NO_TARGETS` (a unit with no legal target -- a Submarine against only aircraft, an aircraft against only Submarines -- does not roll and spends no die; the check is made as each unit's turn comes) and a `BATTLE_END` `end_reason` (`eliminated` / `no_targets` / `rounds`): a round is not fought at all when neither side has a legal target, which ends the battle; and
   richer `battle_preview` rows; land units afloat are Transports, and enemy Transports never block a move (combat or non-combat) or force a stop, though they can still be attacked (`movement._is_transport`); in a sea battle land units are Transport cargo
   (defense 6, 1 HP, no attack, no XP; sunk = lost). `BattleModel`
   (`client/scripts/battle_model.gd`) holds the stepping logic and is checked
   headlessly: `godot --headless --path client -s res://tests/battle_model_test.gd`. Saved in `user://settings.cfg`; `client_shot.py` takes
-  `--pause never|turn|phase` and `--pause_battle`. The original layout (attack-die columns, the rolling side sliding into its die's band) is kept as the **Battle board layout** setting "Die bands (classic)" in the Settings panel (`Settings.battle_layout`; `--classic_board` for scripted runs); the dice and their order are the same in both. Layout checks: `godot --headless --path client -s res://tests/battle_layout_test.gd`.
+  `--pause never|turn|phase` and `--pause_battle`. Layout checks: `godot --headless --path client -s res://tests/battle_layout_test.gd`.
   Run: `python tools/sync_client_data.py` (copies reference data into the
   gitignored `client/data`, `client/assets`), `python -m server.app`, then
   `godot --path client -- --server`. Scripted UI verification without a

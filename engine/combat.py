@@ -31,7 +31,9 @@ DIE_MAX = {'D6': 6, 'D8': 8, 'D10': 10, 'D12': 12}
 class EventKind(Enum):
     AIR_SUPERIORITY_START = 'AIR_SUPERIORITY_START'
     ROUND_START = 'ROUND_START'
+    SIDE_START = 'SIDE_START'      # a side (with at least one armed unit) is about to roll this round
     UNIT_ROLL = 'UNIT_ROLL'
+    NO_TARGETS = 'NO_TARGETS'      # a unit that would have rolled has no legal target, so it does not roll
     ROUND_CASUALTIES = 'ROUND_CASUALTIES'
     PROMOTION = 'PROMOTION'
     UNIT_STATS = 'UNIT_STATS'
@@ -43,7 +45,7 @@ class BattleEvent:
     kind: EventKind
     round_number: int  # 0 = air superiority round, 1-3 = main combat rounds
 
-    # UNIT_ROLL
+    # SIDE_START / NO_TARGETS / UNIT_ROLL
     side: Optional[str] = None  # 'attacker' | 'defender'
     unit_id: Optional[int] = None
     unit_type: Optional[str] = None
@@ -77,6 +79,7 @@ class BattleEvent:
     surviving_defender_ids: Optional[list] = None
     eliminated_attacker_ids: Optional[list] = None
     eliminated_defender_ids: Optional[list] = None
+    end_reason: Optional[str] = None  # 'eliminated' (a side is gone) | 'no_targets' (neither side can hit the other) | 'rounds' (the round limit)
 
 
 @dataclass
@@ -107,6 +110,26 @@ class BattleResult:
 
 def _alive(units):
     return [u for u in units if u.current_hp > 0]
+
+
+def _legal_targets(attacker_type, enemies, unit_defs, pending_damage=None):
+    """The enemies a unit of `attacker_type` could hit at all, at any roll: still
+    standing (counting damage already dealt earlier in this side's roll-through), and
+    -- per the Submerge trait (combat.submarine_air_invisibility) -- never an aircraft
+    for a Submarine, never a Submarine for an aircraft."""
+    pending_damage = pending_damage or {}
+    standing = [e for e in enemies if e.current_hp - pending_damage.get(e.unit_id, 0) > 0]
+    if attacker_type == 'Submarine':
+        return [e for e in standing if unit_defs[e.unit_type]['category'] != 'Air']
+    if unit_defs[attacker_type]['category'] == 'Air':
+        return [e for e in standing if e.unit_type != 'Submarine']
+    return standing
+
+
+def _side_can_hit(acting, enemies, unit_defs):
+    """True if any armed unit of `acting` has a legal target among `enemies`."""
+    return any(u.effective_stats(unit_defs)['attack_die'] and _legal_targets(u.unit_type, enemies, unit_defs)
+               for u in acting)
 
 
 def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_type_weight, bomber_weight, pending_damage,
@@ -154,11 +177,7 @@ def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_t
     a clean hit nor the max-die bypass can ever reach one. If that
     filtering empties the pool entirely, this is a normal no-target miss
     (None, False, False), same as facing no standing enemies at all."""
-    standing = [e for e in enemies if e.current_hp - pending_damage.get(e.unit_id, 0) > 0]
-    if attacker_type == 'Submarine':
-        standing = [e for e in standing if unit_defs[e.unit_type]['category'] != 'Air']
-    elif unit_defs[attacker_type]['category'] == 'Air':
-        standing = [e for e in standing if e.unit_type != 'Submarine']
+    standing = _legal_targets(attacker_type, enemies, unit_defs, pending_damage)
     if not standing:
         return None, False, False
 
@@ -218,6 +237,12 @@ def _roll_side(rng, side_label, acting_units, enemy_units, unit_defs, target_cfg
     pending_damage = {}
     for unit in acting_units:
         unit.last_combat_global_turn = current_global_turn
+        if not _legal_targets(unit.unit_type, enemy_units, unit_defs, pending_damage):
+            # Nothing it could hit (checked as this unit's turn comes, so earlier hits
+            # this round count): it does not roll, and no die is spent on it.
+            yield BattleEvent(kind=EventKind.NO_TARGETS, round_number=round_number, side=side_label,
+                              unit_id=unit.unit_id, unit_type=unit.unit_type)
+            continue
         stats = unit.effective_stats(unit_defs, round1_bonus=acting_round1_bonus, air_superiority=acting_air_superiority)
         die = stats['attack_die']
         die_max = DIE_MAX[die]
@@ -331,6 +356,8 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
 
     def run_side(side_label, acting, acting_bonus, enemies, enemies_bonus, enemies_by_id, hit_ids, enemies_are_defenders):
         pending = {}
+        if acting:
+            yield BattleEvent(kind=EventKind.SIDE_START, round_number=round_number, side=side_label)
         for event in _roll_side(rng, side_label, acting, enemies, unit_defs, target_cfg, round_number, current_global_turn,
                                  acting_round1_bonus=acting_bonus, enemy_round1_bonus=enemies_bonus,
                                  enemies_are_defenders=enemies_are_defenders, acting_air_superiority=air_superiority):
@@ -441,14 +468,25 @@ def _resolve_battle_inner(attacker_units, defender_units, battle_type, rng, curr
         defenders = _alive(defenders)
 
     round_number = 0
+    no_targets = False
     for round_number in range(1, combat_cfg['rounds_per_battle'] + 1):
         if not attackers or not defenders:
+            break
+        if not _side_can_hit(attackers, defenders, unit_defs) and not _side_can_hit(defenders, attackers, unit_defs):
+            no_targets = True  # e.g. only Submarines left against only aircraft: nobody can hit anybody
             break
         yield BattleEvent(kind=EventKind.ROUND_START, round_number=round_number)
         yield from _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_cfg, resolution_order, current_global_turn,
                                      round1_bonus_side=round1_bonus_side)
         attackers = _alive(attackers)
         defenders = _alive(defenders)
+
+    if not attackers or not defenders:
+        end_reason = 'eliminated'
+    elif no_targets:
+        end_reason = 'no_targets'
+    else:
+        end_reason = 'rounds'
 
     if not attackers and not defenders:
         outcome = 'mutual_elimination'  # both sides wiped out the same round -- no survivors on either side
@@ -464,7 +502,7 @@ def _resolve_battle_inner(attacker_units, defender_units, battle_type, rng, curr
     surviving_attacker_ids = [u.unit_id for u in attackers]
     surviving_defender_ids = [u.unit_id for u in defenders]
     yield BattleEvent(
-        kind=EventKind.BATTLE_END, round_number=round_number, outcome=outcome,
+        kind=EventKind.BATTLE_END, round_number=round_number, outcome=outcome, end_reason=end_reason,
         surviving_attacker_ids=surviving_attacker_ids,
         surviving_defender_ids=surviving_defender_ids,
         eliminated_attacker_ids=[uid for uid in all_attacker_ids if uid not in surviving_attacker_ids],

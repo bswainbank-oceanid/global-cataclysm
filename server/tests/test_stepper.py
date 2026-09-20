@@ -90,6 +90,8 @@ class TestWatch(unittest.TestCase):
         seen = []
         for _ in range(30):
             messages = session.handle_message({'type': 'next'})
+            if not _by_type(messages, 'phase_queue'):
+                break  # the game ended
             q = _by_type(messages, 'phase_queue')[0]
             if q['phase'] == 'START_OF_TURN':
                 seen.append((q['faction'], q['events'][0]['round'], q['events'][0]['turn']))

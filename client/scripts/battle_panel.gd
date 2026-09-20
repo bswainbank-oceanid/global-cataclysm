@@ -6,16 +6,13 @@ extends Control
 ## Both sides' units sit in a chart of rows, one per defense value. Every unit
 ## stays in the row of its DEFENSE (Transports have defense 6 like the rest) and
 ## only moves if its defense changes -- a unit promoted mid-battle steps up a row.
-## The attack dice each unit rolls, and the order they roll in, are unchanged.
-##
-## The original "die bands" design is kept behind Settings.battle_layout (Settings
-## panel, "Battle board layout"): extra Attack Die columns at both edges, a row for
-## Transports, and the side that is rolling sliding its units into the band of their
-## attack die (D6 covers defense 5-6, D8 7-8, D10 9, D12 10). Each roll shows a top-down die in the Roll column; hit units get
-## a "/" (or an "X" when eliminated). The Resolve options on each side choose
-## how much one Next Roll press reveals (BattleModel). At the end every
-## unit is back on the board, casualties marked, the result reported, and End
-## Battle closes the board.
+## Each roll shows a top-down die in the Roll column; hit units get a "/" (or an
+## "X" when eliminated). The Resolve options on each side choose how much one press
+## of the button reveals (BattleModel), and with the finer ones each side also gets
+## a pause of its own before it rolls. A text box under the chart says what the
+## last pulse did and what the next will do, and the button is labelled to match.
+## At the end every unit is back on the board, casualties marked, the battle
+## summary is in the text box, and End Battle closes the board.
 ##
 ## The dice are already decided by the engine. The first Next Roll asks the
 ## server to fight the battle (roll_requested); its events arrive through
@@ -25,27 +22,17 @@ signal roll_requested   # the battle hasn't been fought yet: the server must do 
 signal closed           # End Battle pressed
 
 const TABLE_W := 940.0
-const COL_DIE := 72.0
 const COL_DEF := 62.0
 const COL_ROLL := 220.0
 const HEADER_H := 26.0
+const NARRATION_H := 104.0
 const ROW_MIN := 56.0
 const TILE_SCALE := 0.8
 const GAP := 3.0
 const SLIDE_SECONDS := 0.28
 
-## The classic (die bands) chart's rows: {die label, defense}. Row 0 is the Transports' row.
-const ROWS_BANDS := [
-	{"die": "-", "defense": 6},
-	{"die": "D6", "defense": 5}, {"die": "D6", "defense": 6},
-	{"die": "D8", "defense": 7}, {"die": "D8", "defense": 8},
-	{"die": "D10", "defense": 9},
-	{"die": "D12", "defense": 10},
-]
-const BANDS := {"D6": [1, 2], "D8": [3, 4], "D10": [5], "D12": [6]}
-## The default chart: one row per defense value.
-const ROWS_DEFENSE := [{"die": "", "defense": 5}, {"die": "", "defense": 6}, {"die": "", "defense": 7},
-	{"die": "", "defense": 8}, {"die": "", "defense": 9}, {"die": "", "defense": 10}]
+## The chart's rows: one per defense value.
+const ROWS := [5, 6, 7, 8, 9, 10]
 
 var _model: BattleModel
 var _tiles := {}            # unit_id -> UnitTile
@@ -70,9 +57,8 @@ func _ready() -> void:
 	z_index = 90
 	get_viewport().size_changed.connect(_fit_to_screen)
 	Settings.changed.connect(func():
-		if visible and _model != null:  # a layout change in the Settings panel applies at once
-			_layout(false)
-			_show_dice())
+		if visible and _model != null:  # a Resolve change alters what the button will do
+			_refresh_texts())
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.55)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -112,11 +98,12 @@ func _ready() -> void:
 
 	_result = RichTextLabel.new()
 	_result.bbcode_enabled = true
-	_result.fit_content = true
-	_result.custom_minimum_size = Vector2(TABLE_W, 0)
+	_result.fit_content = false
+	_result.scroll_active = true
+	_result.custom_minimum_size = Vector2(TABLE_W, NARRATION_H)
 	_result.add_theme_font_size_override("normal_font_size", 13)
 	_result.add_theme_font_size_override("bold_font_size", 13)
-	_result.visible = false
+	_result.add_theme_stylebox_override("normal", HudStyle.box(HudStyle.EDGE, Color(0.09, 0.105, 0.135), 1))
 	v.add_child(_result)
 
 	_button = Button.new()
@@ -204,10 +191,9 @@ func open(preview: Dictionary) -> void:
 		_table.add_child(tile)
 		tile.size = tile.custom_minimum_size
 		_tiles[id] = tile
-	_result.visible = false
-	_button.text = "Next Roll"
-	_button.disabled = false
 	_set_header()
+	_refresh_texts()
+	_button.disabled = false
 	_layout(false)
 	visible = true
 
@@ -284,50 +270,37 @@ func _sync() -> void:
 		_tiles[id].update_from_battle(u)
 		_tiles[id].visible = u["present"]
 	_button.disabled = false
-	_result.visible = _model.finished
-	if _model.finished:
-		_button.text = "End Battle"
-		_result.text = EventText.describe(_model.summary) if not _model.summary.is_empty() else "Result: " + _model.outcome.replace("_", " ")
-	else:
-		_button.text = "Next Roll"
+	_refresh_texts()
 	_layout(true)
 	_show_dice()
 
 
+## The button's label and the text box: what the last pulse did, then what happens next
+## (or, once the battle is over, its summary).
+func _refresh_texts() -> void:
+	var action := _model.next_action({"attacker": Settings.resolve_attacker, "defender": Settings.resolve_defender})
+	if not _button.disabled:
+		_button.text = str(action["label"])
+	var lines := []
+	if not _model.prev_lines.is_empty():
+		lines.append("[b]Last:[/b] " + "\n".join(_model.prev_lines))
+	if _model.finished:
+		lines.append(EventText.describe(_model.summary) if not _model.summary.is_empty() else "Result: " + _model.outcome.replace("_", " "))
+	else:
+		lines.append(str(action["text"]))
+	_result.text = "\n".join(lines)
+	# The end state is read from the bottom (the summary); otherwise from the top.
+	_result.scroll_to_line(maxi(_result.get_line_count() - 1, 0) if _model.finished else 0)
+
+
 # ---- layout -------------------------------------------------------------------
 
-## True in the classic "die bands" layout (see the class comment).
-func _bands() -> bool:
-	return Settings.battle_layout == Settings.BattleLayout.DIE_BANDS
-
-
-func _rows() -> Array:
-	return ROWS_BANDS if _bands() else ROWS_DEFENSE
-
-
-## Width of each Attack Die column (none in the default layout).
-func _die_w() -> float:
-	return COL_DIE if _bands() else 0.0
-
-
-func _defense_row(u: Dictionary) -> int:
-	if _bands():
-		if u["die"] == null:
-			return 0  # the Transports' row
-		return clampi(int(u["defense"]), 5, 10) - 4
+func _row_of(u: Dictionary) -> int:
 	return clampi(int(u["defense"]), 5, 10) - 5
 
 
-func _row_of(u: Dictionary, by_die: bool) -> int:
-	if not _bands() or not by_die or u["die"] == null:
-		return _defense_row(u)
-	var band: Array = BANDS[str(u["die"])]
-	var dr := _defense_row(u)
-	return dr if band.has(dr) else int(band[0])
-
-
 func _units_col_w() -> float:
-	return (TABLE_W - 2.0 * (_die_w() + COL_DEF) - COL_ROLL) * 0.5
+	return (TABLE_W - 2.0 * COL_DEF - COL_ROLL) * 0.5
 
 
 func _flow(ids: Array, width: float) -> Dictionary:
@@ -350,20 +323,16 @@ func _flow(ids: Array, width: float) -> Dictionary:
 func _layout(animate: bool) -> void:
 	var uw := _units_col_w()
 	# Which units sit in which row, per side.
-	var rows := _rows()
 	var cells := {"attacker": [], "defender": []}
 	for side in cells:
-		for i in rows.size():
+		for i in ROWS.size():
 			cells[side].append([])
 	_unit_row.clear()
 	for id in _model.unit_order:
 		var u: Dictionary = _model.units[id]
 		if not u["present"]:
 			continue
-		# The attacker starts out placed by its attack die (before any roll,
-		# too); otherwise only the side that is rolling right now is.
-		var by_die: bool = _bands() and (_model.rolling_side == u["side"] or (u["side"] == "attacker" and _model.round_index < 0))
-		var row := _row_of(u, by_die)
+		var row := _row_of(u)
 		cells[u["side"]][row].append(id)
 		_unit_row[id] = row
 
@@ -371,7 +340,7 @@ func _layout(animate: bool) -> void:
 	_row_h.clear()
 	var y := HEADER_H * 2.0
 	var flows := {"attacker": [], "defender": []}
-	for i in rows.size():
+	for i in ROWS.size():
 		var h := ROW_MIN
 		for side in cells:
 			var f := _flow(cells[side][i], uw - 6.0)
@@ -383,14 +352,14 @@ func _layout(animate: bool) -> void:
 	_table.custom_minimum_size = Vector2(TABLE_W, y + 2.0)
 	# The board must fit the window: whatever the fixed parts (title, Resolve
 	# rows, result text, button) leave is the chart's scroll area.
-	var fixed := 250.0 + (130.0 if _result.visible else 0.0)
+	var fixed := 250.0 + NARRATION_H + 8.0
 	_scroll.custom_minimum_size = Vector2(TABLE_W + 12, minf(y + 8.0, maxf(get_viewport_rect().size.y - fixed, 200.0)))
 
-	var left_x := _die_w() + COL_DEF
+	var left_x := COL_DEF
 	var right_x := left_x + uw + COL_ROLL
 	for side in cells:
 		var origin_x := left_x if side == "attacker" else right_x
-		for i in rows.size():
+		for i in ROWS.size():
 			var f: Dictionary = flows[side][i]
 			for id in cells[side][i]:
 				var target := Vector2(origin_x + 3.0, float(_row_y[i]) + 4.0) + (f["pos"][id] as Vector2)
@@ -410,7 +379,7 @@ func _show_dice() -> void:
 	for d in _dice:
 		d.queue_free()
 	_dice.clear()
-	var roll_x := _die_w() + COL_DEF + _units_col_w()
+	var roll_x := COL_DEF + _units_col_w()
 	var half := COL_ROLL * 0.5
 	for side in ["attacker", "defender"]:
 		# The dice each unit row rolled, in row order.
@@ -503,74 +472,31 @@ func _draw_table() -> void:
 	var line := Color(0.55, 0.62, 0.72)
 	var text := HudStyle.TEXT
 	var uw := _units_col_w()
-	var rows := _rows()
-	var bands := _bands()
-	var dw := _die_w()
-	# Start of each column, then the right edge: dieL | defL | unitsL | roll | unitsR | defR | dieR
-	# (the two die columns have no width in the default layout).
-	var col_x := [0.0, dw, dw + COL_DEF, dw + COL_DEF + uw, dw + COL_DEF + uw + COL_ROLL,
-		dw + COL_DEF + 2.0 * uw + COL_ROLL, dw + 2.0 * COL_DEF + 2.0 * uw + COL_ROLL, TABLE_W]
+	# Start of each column, then the right edge: defL | unitsL | roll | unitsR | defR
+	var col_x := [0.0, COL_DEF, COL_DEF + uw, COL_DEF + uw + COL_ROLL, COL_DEF + 2.0 * uw + COL_ROLL, TABLE_W]
 	var body_top := HEADER_H * 2.0
 	var body_bottom: float = _row_y.back() + _row_h.back()
 
 	# Header rows.
 	t.draw_rect(Rect2(0, 0, TABLE_W, body_top), Color(0.13, 0.155, 0.19))
-	_centered(t, "Attacker", Rect2(col_x[0], 0, col_x[3] - col_x[0], HEADER_H), 14, text)
-	_centered(t, _model.round_title(), Rect2(col_x[3], 0, col_x[4] - col_x[3], HEADER_H), 14, HudStyle.GOLD)
-	_centered(t, "Defender", Rect2(col_x[4], 0, col_x[7] - col_x[4], HEADER_H), 14, text)
-	var labels := ["Attack Die", "Defense", "Units", "Roll", "Units", "Defense", "Attack Die"]
-	for i in 7:
-		if not bands and (i == 0 or i == 6):
-			continue
+	_centered(t, "Attacker", Rect2(col_x[0], 0, col_x[2] - col_x[0], HEADER_H), 14, text)
+	_centered(t, _model.round_title(), Rect2(col_x[2], 0, col_x[3] - col_x[2], HEADER_H), 14, HudStyle.GOLD)
+	_centered(t, "Defender", Rect2(col_x[3], 0, col_x[5] - col_x[3], HEADER_H), 14, text)
+	var labels := ["Defense", "Units", "Roll", "Units", "Defense"]
+	for i in 5:
 		_centered(t, labels[i], Rect2(col_x[i], HEADER_H, col_x[i + 1] - col_x[i], HEADER_H), 12, HudStyle.TEXT_DIM)
 
 	# Body: row lines and the defense numbers.
-	var band_starts := {}
-	if bands:
-		for die_name in ["-", "D6", "D8", "D10", "D12"]:
-			for i in rows.size():
-				if rows[i]["die"] == die_name:
-					band_starts[i] = true
-					break
-	for i in rows.size():
+	for i in ROWS.size():
 		var y: float = _row_y[i]
 		var h: float = _row_h[i]
-		# In the classic layout a band's inner row line stops short of the die
-		# columns, so it never cuts through the band's label (D6, D8).
-		if not bands or band_starts.has(i):
-			t.draw_line(Vector2(0, y), Vector2(TABLE_W, y), line, 1.0)
-		else:
-			t.draw_line(Vector2(col_x[1], y), Vector2(col_x[6], y), line, 1.0)
-		var d := str(rows[i]["defense"])
-		_centered(t, d, Rect2(col_x[1], y, COL_DEF, h), 15, text)
-		_centered(t, d, Rect2(col_x[5], y, COL_DEF, h), 15, text)
-	if bands:
-		for die_name in ["-", "D6", "D8", "D10", "D12"]:
-			var first := -1
-			var last := -1
-			for i in rows.size():
-				if rows[i]["die"] == die_name:
-					if first < 0:
-						first = i
-					last = i
-			var top: float = _row_y[first]
-			var height: float = _row_y[last] + _row_h[last] - top
-			for x in [col_x[0], col_x[6]]:
-				_centered(t, die_name, Rect2(x, top, COL_DIE, height), 15, text)
+		t.draw_line(Vector2(0, y), Vector2(TABLE_W, y), line, 1.0)
+		var d := str(ROWS[i])
+		_centered(t, d, Rect2(col_x[0], y, COL_DEF, h), 15, text)
+		_centered(t, d, Rect2(col_x[4], y, COL_DEF, h), 15, text)
 	for x in col_x:
 		t.draw_line(Vector2(x, body_top), Vector2(x, body_bottom), line, 1.0)
 	t.draw_line(Vector2(0, body_bottom), Vector2(TABLE_W, body_bottom), line, 1.0)
-	if bands:
-		# Emphasise the die-band boundaries in the die columns.
-		for die_name in ["D6", "D8", "D10", "D12"]:
-			var first := -1
-			for i in rows.size():
-				if rows[i]["die"] == die_name:
-					first = i
-					break
-			var yb: float = _row_y[first]
-			t.draw_line(Vector2(col_x[0], yb), Vector2(col_x[2], yb), text, 2.0)
-			t.draw_line(Vector2(col_x[5], yb), Vector2(col_x[7], yb), text, 2.0)
 	t.draw_rect(Rect2(0, 0, TABLE_W, body_bottom), line, false, 1.5)
 
 

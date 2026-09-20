@@ -10,7 +10,6 @@ extends Node
 signal changed
 
 enum OppPause { NEVER, TURN, PHASE }
-enum BattleLayout { DEFENSE, DIE_BANDS }
 
 const PATH := "user://settings.cfg"
 
@@ -20,7 +19,6 @@ var opp_pause_battle_mine := false       # ...or only before battles involving y
 var your_pause_battle := false           # on your own turns: before every battle
 # Battle board: how much one press of Next Roll reveals (BattleModel.Resolve),
 # remembered per side of the board between battles.
-var battle_layout := BattleLayout.DEFENSE  # DEFENSE: units stay in their defense row. DIE_BANDS: the original board (attack-die columns, the rolling side slides into its die's band)
 var resolve_attacker := BattleModel.Resolve.UNIT_TYPE
 var resolve_defender := BattleModel.Resolve.UNIT_TYPE
 
@@ -31,8 +29,6 @@ func _ready() -> void:
 		if Dbg.args.has("pause"):
 			opp_pause = OppPause[str(Dbg.args["pause"]).to_upper()]
 		opp_pause_battle = Dbg.args.has("pause_battle")
-		if Dbg.args.has("classic_board"):  # --classic_board: the original die-bands layout
-			battle_layout = BattleLayout.DIE_BANDS
 		if Dbg.args.has("resolve"):  # --resolve=entire|round|side|type|unit, for both sides
 			var mode: int = {"entire": 0, "round": 1, "side": 2, "type": 3, "unit": 4}[str(Dbg.args["resolve"])]
 			resolve_attacker = mode
@@ -45,7 +41,6 @@ func _ready() -> void:
 	opp_pause_battle = bool(cfg.get_value("playback", "opp_pause_battle", opp_pause_battle))
 	opp_pause_battle_mine = bool(cfg.get_value("playback", "opp_pause_battle_mine", opp_pause_battle_mine))
 	your_pause_battle = bool(cfg.get_value("playback", "your_pause_battle", your_pause_battle))
-	battle_layout = int(cfg.get_value("battle", "layout", battle_layout))
 	resolve_attacker = int(cfg.get_value("battle", "resolve_attacker", resolve_attacker))
 	resolve_defender = int(cfg.get_value("battle", "resolve_defender", resolve_defender))
 
@@ -60,7 +55,6 @@ func commit() -> void:
 	cfg.set_value("playback", "opp_pause_battle", opp_pause_battle)
 	cfg.set_value("playback", "opp_pause_battle_mine", opp_pause_battle_mine)
 	cfg.set_value("playback", "your_pause_battle", your_pause_battle)
-	cfg.set_value("battle", "layout", battle_layout)
 	cfg.set_value("battle", "resolve_attacker", resolve_attacker)
 	cfg.set_value("battle", "resolve_defender", resolve_defender)
 	cfg.save(PATH)

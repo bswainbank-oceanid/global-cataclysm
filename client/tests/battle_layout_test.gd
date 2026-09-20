@@ -1,6 +1,6 @@
 extends SceneTree
-## Headless checks for the Battle Board's two layouts (defense rows / die bands)
-## and for a mid-battle promotion moving a unit up a row:
+## Headless checks for the Battle Board's rows and dice layout, and for a mid-battle
+## promotion moving a unit up a row:
 ##   godot --headless --path client -s res://tests/battle_layout_test.gd
 ## Exits non-zero on any failure.
 
@@ -15,28 +15,15 @@ func _check(cond: bool, what: String) -> void:
 
 func _initialize() -> void:
 	await process_frame  # autoloads (Settings) exist from here on
-	var settings = root.get_node("Settings")  # autoloads can't be named in a -s script
 	var panel = load("res://scripts/battle_panel.gd").new()
 	var u := {"die": "D8", "defense": 7}
 	var t := {"die": null, "defense": 6}
-	var d5 := {"die": "D6", "defense": 5}
-	var d10 := {"die": "D12", "defense": 10}
-
-	settings.battle_layout = 0  # BattleLayout.DEFENSE
-	_check(panel._rows().size() == 6, "defense layout has one row per defense value 5..10")
-	_check(panel._die_w() == 0.0, "defense layout has no die columns")
-	for by_die in [true, false]:  # the rolling side no longer slides into its die's band
-		_check(panel._row_of(u, by_die) == 2, "defense 7 sits in the 7 row")
-		_check(panel._row_of(t, by_die) == 1, "a transport (no die) sits in the 6 row")
-		_check(panel._row_of(d5, by_die) == 0, "defense 5 sits in the first row")
-		_check(panel._row_of(d10, by_die) == 5, "defense 10 sits in the last row")
-
-	settings.battle_layout = 1  # BattleLayout.DIE_BANDS
-	_check(panel._rows().size() == 7, "classic layout keeps its seven rows")
-	_check(panel._die_w() > 0.0, "classic layout keeps the die columns")
-	_check(panel._row_of(t, true) == 0, "classic: transports in the '-' row")
-	_check(panel._row_of(u, false) == 3, "classic: defense 7 by defense")
-	_check(panel._row_of({"die": "D6", "defense": 9}, true) != panel._row_of({"die": "D6", "defense": 9}, false), "classic: the rolling side slides into its die's band")
+	_check(panel.ROWS.size() == 6, "one row per defense value 5..10")
+	_check(panel._row_of(u) == 2, "defense 7 sits in the 7 row")
+	_check(panel._row_of(t) == 1, "a transport (no die) sits in the 6 row")
+	_check(panel._row_of({"die": "D6", "defense": 5}) == 0, "defense 5 sits in the first row")
+	_check(panel._row_of({"die": "D12", "defense": 10}) == 5, "defense 10 sits in the last row")
+	_check(panel._row_of({"die": "D12", "defense": 11}) == 5, "a defense above 10 stays in the last row")
 	panel.free()
 
 	# Dice fill their row's cell in a grid; grids taller than the cell spill into the

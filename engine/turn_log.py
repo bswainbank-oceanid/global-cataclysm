@@ -113,6 +113,10 @@ class TurnLog:
                     target_owner=owner_by_id.get(e.target_unit_id), damage=e.damage,
                     target_hp_after=e.target_hp_after,
                 )
+            elif e.kind == EventKind.SIDE_START:
+                entry.update(side=e.side)
+            elif e.kind == EventKind.NO_TARGETS:
+                entry.update(side=e.side, unit_id=e.unit_id, unit_type=e.unit_type, owner=owner_by_id.get(e.unit_id))
             elif e.kind == EventKind.PROMOTION:
                 entry.update(
                     promoted_unit_id=e.promoted_unit_id, promoted_side=e.promoted_side,
@@ -122,7 +126,7 @@ class TurnLog:
                 entry.update(stats_phase=e.stats_phase, units=e.unit_stats)
             elif e.kind == EventKind.BATTLE_END:
                 entry.update(
-                    outcome=e.outcome,
+                    outcome=e.outcome, end_reason=e.end_reason,
                     surviving_attacker_ids=e.surviving_attacker_ids, surviving_defender_ids=e.surviving_defender_ids,
                     eliminated_attacker_ids=e.eliminated_attacker_ids, eliminated_defender_ids=e.eliminated_defender_ids,
                 )

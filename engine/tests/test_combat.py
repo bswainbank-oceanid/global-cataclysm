@@ -613,5 +613,51 @@ class TestUnitStatsEvents(unittest.TestCase):
         self.assertGreater(rows[1]['xp'], 0)    # the Armor survived and dealt damage
 
 
+class TestNoLegalTargets(unittest.TestCase):
+    """A unit with nothing it could hit does not roll (no die is spent), and a battle in
+    which neither side can hit the other ends at once."""
+
+    def test_a_submarine_facing_only_aircraft_does_not_roll(self):
+        sub = make(1, 'Submarine', 'NAA')
+        cruiser = make(2, 'Cruiser', 'NAA')
+        bomber = make(3, 'Bomber', 'AAC')
+        events = drain([sub, cruiser], [bomber], 'sea', random.Random(3))
+        skipped = [e for e in events if e.kind == EventKind.NO_TARGETS]
+        rolled = [e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker']
+        self.assertEqual([(e.unit_id, e.unit_type, e.side) for e in skipped[:1]], [(1, 'Submarine', 'attacker')])
+        self.assertNotIn(1, {e.unit_id for e in rolled})
+        self.assertIn(2, {e.unit_id for e in rolled})
+
+    def test_no_die_is_spent_on_a_unit_that_cannot_roll(self):
+        # Scripted: only the Cruiser's roll (and the Bomber's) are consumed -- if the Submarine rolled it would eat the 1.
+        sub = make(1, 'Submarine', 'NAA')
+        cruiser = make(2, 'Cruiser', 'NAA')
+        bomber = make(3, 'Bomber', 'AAC')
+        events = drain([sub, cruiser], [bomber], 'sea', ScriptedRNG([1] * 20))
+        first = next(e for e in events if e.kind == EventKind.UNIT_ROLL)
+        self.assertEqual(first.unit_id, 2)  # the Cruiser rolled first; the Submarine was passed over
+
+    def test_a_battle_of_submarines_against_aircraft_ends_before_any_round(self):
+        sub = make(1, 'Submarine', 'NAA')
+        bomber = make(2, 'Bomber', 'AAC')
+        events = drain([sub], [bomber], 'sea', random.Random(1))
+        self.assertEqual([e.kind for e in events if e.kind in (EventKind.ROUND_START, EventKind.UNIT_ROLL)], [])
+        end = events[-1]
+        self.assertEqual((end.kind, end.outcome, end.end_reason), (EventKind.BATTLE_END, 'contested', 'no_targets'))
+
+    def test_the_end_reasons(self):
+        a, d = make(1, 'Armor', 'NAA'), make(2, 'Infantry', 'AAC')
+        end = drain([a], [d], 'land', ScriptedRNG([8] * 20))[-1]
+        self.assertEqual((end.outcome, end.end_reason), ('defender_eliminated', 'eliminated'))
+        tank1, tank2 = make(1, 'Bomber', 'NAA'), make(2, 'Bomber', 'AAC')
+        end = drain([tank1], [tank2], 'land', ScriptedRNG([1] * 20))[-1]
+        self.assertEqual((end.outcome, end.end_reason), ('contested', 'rounds'))
+
+    def test_each_side_with_armed_units_starts_its_round_with_a_side_start_event(self):
+        events = drain([make(1, 'Armor', 'NAA')], [make(2, 'Infantry', 'AAC')], 'land', ScriptedRNG([1] * 20))
+        starts = [(e.round_number, e.side) for e in events if e.kind == EventKind.SIDE_START]
+        self.assertEqual(starts[:2], [(1, 'attacker'), (1, 'defender')])
+
+
 if __name__ == '__main__':
     unittest.main()
