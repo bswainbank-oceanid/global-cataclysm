@@ -102,6 +102,8 @@ func _ready() -> void:
 	battle_panel.roll_requested.connect(Stepper.execute_open_battle)
 	battle_panel.closed.connect(Stepper.release_battle)
 
+	var announcement_window := AnnouncementWindow.new()
+	add_child(announcement_window)
 	var invitation_window := InvitationWindow.new()
 	add_child(invitation_window)
 	invitation_window.answered.connect(Stepper.invitation_respond)
@@ -212,6 +214,12 @@ func _start_view() -> void:
 					await _battle_panel.debug_press(1)
 				else:
 					await get_tree().create_timer(0.3).timeout
+	if Dbg.args.has("announce_test"):  # --announce_test: show one of each announcement (for screenshots)
+		Stepper.announced.emit([
+			{"title": "UE eliminated", "color": Color(0.9, 0.75, 0.3), "body": "[b]United Europe[/b] (UE) has been eliminated. It held one Strategic Center or fewer, so it is out of the game and all of its units are removed from the board."},
+			{"title": "New alliance", "color": Color(0.4, 0.6, 1.0), "body": "[b]North Atlantic Alliance[/b] (NAA) and [b]Greater Pacific Commonwealth[/b] (GPC) have formed an alliance."},
+			{"title": "Game over", "color": Color(0.4, 0.6, 1.0), "body": "[b]North Atlantic Alliance[/b] (NAA) is the last faction standing, and wins the game."}])
+
 	await _scripted_input()
 	Dbg.scene_ready = true
 

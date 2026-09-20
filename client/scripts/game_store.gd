@@ -18,6 +18,7 @@ var _unit_index := {}     # unit_id -> unit dict, rebuilt with every state
 var human_alliance := {}  # the human's Alliances phase: {faction, members, options{eligible_invite_targets, can_withdraw}, staged{action, target?}, game_would_end}
 var invitation := {}      # a bot's invitation awaiting the human's answer: {from, to, members, answered, accepts}
 var human_purchase := {}  # the human's Purchase phase in progress: {faction, treasury, total_cost, targets{tid: {remaining, next_sc, sources}}, orders[], contested[]}
+var announcement_open := false  # an announcement panel is up: the game waits for the player to acknowledge it
 var queued_step := ""  # a queue step that isn't a game phase (START_OF_TURN, RETURN_TO_BASE) while it is up, else ""
 var queued_purchase := {}  # the purchase event awaiting execution, {} if none
 var queued_attack := {}    # the combat_move event awaiting execution, {} if none

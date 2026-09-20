@@ -11,6 +11,7 @@ extends Node
 signal changed
 signal queue_shown(header: String, skipped: Array, events: Array)
 signal executed(header: String, events: Array)
+signal announced(items: Array)              # significant events to announce: [{title, body, color}]
 signal log_line(text: String)
 signal game_reset  # a new game is starting: clear whatever belonged to the old one
 signal battle_focus(preview: Dictionary)    # a battle paused: zoom the map to it and select it
@@ -104,6 +105,7 @@ func _on_message(msg: Dictionary) -> void:
 				battle_result.emit(msg["events"])
 			else:
 				executed.emit(_header(str(msg["faction"]), str(msg["phase"])), msg["events"])
+				_announce(msg["events"])
 		"error":
 			_awaiting = false
 			log_line.emit("[color=#ff7060]server: %s[/color]" % str(msg.get("message", "")))
@@ -115,7 +117,74 @@ func _on_message(msg: Dictionary) -> void:
 			_playing = false
 			game_over = true
 			log_line.emit("[b]Game over[/b]")
+			announced.emit([game_over_announcement()])
 	_refresh()
+
+
+# ---- announcements ------------------------------------------------------------------
+
+static func _name(code: String) -> String:
+	return "[b]%s[/b] (%s)" % [GameData.factions[code].name, code] if GameData.factions.has(code) else code
+
+
+static func _color(code: String) -> Color:
+	return GameData.factions[code].color.lightened(0.2) if GameData.factions.has(code) else HudStyle.GOLD
+
+
+## Turn the significant events of an executed phase (an elimination, an alliance formed
+## or left, the player's own invitation turned down) into announcements for the panel in
+## the middle of the screen.
+func _announce(events: Array) -> void:
+	var items := []
+	for e in events:
+		match str(e.get("kind", "")):
+			"faction_eliminated":
+				var f := str(e["faction"])
+				items.append({"title": "%s eliminated" % f, "color": _color(f),
+					"body": "%s has been eliminated. It held one Strategic Center or fewer, so it is out of the game and all of its units are removed from the board." % _name(f)})
+			"alliance_joined":
+				var f := str(e["faction"])
+				var t := str(e["target"])
+				if bool(e.get("new_alliance", true)):
+					items.append({"title": "New alliance", "color": _color(f),
+						"body": "%s and %s have formed an alliance.\n\nAllies don't fight each other and defend together. The game ends when every remaining faction is allied." % [_name(f), _name(t)]})
+				else:
+					items.append({"title": "%s joins an alliance" % t, "color": _color(t),
+						"body": "%s has joined %s's alliance." % [_name(t), _name(f)]})
+			"alliance_declined":
+				# Only the player's own invitations: a bot being turned down is nobody's news.
+				if GameStore.is_player(str(e["faction"])):
+					var t := str(e["target"])
+					items.append({"title": "%s declines your invitation" % t, "color": _color(t),
+						"body": "%s has turned down your invitation to an alliance." % _name(t)})
+			"alliance_withdrawal":
+				var f := str(e["faction"])
+				var others := []
+				for m in e.get("former_members", []):
+					if str(m) != f:
+						others.append(_name(str(m)))
+				items.append({"title": "%s leaves its alliance" % f, "color": _color(f),
+					"body": "%s has withdrawn from its alliance%s." % [_name(f), " with " + ", ".join(others) if not others.is_empty() else ""]})
+	if not items.is_empty():
+		announced.emit(items)
+
+
+## The game's end: who is left.
+func game_over_announcement() -> Dictionary:
+	var left: Array = GameStore.active_factions()
+	var body := ""
+	var color := HudStyle.GOLD
+	if left.size() == 1:
+		body = "%s is the last faction standing, and wins the game." % _name(str(left[0]))
+		color = _color(str(left[0]))
+	elif left.is_empty():
+		body = "No faction is left in play."
+	else:
+		var names := []
+		for c in left:
+			names.append(_name(str(c)))
+		body = "Every remaining faction is allied: %s.\n\nWith nobody left to fight, the alliance wins." % ", ".join(names)
+	return {"title": "Game over", "body": body, "color": color}
 
 
 static func _header(faction: String, phase: String) -> String:
@@ -244,6 +313,7 @@ func release_battle() -> void:
 	_battle_open = false
 	if not _held_result.is_empty():
 		executed.emit(_header(str(_held_result["faction"]), str(_held_result["phase"])), _held_result["events"])
+		_announce(_held_result["events"])
 	_held_result = {}
 	var pending := _held
 	_held = []
@@ -268,7 +338,7 @@ func _battle_in(msg: Dictionary) -> Dictionary:
 ## finished shortening -- no extra delay, and no waiting at all when there
 ## were no arrows.
 func _process(_delta: float) -> void:
-	if _auto and not _awaiting and not game_over and not _queued_phase.is_empty():
+	if _auto and not _awaiting and not game_over and not _queued_phase.is_empty() and not GameStore.announcement_open:
 		if busy.is_null() or not busy.call():
 			_auto = false
 			_do_advance()
