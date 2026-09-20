@@ -194,7 +194,7 @@ class TestWatch(unittest.TestCase):
                 continue
             preview = queue['events'][0]
             for row in preview['attackers'] + preview['defenders']:
-                for key in ('unit_id', 'unit_type', 'owner', 'side', 'die', 'defense', 'hp', 'max_hp', 'xp', 'promoted', 'cargo'):
+                for key in ('unit_id', 'unit_type', 'owner', 'side', 'die', 'defense', 'hp', 'max_hp', 'xp', 'promoted', 'promotions', 'cargo'):
                     self.assertIn(key, row)
                 if row['cargo']:
                     self.assertEqual((row['die'], row['defense'], row['max_hp']), (None, 6, 1))

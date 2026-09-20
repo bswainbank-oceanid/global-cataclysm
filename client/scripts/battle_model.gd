@@ -244,7 +244,7 @@ func _start_next_round() -> void:
 	var fighting := {}
 	for row in r["start"]:
 		var u: Dictionary = units[int(row["unit_id"])]
-		for k in ["die", "defense", "damage", "hp", "max_hp", "xp", "promoted", "cargo"]:
+		for k in ["die", "defense", "damage", "hp", "max_hp", "xp", "promoted", "promotions", "cargo"]:
 			u[k] = row[k]
 		fighting[int(row["unit_id"])] = true
 	for id in unit_order:
@@ -261,13 +261,13 @@ func _end_round() -> void:
 	var promoted := []
 	for row in r["end"]:
 		var u: Dictionary = units[int(row["unit_id"])]
-		var was_promoted: bool = bool(u["promoted"])
-		for k in ["hp", "max_hp", "xp", "promoted"]:
+		var was_ranks: int = int(u.get("promotions", 0))
+		for k in ["hp", "max_hp", "xp", "promoted", "promotions"]:
 			u[k] = row[k]
-		if bool(u["promoted"]) and not was_promoted and not bool(u["cargo"]):
-			# +1 defense at once, so the unit moves up a row on the board now; the
-			# next round's start snapshot carries the same value (the engine's cap is 10).
-			u["defense"] = mini(int(u["defense"]) + 1, 10)
+		if int(u["promotions"]) > was_ranks and not bool(u["cargo"]):
+			# +1 defense per new promotion at once, so the unit moves up a row on the
+			# board now; the next round's start snapshot carries the same value (cap 10).
+			u["defense"] = mini(int(u["defense"]) + int(u["promotions"]) - was_ranks, 10)
 			promoted.append(u)
 		if int(row["hp"]) <= 0:
 			u["mark"] = Mark.DEAD
@@ -279,7 +279,10 @@ func _end_round() -> void:
 	var line := "[b]%s ends.[/b] " % round_label
 	line += ("; ".join(bits) + ".") if not bits.is_empty() else "Nobody was destroyed."
 	if not promoted.is_empty():
-		line += " Promoted: %s." % _tally(promoted)
+		var ranked := []
+		for u in promoted:
+			ranked.append("%s (%s)" % [u["unit_type"], "first promotion" if int(u["promotions"]) == 1 else "promotion %d" % int(u["promotions"])])
+		line += " Promoted: %s." % ", ".join(ranked)
 	prev_lines.append(line)
 
 

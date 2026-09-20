@@ -64,6 +64,7 @@ class BattleEvent:
     # PROMOTION
     promoted_unit_id: Optional[int] = None
     promoted_side: Optional[str] = None
+    promotion_rank: Optional[int] = None  # the unit's promotion count after this promotion (1 = its first)
 
     # UNIT_STATS: a snapshot of every unit fighting this round (for a battle
     # board that has to place units by attack die / defense). stats_phase is
@@ -279,7 +280,7 @@ def unit_stat_rows(side_label, units, unit_defs, round1_bonus=False, air_superio
         rows.append({
             'unit_id': u.unit_id, 'side': side_label, 'unit_type': u.unit_type, 'owner': u.owner,
             'die': stats['attack_die'], 'defense': stats['defense'], 'damage': stats['damage'],
-            'hp': u.current_hp, 'max_hp': stats['max_hp'], 'xp': u.xp, 'promoted': u.promoted,
+            'hp': u.current_hp, 'max_hp': stats['max_hp'], 'xp': u.xp, 'promoted': u.promoted, 'promotions': u.promotions,
             'cargo': u.in_transport_form,
         })
     return rows
@@ -291,8 +292,10 @@ def _apply_xp_and_check_promotions(round_number, attackers_before, defenders_bef
     this round's casualties; deal damage: +1 to any unit that landed at
     least one hit; eliminate a promoted unit: +1 to whichever unit's hit
     was the killing blow, credited via `killed_by`), then promotes any
-    unit crossing the XP threshold, healing +1 HP into it immediately.
-    Yields a PROMOTION event per unit promoted."""
+    unit with XP at the threshold: each promotion costs `xp_required` XP (the
+    surplus rolls over toward the next rank -- a unit can be promoted again and
+    again, there is no cap), healing +1 HP into it immediately.
+    Yields a PROMOTION event per promotion."""
     xp_required = promotion_cfg['xp_required']
     for side_label, units_before, hit_ids in (('attacker', attackers_before, attacker_hits), ('defender', defenders_before, defender_hits)):
         for unit in units_before:
@@ -303,16 +306,17 @@ def _apply_xp_and_check_promotions(round_number, attackers_before, defenders_bef
                 unit.xp += 1  # dealt damage
     for killer_id, victim in killed_by.items():
         killer = next((u for u in attackers_before + defenders_before if u.unit_id == killer_id and u.current_hp > 0), None)
-        if killer is not None and victim.promoted and not victim.in_transport_form:
+        if killer is not None and victim.promotions > 0 and not victim.in_transport_form:
             killer.xp += 1
 
     for unit, side_label in [(u, 'attacker') for u in attackers_before if u.current_hp > 0] + \
                              [(u, 'defender') for u in defenders_before if u.current_hp > 0]:
-        if not unit.promoted and not unit.in_transport_form and unit.xp >= xp_required:
-            unit.promoted = True
-            unit.current_hp += 1  # promotion grants +1 max HP; heal it in immediately
+        while not unit.in_transport_form and unit.xp >= xp_required:
+            unit.xp -= xp_required
+            unit.promotions += 1
+            unit.current_hp += 1  # each promotion grants +1 max HP; heal it in immediately
             yield BattleEvent(kind=EventKind.PROMOTION, round_number=round_number,
-                               promoted_unit_id=unit.unit_id, promoted_side=side_label)
+                               promoted_unit_id=unit.unit_id, promoted_side=side_label, promotion_rank=unit.promotions)
 
 
 def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_cfg, resolution_order, current_global_turn,

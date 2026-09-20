@@ -1,8 +1,9 @@
 class_name UnitTile
 extends Button
 ## One unit in the selection panel: its icon on the owner's colour, with
-##   - a gold star above it if promoted,
-##   - XP pips beneath it (one per XP toward the promotion threshold),
+##   - gold stars above it, one per promotion (up to four; beyond that one bigger
+##     star carrying the number),
+##   - XP pips beneath it (one per XP toward the next promotion),
 ##   - a column of HP boxes on its right: white for HP left, red for HP lost.
 ## The tile itself is an invisible toggle button -- nothing is drawn for it
 ## until it is hovered (thin outline) or selected (gold outline) -- so a set
@@ -52,7 +53,7 @@ static func make(u: Dictionary, transport_form := false) -> UnitTile:
 static func for_battle(row: Dictionary) -> UnitTile:
 	var u := {
 		"unit_id": row["unit_id"], "unit_type": row["unit_type"], "owner": row["owner"],
-		"current_hp": row["hp"], "xp": row["xp"], "promoted": row["promoted"],
+		"current_hp": row["hp"], "xp": row["xp"], "promoted": row["promoted"], "promotions": row["promotions"],
 	}
 	var tile := UnitTile.make(u, bool(row["cargo"]))
 	tile.max_hp_override = int(row["max_hp"])
@@ -64,6 +65,7 @@ func update_from_battle(row: Dictionary) -> void:
 	unit["current_hp"] = row["hp"]
 	unit["xp"] = row["xp"]
 	unit["promoted"] = row["promoted"]
+	unit["promotions"] = row["promotions"]
 	max_hp_override = int(row["max_hp"])
 	mark = int(row["mark"])
 	tooltip_text = _describe()
@@ -74,13 +76,13 @@ func max_hp() -> int:
 	if max_hp_override >= 0:
 		return max_hp_override
 	var base := int(GameData.units["units"][unit["unit_type"]]["hp"])
-	return base + (1 if unit.get("promoted", false) else 0)
+	return base + int(unit.get("promotions", 0))
 
 
 func _describe() -> String:
 	var line := "%s #%d\nHP %d/%d   XP %d/%d%s" % [
 		unit["unit_type"], int(unit["unit_id"]), int(unit["current_hp"]), max_hp(),
-		mini(int(unit.get("xp", 0)), XP_PIPS), XP_PIPS, "   (promoted)" if unit.get("promoted", false) else ""]
+		mini(int(unit.get("xp", 0)), XP_PIPS), XP_PIPS, "   (%d promotion%s)" % [int(unit.get("promotions", 0)), "" if int(unit.get("promotions", 0)) == 1 else "s"] if int(unit.get("promotions", 0)) > 0 else ""]
 	return "Transport carrying " + line if in_transport else line
 
 
@@ -151,17 +153,30 @@ func _draw_icon(unit_type: String, offset: Vector2, owner_col: Color) -> void:
 		draw_texture_rect(tex, icon_rect.grow(-4), false)
 
 
+func _draw_star(c: Vector2, r: float) -> void:
+	var pts := HudStyle.star_points(c, r)
+	draw_colored_polygon(pts, Color(1.0, 0.82, 0.25))
+	pts.append(pts[0])
+	draw_polyline(pts, Color(0, 0, 0, 0.9), 1.0)
+
+
 ## The unit with everything about it: icon, promotion star above, XP pips
 ## below, HP boxes at the right.
 func _draw_package(offset: Vector2, owner_col: Color) -> void:
 	_draw_icon(unit["unit_type"], offset, owner_col)
 
-	# Promotion star above the unit.
-	if unit.get("promoted", false):
-		var pts := HudStyle.star_points(offset + Vector2(ICON_POS.x + ICON * 0.5, 6.5), 6.0)
-		draw_colored_polygon(pts, Color(1.0, 0.82, 0.25))
-		pts.append(pts[0])
-		draw_polyline(pts, Color(0, 0, 0, 0.9), 1.0)
+	# Promotion stars above the unit: one each up to four, then one bigger star with the number.
+	var ranks := int(unit.get("promotions", 0))
+	if ranks > 0:
+		var cx := offset.x + ICON_POS.x + ICON * 0.5
+		if ranks <= 4:
+			var r := 6.0 if ranks == 1 else 4.6
+			var step := r * 2.0 - 0.5
+			for i in ranks:
+				_draw_star(offset + Vector2(cx - offset.x + (i - (ranks - 1) * 0.5) * step, 6.5), r)
+		else:
+			_draw_star(offset + Vector2(cx - offset.x, 6.5), 7.0)
+			draw_string(ThemeDB.fallback_font, offset + Vector2(cx - offset.x - 10.0, 9.6), str(ranks), HORIZONTAL_ALIGNMENT_CENTER, 20.0, 9, Color(0.1, 0.06, 0.0))
 
 	# XP pips under the unit.
 	var xp := mini(int(unit.get("xp", 0)), XP_PIPS)

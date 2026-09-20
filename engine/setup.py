@@ -92,8 +92,8 @@ def _place_faction_units(gs, faction, scenario, name_to_id):
 def _apply_promotions(scenario, faction, bought_at):
     for p in scenario.get('promotions', {}).get(faction, []):
         for inst in bought_at.get((p['territory_id'], p['unit']), []):
-            if not inst.promoted:
-                inst.promoted = True
+            if inst.promotions == 0:
+                inst.promotions = 1
                 inst.current_hp += 1  # promotion grants +1 max HP; heal it in immediately
                 break
 

@@ -64,7 +64,9 @@ class UnitInstance:
     owner: str
     current_hp: int
     xp: int = 0
-    promoted: bool = False
+    # How many promotions the unit has earned (no fixed cap): each steps the attack die up one
+    # size (max D12), adds +1 defense (max 10) and +1 max HP. XP toward the next one is `xp`.
+    promotions: int = 0
     has_moved_combat: bool = False
     has_moved_noncombat: bool = False
     last_combat_global_turn: Optional[int] = None
@@ -116,6 +118,10 @@ class UnitInstance:
     # Transient, never serialized: True only while combat.resolve_battle has this
     # LAND unit in a SEA battle, where it is Transport cargo (see effective_stats).
     in_transport_form: bool = field(default=False, repr=False, compare=False)
+
+    @property
+    def promoted(self):
+        return self.promotions > 0
 
     def effective_stats(self, unit_defs, round1_bonus=False, defending=False, air_superiority=False):
         """unit_defs: engine.data.units() (or an equivalent test fixture).
@@ -174,7 +180,7 @@ class UnitInstance:
         defense = base['defense']
         damage = base['damage']
         max_hp = base['hp']
-        if self.promoted:
+        for _ in range(self.promotions):
             if die is not None:
                 die = step_up_die(die)
             if defense is not None:
@@ -209,7 +215,8 @@ class UnitInstance:
             'owner': self.owner,
             'current_hp': self.current_hp,
             'xp': self.xp,
-            'promoted': self.promoted,
+            'promotions': self.promotions,
+            'promoted': self.promoted,  # derived: promotions > 0
             'has_moved_combat': self.has_moved_combat,
             'has_moved_noncombat': self.has_moved_noncombat,
             'last_combat_global_turn': self.last_combat_global_turn,
@@ -222,6 +229,10 @@ class UnitInstance:
 
     @staticmethod
     def from_dict(d):
+        d = dict(d)
+        legacy_flag = d.pop('promoted', False)  # derived on output; older saves had it as the only field
+        if 'promotions' not in d:
+            d['promotions'] = 1 if legacy_flag else 0
         return UnitInstance(**d)
 
 

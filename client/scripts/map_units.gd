@@ -140,7 +140,7 @@ func _sorted_types(by_type: Dictionary) -> Array:
 		if by_type[a] != by_type[b]:
 			return by_type[a] > by_type[b]
 		if GameStore.base_type(a) == GameStore.base_type(b):
-			return GameStore.is_promoted(a)  # the promoted stack first
+			return GameStore.rank_of(a) > GameStore.rank_of(b)  # the most promoted stack first
 		return _unit_cost(a) > _unit_cost(b))
 	return types
 
@@ -180,24 +180,24 @@ func _draw_group(pos: Vector2, owner: String, by_type: Dictionary, size: Vector2
 			# One icon for the group: the most numerous unit type (promoted and
 			# not merged), starred if any unit of that type is promoted.
 			var merged := {}
-			var starred := {}
+			var starred := {}  # base type -> its highest promotion rank among the stacks
 			var total := 0
 			for k in by_type:
 				var b := GameStore.base_type(k)
 				merged[b] = int(merged.get(b, 0)) + by_type[k]
-				starred[b] = starred.get(b, false) or GameStore.is_promoted(k)
+				starred[b] = maxi(int(starred.get(b, 0)), GameStore.rank_of(k))
 				total += by_type[k]
 			var top: String = _sorted_types(merged)[0]
 			_glyph(top, pos + Vector2(4, 3), 14)
-			if starred[top]:
-				_promotion_star(pos + Vector2(4 + 14, 3), 4.5)
+			if int(starred[top]) > 0:
+				_promotion_star(pos + Vector2(4 + 14, 3), 4.5, int(starred[top]))
 			_count(str(total), pos + Vector2(22, 15), FONT_SIZE)
 		Style.STRIP:
 			var x := pos.x + 3
 			for t in _sorted_types(by_type):
 				_glyph(GameStore.base_type(t), Vector2(x, pos.y + 3), 14)
 				if GameStore.is_promoted(t):
-					_promotion_star(Vector2(x + 7, pos.y + 1), 5.0)
+					_promotion_star(Vector2(x + 7, pos.y + 1), 5.0, GameStore.rank_of(t))
 				_count(str(by_type[t]), Vector2(x + 15, pos.y + 15), 10)
 				x += 27
 		Style.CATEGORY:
@@ -210,12 +210,17 @@ func _draw_group(pos: Vector2, owner: String, by_type: Dictionary, size: Vector2
 					x += 27
 
 
-## The gold star marking a promoted unit, centred on `c`.
-func _promotion_star(c: Vector2, r: float) -> void:
-	var pts := HudStyle.star_points(c, r)
+## The gold star marking a promoted unit, centred on `c`; from the second promotion on
+## it carries the number of promotions.
+func _promotion_star(c: Vector2, r: float, rank := 1) -> void:
+	var pts := HudStyle.star_points(c, r if rank < 2 else r * 1.5)
 	draw_colored_polygon(pts, Color(1.0, 0.82, 0.25))
 	pts.append(pts[0])
 	draw_polyline(pts, Color(0, 0, 0, 0.9), 1.0)
+	if rank >= 2:
+		var font := ThemeDB.fallback_font
+		var text := str(rank)
+		draw_string(font, c + Vector2(-r * 1.5, r * 0.55), text, HORIZONTAL_ALIGNMENT_CENTER, r * 3.0, 9, Color(0.1, 0.06, 0.0))
 
 
 func _glyph(unit_type: String, p: Vector2, px: float) -> void:

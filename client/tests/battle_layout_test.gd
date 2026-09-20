@@ -74,9 +74,10 @@ func _initialize() -> void:
 		for id in m.unit_order:
 			var now: Dictionary = m.units[id]
 			var was: Dictionary = before[id]
-			if bool(now["promoted"]) and not bool(was["promoted"]) and not bool(now["cargo"]):
-				promoted += 1
-				_check(int(now["defense"]) == mini(int(was["defense"]) + 1, 10), "a promoted unit's defense goes up by one")
+			var gained := int(now["promotions"]) - int(was["promotions"])
+			if gained > 0 and not bool(now["cargo"]):
+				promoted += gained
+				_check(int(now["defense"]) == mini(int(was["defense"]) + gained, 10), "each promotion adds one defense (cap 10)")
 			before[id] = now.duplicate()
 	print("promotions seen: %d" % promoted)
 	quit(1 if _failures > 0 else 0)

@@ -156,19 +156,19 @@ func owner_of(tid: int) -> String:
 
 ## Deployed units in a space grouped for display: owner -> {unit_type: count}.
 ## Excludes units still in pending_deployment (bought, not yet on the board).
-## Suffix on a stacks() key that marks the promoted version of a unit type.
-const PROMOTED_SUFFIX := "|P"
+## Marker inside a stacks() key: "Armor|P2" is Armor with two promotions.
+const PROMOTED_MARK := "|P"
 
 
 ## The units in a space as {owner: {stack key: count}}. A stack key is the unit
-## type, plus PROMOTED_SUFFIX for promoted units -- promoted and unpromoted
-## units of a type are separate stacks.
+## type, plus PROMOTED_MARK and the rank for promoted units -- units of a type
+## with different numbers of promotions are separate stacks.
 func stacks(tid: int) -> Dictionary:
 	var out := {}
 	for u in units_at(tid):
 		var by_type: Dictionary = out.get(u["owner"], {})
 		# A land unit at sea is in Transport form: it shows as a Transport.
-		var key: String = "Transport" if in_transport_form(tid, u) else u["unit_type"] + (PROMOTED_SUFFIX if u.get("promoted", false) else "")
+		var key: String = "Transport" if in_transport_form(tid, u) else u["unit_type"] + ("%s%d" % [PROMOTED_MARK, int(u.get("promotions", 0))] if int(u.get("promotions", 0)) > 0 else "")
 		by_type[key] = by_type.get(key, 0) + 1
 		out[u["owner"]] = by_type
 	return out
@@ -190,11 +190,16 @@ func units_at(tid: int) -> Array:
 
 
 static func base_type(key: String) -> String:
-	return key.trim_suffix(PROMOTED_SUFFIX)
+	return key.get_slice(PROMOTED_MARK, 0)
 
 
 static func is_promoted(key: String) -> bool:
-	return key.ends_with(PROMOTED_SUFFIX)
+	return key.contains(PROMOTED_MARK)
+
+
+## The number of promotions a stack key stands for (0 if none).
+static func rank_of(key: String) -> int:
+	return int(key.get_slice(PROMOTED_MARK, 1)) if key.contains(PROMOTED_MARK) else 0
 
 
 ## Purchases waiting to be deployed, {owner: {unit_type: count}}: those already

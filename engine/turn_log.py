@@ -119,7 +119,7 @@ class TurnLog:
                 entry.update(side=e.side, unit_id=e.unit_id, unit_type=e.unit_type, owner=owner_by_id.get(e.unit_id))
             elif e.kind == EventKind.PROMOTION:
                 entry.update(
-                    promoted_unit_id=e.promoted_unit_id, promoted_side=e.promoted_side,
+                    promoted_unit_id=e.promoted_unit_id, promoted_side=e.promoted_side, promotion_rank=e.promotion_rank,
                     owner=owner_by_id.get(e.promoted_unit_id),
                 )
             elif e.kind == EventKind.UNIT_STATS:

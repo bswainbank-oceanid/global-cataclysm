@@ -377,15 +377,15 @@ func _add_incoming_section(tid: int) -> void:
 	_detail.add_child(flow)
 
 
-## Display order within a faction: by unit type, promoted first, most XP first.
+## Display order within a faction: by unit type, most promoted first, most XP first.
 func _unit_before(a: Dictionary, b: Dictionary) -> bool:
 	var types: Array = UnitIcons.FILES.keys()
 	var ta := types.find(a["unit_type"])
 	var tb := types.find(b["unit_type"])
 	if ta != tb:
 		return ta < tb
-	if a.get("promoted", false) != b.get("promoted", false):
-		return a.get("promoted", false)
+	if int(a.get("promotions", 0)) != int(b.get("promotions", 0)):
+		return int(a.get("promotions", 0)) > int(b.get("promotions", 0))
 	if a.get("xp", 0) != b.get("xp", 0):
 		return a.get("xp", 0) > b.get("xp", 0)
 	return a["unit_id"] < b["unit_id"]

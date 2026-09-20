@@ -3,7 +3,7 @@ import unittest
 
 from engine import data
 from engine.state import UnitInstance
-from engine.combat import resolve_battle, BattleResult, EventKind, _select_target, _resolution_sequence, _fight_one_round
+from engine.combat import _apply_xp_and_check_promotions as _apply_xp, resolve_battle, BattleResult, EventKind, _select_target, _resolution_sequence, _fight_one_round
 
 UNIT_DEFS = data.units()
 RULES = data.rules()
@@ -26,8 +26,9 @@ class ScriptedRNG:
 
 
 def make(uid, unit_type, owner, hp=None, promoted=False):
-    hp = UNIT_DEFS[unit_type]['hp'] + (1 if promoted else 0) if hp is None else hp
-    return UnitInstance(unit_id=uid, unit_type=unit_type, owner=owner, current_hp=hp, promoted=promoted)
+    promotions = int(promoted)  # True -> one promotion; an int -> that many
+    hp = UNIT_DEFS[unit_type]['hp'] + promotions if hp is None else hp
+    return UnitInstance(unit_id=uid, unit_type=unit_type, owner=owner, current_hp=hp, promotions=promotions)
 
 
 def drain(attackers, defenders, battle_type, rng, turn=0, round1_bonus_side=None):
@@ -657,6 +658,76 @@ class TestNoLegalTargets(unittest.TestCase):
         events = drain([make(1, 'Armor', 'NAA')], [make(2, 'Infantry', 'AAC')], 'land', ScriptedRNG([1] * 20))
         starts = [(e.round_number, e.side) for e in events if e.kind == EventKind.SIDE_START]
         self.assertEqual(starts[:2], [(1, 'attacker'), (1, 'defender')])
+
+
+class TestRepeatedPromotions(unittest.TestCase):
+    """A unit can be promoted again and again: every 5 XP is a promotion (the surplus
+    carries over), and each one steps the die up (max D12), adds defense (max 10) and +1 HP."""
+
+    def promote(self, unit, hit=False, killed_promoted=None):
+        enemy = make(99, 'Infantry', 'AAC')
+        killed_by = {unit.unit_id: killed_promoted} if killed_promoted is not None else {}
+        return list(_apply_xp(1, [unit], [enemy], {unit.unit_id} if hit else set(), set(), killed_by,
+                              RULES['promotion'], UNIT_DEFS))
+
+    def test_five_xp_is_a_promotion_and_costs_five(self):
+        unit = make(1, 'Infantry', 'NAA')
+        unit.xp = 4  # +1 for surviving the round -> 5
+        events = self.promote(unit)
+        self.assertEqual([(e.promoted_unit_id, e.promotion_rank) for e in events], [(1, 1)])
+        self.assertEqual((unit.promotions, unit.xp), (1, 0))
+
+    def test_surplus_xp_rolls_over(self):
+        unit = make(1, 'Infantry', 'NAA')
+        unit.xp = 6  # +1 survive, +1 dealt damage -> 8 -> promoted, 3 left
+        self.promote(unit, hit=True)
+        self.assertEqual((unit.promotions, unit.xp), (1, 3))
+
+    def test_a_promoted_unit_earns_the_next_rank(self):
+        unit = make(1, 'Infantry', 'NAA', promoted=True)
+        unit.xp = 4
+        events = self.promote(unit)
+        self.assertEqual([e.promotion_rank for e in events], [2])
+        self.assertEqual((unit.promotions, unit.xp), (2, 0))
+
+    def test_enough_xp_can_mean_two_promotions_at_once(self):
+        unit = make(1, 'Infantry', 'NAA')
+        unit.xp = 9  # +2 -> 11: two promotions, 1 left
+        events = self.promote(unit, hit=True)
+        self.assertEqual([e.promotion_rank for e in events], [1, 2])
+        self.assertEqual((unit.promotions, unit.xp), (2, 1))
+
+    def test_each_promotion_heals_one_hp_in(self):
+        unit = make(1, 'Infantry', 'NAA')
+        hp = unit.current_hp
+        unit.xp = 4
+        self.promote(unit)
+        self.assertEqual(unit.current_hp, hp + 1)
+
+    def test_stats_stack_per_promotion_up_to_the_caps(self):
+        base = UNIT_DEFS['Infantry']  # D6, defense 5
+        stats = lambda n: make(1, 'Infantry', 'NAA', promoted=n).effective_stats(UNIT_DEFS)
+        self.assertEqual((stats(0)['attack_die'], stats(0)['defense'], stats(0)['max_hp']), ('D6', 5, base['hp']))
+        self.assertEqual((stats(1)['attack_die'], stats(1)['defense'], stats(1)['max_hp']), ('D8', 6, base['hp'] + 1))
+        self.assertEqual((stats(2)['attack_die'], stats(2)['defense'], stats(2)['max_hp']), ('D10', 7, base['hp'] + 2))
+        self.assertEqual((stats(3)['attack_die'], stats(3)['defense']), ('D12', 8))
+        self.assertEqual((stats(9)['attack_die'], stats(9)['defense'], stats(9)['max_hp']), ('D12', 10, base['hp'] + 9))
+
+    def test_killing_a_unit_promoted_more_than_once_still_pays_the_bonus(self):
+        killer = make(1, 'Infantry', 'NAA')
+        killer.xp = 0
+        victim = make(2, 'Armor', 'AAC', promoted=3)
+        self.promote(killer, hit=True, killed_promoted=victim)
+        self.assertEqual(killer.xp, 3)  # survive + damage + promoted kill
+
+    def test_units_round_trip_through_a_saved_game(self):
+        unit = make(1, 'Bomber', 'NAA', promoted=2)
+        unit.xp = 3
+        again = UnitInstance.from_dict(unit.to_dict())
+        self.assertEqual((again.promotions, again.xp, again.promoted), (2, 3, True))
+        legacy = unit.to_dict()
+        del legacy['promotions']  # an older save only had the flag
+        self.assertEqual(UnitInstance.from_dict(legacy).promotions, 1)
 
 
 if __name__ == '__main__':
