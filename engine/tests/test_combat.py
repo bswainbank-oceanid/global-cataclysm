@@ -43,7 +43,7 @@ def combat_cfg():
 
 class TestHitAndDamageMath(unittest.TestCase):
     def test_normal_hit_deals_full_damage(self):
-        # Armor: D8, damage 4. Infantry defends with Dig In (+1 defense,
+        # Armor: D8, damage 3. Infantry defends with Dig In (+1 defense,
         # always, per combat.first_round_bonuses' sibling rule), so its
         # effective defense here is 6, not the base 5 -- a roll of 6
         # hits it cleanly without being Armor's die-max (8), so damage
@@ -51,7 +51,7 @@ class TestHitAndDamageMath(unittest.TestCase):
         # battle after round 1 -- attacker's roll, then defender's (a
         # guaranteed miss: D6 can't reach Armor's defense of 7), 2
         # scripted rolls is enough.
-        attacker = make(1, 'Armor', 'NAA')  # D8, damage 4, defense 7
+        attacker = make(1, 'Armor', 'NAA')  # D8, damage 3, defense 7
         defender = make(2, 'Infantry', 'AAC')  # defense 5 (+1 Dig In while defending = 6), hp 2
         events = drain([attacker], [defender], 'land', ScriptedRNG([6, 1]))
         roll_events = [e for e in events if e.kind == EventKind.UNIT_ROLL]
@@ -59,8 +59,8 @@ class TestHitAndDamageMath(unittest.TestCase):
         self.assertEqual(e.side, 'attacker')
         self.assertTrue(e.hit)
         self.assertFalse(e.bypass_hit)
-        self.assertEqual(e.damage, 4)  # full damage, not halved
-        self.assertEqual(e.target_hp_after, -2)
+        self.assertEqual(e.damage, 3)  # full damage, not halved
+        self.assertEqual(e.target_hp_after, -1)
 
     def test_max_die_roll_always_hits_regardless_of_defense_and_halves_damage(self):
         # Infantry: D6 (max 6), damage 2. Armor's defense (7) is HIGHER
@@ -412,11 +412,11 @@ class TestDigIn(unittest.TestCase):
 
 class TestAirSuperiorityDieAdjustments(unittest.TestCase):
     """combat.air_superiority_die_adjustments: during the pre-combat
-    air-superiority round only, Fighter's attack die steps up TWO sizes
-    (D6 -> D10) and Bomber's is unchanged (its base D8 already is the
-    design doc's "D8 attack") with its damage fixed at 2 (an absolute
-    override of its normal 3, not a relative one) -- see UnitInstance.
-    effective_stats' `air_superiority` parameter. Driven directly via
+    air-superiority round only, Fighter rolls a D10 for 3 damage and Bomber
+    a D6 for 1 damage (units.json's air_superiority blocks: the die replaces
+    the base die, promotion still steps it up; the damage is an absolute
+    override) -- see UnitInstance.effective_stats' `air_superiority`
+    parameter. Driven directly via
     _fight_one_round the same way TestFirstRoundCombatBonus drives
     round1_bonus_side."""
 
@@ -430,11 +430,14 @@ class TestAirSuperiorityDieAdjustments(unittest.TestCase):
     def _attacker_roll(self, events):
         return next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
 
-    def test_fighter_die_steps_up_two_sizes(self):
-        attacker = make(1, 'Fighter', 'NAA')  # base D6
-        defender = make(2, 'Cruiser', 'AAC')
-        events = self._run_round(0, attacker, defender, rolls=[3, 1], air_superiority=True)
-        self.assertEqual(self._attacker_roll(events).die, 'D10', "Fighter's air-superiority die is D10 (D6 stepped up twice)")
+    def test_fighter_rolls_a_d10_for_three_damage(self):
+        attacker = make(1, 'Fighter', 'NAA')  # base D6, damage 2
+        defender = make(2, 'Cruiser', 'AAC', hp=10)  # defense 7
+        events = self._run_round(0, attacker, defender, rolls=[8, 1], air_superiority=True)
+        roll = self._attacker_roll(events)
+        self.assertEqual(roll.die, 'D10', "Fighter's air-superiority die is D10")
+        self.assertTrue(roll.hit)
+        self.assertEqual(roll.damage, 3, 'air-superiority Fighter damage is 3, not the normal 2')
 
     def test_fighter_die_unaffected_outside_air_superiority(self):
         attacker = make(1, 'Fighter', 'NAA')
@@ -442,14 +445,14 @@ class TestAirSuperiorityDieAdjustments(unittest.TestCase):
         events = self._run_round(1, attacker, defender, rolls=[3, 1], air_superiority=False)
         self.assertEqual(self._attacker_roll(events).die, 'D6')
 
-    def test_bomber_die_is_unchanged_and_damage_drops_to_2(self):
+    def test_bomber_drops_to_a_d6_and_one_damage(self):
         attacker = make(1, 'Bomber', 'NAA')  # base D8, damage 3
-        defender = make(2, 'Cruiser', 'AAC', hp=10)  # defense 7 -- a roll of 8 hits it cleanly
-        events = self._run_round(0, attacker, defender, rolls=[8, 1], air_superiority=True)
+        defender = make(2, 'Aircraft Carrier', 'AAC', hp=10)  # defense 6 -- a roll of 6 hits it cleanly
+        events = self._run_round(0, attacker, defender, rolls=[6, 1], air_superiority=True)
         roll = self._attacker_roll(events)
-        self.assertEqual(roll.die, 'D8', "Bomber's air-superiority die is its ordinary D8")
+        self.assertEqual(roll.die, 'D6', "Bomber's air-superiority die is a D6")
         self.assertTrue(roll.hit)
-        self.assertEqual(roll.damage, 2, 'air-superiority Bomber damage is fixed at 2, not the normal 3')
+        self.assertEqual(roll.damage, 1, 'air-superiority Bomber damage is 1, not the normal 3')
 
     def test_bomber_normal_damage_unaffected_outside_air_superiority(self):
         attacker = make(1, 'Bomber', 'NAA')
@@ -461,20 +464,20 @@ class TestAirSuperiorityDieAdjustments(unittest.TestCase):
         self.assertEqual(roll.damage, 3)
 
     def test_stacks_with_promotion(self):
-        # Fighter promoted: D6 -> D8 (promotion alone). Air superiority
-        # steps it up two more on top: D8 -> D12.
+        # Fighter promoted: the air-superiority D10 steps up once for the
+        # promotion: D12.
         attacker = make(1, 'Fighter', 'NAA', promoted=True)
         defender = make(2, 'Cruiser', 'AAC')
         events = self._run_round(0, attacker, defender, rolls=[3, 1], air_superiority=True)
-        self.assertEqual(self._attacker_roll(events).die, 'D12', 'promotion (D6->D8) and air superiority (D8->D12) should stack')
+        self.assertEqual(self._attacker_roll(events).die, 'D12', 'promotion steps the air-superiority D10 up to D12')
 
-    def test_a_promoted_bomber_keeps_its_promotion_die_in_air_superiority(self):
-        attacker = make(1, 'Bomber', 'NAA', promoted=True)  # promotion: D8 -> D10
+    def test_a_promoted_bomber_steps_its_air_superiority_die_up(self):
+        attacker = make(1, 'Bomber', 'NAA', promoted=True)  # the air-superiority D6, promoted: D8
         defender = make(2, 'Cruiser', 'AAC', hp=10)
         events = self._run_round(0, attacker, defender, rolls=[8, 1], air_superiority=True)
         roll = self._attacker_roll(events)
-        self.assertEqual(roll.die, 'D10')
-        self.assertEqual(roll.damage, 2)
+        self.assertEqual(roll.die, 'D8')
+        self.assertEqual(roll.damage, 1)
 
 
 class TestSubmarineAirInvisibility(unittest.TestCase):

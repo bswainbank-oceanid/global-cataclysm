@@ -68,7 +68,7 @@ def factions():
 
 
 def scenario(name):
-    """Loads data/scenarios/<name>.json (e.g. 'starting_setup_200ipc') on
+    """Loads data/scenarios/<name>.json (e.g. 'starting_setup_125ipc') on
     demand -- not cached at module scope since callers may want distinct
     scenarios in the same process (e.g. tests)."""
     return _load_json(os.path.join('scenarios', f'{name}.json'))

@@ -16,7 +16,7 @@ What it does NOT do:
     those. Re-run the pipeline after syncing:
         python3 tools/sync_territories_from_xlsx.py
         python3 tools/build_all.py
-  - Reconcile data/scenarios/starting_setup_200ipc.json. If you reassign a
+  - Reconcile data/scenarios/starting_setup_125ipc.json. If you reassign a
     territory's faction here, any existing scenario purchase entries for
     that territory under its OLD faction become stale -- the Initial Setup
     tab will flag them (red highlight, mismatched-faction rows), but

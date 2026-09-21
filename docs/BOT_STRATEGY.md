@@ -42,6 +42,12 @@ Exceptions to "nothing is committed below the min", chosen so money is not left 
   spots nearest it) and keep them;
 * **pursue SC** keeps what it bought toward a target even when the force is not yet strong enough to advance.
 
+## Land units and the water
+
+Only Mechanized Infantry can enter the water (it becomes a Transport there); Infantry and Armor cannot, so the planner
+never routes them through a sea zone (the engine's legal paths already refuse it) and never buys land units into a sea
+space -- an amphibious plan is a Mechanized Infantry plan.
+
 ## Spending: Strategic Centers are favoured
 
 `Planner.buy_toward` picks the purchase spot near a target; a spot that is (or is paid for by) a Strategic Center

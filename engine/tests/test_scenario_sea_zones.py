@@ -29,7 +29,7 @@ def _naval_zones(scenario_name):
     return out
 
 
-SCENARIOS = ['starting_setup_200ipc', 'starting_setup_100ipc']
+SCENARIOS = ['starting_setup_125ipc', 'starting_setup_100ipc']
 
 
 class TestStartingNavalDeployments(unittest.TestCase):

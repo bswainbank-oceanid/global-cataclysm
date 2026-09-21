@@ -143,7 +143,7 @@ class TestCombatMovePhase(unittest.TestCase):
         self.assertTrue(unit.has_moved_combat)
 
     def test_transported_land_unit_prefers_land_over_stopping_at_sea(self):
-        # 2 (NAA infantry) -> 3 (sea, hostile: AAC Cruiser present) -> 6 (empty foreign land).
+        # 2 (NAA Mech Inf) -> 3 (sea, hostile: AAC Cruiser present) -> 6 (empty foreign land).
         data = FakeData(
             territories={
                 2: {'type': 'land', 'value': 2},
@@ -153,7 +153,7 @@ class TestCombatMovePhase(unittest.TestCase):
             adjacency={2: [3], 3: [2, 6], 6: [3]},
         )
         gs = make_state(data, {2: 'NAA'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT}, phase=Phase.COMBAT_MOVE)
-        mover = make_unit('Infantry', 'NAA')
+        mover = make_unit('Mechanized Infantry', 'NAA')
         gs.territories[2].units.append(mover)
         gs.territories[3].units.append(make_unit('Cruiser', 'AAC'))
         engine = GameEngine(gs, data)
@@ -163,7 +163,7 @@ class TestCombatMovePhase(unittest.TestCase):
         self.assertIn(mover.unit_id, [u.unit_id for u in gs.territories[6].units])
 
     def test_amphibious_attack_preferred_over_a_merely_safe_landing(self):
-        # 2 (NAA infantry) -> 3 (sea, hostile) -> either 5 (NAA's OWN
+        # 2 (NAA Mech Inf) -> 3 (sea, hostile) -> either 5 (NAA's OWN
         # land -- a safe landing, i.e. a retreat) or 9 (AAC-occupied
         # land -- an actual attack). Both are equally close (2 hops) and
         # 5 has the lower id, so the plain closest/lowest-id tie-break
@@ -182,7 +182,7 @@ class TestCombatMovePhase(unittest.TestCase):
             data, {2: 'NAA', 5: 'NAA', 9: 'AAC'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT},
             phase=Phase.COMBAT_MOVE,
         )
-        mover = make_unit('Infantry', 'NAA')
+        mover = make_unit('Mechanized Infantry', 'NAA')
         gs.territories[2].units.append(mover)
         gs.territories[3].units.append(make_unit('Cruiser', 'AAC'))
         gs.territories[9].units.append(make_unit('Infantry', 'AAC'))
@@ -207,7 +207,7 @@ class TestCombatMovePhase(unittest.TestCase):
         gs = make_state(
             data, {2: 'NAA', 5: 'NAA'}, {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT}, phase=Phase.COMBAT_MOVE,
         )
-        mover = make_unit('Infantry', 'NAA')
+        mover = make_unit('Mechanized Infantry', 'NAA')
         gs.territories[2].units.append(mover)
         gs.territories[3].units.append(make_unit('Cruiser', 'AAC'))
         engine = GameEngine(gs, data)
@@ -331,7 +331,7 @@ class TestPlayToCompletion(unittest.TestCase):
         modes = {code: FactionMode.NEUTRAL for code in real_data.factions()}
         modes['NAA'] = FactionMode.BOT
         modes['AAC'] = FactionMode.BOT
-        gs = build_game_state('starting_setup_200ipc', modes)
+        gs = build_game_state('starting_setup_125ipc', modes)
         stats = GameStats()
         engine = GameEngine(gs, stats=stats)
         bots = {
@@ -367,7 +367,7 @@ class TestPlayToCompletion(unittest.TestCase):
         modes = {code: FactionMode.NEUTRAL for code in real_data.factions()}
         modes['NAA'] = FactionMode.BOT
         modes['AAC'] = FactionMode.BOT
-        gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
+        gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False)
         self.assertFalse(gs.allow_combat_moves_first_turn)
         stats = GameStats()
         engine = GameEngine(gs, stats=stats)
@@ -402,7 +402,7 @@ class TestPlayToCompletion(unittest.TestCase):
         def play_once():
             modes = {code: FactionMode.BOT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
             gs = build_game_state(
-                'starting_setup_200ipc', modes, max_alliance_size=3,
+                'starting_setup_125ipc', modes, max_alliance_size=3,
                 alliance_strategies={c: 'random' for c in modes},
                 alliance_behaviors={c: 'random' for c in modes},
                 rng=__import__('random').Random(99),

@@ -6,7 +6,7 @@ scenario file (data/scenarios/*.json) + data/units.json + data/factions.json
 + derived/faction_territory_profile.json.
 
 build_setup_tab() is parameterized so it can render either ruleset:
-  - the canonical 200-IPC/SC scenario -> 'Initial Setup' tab
+  - the canonical 125-MPC/SC scenario -> 'Initial Setup' tab
   - the 100-IPC/no-SC scenario -> 'Initial Setup (100 IPC)' tab
 This module's __main__ block builds both, in that order.
 
@@ -505,7 +505,7 @@ def scenario_promo_count(promotions_dict):
 
 if __name__ == '__main__':
     wb = load_workbook(XLSX_PATH, data_only=False)
-    build_setup_tab(wb, 'Initial Setup', 'data/scenarios/starting_setup_200ipc.json', use_sc=True, min_types=6)
+    build_setup_tab(wb, 'Initial Setup', 'data/scenarios/starting_setup_125ipc.json', use_sc=True, min_types=6)
     build_setup_tab(wb, 'Initial Setup (100 IPC)', 'data/scenarios/starting_setup_100ipc.json', use_sc=False, min_types=5, cap_bonus=0)
     wb.save(XLSX_PATH)
     print('saved', XLSX_PATH, 'sheets:', wb.sheetnames)

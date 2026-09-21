@@ -15,7 +15,7 @@ def _watch_session(seed=1):
     modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.BOT
     modes['AAC'] = FactionMode.BOT
-    gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
+    gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False)
     turn_log = TurnLog()
     engine = GameEngine(gs, None, turn_log=turn_log, combat_rng=random.Random(seed))
     bots = {code: RandomBot(engine, code, rng=random.Random(seed)) for code in ('NAA', 'AAC')}
@@ -158,7 +158,7 @@ class TestWatch(unittest.TestCase):
         modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
         modes['NAA'] = FactionMode.BOT  # a BOT with no RandomBot attached
         modes['AAC'] = FactionMode.BOT
-        gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
+        gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False)
         turn_log = TurnLog()
         engine = GameEngine(gs, None, turn_log=turn_log)
         session = GameSession(engine, turn_log, {'AAC': RandomBot(engine, 'AAC', rng=random.Random(1))})
@@ -291,7 +291,7 @@ def _human_session(seed=1):
     modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.HUMAN
     modes['GPC'] = FactionMode.BOT
-    gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
+    gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False)
     turn_log = TurnLog()
     engine = GameEngine(gs, None, turn_log=turn_log, combat_rng=random.Random(seed))
     return GameSession(engine, turn_log, {'GPC': RandomBot(engine, 'GPC', rng=random.Random(seed))})
@@ -317,13 +317,13 @@ class TestHumanPurchase(unittest.TestCase):
 
     def test_staging_replaces_the_queue_and_reports_cost_and_remaining_capacity(self):
         session, queue = self._watch()
-        # England (21, a Strategic Center, value 3 -> cap 5): 2 Infantry at the SC price (3 each).
+        # England (21, a Strategic Center, value 3 -> cap 5): 2 Infantry at the SC price (2 each).
         reply = session.handle_message({'type': 'stage_purchase', 'faction': 'NAA', 'orders': [
             {'unit_type': 'Infantry', 'qty': 2, 'deploy_at': 21}]})
         self.assertEqual([m['type'] for m in reply], ['phase_queue'])
         human = reply[0]['human']
-        self.assertEqual(human['total_cost'], 6)
-        self.assertEqual(human['orders'][0]['cost'], 6)
+        self.assertEqual(human['total_cost'], 4)
+        self.assertEqual(human['orders'][0]['cost'], 4)
         self.assertEqual(human['targets']['21']['remaining'] if '21' in human['targets'] else human['targets'][21]['remaining'], 3)
         self.assertEqual(reply[0]['events'][0]['orders'], [{'unit_type': 'Infantry', 'qty': 2, 'deploy_at': 21}])
         # nothing has been committed yet
@@ -336,7 +336,7 @@ class TestHumanPurchase(unittest.TestCase):
             {'unit_type': 'Infantry', 'qty': 2, 'deploy_at': 21}]})
         reply = session.handle_message({'type': 'stage_purchase', 'faction': 'NAA', 'orders': [
             {'unit_type': 'Infantry', 'qty': 1, 'deploy_at': 21}]})
-        self.assertEqual(reply[0]['human']['total_cost'], 3)
+        self.assertEqual(reply[0]['human']['total_cost'], 2)
 
     def test_an_illegal_stage_is_rejected_with_the_unchanged_queue(self):
         session, queue = self._watch()
@@ -345,7 +345,7 @@ class TestHumanPurchase(unittest.TestCase):
         reply = session.handle_message({'type': 'stage_purchase', 'faction': 'NAA', 'orders': [
             {'unit_type': 'Submarine', 'qty': 1, 'deploy_at': 21}]})  # a ship on land
         self.assertEqual([m['type'] for m in reply], ['error', 'phase_queue'])
-        self.assertEqual(reply[1]['human']['total_cost'], 3)  # the earlier staging survived
+        self.assertEqual(reply[1]['human']['total_cost'], 2)  # the earlier staging survived
 
     def test_over_budget_is_rejected(self):
         session, _ = self._watch()
@@ -369,7 +369,7 @@ class TestHumanPurchase(unittest.TestCase):
         messages = session.handle_message({'type': 'next'})
         result = _by_type(messages, 'phase_result')[0]
         self.assertEqual(result['events'][0]['kind'], 'purchase')
-        self.assertEqual(gs.factions['NAA'].treasury_mpc, before - 6)
+        self.assertEqual(gs.factions['NAA'].treasury_mpc, before - 4)
         self.assertEqual(len(gs.territories[21].pending_deployment), 2)
         # play the rest of NAA's turn: the units land at Deploy + Income
         for _ in range(8):
@@ -406,7 +406,7 @@ def _human_moves_session(seed=1):
     modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.HUMAN
     modes['GPC'] = FactionMode.BOT
-    gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False, allow_combat_moves_first_turn=True)
+    gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False, allow_combat_moves_first_turn=True)
     turn_log = TurnLog()
     engine = GameEngine(gs, None, turn_log=turn_log, combat_rng=random.Random(seed))
     session = GameSession(engine, turn_log, {'GPC': RandomBot(engine, 'GPC', rng=random.Random(seed))})

@@ -1,10 +1,10 @@
 {
-  "_comment": "Unit roster for Global Cataclysm: 1972, transcribed from the design doc's stat table. cost/sc_cost are in IPC. die is the base attack die (D6/D8/D10/D12); promotion steps a unit's die up one size (max D12), max defense 10.",
+  "_comment": "Unit roster for Global Cataclysm: 1972, transcribed from the design doc's stat table. cost/sc_cost are in IPC. die is the base attack die (D6/D8/D10/D12); promotion steps a unit's die up one size (max D12), max defense 10. air_superiority (Fighter, Bomber) is the base attack die and damage used in the pre-combat air-superiority round instead of its normal ones (promotion still steps the die up).",
   "units": {
     "Infantry": {
       "category": "Land",
-      "cost": 4,
-      "sc_cost": 3,
+      "cost": 3,
+      "sc_cost": 2,
       "attack_die": "D6",
       "damage": 2,
       "defense": 5,
@@ -22,20 +22,22 @@
       "cost": 6,
       "sc_cost": 4,
       "attack_die": "D6",
-      "damage": 3,
+      "damage": 2,
       "defense": 6,
       "hp": 3,
       "combat_move": 2,
       "non_combat_move": 2,
       "purchasable": true,
-      "special_abilities": []
+      "special_abilities": [
+        "Amphibious: becomes a transport in sea spaces (the only land unit that can enter the water)"
+      ]
     },
     "Armor": {
       "category": "Land",
       "cost": 8,
       "sc_cost": 6,
       "attack_die": "D8",
-      "damage": 4,
+      "damage": 3,
       "defense": 7,
       "hp": 4,
       "combat_move": 1,
@@ -50,13 +52,17 @@
       "attack_die": "D6",
       "damage": 2,
       "defense": 8,
-      "hp": 2,
+      "hp": 3,
       "combat_move": 2,
       "non_combat_move": 3,
       "purchasable": true,
       "special_abilities": [
-        "Air Superiority: D10 attack in the pre-combat air superiority round"
-      ]
+        "Air Superiority: D10 attack, 3 damage in the pre-combat air superiority round"
+      ],
+      "air_superiority": {
+        "attack_die": "D10",
+        "damage": 3
+      }
     },
     "Bomber": {
       "category": "Air",
@@ -70,8 +76,12 @@
       "non_combat_move": 3,
       "purchasable": true,
       "special_abilities": [
-        "Air Superiority: D8 attack, 2 damage in the pre-combat air superiority round"
-      ]
+        "Air Superiority: D6 attack, 1 damage in the pre-combat air superiority round"
+      ],
+      "air_superiority": {
+        "attack_die": "D6",
+        "damage": 1
+      }
     },
     "Aircraft Carrier": {
       "category": "Sea",
@@ -124,11 +134,11 @@
       "damage": null,
       "defense": 6,
       "hp": 1,
-      "combat_move": "+1*",
-      "non_combat_move": "+1*",
+      "combat_move": 2,
+      "non_combat_move": 2,
       "purchasable": false,
       "special_abilities": [
-        "See transport & amphibious operations rules; land units become transports in marine spaces, one transport per unit, +1 move bonus"
+        "See transport & amphibious operations rules; a Mechanized Infantry unit becomes a transport in a sea space, one transport per unit, with no move bonus"
       ]
     }
   }

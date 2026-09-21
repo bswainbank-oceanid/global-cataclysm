@@ -32,7 +32,7 @@ which runs, in order:
    Territories' tab + 6 faction subtabs + Unassigned)
 5. `tools/build_setup_tab.py` — needs (3) and (4); adds/replaces the
    'Initial Setup' tab on the same workbook from
-   `data/scenarios/starting_setup_200ipc.json` + `data/units.json`
+   `data/scenarios/starting_setup_125ipc.json` + `data/units.json`
 6. `tools/recalc_xlsx.py exports/GC1972_Territories.xlsx`
    — recalculates all live formulas via LibreOffice so the workbook opens
    with correct cached values (openpyxl never evaluates formulas itself)
@@ -82,7 +82,7 @@ missing row all abort with nothing written — and it will not add or
 remove territories (every row must match an existing id 1:1). See the
 script's docstring for what it deliberately does *not* handle: reassigning
 a territory's faction here can make existing entries in
-`data/scenarios/starting_setup_200ipc.json` stale (a purchase recorded
+`data/scenarios/starting_setup_125ipc.json` stale (a purchase recorded
 under the territory's old faction), which `tools/validate_setup.py` does
 not yet catch cleanly. Treat a faction reassignment as the start of a
 scenario edit, not a fire-and-forget spreadsheet tweak.
@@ -99,8 +99,8 @@ garrison covers every territory or only foreign-bordering ones) so it can
 produce ruleset variants, not just the canonical scenario.
 
 Two scenarios exist today:
-- `data/scenarios/starting_setup_200ipc.json` — the canonical scenario:
-  200 IPC, Strategic Centers apply (cost discount + cap bonus), >=6 unit
+- `data/scenarios/starting_setup_125ipc.json` — the canonical scenario:
+  125 MPC, Strategic Centers apply (cost discount + cap bonus), >=6 unit
   types, 3 promotions per faction. Built by `tools/generate_scenario.py`.
 - `data/scenarios/starting_setup_100ipc.json` — a smaller, faster-setup
   alternative: 100 IPC, no Strategic Centers at all (flat value+2 cap, no
@@ -113,7 +113,7 @@ Two scenarios exist today:
 `tools/build_setup_tab.py`'s `build_setup_tab()` function is similarly
 parameterized (scenario path, sheet name, use_sc, min_types) and renders
 both: `python3 tools/build_setup_tab.py` builds the 'Initial Setup' tab
-from the 200-IPC scenario and the 'Initial Setup (100 IPC)' tab from the
+from the 125-MPC scenario and the 'Initial Setup (100 IPC)' tab from the
 100-IPC one, in one workbook. `tools/validate_setup.py` takes the same
 parameters as CLI flags (`--scenario`, `--no-sc`, `--min-types`,
 `--budget-tolerance`) — see its docstring for both scenarios' exact

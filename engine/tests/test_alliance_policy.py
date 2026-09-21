@@ -339,7 +339,7 @@ class TestTotalUnitValue(unittest.TestCase):
     def test_none_cost_units_dont_break_the_sum(self):
         units = [make_unit('Transport', 'NAA'), make_unit('Infantry', 'NAA')]
         engine, gs = make_engine({'NAA': FactionMode.BOT}, units_by_territory={1: units})
-        self.assertEqual(alliance_policy._total_unit_value(engine, 'NAA'), 4)  # Transport cost None -> 0
+        self.assertEqual(alliance_policy._total_unit_value(engine, 'NAA'), 3)  # Transport cost None -> 0
 
 
 class TestShouldWithdraw(unittest.TestCase):

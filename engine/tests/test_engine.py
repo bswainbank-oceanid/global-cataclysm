@@ -9,12 +9,13 @@ from engine.state import GameState, TerritoryState, FactionState, UnitInstance, 
 from engine.stats import GameStats
 
 UNIT_DEFS = {
-    'Infantry': {'category': 'Land', 'cost': 4, 'sc_cost': 3, 'hp': 2, 'purchasable': True,
+    'Infantry': {'category': 'Land', 'cost': 3, 'sc_cost': 2, 'hp': 2, 'purchasable': True,
                  'attack_die': 'D6', 'defense': 5, 'damage': 2, 'combat_move': 1, 'non_combat_move': 2},
     'Mechanized Infantry': {'category': 'Land', 'cost': 6, 'sc_cost': 4, 'hp': 3, 'purchasable': True,
-                             'attack_die': 'D6', 'defense': 6, 'damage': 3, 'combat_move': 2, 'non_combat_move': 2},
+                             'attack_die': 'D6', 'defense': 6, 'damage': 2, 'combat_move': 2, 'non_combat_move': 2,
+                             'special_abilities': ['Amphibious: becomes a transport in sea spaces']},
     'Armor': {'category': 'Land', 'cost': 8, 'sc_cost': 6, 'hp': 4, 'purchasable': True,
-              'attack_die': 'D8', 'defense': 7, 'damage': 4, 'combat_move': 1, 'non_combat_move': 2},
+              'attack_die': 'D8', 'defense': 7, 'damage': 3, 'combat_move': 1, 'non_combat_move': 2},
     'Cruiser': {'category': 'Sea', 'cost': 11, 'sc_cost': 8, 'hp': 5, 'purchasable': True,
                 'attack_die': 'D10', 'defense': 7, 'damage': 3, 'combat_move': 2, 'non_combat_move': 2},
     'Fighter': {'category': 'Air', 'cost': 10, 'sc_cost': 7, 'hp': 2, 'purchasable': True,
@@ -22,7 +23,7 @@ UNIT_DEFS = {
     'Aircraft Carrier': {'category': 'Sea', 'cost': 14, 'sc_cost': 10, 'hp': 6, 'purchasable': True,
                           'attack_die': None, 'defense': 6, 'damage': None, 'combat_move': 2, 'non_combat_move': 2},
     'Transport': {'category': 'Sea', 'cost': None, 'sc_cost': None, 'hp': 1, 'purchasable': False,
-                  'attack_die': None, 'defense': 6, 'damage': None, 'combat_move': '+1*', 'non_combat_move': '+1*'},
+                  'attack_die': None, 'defense': 6, 'damage': None, 'combat_move': 2, 'non_combat_move': 2},
 }
 
 
@@ -298,17 +299,17 @@ class TestLandPurchase(unittest.TestCase):
         gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         cost = engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 2, 1)])
-        self.assertEqual(cost, 8)  # 2 x cost 4
+        self.assertEqual(cost, 6)  # 2 x cost 3
         engine.confirm_purchases('NAA')
         self.assertEqual(len(gs.territories[1].pending_deployment), 2)
-        self.assertEqual(gs.factions['NAA'].treasury_mpc, 1000 - 8)
+        self.assertEqual(gs.factions['NAA'].treasury_mpc, 1000 - 6)
 
     def test_strategic_center_uses_sc_cost(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 2, 'strategic_center': True}}, adjacency={})
         gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         cost = engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 2, 1)])
-        self.assertEqual(cost, 6)  # 2 x sc_cost 3
+        self.assertEqual(cost, 4)  # 2 x sc_cost 2
 
     def test_exceeding_single_territory_capacity_is_rejected(self):
         # cap = value 2 + SC bonus 0 = 2; ordering 3 units should fail.
@@ -334,10 +335,10 @@ class TestLandPurchase(unittest.TestCase):
 
     def test_insufficient_treasury_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, treasury={'NAA': 3})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, treasury={'NAA': 2})
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
-            engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, 1)])  # costs 4, only 3 available
+            engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, 1)])  # costs 3, only 2 available
 
 
 class TestContestedLandDeployRestriction(unittest.TestCase):
@@ -388,17 +389,18 @@ class TestSeaDeployAllocation(unittest.TestCase):
         )
         gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
-        # Buy exactly 3 (the SC's full capacity) -- if the SC goes
-        # first, all 3 should be sc_cost (3 x 3 = 9); if the larger
-        # territory went first instead, they'd be full cost (3 x 4 = 12).
-        cost = engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 3, 3)])
-        self.assertEqual(cost, 9)
+        # Buy exactly 3 (the SC's full capacity) of the one land unit that can
+        # be deployed at sea -- if the SC goes first, all 3 should be sc_cost
+        # (3 x 4 = 12); if the larger territory went first instead, they'd
+        # be full cost (3 x 6 = 18).
+        cost = engine.submit_purchases('NAA', [PurchaseOrder('Mechanized Infantry', 3, 3)])
+        self.assertEqual(cost, 12)
 
     def test_spillover_across_multiple_territories_within_one_order(self):
         # Same setup as above: SC (territory 2, cap 3) then territory 1
-        # (cap 5). Buying 5 Infantry should draw 3 from the SC (sc_cost
-        # 3 each = 9) and the remaining 2 from territory 1 (cost 4 each
-        # = 8), spilling over automatically within a single order.
+        # (cap 5). Buying 5 Mechanized Infantry should draw 3 from the SC
+        # (sc_cost 4 each = 12) and the remaining 2 from territory 1 (cost 6
+        # each = 12), spilling over automatically within a single order.
         data = FakeData(
             territories={
                 1: {'type': 'land', 'value': 5},
@@ -409,8 +411,8 @@ class TestSeaDeployAllocation(unittest.TestCase):
         )
         gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
-        cost = engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 5, 3)])
-        self.assertEqual(cost, 9 + 8)
+        cost = engine.submit_purchases('NAA', [PurchaseOrder('Mechanized Infantry', 5, 3)])
+        self.assertEqual(cost, 12 + 12)
 
     def test_spillover_exhausted_across_all_sources_is_rejected(self):
         # SC cap 3 + territory 1 cap 5 = 8 total; asking for 9 must fail.
@@ -425,7 +427,7 @@ class TestSeaDeployAllocation(unittest.TestCase):
         gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
-            engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 9, 3)])
+            engine.submit_purchases('NAA', [PurchaseOrder('Mechanized Infantry', 9, 3)])
 
     def test_two_orders_in_the_same_list_compete_for_the_same_capacity(self):
         # A single land territory (cap 5) backing a sea zone. Two
@@ -439,21 +441,29 @@ class TestSeaDeployAllocation(unittest.TestCase):
         gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
-            engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 3, 2), PurchaseOrder('Armor', 3, 2)])
+            engine.submit_purchases('NAA', [PurchaseOrder('Mechanized Infantry', 3, 2), PurchaseOrder('Mechanized Infantry', 3, 2)])
 
-    def test_land_unit_purchased_at_sea_is_still_just_a_normal_unit_instance(self):
+    def test_mech_inf_purchased_at_sea_is_still_just_a_normal_unit_instance(self):
         # No special "Transport" bookkeeping at purchase time -- it's
-        # purely a placement detail (movement.py's water-crossing model
-        # already treats any land unit sitting in a sea zone as riding
-        # one); confirm_purchases just places the ordered unit type.
+        # purely a placement detail (a Mechanized Infantry sitting in a sea
+        # zone is riding a transport); confirm_purchases just places the
+        # ordered unit type.
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
         gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
         engine = GameEngine(gs, data)
-        engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, 2)])
+        engine.submit_purchases('NAA', [PurchaseOrder('Mechanized Infantry', 1, 2)])
         engine.confirm_purchases('NAA')
         placed = gs.territories[2].pending_deployment
         self.assertEqual(len(placed), 1)
-        self.assertEqual(placed[0].unit_type, 'Infantry')
+        self.assertEqual(placed[0].unit_type, 'Mechanized Infantry')
+
+    def test_infantry_and_armor_cannot_be_purchased_into_the_water(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN})
+        engine = GameEngine(gs, data)
+        for unit in ('Infantry', 'Armor'):
+            with self.assertRaises(ValueError):
+                engine.submit_purchases('NAA', [PurchaseOrder(unit, 1, 2)])
 
 
 class TestRollbackAndConfirmation(unittest.TestCase):
@@ -538,7 +548,8 @@ class TestContestedPurchaseLostFallback(unittest.TestCase):
         self.assertEqual(len(gs.territories[2].units), 1)
         self.assertEqual(len(gs.territories[1].units), 0)
 
-    def test_falls_back_to_adjacent_sea_when_no_controlled_land(self):
+    def test_is_lost_when_only_water_is_adjacent(self):
+        # Infantry cannot enter the water, so a sea zone is no fallback.
         data = FakeData(
             territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 3}, 3: {'type': 'sea'}},
             adjacency={1: [2, 3]},
@@ -550,7 +561,8 @@ class TestContestedPurchaseLostFallback(unittest.TestCase):
         )
         engine = GameEngine(gs, data)
         engine.deploy_and_collect_income('NAA')
-        self.assertEqual(len(gs.territories[3].units), 1)
+        self.assertEqual(len(gs.territories[3].units), 0)
+        self.assertEqual(len(gs.territories[1].units), 0)
 
     def test_lost_outright_when_no_adjacent_controlled_or_sea(self):
         data = FakeData(
@@ -566,33 +578,6 @@ class TestContestedPurchaseLostFallback(unittest.TestCase):
         engine.deploy_and_collect_income('NAA')
         self.assertEqual(len(gs.territories[2].units), 0)
         self.assertEqual(len(gs.territories[1].units), 0)
-
-    def sea_fallback_state(self, enemy_in_sea=None):
-        # 1 (Infantry pending, lost to AAC) with sea zones 3 and 4 next to it and no controlled land.
-        data = FakeData(
-            territories={1: {'type': 'land', 'value': 5}, 3: {'type': 'sea'}, 4: {'type': 'sea'}},
-            adjacency={1: [3, 4]},
-        )
-        return data, make_state(
-            data, {1: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
-            phase=Phase.DEPLOY_INCOME,
-            units_by_territory={tid: [make_unit('Cruiser', 'AAC')] for tid in (enemy_in_sea or [])},
-            pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1)]},
-        )
-
-    def test_a_quiet_sea_zone_is_preferred_to_one_holding_enemy_ships(self):
-        data, gs = self.sea_fallback_state(enemy_in_sea=[3])  # the lower id is the hostile one
-        GameEngine(gs, data).deploy_and_collect_income('NAA')
-        self.assertEqual(len(gs.territories[4].units), 1)
-        self.assertEqual(len(gs.territories[3].units), 1)  # only the enemy cruiser
-        self.assertFalse(gs.territories[4].contested_by)
-
-    def test_landing_among_enemy_ships_is_a_contest_not_silent_co_occupation(self):
-        data, gs = self.sea_fallback_state(enemy_in_sea=[3, 4])  # nowhere quiet
-        GameEngine(gs, data).deploy_and_collect_income('NAA')
-        self.assertEqual(len(gs.territories[3].units), 2)
-        self.assertEqual(gs.territories[3].contested_by, {'NAA', 'AAC'})
-        self.assertEqual(gs.territories[3].ambush_bonus_for, {'AAC'})
 
     def test_a_lost_purchase_prefers_land_over_water_and_is_recorded_where_it_lands(self):
         data = FakeData(
@@ -625,12 +610,13 @@ class TestContestedPurchaseLostFallback(unittest.TestCase):
 
 class TestLostContestedPurchaseOverAWholeTurn(unittest.TestCase):
     """The whole turn on the real map: Infantry bought into a contested territory that is then
-    lost in the same turn's combat still get deployed nearby (adjacent land, else adjacent sea)."""
+    lost in the same turn's combat still get deployed on adjacent land; with none left they are lost
+    (Infantry cannot enter the water)."""
 
     def play(self, hand_over_to_gpc=()):
         from engine.setup import build_game_state
         modes = {f: FactionMode.BOT for f in real_data.factions()}
-        gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False)
+        gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False)
         engine = GameEngine(gs, real_data, combat_rng=random.Random(1))
         T = 10  # Western Canada, NAA's, with one NAA Mech Inf in it
         for i in range(4):  # GPC's promoted Armor holds it against that lone defender
@@ -668,12 +654,9 @@ class TestLostContestedPurchaseOverAWholeTurn(unittest.TestCase):
         self.assertEqual(real_data.territories()[tid]['type'], 'land')
         self.assertIn(tid, real_data.adjacency()[10])
 
-    def test_with_no_adjacent_land_left_they_go_into_an_adjacent_sea_zone(self):
+    def test_with_no_adjacent_land_left_they_are_lost(self):
         placed = self.play(hand_over_to_gpc=(20, 46, 56, 69, 6))
-        self.assertEqual(list(placed.values()), [1])
-        tid = next(iter(placed))
-        self.assertEqual(real_data.territories()[tid]['type'], 'sea')
-        self.assertIn(tid, real_data.adjacency()[10])
+        self.assertEqual(placed, {})
 
 
 class TestCarrierlessAirDeployFallback(unittest.TestCase):
@@ -1516,6 +1499,7 @@ class TestCombatResolutionThenCaptureTerritory(unittest.TestCase):
         )
         mover = make_unit('Armor', 'NAA')
         defender = make_unit('Armor', 'AAC')
+        defender.current_hp = 3  # one hit from Armor's 3 damage finishes it, later on
         gs = make_state(
             data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.DEFENSIVE},
             phase=Phase.COMBAT_MOVE, units_by_territory={1: [mover], 2: [defender]},
@@ -1557,7 +1541,7 @@ class TestCombatResolutionThenCaptureTerritory(unittest.TestCase):
         engine.confirm_combat_moves('NAA')
         gs.phase = Phase.COMBAT_RESOLUTION
         # Round 2: attacker rolls the die max (8, always hits) and kills
-        # the hp-4 defender in one hit; defender misses back (3).
+        # the hp-3 defender in one hit; defender misses back (3).
         engine.resolve_combat('NAA', rng=ScriptedRNG([8, 3]))
         gs.phase = Phase.CAPTURE
         engine.process_capture_territory('NAA')

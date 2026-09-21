@@ -42,23 +42,23 @@ withdrawing, betrayal) are still out of scope. Air's landing rule is the
 one asymmetric case: allied LAND is fine (even contested), but landing
 specifically requires the mover's OWN carrier, never an ally's.
 
-Movement budget: a unit's move stat, extended by +1 (to both move types,
-for the rest of the turn) the moment it's in a sea zone -- whether it
-started there or entered one mid-move. This is applied dynamically as
-the search proceeds, not precomputed, since a unit's remaining budget can
-change partway through its own move.
+Movement budget: a unit's own move stat, in both move types. A Transport gives no
+move bonus, and every hop -- into the water, along it, and back onto land -- costs
+one move.
+
+Only an amphibious land unit (units.json's 'Amphibious' ability: Mechanized
+Infantry) may enter a sea zone at all. Infantry and Armor stay on land: every
+search and path validator here refuses a water hop for them.
 
 There's no such thing as a Transport moving under its own query here --
 Transport isn't purchasable (units.json) and has no independent
-existence: it comes into being automatically when a land unit enters
-water and disappears when that unit returns to land. It's purely a
+existence: it comes into being automatically when a Mechanized Infantry unit
+enters water and disappears when that unit returns to land. It's purely a
 combat-participation wrapper (see engine/combat.py, where it IS a real
-target/attacker in a sea battle) -- movement.py's land-unit water-
-crossing bonus above is the complete model for what happens when a land
-unit is "in a Transport"; nothing here ever calls legal_*_move_
+target/attacker in a sea battle); nothing here ever calls legal_*_move_
 destinations with unit_type='Transport'.
 """
-from .state import FactionMode
+from .state import FactionMode, is_amphibious
 
 
 def graph_distances(origin_id, data_module):
@@ -240,9 +240,9 @@ def _classify_noncombat_hop(dest_id, mover_faction, game_state, territories, uni
     contesting it -- unqualified), or open/allied-occupied sea. Never a
     clean foreign (non-allied) land territory, and never a sea zone
     occupied by a non-ally -- that would require a combat move instead.
-    No attack semantics, no Mech Inf exception (that's combat-move-only),
-    but land units DO still get the water-crossing budget bonus for a
-    non-combat move (handled by the caller, not here)."""
+    No attack semantics, no Mech Inf exception (that's combat-move-only);
+    only amphibious land units may enter water (the caller's search
+    enforces that, not this classification)."""
     if _is_neutral(dest_id, game_state):
         return BLOCKED
     dest = game_state.territories[dest_id]
@@ -261,7 +261,7 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
     territory, the best (largest) remaining-budget-on-arrival seen so
     far, and only explores a neighbor when arriving with a strictly
     better remaining budget than any prior visit -- since budget only
-    decreases per hop (aside from the one-time water bonus), this
+    decreases per hop, this
     naturally terminates without needing a separate depth cap. (Known
     simplification: this pruning is budget-only, not budget-plus-
     land_only-restriction -- a node reached both via an unrestricted
@@ -285,16 +285,12 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
     is_sea_unit = unit_defs[unit_type]['category'] == 'Sea'
 
     base_budget = _base_move(unit_type, move_type, unit_defs)
-    # The water bonus is a LAND-unit-becomes-Transport-cargo concept --
-    # it never applies to a naturally sea-based unit (already home in
-    # water, nothing to bonus) or, via legal_air_move_destinations, an
-    # air unit (handled entirely separately, no water concept at all).
     started_in_water = is_land_unit and territories[origin_id]['type'] == 'sea'
-    initial_budget = base_budget + (1 if started_in_water else 0)
+    can_swim = is_land_unit and is_amphibious(unit_defs[unit_type])
 
     destinations = set()
     paths = {}
-    best_seen = {origin_id: initial_budget}
+    best_seen = {origin_id: base_budget}
     # stack entries: (territory_id, moves_used_so_far, water_bonus_active,
     # land_only_restricted, path_so_far). path_so_far is carried directly
     # per entry -- not reconstructed afterward from a shared parent map --
@@ -321,12 +317,13 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
                 continue  # movement.sea_units_stay_at_sea: never enter, cross, or attack land
             if land_only and not neighbor_is_land:
                 continue  # amphibious continuation past occupied water: land only, never further open sea
+            if is_land_unit and not neighbor_is_land and not can_swim:
+                continue  # only amphibious land units (Mechanized Infantry) may enter the water
             new_water_active = water_active or (is_land_unit and not neighbor_is_land)
-            budget = base_budget + (1 if new_water_active else 0)
             new_moves_used = moves_used + 1
-            if new_moves_used > budget:
+            if new_moves_used > base_budget:
                 continue
-            remaining = budget - new_moves_used
+            remaining = base_budget - new_moves_used
             if remaining <= best_seen.get(neighbor_id, -1):
                 continue  # already reached this territory with an equal-or-better remaining budget
             best_seen[neighbor_id] = remaining
@@ -500,11 +497,12 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
                 # check -- entirely once land_only_restricted was set).
                 raise ValueError(f'{next_id} is neutral territory and cannot be entered')
 
+        if is_land_unit and not neighbor_is_land and not is_amphibious(unit_defs[unit_type]):
+            raise ValueError(f'{unit_type} cannot enter the water ({next_id}); only Mechanized Infantry can')
         water_active = water_active or (is_land_unit and not neighbor_is_land)
-        budget = base_budget + (1 if water_active else 0)
         moves_used += 1
-        if moves_used > budget:
-            raise ValueError(f"path exceeds {unit_type}'s combat move budget ({budget})")
+        if moves_used > base_budget:
+            raise ValueError(f"path exceeds {unit_type}'s combat move budget ({base_budget})")
 
         if land_only_restricted:
             # Landing forced by the amphibious exception -- always a

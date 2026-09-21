@@ -8,13 +8,15 @@ from engine.movement import (
 )
 
 # Minimal unit_defs -- movement.py only ever reads combat_move/
-# non_combat_move/category. No 'Transport' entry: it's never
+# non_combat_move/category (and 'Amphibious' in special_abilities: the
+# only land unit that may enter water). No 'Transport' entry: it's never
 # independently movement-queried (see engine/movement.py's module
-# docstring) -- a land unit crossing water just gets the +1 bonus,
+# docstring) -- a Mechanized Infantry crossing water gets no bonus and
 # there's no separate Transport-as-a-unit move.
+AMPHIBIOUS = ['Amphibious: becomes a transport in sea spaces']
 LAND_UNITS = {
     'Infantry': {'category': 'Land', 'combat_move': 1, 'non_combat_move': 2},
-    'Mechanized Infantry': {'category': 'Land', 'combat_move': 2, 'non_combat_move': 2},
+    'Mechanized Infantry': {'category': 'Land', 'combat_move': 2, 'non_combat_move': 2, 'special_abilities': AMPHIBIOUS},
     'Armor': {'category': 'Land', 'combat_move': 1, 'non_combat_move': 2},
     'Fighter': {'category': 'Air', 'combat_move': 2, 'non_combat_move': 3},
     'Bomber': {'category': 'Air', 'combat_move': 3, 'non_combat_move': 3},
@@ -69,11 +71,9 @@ def enemy_unit(uid, unit_type, owner):
     return UnitInstance(unit_id=uid, unit_type=unit_type, owner=owner, current_hp=1)
 
 
-class TestWaterMovementBonus(unittest.TestCase):
-    def test_infantry_can_cross_water_and_continue_onto_land(self):
-        # 1 (land, origin) -- 2 (sea) -- 3 (land, empty enemy -- a legal
-        # combat-move stop). Infantry's base combat_move is 1; without
-        # the water bonus it could only reach territory 2.
+class TestOnlyMechanizedInfantryCrossesWater(unittest.TestCase):
+    def crossing(self):
+        # 1 (land, origin) -- 2 (sea) -- 3 (land, empty enemy).
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'sea'}, 3: {'type': 'land'}},
             adjacency={1: [2], 2: [1, 3], 3: [2]},
@@ -83,13 +83,25 @@ class TestWaterMovementBonus(unittest.TestCase):
             territory_owners={1: 'NAA', 3: 'AAC'},
             faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
-        dest = legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data)
-        self.assertIn(3, dest)
+        return data, gs
 
-    def test_mech_inf_starting_in_water_moves_three_spaces(self):
+    def test_mechanized_infantry_crosses_water_and_lands_in_two_moves(self):
+        data, gs = self.crossing()
+        dest = legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
+        self.assertIn(3, dest)  # (empty open sea is never a combat-move stop)
+
+    def test_infantry_and_armor_cannot_enter_the_water_at_all(self):
+        data, gs = self.crossing()
+        for unit in ('Infantry', 'Armor'):
+            self.assertEqual(legal_combat_move_destinations(unit, 'NAA', 1, gs, data), set(), unit)
+            self.assertEqual(legal_noncombat_move_destinations(unit, 'NAA', 1, gs, data), set(), unit)
+            with self.assertRaises(ValueError):
+                trace_combat_move(unit, 'NAA', [1, 2], gs, data)
+
+    def test_a_transport_gives_no_move_bonus(self):
         # 1 (sea, origin) -- 2 (land, friendly) -- 3 (land, friendly) --
         # 4 (land, empty enemy) -- 5 (land, empty enemy, one hop too far).
-        # Mech Inf: base 2 + water bonus (already in water) = 3.
+        # Mech Inf has 2 moves, in the water or not.
         data = FakeData(
             territories={i: {'type': 'sea' if i == 1 else 'land'} for i in range(1, 6)},
             adjacency={1: [2], 2: [1, 3], 3: [2, 4], 4: [3, 5], 5: [4]},
@@ -100,8 +112,9 @@ class TestWaterMovementBonus(unittest.TestCase):
             faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
         dest = legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
-        self.assertIn(4, dest)
-        self.assertNotIn(5, dest, 'budget is exactly 3 (2 base + 1 water bonus) -- territory 5 is a 4th hop')
+        self.assertNotIn(4, dest, 'two moves from the water reach territory 3 and no further')
+        noncombat = legal_noncombat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
+        self.assertEqual(noncombat, {2, 3})
 
 
 class TestMechInfEmptyTerritoryPassThrough(unittest.TestCase):
@@ -267,13 +280,13 @@ class TestAmphibiousThroughOccupiedWater(unittest.TestCase):
             faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')]},
         )
-        dest = legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data)
+        dest = legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
         self.assertIn(2, dest)  # must be prepared to fight the naval battle there
         self.assertIn(3, dest)  # and can land on the far side in the same move
 
     def test_land_unit_cannot_chain_from_occupied_water_into_more_open_sea(self):
         # 1 (land, origin) -- 2 (sea, enemy warship) -- 3 (sea, open, beyond)
-        custom = dict(LAND_UNITS, Infantry={'category': 'Land', 'combat_move': 3, 'non_combat_move': 2})
+        custom = dict(LAND_UNITS, **{'Mechanized Infantry': dict(LAND_UNITS['Mechanized Infantry'], combat_move=3)})
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'sea'}, 3: {'type': 'sea'}},
             adjacency={1: [2], 2: [1, 3], 3: [2]},
@@ -285,7 +298,7 @@ class TestAmphibiousThroughOccupiedWater(unittest.TestCase):
             faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')]},
         )
-        dest = legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data)
+        dest = legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
         self.assertIn(2, dest)
         self.assertNotIn(3, dest, 'the through-occupied-water exception reaches land only, never more open sea')
 
@@ -324,23 +337,24 @@ class TestAmphibiousThroughOccupiedWater(unittest.TestCase):
             faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             contested={2: {'NAA'}},
         )
-        dest = legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data)
+        dest = legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
         self.assertIn(2, dest)
         self.assertIn(3, dest, 'friendly land is a legal landing spot when escaping contested water')
 
     def test_amphibious_landing_is_never_continuable_even_onto_empty_foreign_land(self):
-        # Mech Inf: combat_move 2, +1 for touching water = 3 -- budget
-        # alone would allow a 3rd hop onto territory 4 (empty foreign
-        # land, which Mech Inf could normally blitz through) -- but a
-        # landing via the hostile-water exception must be the final stop
-        # of the move regardless, so 4 must NOT appear as a legal
-        # destination (matches trace_combat_move's own rule -- a bug
-        # found and fixed this session: _reachable_destinations used to
+        # Mech Inf here has a combat_move of 3 -- budget alone would allow a
+        # 3rd hop onto territory 4 (empty foreign land, which Mech Inf could
+        # normally blitz through) -- but a landing via the hostile-water
+        # exception must be the final stop of the move regardless, so 4 must
+        # NOT appear as a legal destination (matches trace_combat_move's own
+        # rule -- a bug found and fixed once: _reachable_destinations used to
         # keep exploring past such a landing whenever the landing spot's
         # own ordinary classification permitted it).
+        custom = dict(LAND_UNITS, **{'Mechanized Infantry': dict(LAND_UNITS['Mechanized Infantry'], combat_move=3)})
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'sea'}, 3: {'type': 'land'}, 4: {'type': 'land'}},
             adjacency={1: [2], 2: [1, 3], 3: [2, 4], 4: [3]},
+            unit_defs=custom,
         )
         gs = make_state(
             data, territory_owners={1: 'NAA', 3: 'NAA', 4: 'AAC'},
@@ -375,6 +389,7 @@ class TestAmphibiousThroughOccupiedWater(unittest.TestCase):
                 3: {'type': 'sea'}, 4: {'type': 'land'},
             },
             adjacency={1: [3, 5], 5: [1, 2], 2: [5, 4], 3: [1, 4], 4: [2, 3]},
+            unit_defs=dict(LAND_UNITS, **{'Mechanized Infantry': dict(LAND_UNITS['Mechanized Infantry'], combat_move=3)}),
         )
         gs = make_state(
             data, territory_owners={1: 'NAA', 5: 'NAA', 4: 'NAA'},
@@ -422,7 +437,7 @@ class TestNeutralExclusion(unittest.TestCase):
             faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')]},
         )
-        dest = legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data)
+        dest = legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
         self.assertIn(2, dest)  # still must be prepared to fight the naval battle there
         self.assertNotIn(3, dest, 'neutral territory is never a legal landing spot, even via the amphibious exception')
 
@@ -976,7 +991,7 @@ class TestTraceCombatMove(unittest.TestCase):
         gs = make_state(
             data, territory_owners={1: 'NAA', 3: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
-        trace = trace_combat_move('Infantry', 'NAA', [1, 2, 3], gs, data)
+        trace = trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3], gs, data)
         self.assertTrue(trace.crossed_water)
 
     def test_crossed_water_true_when_already_starting_in_a_sea_zone(self):
@@ -985,7 +1000,7 @@ class TestTraceCombatMove(unittest.TestCase):
         gs = make_state(
             data, territory_owners={2: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
         )
-        trace = trace_combat_move('Infantry', 'NAA', [1, 2], gs, data)
+        trace = trace_combat_move('Mechanized Infantry', 'NAA', [1, 2], gs, data)
         self.assertTrue(trace.crossed_water)
 
     def test_crossed_water_always_false_for_a_sea_unit(self):
@@ -1087,16 +1102,18 @@ class TestTraceCombatMove(unittest.TestCase):
             data, territory_owners={1: 'NAA', 3: 'NAA'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             contested={2: {'NAA', 'AAC'}},
         )
-        trace = trace_combat_move('Infantry', 'NAA', [1, 2, 3], gs, data)
+        trace = trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3], gs, data)
         self.assertEqual(trace.final_kind, 'safe_landing')
 
     def test_cannot_continue_past_an_amphibious_landing(self):
-        # Mech Inf: combat_move 2, +1 for touching water = 3, so budget
-        # alone would allow a 3rd hop -- but landing via the hostile-
-        # water exception must be the final stop of the move regardless.
+        # Mech Inf here has a combat_move of 3, so budget alone would allow a
+        # 3rd hop -- but landing via the hostile-water exception must be the
+        # final stop of the move regardless.
+        custom = dict(LAND_UNITS, **{'Mechanized Infantry': dict(LAND_UNITS['Mechanized Infantry'], combat_move=3)})
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'sea'}, 3: {'type': 'land'}, 4: {'type': 'land'}},
             adjacency={1: [2], 2: [1, 3], 3: [2, 4], 4: [3]},
+            unit_defs=custom,
         )
         gs = make_state(
             data, territory_owners={1: 'NAA', 3: 'NAA', 4: 'AAC'},
@@ -1134,7 +1151,7 @@ class TestTraceCombatMove(unittest.TestCase):
             contested={2: {'NAA', 'AAC'}},
         )
         with self.assertRaises(ValueError):
-            trace_combat_move('Infantry', 'NAA', [1, 2, 3], gs, data)
+            trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3], gs, data)
 
 
 if __name__ == '__main__':

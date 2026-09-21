@@ -3,7 +3,7 @@ Generate a starting-setup scenario from scratch: territory ownership from
 data/territories.json, doctrine emphasis from data/factions.json's 'focus'
 lists. The core generate_scenario() function is parameterized so it can
 produce variant rulesets (see tools/generate_scenario_100ipc.py); this
-file's own __main__ block produces the canonical 200-IPC/SC scenario.
+file's own __main__ block produces the canonical 125-MPC/SC scenario.
 
 Algorithm per faction:
   1. Baseline garrison: 1 unit of the faction's primary land type, at every
@@ -56,7 +56,7 @@ Algorithm per faction:
 Run from the repo root, after derived/faction_territory_profile.json has
 been (re)built:
     python3 tools/generate_scenario.py
-Writes data/scenarios/starting_setup_200ipc.json. Always re-run
+Writes data/scenarios/starting_setup_125ipc.json. Always re-run
 tools/build_all.py (or at least build_setup_tab.py + validate_setup.py)
 afterward.
 """
@@ -216,7 +216,7 @@ def generate_scenario(*, budget, use_sc, min_types, promotions_count,
         spend[fac] += cost_at(unit, is_sc) * qty
 
     # ---- Phase 1: baseline garrison ----
-    # garrison_all_territories=True (the 200-budget case) uses each
+    # garrison_all_territories=True (the full-budget case) uses each
     # faction's doctrine-primary land type -- budget comfortably covers
     # every territory at that price. garrison_all_territories=False (the
     # tight-budget case) covers only the mandatory foreign-bordering
@@ -375,6 +375,37 @@ def generate_scenario(*, budget, use_sc, min_types, promotions_count,
                     break
             if not upgraded:
                 break
+        # SC-swap: a unit bought at a Strategic Center costs its sc_cost, the same
+        # unit bought anywhere else its full cost -- so when the remainder equals
+        # that difference, moving one land unit from an SC to a non-SC territory
+        # (with room, leaving the SC at least one land unit) closes it exactly.
+        if use_sc and remainder > 0:
+            done = False
+            for t in [x for x in LAND_TYPES if x in used_types[fac]]:
+                if PURCHASABLE[t]['cost'] - PURCHASABLE[t]['sc_cost'] != remainder:
+                    continue
+                for src in profile[fac]:
+                    if not src['sc'] or purchases[fac].get(src['id'], {}).get(t, 0) < 1:
+                        continue
+                    land_here = sum(q for u, q in purchases[fac][src['id']].items() if u in LAND_TYPES)
+                    if land_here < 2:
+                        continue
+                    for dst in sorted(profile[fac], key=lambda r: -cap_of(r)):
+                        if dst['sc'] or headroom(fac, dst['id']) < 1 or cap_of(dst) < 1:
+                            continue
+                        purchases[fac][src['id']][t] -= 1
+                        if purchases[fac][src['id']][t] == 0:
+                            del purchases[fac][src['id']][t]
+                        cap_used[fac][src['id']] -= 1
+                        spend[fac] -= cost_at(t, True)
+                        add_unit(fac, dst['id'], t, 1)
+                        remainder -= PURCHASABLE[t]['cost'] - PURCHASABLE[t]['sc_cost']
+                        done = True
+                        break
+                    if done:
+                        break
+                if done:
+                    break
         if remainder > 2:
             print(f'WARNING: {fac} has {remainder} IPC unspent -- larger than expected, worth a look')
         elif remainder != 0:
@@ -435,13 +466,13 @@ def generate_scenario(*, budget, use_sc, min_types, promotions_count,
 if __name__ == '__main__':
     rules = json.load(open('data/rules.json'))['setup']
     generate_scenario(
-        budget=rules['starting_unit_budget_ipc'],
+        budget=rules['starting_unit_budget_mpc'],
         use_sc=True,
         min_types=6,
         promotions_count=rules['promotions_per_faction_at_setup'],
         garrison_all_territories=True,
-        out_path='data/scenarios/starting_setup_200ipc.json',
-        comment=("Starting-setup scenario: 200 IPC per faction, territory ownership from "
+        out_path='data/scenarios/starting_setup_125ipc.json',
+        comment=("Starting-setup scenario: 125 MPC of units per faction, territory ownership from "
                  "data/territories.json. purchases is per-territory unit buys; "
                  "promotions/carrier_escorts/naval_overrides are the fixed setup-time picks "
                  "layered on top."),

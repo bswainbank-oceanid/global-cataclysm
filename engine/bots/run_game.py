@@ -41,7 +41,7 @@ def main():
     modes['AAC'] = FactionMode.BOT
 
     gs = build_game_state(
-        'starting_setup_200ipc', modes,
+        'starting_setup_125ipc', modes,
         randomize_play_order=args.randomize_play_order,
         allow_combat_moves_first_turn=args.allow_combat_moves_first_turn,
         allow_noncombat_moves_first_turn=args.allow_noncombat_moves_first_turn,

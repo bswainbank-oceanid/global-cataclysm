@@ -211,6 +211,9 @@ func _unit_row(unit_type: String, info: Dictionary, is_sea: bool, budget_left: i
 	if not is_sea and str(def["category"]) == "Sea":
 		allowed = false
 		why = "Ships deploy into a sea zone: select an adjacent sea zone."
+	elif is_sea and str(def["category"]) == "Land" and not _is_amphibious(def):
+		allowed = false
+		why = "Only Mechanized Infantry can deploy into a sea zone."
 	elif GameStore.human_purchase["contested"].has(_target) and unit_type != "Infantry":
 		allowed = false
 		why = "Only Infantry may deploy into a contested territory."
@@ -240,6 +243,14 @@ func _unit_row(unit_type: String, info: Dictionary, is_sea: bool, budget_left: i
 	row.add_child(qty)
 	row.add_child(_step_button("+", can_add, func(): add_requested.emit(unit_type, _target)))
 	return row
+
+
+## Only amphibious land units (units.json's "Amphibious" ability: Mechanized Infantry) can enter the water.
+static func _is_amphibious(def: Dictionary) -> bool:
+	for a in def.get("special_abilities", []):
+		if str(a).begins_with("Amphibious"):
+			return true
+	return false
 
 
 func _step_button(text: String, enabled: bool, action: Callable) -> Button:

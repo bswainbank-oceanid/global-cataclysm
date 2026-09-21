@@ -7,7 +7,7 @@ neighbor.
 Default sea zone is the NEAREST (by pixel distance) sea-type neighbor
 among a territory's direct graph neighbors -- not simply the first one in
 the graph's original (arbitrary Delaunay-build) order. That original
-"first in order" rule is what data/scenarios/starting_setup_200ipc.json's
+"first in order" rule is what data/scenarios/starting_setup_125ipc.json's
 naval defaults were historically built against (see the note preserved in
 docs/SCHEMA.md's history), but it picks a geometrically-wrong zone for 34
 of the map's 75 coastal territories -- in the worst case (Rocky Mountain

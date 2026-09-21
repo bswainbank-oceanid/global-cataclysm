@@ -52,7 +52,7 @@ def _build_demo_session(human='NAA', combat_first_turn=False, seed=None):
     modes['NAA'] = FactionMode.HUMAN if human == 'NAA' else FactionMode.BOT
     modes['GPC'] = FactionMode.HUMAN if human == 'GPC' else FactionMode.BOT
     rng = random.Random(seed)  # seed=None: a fresh, unrepeatable game; otherwise it replays exactly
-    gs = build_game_state('starting_setup_200ipc', modes, randomize_play_order=False,
+    gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False,
                           allow_combat_moves_first_turn=combat_first_turn, rng=rng)
     turn_log = TurnLog()
     engine = GameEngine(gs, data_module, turn_log=turn_log, combat_rng=random.Random(rng.random()))

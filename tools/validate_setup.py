@@ -13,7 +13,7 @@ has at least 1 land unit (Infantry, Mechanized Infantry, or Armor -- not
 necessarily Infantry), and each faction purchases at least N of the 8
 purchasable unit types (setup.unit_diversity_rule).
 
-Defaults to the canonical 200-IPC/SC scenario. --no-sc validates a
+Defaults to the canonical 125-MPC/SC scenario. --no-sc validates a
 ruleset that ignores every territory's strategic_center flag entirely:
 cap becomes flat value+<--cap-bonus> (instead of value+3, +2 more if SC)
 and every cost uses the unit's plain 'cost' field (never 'sc_cost') --
@@ -32,7 +32,7 @@ import json
 import sys
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--scenario', default='data/scenarios/starting_setup_200ipc.json')
+parser.add_argument('--scenario', default='data/scenarios/starting_setup_125ipc.json')
 parser.add_argument('--no-sc', action='store_true', help='ignore strategic_center: flat value+cap-bonus cap, no sc_cost discount')
 parser.add_argument('--cap-bonus', type=int, default=2, help='with --no-sc, cap = value + this (0 = no bonus at all)')
 parser.add_argument('--min-types', type=int, default=6, help='minimum distinct unit types required per faction')

@@ -3,7 +3,7 @@ Builds an initial GameState from a scenario file plus a per-faction faction-
 mode assignment. HUMAN/BOT factions get the scenario's purchases/
 promotions/carrier_escorts/naval_deploy_overrides placed on the board
 directly (this is initial deployment, not a pending purchase -- units are
-live from turn 0, and the design doc's 200/100 MPC starting budget never
+live from turn 0, and the design doc's 125/100 MPC starting budget never
 touches a faction's treasury_mpc; it's a separate, one-time bootstrapping
 budget spent once, here, on units directly). DEFENSIVE factions always
 use the checked-in 100-IPC/no-SC scenario file for their own units,
@@ -130,7 +130,7 @@ def build_game_state(scenario_name, faction_modes, defensive_scenario_name='star
                       can_withdraw_from_alliances=True, can_rejoin_alliances=False,
                       alliance_strategies=None, alliance_behaviors=None, rng=None,
                       starting_alliances=None):
-    """scenario_name: e.g. 'starting_setup_200ipc', used for every HUMAN/
+    """scenario_name: e.g. 'starting_setup_125ipc', used for every HUMAN/
     BOT faction. faction_modes: {faction_code: FactionMode}, one entry per
     faction in data.factions(). Returns a fresh GameState at global_turn 0
     with every territory's TerritoryState created (land territories'
@@ -231,7 +231,7 @@ def build_game_state(scenario_name, faction_modes, defensive_scenario_name='star
         # production.income_formula) is computable now -- e.g. 25 base
         # territory value + 3 Strategic Centers x 2 = 31 MPC for a
         # standard faction. This is separate from, and unrelated to, the
-        # one-time 200/100-MPC scenario budget spent above to buy each
+        # one-time 125/100-MPC scenario budget spent above to buy each
         # faction's STARTING UNITS -- that's a bootstrapping budget, not
         # treasury_mpc.
         fstate.treasury_mpc = compute_income(code, gs, data)

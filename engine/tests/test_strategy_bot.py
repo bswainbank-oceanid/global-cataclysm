@@ -39,9 +39,9 @@ class TestSettings(unittest.TestCase):
     def test_a_few_known_cells(self):
         self.assertEqual(self.s.unit_weights['NAA']['Mechanized Infantry'], 6)
         self.assertEqual(self.s.strategy_weights['GPC']['Controlling'], 7)
-        self.assertEqual(self.s.thresholds['Strategic']['hold_sc'], {'min': 20, 'max': 90})
+        self.assertEqual(self.s.thresholds['Strategic']['hold_sc'], {'min': 0.001, 'max': 95})
         self.assertEqual(self.s.thresholds['Controlling']['control_oceans'], {'weight': 10, 'min': 65, 'max': 95})
-        self.assertEqual(self.s.limits('Defensive', 'hold_sc'), (0.10, 0.99))
+        self.assertEqual(self.s.limits('Defensive', 'hold_sc'), (0.00001, 0.99))
 
     def test_a_weight_of_zero_is_never_drawn(self):
         rng = random.Random(1)
@@ -80,20 +80,20 @@ class TestSettings(unittest.TestCase):
 
     def test_purchase_odds_come_from_the_factions_unit_weights(self):
         odds = self.s.unit_odds('PAF', ['Infantry', 'Aircraft Carrier', 'Fighter'])
-        self.assertEqual(odds, [7, 2, 2])
+        self.assertEqual(odds, [9, 2, 2])
 
     def test_the_json_matches_the_spreadsheet_builder(self):
         path = os.path.join(os.path.dirname(strategy_settings.__file__), '..', '..', 'data', 'bot_settings.json')
         with open(path, encoding='utf-8') as f:
             raw = json.load(f)
-        self.assertEqual(raw['unit_weights']['UER']['Infantry'], 6)
+        self.assertEqual(raw['unit_weights']['UER']['Infantry'], 8)
 
 
 def make_game(modes=None, seed=1, first_turn_combat=True):
     modes = modes or {f: FactionMode.NEUTRAL for f in FACTIONS}
     modes = dict(modes)
     rng = random.Random(seed)
-    gs = build_game_state('starting_setup_200ipc', {f: modes.get(f, FactionMode.NEUTRAL) for f in FACTIONS},
+    gs = build_game_state('starting_setup_125ipc', {f: modes.get(f, FactionMode.NEUTRAL) for f in FACTIONS},
                           randomize_play_order=False, allow_combat_moves_first_turn=first_turn_combat, rng=rng)
     engine = GameEngine(gs, data, combat_rng=random.Random(seed + 1))
     return engine, gs
@@ -201,7 +201,7 @@ class TestStrategyBotPlaysTurns(unittest.TestCase):
     def game(self, seed=3, budget=250):
         modes = {f: FactionMode.BOT for f in FACTIONS}
         rng = random.Random(seed)
-        gs = build_game_state('starting_setup_200ipc', modes, rng=rng)
+        gs = build_game_state('starting_setup_125ipc', modes, rng=rng)
         engine = GameEngine(gs, data, combat_rng=random.Random(rng.random()))
         bots = {f: StrategyBot(engine, f, rng=random.Random(rng.random()), budget=budget) for f in modes}
         return engine, gs, bots

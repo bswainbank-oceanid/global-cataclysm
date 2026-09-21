@@ -44,7 +44,7 @@ verify a change didn't regress game balance.
 - Rule constants (stacking cap formula, promotion effect, combat rules,
   etc): `data/rules.json`.
 - The starting-setup scenario (what each faction buys, promotes, and
-  where naval units deploy): `data/scenarios/starting_setup_200ipc.json`.
+  where naval units deploy): `data/scenarios/starting_setup_125ipc.json`.
 
 Always re-run `python3 tools/build_all.py` after editing and check that
 `tools/validate_setup.py` reports no errors before trusting the result.

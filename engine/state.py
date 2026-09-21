@@ -54,6 +54,14 @@ def _has_dig_in(base):
     return any(a.startswith('Dig In') for a in base.get('special_abilities', []))
 
 
+def is_amphibious(base):
+    """True if this unit type's data carries the 'Amphibious' trait (units.json's
+    special_abilities) -- the only land units that may enter a sea space, where they
+    become Transports. Mechanized Infantry, currently; Infantry and Armor never leave
+    the land."""
+    return any(a.startswith('Amphibious') for a in base.get('special_abilities', []))
+
+
 @dataclass
 class UnitInstance:
     """An individual, persistent service record -- not an anonymous stack
@@ -153,14 +161,14 @@ class UnitInstance:
         each other.
 
         air_superiority: True only for the pre-combat air-superiority
-        round -- Fighter steps its attack die up TWO sizes (D6 -> D10;
-        stacking on top of any promotion, same as round1_bonus would);
-        Bomber's die is unchanged (its base D8 already is the design doc's
-        "D8 attack") and its damage is fixed at 2 (an absolute override,
-        not a relative one -- Bomber's normal damage, 3, isn't touched by
-        promotion either, so there's nothing to stack against). Every other unit type is unaffected -- this
-        never touches defense, so it plays no part in a target's
-        defense_of computation, only the acting unit's own roll."""
+        round -- a unit type whose units.json entry has an
+        'air_superiority' block (Fighter: D10, 3 damage; Bomber: D6, 1
+        damage) rolls that die instead of its normal base die (promotion
+        and round1_bonus still step it up from there) and deals that
+        damage instead (an absolute override -- promotion doesn't touch
+        damage). Every other unit type is unaffected -- this never
+        touches defense, so it plays no part in a target's defense_of
+        computation, only the acting unit's own roll."""
         if self.in_transport_form:
             # A land unit in a sea battle is its Transport for the battle:
             # units.json's Transport row (defense 6, 1 HP, no attack die or
@@ -176,7 +184,8 @@ class UnitInstance:
                 'combat_move': ship['combat_move'], 'non_combat_move': ship['non_combat_move'],
             }
         base = unit_defs[self.unit_type]
-        die = base['attack_die']
+        as_stats = base.get('air_superiority') if air_superiority else None
+        die = as_stats['attack_die'] if as_stats else base['attack_die']
         defense = base['defense']
         damage = base['damage']
         max_hp = base['hp']
@@ -193,11 +202,8 @@ class UnitInstance:
                 defense = min(defense + 1, 10)
         if defending and defense is not None and _has_dig_in(base):
             defense = min(defense + 1, 10)
-        if air_superiority:
-            if self.unit_type == 'Fighter' and die is not None:
-                die = step_up_die(step_up_die(die))  # two steps: D6 -> D10 (design doc: "D10 Attack")
-            elif self.unit_type == 'Bomber':
-                damage = 2  # die unchanged: its D8 IS the air-superiority die ("D8 Attack, 2 Damage")
+        if as_stats:
+            damage = as_stats['damage']
         return {
             'attack_die': die,
             'defense': defense,

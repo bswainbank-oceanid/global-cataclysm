@@ -123,6 +123,10 @@ Full stat blocks for the 8 purchasable units plus Transport (not
 purchasable). See the file itself — every field is self-explanatory
 (`cost`/`sc_cost` in IPC, `attack_die` as "D6".."D12", etc).
 
+`special_abilities` are text the engine reads by prefix ("Dig In", "Amphibious" -- the only land unit that can enter the water,
+Mechanized Infantry). `air_superiority` (Fighter, Bomber) is the `attack_die` and `damage` used in the pre-combat
+air-superiority round instead of the normal ones. Transport moves 2/2, with no move bonus.
+
 ## data/factions.json
 
 Faction reference: full name, hex color (with leading `#`), major
@@ -138,9 +142,9 @@ map/adjacency notes. This is the single source of truth for game-balance
 constants — a future game engine should read this file rather than
 re-deriving these numbers.
 
-## data/scenarios/starting_setup_200ipc.json
+## data/scenarios/starting_setup_125ipc.json
 
-The 200-IPC starting-setup scenario: which units each faction buys at
+The 125-MPC starting-setup scenario: which units each faction buys at
 each territory, which 3 units per faction get promoted, the carrier/
 escort assignments, and any naval sea-zone assignments that override the
 default (used to resolve collisions where two factions would otherwise
@@ -148,7 +152,7 @@ share a sea zone).
 
 ```
 {
-  "budget_ipc": 200,
+  "budget_ipc": 125,
   "purchases": {
     "<FAC>": [
       {"territory_id": int, "units": [{"unit": string, "qty": int}, ...]},
