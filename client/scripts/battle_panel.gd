@@ -277,6 +277,22 @@ func _sync() -> void:
 	_refresh_texts()
 	_layout(true)
 	_show_dice()
+	_play_reactions()
+
+
+## Every roll on show shakes the unit that made it; every hit bounces the unit that took it.
+func _play_reactions() -> void:
+	var n := 0
+	for e in _model.last_rolls:
+		var delay := minf(0.05 * n, 0.9)
+		n += 1
+		var id := int(e["unit_id"])
+		if _tiles.has(id):
+			_tiles[id].shake(delay)
+		if bool(e.get("hit", false)) and e.get("target_unit_id") != null:
+			var target := int(e["target_unit_id"])
+			if _tiles.has(target):
+				_tiles[target].bounce(delay + 0.3)
 
 
 ## The button's label and the text box: what the last pulse did, then what happens next
@@ -511,7 +527,11 @@ func _draw_table() -> void:
 	for i in _rows.size():
 		var y: float = _row_y[i]
 		var h: float = _row_h[i]
-		t.draw_line(Vector2(0, y), Vector2(TABLE_W, y), line, 1.0)
+		if i == 0:
+			t.draw_line(Vector2(0, y), Vector2(TABLE_W, y), line, 1.0)   # under the headers, all the way across
+		else:  # the row lines stop at the Roll column: the dice there spill over rows freely
+			t.draw_line(Vector2(0, y), Vector2(col_x[2], y), line, 1.0)
+			t.draw_line(Vector2(col_x[3], y), Vector2(TABLE_W, y), line, 1.0)
 		var d := str(_rows[i])
 		if int(_rows[i]) >= TOP_DEFENSE:
 			_golden_defense(t, Rect2(col_x[0], y, COL_DEF, h), d)

@@ -37,6 +37,10 @@ var dimmed := false        # can't be picked right now (no legal move, or alread
 var committed := false     # queued to move: drawn with an arrow badge; clicking recalls it
 var drag_payload := {}     # non-empty: this tile can start a move drag carrying this payload
 var rolling := false       # the battle board: this unit's roll is the one on show
+var _shake_x := 0.0        # the battle board's reactions: a roll shakes the unit side to side,
+var _bounce_y := 0.0       # and a hit bounces it up and down (drawn as an offset; the layout is untouched)
+var _shake_tween: Tween
+var _bounce_tween: Tween
 
 
 static func make(u: Dictionary, transport_form := false) -> UnitTile:
@@ -99,7 +103,38 @@ func _describe() -> String:
 	return "Transport carrying " + line if in_transport else line
 
 
+## A quick side-to-side shake, after `delay` seconds: this unit is rolling.
+func shake(delay := 0.0) -> void:
+	if _shake_tween != null:
+		_shake_tween.kill()
+	_shake_tween = create_tween()
+	if delay > 0.0:
+		_shake_tween.tween_interval(delay)
+	_shake_tween.tween_method(func(t: float):
+		_shake_x = sin(t * TAU * 3.0) * 2.5 * (1.0 - t)
+		queue_redraw(), 0.0, 1.0, 0.32)
+	_shake_tween.tween_callback(func():
+		_shake_x = 0.0
+		queue_redraw())
+
+
+## A bounce up and down, after `delay` seconds: this unit was hit.
+func bounce(delay := 0.0) -> void:
+	if _bounce_tween != null:
+		_bounce_tween.kill()
+	_bounce_tween = create_tween()
+	if delay > 0.0:
+		_bounce_tween.tween_interval(delay)
+	_bounce_tween.tween_method(func(t: float):
+		_bounce_y = -absf(sin(t * TAU)) * 7.0 * (1.0 - t)
+		queue_redraw(), 0.0, 1.0, 0.45)
+	_bounce_tween.tween_callback(func():
+		_bounce_y = 0.0
+		queue_redraw())
+
+
 func _draw() -> void:
+	draw_set_transform(Vector2(_shake_x, _bounce_y), 0.0, Vector2.ONE)
 	var owner_col: Color = GameData.factions[unit["owner"]].color
 	if button_pressed:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(1.0, 0.82, 0.25, 0.14))
