@@ -1089,10 +1089,8 @@ class GameEngine:
     def _record_combat_stats(self, events, attacker_units, defender_units, battle_type):
         """Promotions and kills come straight off the event stream
         (PROMOTION events, and any UNIT_ROLL hit that drops its target's
-        target_hp_after to <=0 -- the same "killing blow" signal
-        combat._fight_one_round uses internally for its own killed_by XP
-        bonus, just re-derived here from the public events rather than
-        threaded through as a return value). Deaths come off the final
+        target_hp_after to <=0 -- a "killing blow", re-derived here from the
+        public events). Deaths come off the final
         BATTLE_END event's eliminated_*_ids -- battle_type == 'sea' plus
         the dead unit's own category == 'Land' is what "died in transport
         form" means (see stats.py's module docstring)."""

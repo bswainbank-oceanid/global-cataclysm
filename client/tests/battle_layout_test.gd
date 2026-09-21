@@ -23,7 +23,10 @@ func _initialize() -> void:
 	_check(panel._row_of(t) == 1, "a transport (no die) sits in the 6 row")
 	_check(panel._row_of({"die": "D6", "defense": 5}) == 0, "defense 5 sits in the first row")
 	_check(panel._row_of({"die": "D12", "defense": 10}) == 5, "defense 10 sits in the last row")
-	_check(panel._row_of({"die": "D12", "defense": 11}) == 5, "a defense above 10 stays in the last row")
+	_check(panel._row_of({"die": "D12", "defense": 11}) == 5, "a defense above 10 stays in the last row while there is no 11 row")
+	panel._rows = panel.ROWS + [11]  # a defending Infantry with five promotions: the golden 11 row
+	_check(panel._row_of({"die": "D12", "defense": 11}) == 6, "defense 11 sits in the golden row of its own")
+	_check(panel._row_of({"die": "D12", "defense": 10}) == 5, "defense 10 keeps its row")
 	panel.free()
 
 	# Dice fill their row's cell in a grid; grids taller than the cell spill into the

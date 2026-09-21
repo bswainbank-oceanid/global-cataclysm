@@ -25,7 +25,7 @@ const HP_W := 7.0
 const HP_TWO_COLUMNS := 6   # more HP than this is drawn in two columns
 const HP_TEXT_FROM := 5     # this much max HP or more also gets the "left/max" text
 const XP_PIPS := 5  # rules.json promotion.xp_required
-const MAX_PROMOTIONS := 5  # rules.json promotion.max_promotions: a unit at this rank earns no more XP
+const DEFAULT_MAX_PROMOTIONS := 3  # rules.json promotion.max_promotions (units.json may give a type its own: Infantry 5)
 const CARGO_BOX := Rect2(43, 1, 58, 64)   # the bordered box around the carried unit (transport form)
 const CARGO_OFFSET := Vector2(46, 2)      # where that unit's package starts inside it
 
@@ -59,6 +59,7 @@ static func for_battle(row: Dictionary) -> UnitTile:
 	var u := {
 		"unit_id": row["unit_id"], "unit_type": row["unit_type"], "owner": row["owner"],
 		"current_hp": row["hp"], "xp": row["xp"], "promoted": row["promoted"], "promotions": row["promotions"],
+		"max_promotions": row.get("max_promotions"),
 	}
 	var tile := UnitTile.make(u, bool(row["cargo"]))
 	tile.max_hp_override = int(row["max_hp"])
@@ -77,6 +78,13 @@ func update_from_battle(row: Dictionary) -> void:
 	queue_redraw()
 
 
+## The most promotions this unit can earn (a unit at that rank earns no more XP).
+func max_rank() -> int:
+	if unit.get("max_promotions") != null:
+		return int(unit["max_promotions"])
+	return int(GameData.units["units"].get(unit["unit_type"], {}).get("max_promotions", DEFAULT_MAX_PROMOTIONS))
+
+
 func max_hp() -> int:
 	if max_hp_override >= 0:
 		return max_hp_override
@@ -87,7 +95,7 @@ func max_hp() -> int:
 func _describe() -> String:
 	var line := "%s #%d\nHP %d/%d   XP %d/%d%s" % [
 		unit["unit_type"], int(unit["unit_id"]), int(unit["current_hp"]), max_hp(),
-		mini(int(unit.get("xp", 0)), XP_PIPS), XP_PIPS, "   (%d promotion%s%s)" % [int(unit.get("promotions", 0)), "" if int(unit.get("promotions", 0)) == 1 else "s", ", top rank" if int(unit.get("promotions", 0)) >= MAX_PROMOTIONS else ""] if int(unit.get("promotions", 0)) > 0 else ""]
+		mini(int(unit.get("xp", 0)), XP_PIPS), XP_PIPS, "   (%d promotion%s%s)" % [int(unit.get("promotions", 0)), "" if int(unit.get("promotions", 0)) == 1 else "s", ", top rank" if int(unit.get("promotions", 0)) >= max_rank() else ""] if int(unit.get("promotions", 0)) > 0 else ""]
 	return "Transport carrying " + line if in_transport else line
 
 
@@ -184,7 +192,7 @@ func _draw_package(offset: Vector2, owner_col: Color) -> void:
 			draw_string(ThemeDB.fallback_font, offset + Vector2(cx - offset.x - 10.0, 9.6), str(ranks), HORIZONTAL_ALIGNMENT_CENTER, 20.0, 9, Color(0.1, 0.06, 0.0))
 
 	# XP pips under the unit (a top-rank unit has nothing left to earn: all gold).
-	var xp := XP_PIPS if ranks >= MAX_PROMOTIONS else mini(int(unit.get("xp", 0)), XP_PIPS)
+	var xp := XP_PIPS if ranks >= max_rank() else mini(int(unit.get("xp", 0)), XP_PIPS)
 	var pip := 4.0
 	var gap := 2.0
 	var row_w := XP_PIPS * pip + (XP_PIPS - 1) * gap

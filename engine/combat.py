@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from .state import _has_dig_in, max_promotions
+
 DIE_MAX = {'D6': 6, 'D8': 8, 'D10': 10, 'D12': 12}
 
 
@@ -282,25 +284,26 @@ def unit_stat_rows(side_label, units, unit_defs, round1_bonus=False, air_superio
             'die': stats['attack_die'], 'defense': stats['defense'], 'damage': stats['damage'],
             'hp': u.current_hp, 'max_hp': stats['max_hp'], 'xp': u.xp, 'promoted': u.promoted, 'promotions': u.promotions,
             'cargo': u.in_transport_form,
+            'max_promotions': unit_defs[u.unit_type].get('max_promotions'),
+            'dig_in': bool(side_label == 'defender' and _has_dig_in(unit_defs[u.unit_type])),
         })
     return rows
 
 
 def _apply_xp_and_check_promotions(round_number, attackers_before, defenders_before,
-                                    attacker_hits, defender_hits, killed_by, promotion_cfg, unit_defs):
+                                    attacker_hits, defender_hits, promotion_cfg, unit_defs):
     """Awards XP (survive the round: +1 to every unit still alive after
     this round's casualties; deal damage: +1 to any unit that landed at
-    least one hit; eliminate a promoted unit: +1 to whichever unit's hit
-    was the killing blow, credited via `killed_by`), then promotes any
-    unit with XP at the threshold: each promotion costs `xp_required` XP (the
-    surplus rolls over toward the next rank), healing +1 HP into it immediately.
-    A unit can be promoted again and again up to `max_promotions`; at that rank it
-    earns no more XP (and any surplus is dropped). Yields a PROMOTION event per promotion."""
+    least one hit), then promotes any unit with XP at the threshold: each
+    promotion costs `xp_required` XP (the surplus rolls over toward the next
+    rank), healing +1 HP into it immediately. A unit can be promoted again and
+    again up to its cap (`max_promotions`: the type's own in units.json, else the
+    rules' default); at that rank it earns no more XP (and any surplus is
+    dropped). Yields a PROMOTION event per promotion."""
     xp_required = promotion_cfg['xp_required']
-    max_promotions = promotion_cfg.get('max_promotions')
 
     def capped(u):
-        return max_promotions is not None and u.promotions >= max_promotions
+        return u.promotions >= max_promotions(u.unit_type, unit_defs, promotion_cfg)
 
     for side_label, units_before, hit_ids in (('attacker', attackers_before, attacker_hits), ('defender', defenders_before, defender_hits)):
         for unit in units_before:
@@ -309,10 +312,6 @@ def _apply_xp_and_check_promotions(round_number, attackers_before, defenders_bef
             unit.xp += 1  # survived the round
             if unit.unit_id in hit_ids:
                 unit.xp += 1  # dealt damage
-    for killer_id, victim in killed_by.items():
-        killer = next((u for u in attackers_before + defenders_before if u.unit_id == killer_id and u.current_hp > 0), None)
-        if killer is not None and victim.promotions > 0 and not victim.in_transport_form and not capped(killer):
-            killer.xp += 1
 
     for unit, side_label in [(u, 'attacker') for u in attackers_before if u.current_hp > 0] + \
                              [(u, 'defender') for u in defenders_before if u.current_hp > 0]:
@@ -361,7 +360,6 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
 
     attacker_hit_ids = set()
     defender_hit_ids = set()
-    killed_by = {}  # unit_id of the killer -> victim UnitInstance, for the promoted-victim XP bonus
     defenders_by_id = {u.unit_id: u for u in defenders}
     attackers_by_id = {u.unit_id: u for u in attackers}
 
@@ -376,8 +374,6 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
             if event.hit:
                 hit_ids.add(event.unit_id)
                 pending[event.target_unit_id] = pending.get(event.target_unit_id, 0) + event.damage
-                if event.target_hp_after is not None and event.target_hp_after <= 0:
-                    killed_by[event.unit_id] = enemies_by_id[event.target_unit_id]
         return pending
 
     # The attacker's enemies (defenders) ARE this battle's defending side
@@ -396,7 +392,7 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
                        attacker_losses=attacker_losses, defender_losses=defender_losses)
 
     yield from _apply_xp_and_check_promotions(
-        round_number, attackers, defenders, attacker_hit_ids, defender_hit_ids, killed_by,
+        round_number, attackers, defenders, attacker_hit_ids, defender_hit_ids,
         combat_cfg['_promotion_cfg'], unit_defs,
     )
     yield BattleEvent(

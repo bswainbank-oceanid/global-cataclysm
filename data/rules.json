@@ -310,13 +310,13 @@
   "promotion": {
     "xp_for_surviving_a_round": 1,
     "xp_for_dealing_damage": 1,
-    "xp_for_eliminating_a_promoted_unit": 1,
     "xp_required": 5,
-    "max_promotions": 5,
-    "effect": "each promotion is a permanent combat bonus: attack die steps up one size (max D12), +1 defense (max 10), +1 HP",
-    "repeatable": "a unit can be promoted repeatedly, up to max_promotions (5): whenever it has xp_required (5) or more XP after a round it is promoted and 5 XP are spent; surplus XP carries over toward the next promotion (enough XP can mean several at once). A unit at max_promotions earns no more XP (any surplus is dropped) and gains nothing further. A unit that has reached D12 and defense 10 still gains the +1 HP per promotion. Killing a unit with at least one promotion pays the xp_for_eliminating_a_promoted_unit bonus, whatever its rank. UnitInstance.promotions counts them (promoted is just promotions > 0).",
+    "max_promotions": 3,
+    "effect": "each promotion is a permanent combat bonus: attack die steps up one size (max D12), +1 defense (max 10), +1 HP. Infantry's Dig In (+1 defense while defending) is added on top of that cap: a defending Infantry with 5 promotions has defense 11.",
+    "repeatable": "a unit can be promoted repeatedly, up to its cap (max_promotions: 3, or the type's own in units.json -- Infantry 5): whenever it has xp_required (5) or more XP after a round it is promoted and 5 XP are spent; surplus XP carries over toward the next promotion (enough XP can mean several at once). A unit at its cap earns no more XP (any surplus is dropped). A unit that has reached D12 and defense 10 still gains the +1 HP per promotion. XP comes only from surviving a round (+1) and dealing damage (+1); there is no bonus for eliminating a promoted unit. UnitInstance.promotions counts them (promoted is just promotions > 0).",
     "demotion": "not specified in the current design doc revision",
-    "service_record_note": "every unit is tracked as an individual, persistent record (stable unit_id), not an anonymous stack count -- its XP, promotion status, and current damage/HP all persist on that specific unit across turns and battles."
+    "service_record_note": "every unit is tracked as an individual, persistent record (stable unit_id), not an anonymous stack count -- its XP, promotion status, and current damage/HP all persist on that specific unit across turns and battles.",
+    "max_promotions_note": "the default cap: a unit type's own max_promotions in units.json overrides it (Infantry 5)."
   },
   "faction_modes": {
     "modes": [

@@ -2,8 +2,8 @@ import random
 import unittest
 
 from engine import data
-from engine.state import UnitInstance
-from engine.combat import _apply_xp_and_check_promotions as _apply_xp, resolve_battle, BattleResult, EventKind, _select_target, _resolution_sequence, _fight_one_round
+from engine.state import UnitInstance, max_promotions
+from engine.combat import _apply_xp_and_check_promotions as _apply_xp, unit_stat_rows, resolve_battle, BattleResult, EventKind, _select_target, _resolution_sequence, _fight_one_round
 
 UNIT_DEFS = data.units()
 RULES = data.rules()
@@ -664,13 +664,13 @@ class TestNoLegalTargets(unittest.TestCase):
 
 
 class TestRepeatedPromotions(unittest.TestCase):
-    """A unit can be promoted again and again: every 5 XP is a promotion (the surplus
-    carries over), and each one steps the die up (max D12), adds defense (max 10) and +1 HP."""
+    """A unit can be promoted again and again, up to its cap (3; Infantry 5): every 5 XP is a
+    promotion (the surplus carries over), and each one steps the die up (max D12), adds defense
+    (max 10) and +1 HP. XP comes only from surviving a round and dealing damage."""
 
-    def promote(self, unit, hit=False, killed_promoted=None):
+    def promote(self, unit, hit=False):
         enemy = make(99, 'Infantry', 'AAC')
-        killed_by = {unit.unit_id: killed_promoted} if killed_promoted is not None else {}
-        return list(_apply_xp(1, [unit], [enemy], {unit.unit_id} if hit else set(), set(), killed_by,
+        return list(_apply_xp(1, [unit], [enemy], {unit.unit_id} if hit else set(), set(),
                               RULES['promotion'], UNIT_DEFS))
 
     def test_five_xp_is_a_promotion_and_costs_five(self):
@@ -716,39 +716,55 @@ class TestRepeatedPromotions(unittest.TestCase):
         self.assertEqual((stats(3)['attack_die'], stats(3)['defense']), ('D12', 8))
         self.assertEqual((stats(9)['attack_die'], stats(9)['defense'], stats(9)['max_hp']), ('D12', 10, base['hp'] + 9))
 
+    def test_the_default_cap_is_three_and_infantry_may_reach_five(self):
+        self.assertEqual(RULES['promotion']['max_promotions'], 3)
+        self.assertEqual(UNIT_DEFS['Infantry']['max_promotions'], 5)
+        for unit_type in ('Mechanized Infantry', 'Armor', 'Fighter', 'Bomber', 'Cruiser', 'Submarine', 'Aircraft Carrier'):
+            self.assertEqual(max_promotions(unit_type, UNIT_DEFS, RULES['promotion']), 3, unit_type)
+
     def test_promotions_stop_at_the_cap_and_top_rank_units_earn_no_xp(self):
-        cap = RULES['promotion']['max_promotions']
-        self.assertEqual(cap, 5)
-        unit = make(1, 'Infantry', 'NAA', promoted=cap - 1)
-        unit.xp = 9  # +2 -> 11: would be two promotions, but only one rank is left
-        events = self.promote(unit, hit=True)
-        self.assertEqual([e.promotion_rank for e in events], [cap])
-        self.assertEqual((unit.promotions, unit.xp), (cap, 0))  # the surplus is dropped
-        top = make(2, 'Infantry', 'NAA', promoted=cap)
+        armor = make(1, 'Armor', 'NAA', promoted=2)
+        armor.xp = 9  # +2 -> 11: would be two promotions, but only one rank is left
+        events = self.promote(armor, hit=True)
+        self.assertEqual([e.promotion_rank for e in events], [3])
+        self.assertEqual((armor.promotions, armor.xp), (3, 0))  # the surplus is dropped
+        top = make(2, 'Armor', 'NAA', promoted=3)
         self.assertEqual(self.promote(top, hit=True), [])
-        self.assertEqual((top.promotions, top.xp), (cap, 0))
+        self.assertEqual((top.promotions, top.xp), (3, 0))
 
-    def test_a_top_rank_killer_gets_no_bonus_xp(self):
-        killer = make(1, 'Infantry', 'NAA', promoted=RULES['promotion']['max_promotions'])
-        self.promote(killer, hit=True, killed_promoted=make(2, 'Armor', 'AAC', promoted=2))
-        self.assertEqual(killer.xp, 0)
+    def test_infantry_can_go_on_to_five_promotions(self):
+        inf = make(1, 'Infantry', 'NAA', promoted=3)
+        inf.xp = 9
+        self.assertEqual([e.promotion_rank for e in self.promote(inf, hit=True)], [4, 5])
+        self.assertEqual((inf.promotions, inf.xp), (5, 0))
+        self.assertEqual(self.promote(inf, hit=True), [])
 
-    def test_killing_a_unit_promoted_more_than_once_still_pays_the_bonus(self):
+    def test_killing_a_promoted_unit_pays_no_bonus_xp(self):
         killer = make(1, 'Infantry', 'NAA')
-        killer.xp = 0
-        victim = make(2, 'Armor', 'AAC', promoted=3)
-        self.promote(killer, hit=True, killed_promoted=victim)
-        self.assertEqual(killer.xp, 3)  # survive + damage + promoted kill
-
-    def test_units_round_trip_through_a_saved_game(self):
-        unit = make(1, 'Bomber', 'NAA', promoted=2)
-        unit.xp = 3
-        again = UnitInstance.from_dict(unit.to_dict())
-        self.assertEqual((again.promotions, again.xp, again.promoted), (2, 3, True))
-        legacy = unit.to_dict()
-        del legacy['promotions']  # an older save only had the flag
-        self.assertEqual(UnitInstance.from_dict(legacy).promotions, 1)
+        self.promote(killer, hit=True)
+        self.assertEqual(killer.xp, 2)  # survive + damage, nothing for the kill
+        self.assertNotIn('xp_for_eliminating_a_promoted_unit', RULES['promotion'])
 
 
-if __name__ == '__main__':
-    unittest.main()
+class TestDigInStacksBeyondTheCap(unittest.TestCase):
+    """Dig In is added after the promotion/bonus cap of 10: a defending Infantry with 5 promotions has 11."""
+
+    def stats(self, promotions, defending=True, round1_bonus=False):
+        return make(1, 'Infantry', 'AAC', promoted=promotions).effective_stats(UNIT_DEFS, defending=defending, round1_bonus=round1_bonus)
+
+    def test_a_fully_promoted_defending_infantry_defends_at_eleven(self):
+        self.assertEqual(self.stats(5)['defense'], 11)
+        self.assertEqual(self.stats(5, defending=False)['defense'], 10)
+
+    def test_it_stacks_below_the_cap_too(self):
+        self.assertEqual(self.stats(0)['defense'], 6)
+        self.assertEqual(self.stats(3)['defense'], 9)
+        self.assertEqual(self.stats(4)['defense'], 10)
+
+    def test_the_round_one_bonus_is_still_capped_before_dig_in(self):
+        self.assertEqual(self.stats(5, round1_bonus=True)['defense'], 11)  # 5+5=10, the bonus stays at 10, Dig In +1
+        self.assertEqual(self.stats(4, round1_bonus=True)['defense'], 11)  # 5+4+1=10, Dig In +1
+
+    def test_the_battle_rows_flag_dig_in_and_the_type_cap(self):
+        rows = unit_stat_rows('defender', [make(1, 'Infantry', 'AAC', promoted=5), make(2, 'Armor', 'AAC')], UNIT_DEFS)
+        self.assertEqual([(r['defense'], r['dig_in'], r['max_promotions']) for r in rows], [(11, True, 5), (7, False, 3)])

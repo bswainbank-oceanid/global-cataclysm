@@ -31,13 +31,17 @@ const TILE_SCALE := 0.8
 const GAP := 3.0
 const SLIDE_SECONDS := 0.28
 
-## The chart's rows: one per defense value.
+## The chart's rows: one per defense value. A defending Infantry with five promotions has
+## a defense of 11 (Dig In is added on top of the cap of 10): when that ever happens the
+## chart grows a row of its own for it, marked with a shimmering golden box.
 const ROWS := [5, 6, 7, 8, 9, 10]
+const TOP_DEFENSE := 11
 
 var _model: BattleModel
 var _tiles := {}            # unit_id -> UnitTile
 var _dice: Array = []
 var _unit_row := {}         # unit_id -> row index in the current arrangement
+var _rows: Array = ROWS.duplicate()   # ROWS, plus the golden 11 while a unit has that defense
 var _row_y: Array = []
 var _row_h: Array = []
 var _want_press := false
@@ -296,7 +300,23 @@ func _refresh_texts() -> void:
 # ---- layout -------------------------------------------------------------------
 
 func _row_of(u: Dictionary) -> int:
-	return clampi(int(u["defense"]), 5, 10) - 5
+	return clampi(int(u["defense"]), 5, int(_rows.back())) - 5
+
+
+## The rows for the units on the board now: the usual six, and a golden 11 if anyone has it.
+func _rows_now() -> Array:
+	var rows: Array = ROWS.duplicate()
+	for id in _model.unit_order:
+		var u: Dictionary = _model.units[id]
+		if bool(u["present"]) and int(u["defense"]) >= TOP_DEFENSE:
+			rows.append(TOP_DEFENSE)
+			break
+	return rows
+
+
+func _process(_delta: float) -> void:
+	if visible and _table != null and _rows.size() > ROWS.size():
+		_table.queue_redraw()  # the golden box shimmers
 
 
 func _units_col_w() -> float:
@@ -323,9 +343,10 @@ func _flow(ids: Array, width: float) -> Dictionary:
 func _layout(animate: bool) -> void:
 	var uw := _units_col_w()
 	# Which units sit in which row, per side.
+	_rows = _rows_now()
 	var cells := {"attacker": [], "defender": []}
 	for side in cells:
-		for i in ROWS.size():
+		for i in _rows.size():
 			cells[side].append([])
 	_unit_row.clear()
 	for id in _model.unit_order:
@@ -340,7 +361,7 @@ func _layout(animate: bool) -> void:
 	_row_h.clear()
 	var y := HEADER_H * 2.0
 	var flows := {"attacker": [], "defender": []}
-	for i in ROWS.size():
+	for i in _rows.size():
 		var h := ROW_MIN
 		for side in cells:
 			var f := _flow(cells[side][i], uw - 6.0)
@@ -359,7 +380,7 @@ func _layout(animate: bool) -> void:
 	var right_x := left_x + uw + COL_ROLL
 	for side in cells:
 		var origin_x := left_x if side == "attacker" else right_x
-		for i in ROWS.size():
+		for i in _rows.size():
 			var f: Dictionary = flows[side][i]
 			for id in cells[side][i]:
 				var target := Vector2(origin_x + 3.0, float(_row_y[i]) + 4.0) + (f["pos"][id] as Vector2)
@@ -487,17 +508,42 @@ func _draw_table() -> void:
 		_centered(t, labels[i], Rect2(col_x[i], HEADER_H, col_x[i + 1] - col_x[i], HEADER_H), 12, HudStyle.TEXT_DIM)
 
 	# Body: row lines and the defense numbers.
-	for i in ROWS.size():
+	for i in _rows.size():
 		var y: float = _row_y[i]
 		var h: float = _row_h[i]
 		t.draw_line(Vector2(0, y), Vector2(TABLE_W, y), line, 1.0)
-		var d := str(ROWS[i])
+		var d := str(_rows[i])
+		if int(_rows[i]) >= TOP_DEFENSE:
+			_golden_defense(t, Rect2(col_x[0], y, COL_DEF, h), d)
+			_golden_defense(t, Rect2(col_x[4], y, COL_DEF, h), d)
+			continue
 		_centered(t, d, Rect2(col_x[0], y, COL_DEF, h), 15, text)
 		_centered(t, d, Rect2(col_x[4], y, COL_DEF, h), 15, text)
 	for x in col_x:
 		t.draw_line(Vector2(x, body_top), Vector2(x, body_bottom), line, 1.0)
 	t.draw_line(Vector2(0, body_bottom), Vector2(TABLE_W, body_bottom), line, 1.0)
 	t.draw_rect(Rect2(0, 0, TABLE_W, body_bottom), line, false, 1.5)
+
+
+## The defense box of an 11 -- a rare occasion, so a shimmering golden box: a light band sweeps
+## across it and the rim pulses.
+func _golden_defense(t: Control, cell: Rect2, label: String) -> void:
+	var box := cell.grow(-4.0)
+	var now := float(Time.get_ticks_msec()) / 1000.0
+	t.draw_rect(box, Color(0.86, 0.62, 0.10))
+	t.draw_rect(Rect2(box.position, Vector2(box.size.x, box.size.y * 0.5)), Color(1.0, 0.82, 0.30, 0.55))
+	var centre := fposmod(now / 1.8, 1.0) * (box.size.x + 40.0) - 20.0   # the sweeping band, in box x
+	var step := 2.0
+	var x := 0.0
+	while x < box.size.x:
+		var a := exp(-pow(x - centre, 2.0) / (2.0 * 9.0 * 9.0)) * 0.75
+		if a > 0.02:
+			t.draw_rect(Rect2(box.position.x + x, box.position.y, step, box.size.y), Color(1.0, 0.98, 0.80, a))
+		x += step
+	var pulse := 0.5 + 0.5 * sin(now * TAU / 1.2)
+	t.draw_rect(box, Color(1.0, 0.93, 0.55, 0.65 + 0.35 * pulse), false, 3.0)
+	t.draw_rect(box.grow(-3.0), Color(0.45, 0.28, 0.0, 0.55), false, 1.0)
+	_centered(t, label, box, 20, Color(0.22, 0.12, 0.0))
 
 
 func _centered(t: Control, s: String, r: Rect2, size: int, col: Color) -> void:

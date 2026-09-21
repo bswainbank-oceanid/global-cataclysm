@@ -13,8 +13,8 @@ This re-plays the same rules without the narration, on plain lists:
     (Bombers pick uniformly); Submarines and aircraft cannot see each other;
   * a unit that has nothing it could hit does not roll; the battle ends when a side is gone or neither
     side can hit the other;
-  * XP and promotions after every round (survive +1, deal damage +1, kill a promoted unit +1; 5 XP per
-    promotion, up to the rules' max_promotions), Dig In (defending Infantry +1 defense), the first-round bonus (amphibious
+  * XP and promotions after every round (survive +1, deal damage +1; 5 XP per
+    promotion, up to each type's max_promotions), Dig In (defending Infantry +1 defense), the first-round bonus (amphibious
     landing / ambush / reclaim), and Transport form in sea battles.
 
 "Success" is the attacker's -- all defenders eliminated and at least one attacker left, as if the
@@ -25,6 +25,7 @@ import copy
 import random
 
 from ..combat import DIE_MAX
+from ..state import max_promotions
 
 MAX_ROUNDS = 100
 
@@ -44,7 +45,7 @@ class _Side:
     """One side of a battle, prepared once: per-unit static facts, and the stats each kind of round
     uses (which change as units are promoted mid-battle -- see stats())."""
 
-    def __init__(self, units, is_defender, bonus, battle_type, unit_defs, type_order, xp_required, max_promotions=None):
+    def __init__(self, units, is_defender, bonus, battle_type, unit_defs, type_order, xp_required, promotion_cfg):
         self.units = units
         self.n = len(units)
         self.is_defender = is_defender
@@ -52,7 +53,7 @@ class _Side:
         self.unit_defs = unit_defs
         self.type_order = type_order
         self.xp_required = xp_required
-        self.max_promotions = max_promotions
+        self.caps = [max_promotions(u.unit_type, unit_defs, promotion_cfg) for u in units]
         self.type = [u.unit_type for u in units]
         self.is_air = [unit_defs[u.unit_type]['category'] == 'Air' for u in units]
         self.is_sub = [t == 'Submarine' for t in self.type]
@@ -97,16 +98,14 @@ class _Side:
         return got
 
 
-def _roll_side(rng, side, enemies, my_table, enemy_defs, enemy_hp, alive, enemy_promoted):
-    """One side's roll-through. Returns (damage per enemy index, indices of my units that dealt damage,
-    [(killer index, victim index)] for kills of promoted victims). Damage is applied by the caller once
-    both sides have rolled."""
+def _roll_side(rng, side, enemies, my_table, enemy_defs, enemy_hp, alive):
+    """One side's roll-through. Returns (damage per enemy index, indices of my units that dealt damage).
+    Damage is applied by the caller once both sides have rolled."""
     rolls, _, order = my_table
     left = list(enemy_hp)
     standing = [j for j in range(enemies.n) if left[j] > 0]
     pending = {}
     dealt = set()
-    kills = []
     e_is_air, e_is_sub, e_type, e_cargo = enemies.is_air, enemies.is_sub, enemies.type, enemies.cargo
     rand = rng.random
     for i in order:
@@ -147,15 +146,12 @@ def _roll_side(rng, side, enemies, my_table, enemy_defs, enemy_hp, alive, enemy_
         dmg = damage // 2 if bypass else damage
         if dmg <= 0:
             continue
-        before = left[target]
-        left[target] = before - dmg
+        left[target] -= dmg
         pending[target] = pending.get(target, 0) + dmg
         dealt.add(i)
         if left[target] <= 0:
             standing.remove(target)
-            if before > 0 and enemy_promoted[target] and not e_cargo[target]:
-                kills.append((i, target))
-    return pending, dealt, kills
+    return pending, dealt
 
 
 def _can_hit(side, enemies, alive, enemy_alive, order):
@@ -173,12 +169,10 @@ def _can_hit(side, enemies, alive, enemy_alive, order):
     return False
 
 
-def _award(side, hp, alive_before_mask, dealt, kill_credits, xp, extras, promoted_flag):
+def _award(side, hp, alive_before_mask, dealt, xp, extras):
     """XP and promotions after a round, as engine.combat._apply_xp_and_check_promotions does them."""
-    cap = side.max_promotions
-
     def capped(i):
-        return cap is not None and side.promotions0[i] + extras[i] >= cap
+        return side.promotions0[i] + extras[i] >= side.caps[i]
 
     for i in range(side.n):
         if hp[i] <= 0 or side.cargo[i] or not alive_before_mask[i] or capped(i):
@@ -186,9 +180,6 @@ def _award(side, hp, alive_before_mask, dealt, kill_credits, xp, extras, promote
         xp[i] += 1
         if i in dealt:
             xp[i] += 1
-    for killer in kill_credits:
-        if hp[killer] > 0 and not side.cargo[killer] and not capped(killer):
-            xp[killer] += 1
     changed = False
     for i in range(side.n):
         if hp[i] <= 0 or side.cargo[i] or not alive_before_mask[i]:
@@ -197,7 +188,6 @@ def _award(side, hp, alive_before_mask, dealt, kill_credits, xp, extras, promote
             xp[i] -= side.xp_required
             extras[i] += 1
             hp[i] += 1
-            promoted_flag[i] = True
             changed = True
     return changed
 
@@ -207,8 +197,6 @@ def simulate_once(rng, att, dfn, air_round):
     ahp, dhp = list(att.hp0), list(dfn.hp0)
     axp, dxp = list(att.xp0), list(dfn.xp0)
     aex, dex = [0] * att.n, [0] * dfn.n
-    apro = [p > 0 for p in att.promotions0]
-    dpro = [p > 0 for p in dfn.promotions0]
 
     atabs, dtabs = {}, {}  # each side's current tables per kind of round; rebuilt only after a promotion
 
@@ -233,12 +221,12 @@ def simulate_once(rng, att, dfn, air_round):
         at, dt = tables('air')
         ahp_view = [h if att.is_air[i] else 0 for i, h in enumerate(ahp)]  # only aircraft fight, and can be hit
         dhp_view = [h if dfn.is_air[j] else 0 for j, h in enumerate(dhp)]
-        pa, adealt, akills = _roll_side(rng, att, dfn, at, dt[1], dhp_view, aa, dpro)
-        pd, ddealt, dkills = _roll_side(rng, dfn, att, dt, at[1], ahp_view, da, apro)
+        pa, adealt = _roll_side(rng, att, dfn, at, dt[1], dhp_view, aa)
+        pd, ddealt = _roll_side(rng, dfn, att, dt, at[1], ahp_view, da)
         apply(pa, pd)
-        if _award(att, ahp, aa, adealt, [k for k, _ in akills], axp, aex, apro):
+        if _award(att, ahp, aa, adealt, axp, aex):
             atabs.clear()
-        if _award(dfn, dhp, da, ddealt, [k for k, _ in dkills], dxp, dex, dpro):
+        if _award(dfn, dhp, da, ddealt, dxp, dex):
             dtabs.clear()
 
     for rnd in range(1, MAX_ROUNDS + 1):
@@ -250,12 +238,12 @@ def simulate_once(rng, att, dfn, air_round):
         at, dt = tables(kind)
         if not _can_hit(att, dfn, a_alive, d_alive, at[2]) and not _can_hit(dfn, att, d_alive, a_alive, dt[2]):
             break
-        pa, adealt, akills = _roll_side(rng, att, dfn, at, dt[1], dhp, a_alive, dpro)
-        pd, ddealt, dkills = _roll_side(rng, dfn, att, dt, at[1], ahp, d_alive, apro)
+        pa, adealt = _roll_side(rng, att, dfn, at, dt[1], dhp, a_alive)
+        pd, ddealt = _roll_side(rng, dfn, att, dt, at[1], ahp, d_alive)
         apply(pa, pd)
-        if _award(att, ahp, a_alive, adealt, [k for k, _ in akills], axp, aex, apro):
+        if _award(att, ahp, a_alive, adealt, axp, aex):
             atabs.clear()
-        if _award(dfn, dhp, d_alive, ddealt, [k for k, _ in dkills], dxp, dex, dpro):
+        if _award(dfn, dhp, d_alive, ddealt, dxp, dex):
             dtabs.clear()
 
     a_left, d_left = any(h > 0 for h in ahp), any(h > 0 for h in dhp)
@@ -283,9 +271,8 @@ def estimate(attackers, defenders, battle_type, unit_defs, rules, rng=None, samp
         return BattleOdds(1.0, 0.0, 0.0, 0)
     type_order = rules['combat']['resolution_order'][battle_type]
     xp_required = rules['promotion']['xp_required']
-    max_promotions = rules['promotion'].get('max_promotions')
-    att = _Side(list(attackers), False, round1_bonus_side == 'attacker', battle_type, unit_defs, type_order, xp_required, max_promotions)
-    dfn = _Side(list(defenders), True, round1_bonus_side == 'defender', battle_type, unit_defs, type_order, xp_required, max_promotions)
+    att = _Side(list(attackers), False, round1_bonus_side == 'attacker', battle_type, unit_defs, type_order, xp_required, rules['promotion'])
+    dfn = _Side(list(defenders), True, round1_bonus_side == 'defender', battle_type, unit_defs, type_order, xp_required, rules['promotion'])
     air_round = any(att.is_air) and any(dfn.is_air) and ('Fighter' in att.type or 'Fighter' in dfn.type)
     counts = {'attacker': 0, 'defender': 0, 'neither': 0}
     done = 0

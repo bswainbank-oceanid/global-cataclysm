@@ -54,6 +54,17 @@ def _has_dig_in(base):
     return any(a.startswith('Dig In') for a in base.get('special_abilities', []))
 
 
+def max_promotions(unit_type, unit_defs, promotion_cfg=None, default=3):
+    """The most promotions a unit of this type can earn: units.json's own max_promotions for the type,
+    else the rules' promotion.max_promotions, else `default`."""
+    own = unit_defs.get(unit_type, {}).get('max_promotions')
+    if own is not None:
+        return own
+    if promotion_cfg and promotion_cfg.get('max_promotions') is not None:
+        return promotion_cfg['max_promotions']
+    return default
+
+
 def is_amphibious(base):
     """True if this unit type's data carries the 'Amphibious' trait (units.json's
     special_abilities) -- the only land units that may enter a sea space, where they
@@ -156,9 +167,9 @@ class UnitInstance:
         persisted on the unit either, since a unit that's attacking in
         one battle can be defending in the next. Units with the 'Dig In'
         trait (units.json's special_abilities -- Infantry, currently)
-        get +1 defense (capped at 10) while defending, stacking
-        additively with promotion and round1_bonus same as those do with
-        each other.
+        get +1 defense while defending, stacking additively with promotion and
+        round1_bonus -- but added AFTER their cap of 10, so it can take a
+        defending, fully promoted Infantry to 11.
 
         air_superiority: True only for the pre-combat air-superiority
         round -- a unit type whose units.json entry has an
@@ -201,7 +212,7 @@ class UnitInstance:
             if defense is not None:
                 defense = min(defense + 1, 10)
         if defending and defense is not None and _has_dig_in(base):
-            defense = min(defense + 1, 10)
+            defense = defense + 1  # on top of the promotion/bonus cap of 10: a fully promoted Infantry defends at 11
         if as_stats:
             damage = as_stats['damage']
         return {

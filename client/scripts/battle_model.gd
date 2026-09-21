@@ -24,7 +24,7 @@ extends RefCounted
 
 enum Resolve { ENTIRE_BATTLE, ROUND, SIDE, UNIT_TYPE, UNIT }
 const RESOLVE_NAMES := ["Entire Battle", "Round", "Side", "Unit Type", "Unit"]
-const MAX_PROMOTIONS := 5   # rules.json promotion.max_promotions: a top-rank unit earns no more XP
+const DEFAULT_MAX_PROMOTIONS := 3   # rules.json promotion.max_promotions (a unit type may have its own: Infantry 5)
 enum Mark { NONE, HIT, DEAD }
 
 var territory_id := -1
@@ -247,6 +247,7 @@ func _start_next_round() -> void:
 		var u: Dictionary = units[int(row["unit_id"])]
 		for k in ["die", "defense", "damage", "hp", "max_hp", "xp", "promoted", "promotions", "cargo"]:
 			u[k] = row[k]
+		u["dig_in"] = bool(row.get("dig_in", false))
 		fighting[int(row["unit_id"])] = true
 	for id in unit_order:
 		units[id]["present"] = fighting.has(id)
@@ -267,8 +268,10 @@ func _end_round() -> void:
 			u[k] = row[k]
 		if int(u["promotions"]) > was_ranks and not bool(u["cargo"]):
 			# +1 defense per new promotion at once, so the unit moves up a row on the
-			# board now; the next round's start snapshot carries the same value (cap 10).
-			u["defense"] = mini(int(u["defense"]) + int(u["promotions"]) - was_ranks, 10)
+			# board now; the next round's start snapshot carries the same value (promotions
+			# cap at 10; a defending Infantry's Dig In is +1 on top of that, so 11).
+			var dig := 1 if bool(u.get("dig_in", false)) else 0
+			u["defense"] = mini(int(u["defense"]) - dig + int(u["promotions"]) - was_ranks, 10) + dig
 			promoted.append(u)
 		if int(row["hp"]) <= 0:
 			u["mark"] = Mark.DEAD
@@ -324,16 +327,14 @@ func _apply_roll(e: Dictionary) -> void:
 		t["hp"] = maxi(int(e["target_hp_after"]), 0)
 		t["mark"] = Mark.DEAD if int(e["target_hp_after"]) <= 0 else Mark.HIT
 		# XP shows the moment it is earned (promotion still waits for the round's
-		# end): +1 for a unit's first damage this round, and +1 more for the
-		# killing blow on a promoted unit. The round-end snapshot then settles it.
+		# end): +1 for a unit's first damage this round. The round-end snapshot then
+		# settles it (adding the +1 for surviving).
 		var hitter: Dictionary = units[int(e["unit_id"])]
-		var top_rank := int(hitter.get("promotions", 0)) >= MAX_PROMOTIONS  # nothing left to earn
+		var cap := int(hitter["max_promotions"]) if hitter.get("max_promotions") != null else DEFAULT_MAX_PROMOTIONS
 		if not _damaged_this_round.has(hitter["unit_id"]):
 			_damaged_this_round[hitter["unit_id"]] = true
-			if not top_rank:
+			if int(hitter.get("promotions", 0)) < cap:  # a top-rank unit has nothing left to earn
 				hitter["xp"] = int(hitter["xp"]) + 1
-		if int(e["target_hp_after"]) <= 0 and bool(t["promoted"]) and not bool(t["cargo"]) and not top_rank:
-			hitter["xp"] = int(hitter["xp"]) + 1
 
 
 ## Reveal the units of `sd` that had no legal target and sit before roll position `before`.
