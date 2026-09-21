@@ -171,7 +171,7 @@ the same JSON, not a parallel editing path.
 - ✅ Rules engine (standalone module, `engine/`, 459 tests) — Purchase
   (including the carrierless-air and contested-purchase-lost deploy
   fallbacks), Deploy + Income, Combat Move, Combat Resolution, Non-Combat
-  Move, Capture Territory, faction elimination, game-end detection, and
+  Move, Capture Territory, surrender demands (faction elimination), game-end detection, and
   full turn/phase orchestration are implemented and tested, along with a
   random bot (`engine/bots/`) that drives full games through the same
   public API a human UI would use, and a `GameStats` observer
@@ -359,22 +359,33 @@ the same JSON, not a parallel editing path.
   and before each battle on your own turn; the "yours" options are inert
   while there is no HUMAN faction. Unpaused phases run back to back with no
   added delay, waiting only for the previous phase's arrows to finish
-  **Alliances (human):** the human's Alliances queue carries `human: {kind:
-  "alliance", members, options {eligible_invite_targets, can_withdraw}, staged,
-  game_would_end}`; the client picks the turn's one action -- do nothing, withdraw
-  from the alliance, or invite one of the eligible factions (bots included) -- in the
-  middle panel with `stage_alliance` (checked by a dry run of the engine call, so an
-  invite that would break the alliance-size limit is refused at once), and
-  holding the submit button executes it. An invited bot answers by its own alliance
-  strategy when the phase runs (the queue does not reveal it); the result log says
-  whether it joined or declined (`alliance_declined` is a new turn-log event). The
-  other direction: when a BOT's Alliances phase invites the human, its queue carries
-  an `invitation`, the client opens an invitation window (`InvitationWindow`: who
-  invites, who is in the alliance, what it becomes -- it doesn't block the map, so
-  you can look at the board first) and the phase cannot be executed until the player
-  answers with `respond_invitation`; the answer is folded into the same queued plan.
-  Withdrawing is disabled when the engine says so (a unit on an ally's Strategic
-  Center). Bots invite only other bots or the human, since at most one human plays.
+  **Diplomacy (human):** the Alliances phase is now the **Diplomacy phase** (`Phase.DIPLOMACY`).
+  Nobody is eliminated automatically any more for holding 0-1 Strategic Centers: a faction
+  leaves the game when another *forces its surrender* in that phase -- because its income
+  (the value of its uncontested territories) is more than 200% of the target's, or the target
+  holds 0-1 Strategic Centers and the demander controls one that was originally the target's
+  (`GameEngine.surrender_grounds` / `legal_surrender_targets` / `demand_surrender`; the target's
+  units leave the board, its territory stays, its alliance ties are cut). A demand can be made
+  any number of times a turn, before or after the alliance action (invite OR withdraw, once a
+  turn), against an ally too. The human's Diplomacy queue carries `human: {kind: "diplomacy",
+  members, options {eligible_invite_targets, can_withdraw, alliance_action_used}, surrender
+  [{target, reasons, allied, income}], game_would_end}`; every action -- invite, withdraw,
+  force a surrender -- is a **long-click** button in the middle panel (`HoldButton`), carried out
+  at once with `diplomacy_action` (an invited bot answers by its own alliance strategy on the
+  spot), and its outcome comes back as a `diplomacy_result` shown in the Events box (and, for a
+  surrender, announced in the panel in the middle of the screen). Next then just ends the phase.
+  The other direction: a BOT's whole Diplomacy plan (`RandomBot.plan_diplomacy_phase`) is
+  queued as `alliance_plan` + `surrender_plan` events and executed with the phase. Before
+  eliminating anyone a bot asks them into an alliance if that is legal: a bot never declines
+  that request, and a faction that accepts is not eliminated (a human may decline, and is then
+  forced to surrender in the same phase); one alliance action a turn, so one such request a turn,
+  and one it cannot make at all is a plain elimination. A bot never demands an ally's surrender --
+  unless it could win alone (every other faction is open to its demand), when it forces them all to
+  surrender, allies included, to end the game. When a BOT invites the human, its queue carries an
+  `invitation`, the client opens an invitation window (`InvitationWindow`) and the phase cannot be
+  executed until the player answers with `respond_invitation`. Withdrawing is disabled when the
+  engine says so (a unit on an ally's Strategic Center). Bots invite only other bots or the human,
+  since at most one human plays. The phase always runs, even with a maximum alliance size of 1.
   **Launch screen:** the client opens on a launch screen (`LaunchScreen`); the server
   starts idle and a `GameHost` (`server/host.py`) builds the game the screen
   describes (`server/lobby.py`; `--demo` starts the old hardcoded NAA-vs-GPC game
@@ -388,9 +399,8 @@ the same JSON, not a parallel editing path.
   size** setting (default 3; choosable from 1 up to the number of players minus
   one; `max_alliance_size` in the `new_game` settings, validated by `server/lobby.py`;
   the engine still caps it by the number of factions still in play). **1 means no
-  alliances**: the starting-alliance pickers are disabled and the Alliances phase is
-  skipped outright (`GameState.alliances_enabled`; `server/stepper.py` commits it and
-  goes straight to the next faction's turn, so no Alliances step is queued). Two
+  alliances**: the starting-alliance pickers are disabled and nobody can be invited
+  (`GameState.alliances_enabled`); the Diplomacy phase still runs, for surrender demands. Two
   more startup checkboxes, "Combat Moves allowed on a faction's first turn"
   (default off) and "Non-Combat Moves allowed on a faction's first turn" (default on),
   send `allow_combat_first_turn` / `allow_noncombat_first_turn`, which set the

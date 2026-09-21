@@ -418,7 +418,7 @@ class TestPlayToCompletion(unittest.TestCase):
         self.assertEqual(turns1, turns2)
         self.assertEqual(report1, report2)
 
-    def test_survives_the_active_faction_eliminating_itself_mid_turn(self):
+    def test_survives_the_active_faction_losing_its_last_sc_mid_turn(self):
         # A real, pre-existing bug found this session (reproduces on
         # prior commits too, unrelated to any of the above): a faction
         # CAN become eliminated during its own turn, not just someone
@@ -451,9 +451,9 @@ class TestPlayToCompletion(unittest.TestCase):
 
         self.assertEqual(turns, 1)
         self.assertEqual(gs.territories[1].owner, 'Y', "AAC's ally claims the territory, per the documented rule")
-        self.assertTrue(gs.factions['AAC'].eliminated, 'AAC drops to 0 Strategic Centers and is eliminated')
+        self.assertFalse(gs.factions['AAC'].eliminated, 'AAC drops to 0 Strategic Centers but plays on: only a surrender demand eliminates')
 
-    def test_true_territory_loss_can_eliminate_the_active_faction_with_no_ally(self):
+    def test_true_territory_loss_of_the_last_sc_needs_no_ally_and_does_not_eliminate(self):
         # The simpler, more direct path the user pointed out afterward:
         # no ally needed at all. AAC owns territory 1 (its only Strategic
         # Center), already contested by a non-allied X from an earlier
@@ -484,7 +484,7 @@ class TestPlayToCompletion(unittest.TestCase):
 
         self.assertEqual(turns, 1)
         self.assertEqual(gs.territories[1].owner, 'X')
-        self.assertTrue(gs.factions['AAC'].eliminated, 'AAC drops to 0 Strategic Centers and is eliminated')
+        self.assertFalse(gs.factions['AAC'].eliminated, 'AAC drops to 0 Strategic Centers but plays on')
 
 
 if __name__ == '__main__':

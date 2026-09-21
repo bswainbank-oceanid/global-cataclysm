@@ -174,10 +174,11 @@ func _start_view() -> void:
 				else:
 					Stepper.purchase_add(parts[0], int(parts[1]))
 				await get_tree().create_timer(0.25).timeout
-		if Dbg.args.has("alliance"):  # --alliance=none | withdraw | invite:UE   (a scripted player's Alliances choice)
+		if Dbg.args.has("alliance"):  # --alliance=none | withdraw | invite:UE | surrender:UE   (a scripted player's Diplomacy action)
 			await Stepper.wait_ready()
 			var a := str(Dbg.args["alliance"]).split(":")
-			Stepper.alliance_stage(a[0], a[1] if a.size() > 1 else "")
+			if a[0] != "none":
+				Stepper.diplomacy_action(a[0], a[1] if a.size() > 1 else "")
 			await get_tree().create_timer(0.5).timeout
 		if Dbg.args.has("invite_answer"):  # --invite_answer=accept|decline
 			var waited := 0.0

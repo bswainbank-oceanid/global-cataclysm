@@ -105,7 +105,7 @@ async def _respond_to_your_turn(ws, msg, turn_number):
                 break
         print(f'NAA turn {turn_number}: non-combat move orders: {orders or "(none)"}')
         await ws.send(json.dumps({'type': 'noncombat_move', 'faction': faction, 'orders': orders}))
-    elif phase == 'ALLIANCES':
+    elif phase == 'DIPLOMACY':
         print(f'NAA turn {turn_number}: alliance action: none')
         await ws.send(json.dumps({'type': 'alliance_action', 'faction': faction, 'action': 'none'}))
     else:

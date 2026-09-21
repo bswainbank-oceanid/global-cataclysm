@@ -16,7 +16,7 @@ The heuristic bot (`engine/bots/strategy_bot.py`, planner in `engine/bots/planne
 * **Combat Move:** the remembered combat moves are played.
 * **Non-Combat Move:** after combat resolves, a `'noncombat'` plan is made from the board as it now stands
   (moves only; the money is already spent).
-* **Alliances:** unchanged (`alliance_policy`, the alliance strategy/behavior settings).
+* **Diplomacy:** the alliance action is unchanged (`alliance_policy`, the alliance strategy/behavior settings). On top of it a bot forces surrenders (`RandomBot.plan_diplomacy_phase`): it asks a faction into an alliance first if that is legal (a bot never declines), never demands an ally's surrender, and, if it could win alone, forces everyone to surrender to end the game.
 
 Every choice by odds -- style, the order of the secondary objectives, each unit bought -- is a weighted random
 draw from the bot's own seeded rng; a weight of 0 is never drawn.

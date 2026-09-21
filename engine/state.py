@@ -25,7 +25,7 @@ class Phase(Enum):
     NONCOMBAT_MOVE = 'NONCOMBAT_MOVE'
     CAPTURE = 'CAPTURE'
     DEPLOY_INCOME = 'DEPLOY_INCOME'
-    ALLIANCES = 'ALLIANCES'
+    DIPLOMACY = 'DIPLOMACY'
 
 
 # Attack die progression a promotion steps up through, capped at the last entry.
@@ -367,7 +367,7 @@ class FactionState:
     # rolls its 15%-chance "decide to withdraw" check once, at the START
     # of its own turn (take_purchase_phase), and stores the result here
     # so the SAME decision is still honored later that same turn, at the
-    # Alliances phase (take_alliance_phase) -- consumed (reset to False)
+    # Diplomacy phase (take_alliance_phase) -- consumed (reset to False)
     # the moment it's read there, whether or not the withdrawal actually
     # went through.
     pending_treacherous_withdrawal: bool = False
@@ -433,7 +433,7 @@ class GameState:
     factions: dict = field(default_factory=dict)  # dict[str, FactionState]
     _next_unit_id: int = 1
     # victory.game_end_rule: set by GameEngine.process_game_end_check,
-    # checked once per turn at the very end (after the Alliances phase)
+    # checked once per turn at the very end (after the Diplomacy phase)
     # -- true once every remaining active faction is mutually allied with
     # every other, with nobody left non-allied to keep fighting.
     game_over: bool = False
@@ -450,7 +450,7 @@ class GameState:
     allow_noncombat_moves_first_turn: bool = True
     # game_start_settings, the alliance system (this session). Remembered
     # here, unlike randomize_play_order, since GameEngine consults them
-    # on every faction's Alliances phase for as long as the game runs --
+    # on every faction's Diplomacy phase for as long as the game runs --
     # see setup.build_game_state's matching params and
     # engine.engine.GameEngine.invite_to_alliance/withdraw_from_alliance.
     # The CONFIGURED ceiling, chosen at setup -- but not the effective one:
@@ -479,7 +479,7 @@ class GameState:
     @property
     def alliances_enabled(self):
         """False when the game was set up with a maximum alliance size of 1: nobody can ally, and
-        there is no Alliances phase (the turn ends after Deploy + Income)."""
+        there is no Diplomacy phase (the turn ends after Deploy + Income)."""
         return self.max_alliance_size >= 2
 
     def is_strategic_center(self, territory_id, terr):

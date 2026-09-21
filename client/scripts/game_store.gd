@@ -6,7 +6,7 @@ extends Node
 ## falls back to the static starting owners in territories.json.
 
 signal state_changed
-signal alliance_changed  # the human player's Alliances options or a pending invitation changed
+signal alliance_changed  # the human player's Diplomacy options or a pending invitation changed
 signal move_changed  # the human player's move queue, options or selection changed
 signal purchase_changed  # the human player's purchase queue/options changed
 
@@ -15,7 +15,7 @@ var tile_drag_armed := false  # a selected unit tile was pressed: a move drag ma
 var move_origin := -1     # the space whose units are being picked to move
 var move_selected := {}   # unit_id -> true: the units picked (all uncommitted ones by default)
 var _unit_index := {}     # unit_id -> unit dict, rebuilt with every state
-var human_alliance := {}  # the human's Alliances phase: {faction, members, options{eligible_invite_targets, can_withdraw}, staged{action, target?}, game_would_end}
+var human_alliance := {}  # the human's Diplomacy phase: {faction, members, options{eligible_invite_targets, can_withdraw, alliance_action_used}, surrender[{target, reasons, allied, income{yours, theirs}}], game_would_end}
 var invitation := {}      # a bot's invitation awaiting the human's answer: {from, to, members, answered, accepts}
 var human_purchase := {}  # the human's Purchase phase in progress: {faction, treasury, total_cost, targets{tid: {remaining, next_sc, sources}}, orders[], contested[]}
 var announcement_open := false  # an announcement panel is up: the game waits for the player to acknowledge it
@@ -34,16 +34,16 @@ func set_state(new_state: Dictionary) -> void:
 	state_changed.emit()
 
 
-## The server's Alliances options for the human's Alliances phase ({} = not in one).
+## The server's Diplomacy options for the human's Diplomacy phase ({} = not in one).
 func set_human_alliance(faction: String, block: Dictionary) -> void:
-	if block.is_empty() or str(block.get("kind", "")) != "alliance":
+	if block.is_empty() or str(block.get("kind", "")) != "diplomacy":
 		if not human_alliance.is_empty():
 			human_alliance = {}
 			alliance_changed.emit()
 		return
 	human_alliance = {
 		"faction": faction, "members": block["members"], "options": block["options"],
-		"staged": block["staged"], "game_would_end": bool(block["game_would_end"]),
+		"surrender": block["surrender"], "game_would_end": bool(block["game_would_end"]),
 	}
 	alliance_changed.emit()
 
@@ -526,7 +526,7 @@ const PHASE_LABELS := {
 	"RETURN_TO_BASE": "Return to Base",  # a queue step of its own before Non-Combat Move
 	"CAPTURE": "Capture Territory",
 	"DEPLOY_INCOME": "Deploy & Income",
-	"ALLIANCES": "Alliances",
+	"DIPLOMACY": "Diplomacy",
 }
 
 

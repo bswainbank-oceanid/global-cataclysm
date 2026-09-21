@@ -1,5 +1,5 @@
 """
-Bot decision-making for the Alliances phase -- WHEN a bot invites, accepts,
+Bot decision-making for the Diplomacy phase -- WHEN a bot invites, accepts,
 or withdraws, layered on top of the engine's Alliance System mechanics
 (engine.engine.GameEngine.invite_to_alliance/withdraw_from_alliance), which
 only enforce validity, not strategy. Deliberately separate from engine.py:
@@ -55,13 +55,13 @@ withdrawing is simply never possible then):
   than its strongest ally (<50% of either metric) -- confirmed this
   session: "MPC" means FactionState.treasury_mpc (current balance, not
   cumulative), and unit value only ever needs counting deployed units
-  since the Alliances phase runs after Deploy + Income. ALSO always
+  since the Diplomacy phase runs after Deploy + Income. ALSO always
   withdraws if the game would otherwise end on this faction's own turn
   (victory.game_end_rule via GameEngine.would_game_end()) -- confirmed
   this session, and confirmed to apply to treacherous too.
 - treacherous: a 15% chance, rolled once at the START of each of its own
   turns (RandomBot.take_purchase_phase, while it's still in an alliance),
-  to withdraw at that turn's Alliances phase regardless of any other
+  to withdraw at that turn's Diplomacy phase regardless of any other
   factor -- see FactionState.pending_treacherous_withdrawal. ALSO always
   withdraws if the game would otherwise end on this faction's own turn,
   same override as opportunistic (confirmed this session).
@@ -187,7 +187,7 @@ def _other_alliance_sizes(engine, exclude_tag):
 
 def choose_invite_target(engine, faction, rng):
     """Which faction (if any) `faction`'s (effective) alliance_strategy
-    wants to invite this Alliances phase -- None means do nothing. Purely
+    wants to invite this Diplomacy phase -- None means do nothing. Purely
     advisory: the caller must still call GameEngine.invite_to_alliance,
     which re-validates everything authoritatively (this function's own
     checks exist only to avoid the common-case wasted attempt)."""
@@ -274,7 +274,7 @@ def _opportunistic_strength_mismatch(engine, faction):
 
 def should_withdraw(engine, faction):
     """Whether `faction`'s (effective) alliance_behavior wants to
-    withdraw this Alliances phase. Caller must still confirm `faction` is
+    withdraw this Diplomacy phase. Caller must still confirm `faction` is
     actually in an alliance and that can_withdraw_from_alliances is True
     -- this function only decides WANTS, never checks legality."""
     gs = engine.game_state

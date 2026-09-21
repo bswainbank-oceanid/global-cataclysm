@@ -10,7 +10,7 @@ from engine.tests.test_engine import FakeData, make_state, make_unit
 
 def make_engine(modes, alliances=None, strategies=None, behaviors=None,
                  treasuries=None, max_alliance_size=5, can_withdraw_from_alliances=True,
-                 can_rejoin_alliances=False, units_by_territory=None, phase=Phase.ALLIANCES):
+                 can_rejoin_alliances=False, units_by_territory=None, phase=Phase.DIPLOMACY):
     data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
     gs = make_state(data, {1: next(iter(modes))}, modes, treasury=treasuries,
                      units_by_territory=units_by_territory, phase=phase)

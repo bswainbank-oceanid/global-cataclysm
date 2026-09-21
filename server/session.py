@@ -140,7 +140,7 @@ connection on this game -- everyone sees the same board, no fog of war):
     {"type": "your_turn", "faction": "NAA", "phase": "NONCOMBAT_MOVE",
      "legal_noncombat_moves": {unit_id: {"unit_type", "territory_id",
      "destinations": [dest_id, ...]}, ...}}
-    {"type": "your_turn", "faction": "NAA", "phase": "ALLIANCES",
+    {"type": "your_turn", "faction": "NAA", "phase": "DIPLOMACY",
      "legal_alliance_options": {"eligible_invite_targets": [faction_code, ...],
      "can_withdraw": bool}}
         Same "your_turn" type every time -- it's still this faction's own
@@ -216,7 +216,7 @@ _AUTOMATIC_PHASE_KINDS = ('territory_captured', 'unit_deployed', 'income_collect
 
 # Phases where GameState.active_faction (a HUMAN one) is waiting on this
 # module for a real decision -- see connect()/_decision_prompt.
-_HUMAN_DECISION_PHASES = (Phase.PURCHASE, Phase.COMBAT_MOVE, Phase.NONCOMBAT_MOVE, Phase.ALLIANCES)
+_HUMAN_DECISION_PHASES = (Phase.PURCHASE, Phase.COMBAT_MOVE, Phase.NONCOMBAT_MOVE, Phase.DIPLOMACY)
 
 
 class GameSession:
@@ -282,8 +282,8 @@ class GameSession:
             return self.stepper.watch()
         if msg_type == 'next':
             return self.stepper.next()
-        if msg_type == 'stage_alliance':
-            return self.stepper.stage_alliance(faction, msg.get('action'), msg.get('target'))
+        if msg_type == 'diplomacy_action':
+            return self.stepper.diplomacy_action(faction, msg.get('action'), msg.get('target'))
         if msg_type == 'respond_invitation':
             return self.stepper.respond_invitation(faction, msg.get('accept'))
         if msg_type == 'stage_moves':
@@ -578,10 +578,10 @@ class GameSession:
                 # shape as Combat Move above.
                 self.engine.process_return_to_base(faction)
                 return False
-            if gs.phase == Phase.ALLIANCES:
+            if gs.phase == Phase.DIPLOMACY:
                 if bot is None:
                     return False
-                bot.take_alliance_phase()
+                bot.take_diplomacy_phase()
                 self.engine.process_game_end_check(faction)
                 return True
             if gs.phase == Phase.PURCHASE:
@@ -601,7 +601,6 @@ class GameSession:
                 bot.take_noncombat_move_phase()
             elif gs.phase == Phase.CAPTURE:
                 self.engine.process_capture_territory(faction)
-                self.engine.process_elimination_check()
             elif gs.phase == Phase.DEPLOY_INCOME:
                 self.engine.deploy_and_collect_income(faction)
             self.engine.advance_phase()
@@ -655,7 +654,7 @@ class GameSession:
             msg['legal_combat_moves'] = self.engine.legal_combat_move_options(faction)
         elif gs.phase == Phase.NONCOMBAT_MOVE:
             msg['legal_noncombat_moves'] = self.engine.legal_noncombat_move_options(faction)
-        elif gs.phase == Phase.ALLIANCES:
+        elif gs.phase == Phase.DIPLOMACY:
             msg['legal_alliance_options'] = self.engine.legal_alliance_options(faction)
         return msg
 

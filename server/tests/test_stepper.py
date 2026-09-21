@@ -75,9 +75,9 @@ class TestWatch(unittest.TestCase):
             seen.append((queue['faction'], queue['phase']))
         naa_phases = [p for f, p in seen if f == 'NAA']
         aac_phases = [p for f, p in seen if f == 'AAC']
-        self.assertEqual(naa_phases, ['COMBAT_RESOLUTION', 'NONCOMBAT_MOVE', 'CAPTURE', 'DEPLOY_INCOME', 'ALLIANCES'])
+        self.assertEqual(naa_phases, ['COMBAT_RESOLUTION', 'NONCOMBAT_MOVE', 'CAPTURE', 'DEPLOY_INCOME', 'DIPLOMACY'])
         self.assertEqual(aac_phases, ['START_OF_TURN', 'PURCHASE'])
-        self.assertLess(seen.index(('NAA', 'ALLIANCES')), seen.index(('AAC', 'START_OF_TURN')))
+        self.assertLess(seen.index(('NAA', 'DIPLOMACY')), seen.index(('AAC', 'START_OF_TURN')))
 
     def test_every_turn_opens_with_a_start_of_turn_naming_the_round_and_turn(self):
         session = _watch_session()
@@ -99,16 +99,17 @@ class TestWatch(unittest.TestCase):
         self.assertGreaterEqual(len(seen), 2)  # (the game may end early: two bots can eliminate each other)
         self.assertEqual(seen[:3], expected[:len(seen[:3])])
 
-    def test_with_a_maximum_alliance_size_of_one_a_turn_has_no_alliances_phase(self):
+    def test_with_a_maximum_alliance_size_of_one_the_diplomacy_phase_still_runs(self):
+        # (it also carries the surrender demands, so it is never skipped)
         session = _watch_session()
         session.engine.game_state.max_alliance_size = 1
         _watch(session)
         seen = []
-        for _ in range(6):
+        for _ in range(7):
             queue = _by_type(session.handle_message({'type': 'next'}), 'phase_queue')[0]
             seen.append((queue['faction'], queue['phase']))
         self.assertEqual(seen, [('NAA', 'COMBAT_RESOLUTION'), ('NAA', 'NONCOMBAT_MOVE'), ('NAA', 'CAPTURE'),
-                                ('NAA', 'DEPLOY_INCOME'), ('AAC', 'START_OF_TURN'), ('AAC', 'PURCHASE')])
+                                ('NAA', 'DEPLOY_INCOME'), ('NAA', 'DIPLOMACY'), ('AAC', 'START_OF_TURN'), ('AAC', 'PURCHASE')])
 
     def test_the_announcement_does_not_repeat_when_the_turn_is_replanned(self):
         session = _watch_session()
@@ -393,7 +394,7 @@ class TestHumanPurchase(unittest.TestCase):
             seen.append((queue['faction'], queue['phase']))
             if queue['faction'] == 'GPC' and queue['phase'] == 'PURCHASE':
                 break
-        self.assertIn(('NAA', 'ALLIANCES'), seen)
+        self.assertIn(('NAA', 'DIPLOMACY'), seen)
         self.assertEqual(seen[-2:], [('GPC', 'START_OF_TURN'), ('GPC', 'PURCHASE')])
 
     def test_purchase_options_list_a_sea_zone_target_with_its_sources(self):

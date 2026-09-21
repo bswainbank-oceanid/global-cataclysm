@@ -127,6 +127,22 @@ static func describe(e: Dictionary) -> String:
 		"battle_preview":
 			return "[b]Battle at %s[/b] (%s)\n  Attackers: %s\n  Defenders: %s" % [
 				_terr(e["territory_id"]), e["battle_type"], _by_owner(e["attackers"]), _by_owner(e["defenders"])]
+		"surrender_plan":
+			var who := _fac(e["faction"])
+			if bool(e.get("win", false)):
+				return "%s can force every other faction to surrender, and will end the game" % who
+			var bits := []
+			if not e.get("targets", []).is_empty():
+				var names := []
+				for t in e["targets"]:
+					names.append(_fac(str(t)))
+				bits.append("%s will force %s to surrender" % [who, ", ".join(names)])
+			if e.get("if_declined") != null:
+				bits.append("and will force %s to surrender if it declines" % _fac(str(e["if_declined"])) if not bits.is_empty()
+					else "%s will force %s to surrender if it declines" % [who, _fac(str(e["if_declined"]))])
+			return " ".join(bits)
+		"surrender":
+			return "[b]%s forces %s to surrender[/b] (%s)" % [_fac(e["faction"]), _fac(str(e["target"])), surrender_reasons(e.get("reasons", []))]
 		"alliance_plan":
 			match str(e["action"]):
 				"invite":
@@ -144,7 +160,7 @@ static func describe(e: Dictionary) -> String:
 		"income_collected":
 			return "%s collects %d MCP" % [_fac(e["faction"]), int(e["amount"])]
 		"faction_eliminated":
-			return "[b]%s is eliminated![/b]" % _fac(e["faction"])
+			return "[b]%s is out of the game![/b]" % _fac(e["faction"])
 		"alliance_joined":
 			return "%s and %s form an alliance" % [_fac(e["faction"]), _fac(e["target"])]
 		"alliance_declined":
@@ -152,3 +168,15 @@ static func describe(e: Dictionary) -> String:
 		"alliance_withdrawal":
 			return "%s withdraws from its alliance" % _fac(e["faction"])
 	return ""
+
+
+## Why a surrender may be demanded, in words.
+static func surrender_reasons(reasons: Array) -> String:
+	var bits := []
+	for r in reasons:
+		match str(r):
+			"income":
+				bits.append("its income is more than twice theirs")
+			"strategic_center":
+				bits.append("it controls one of their Strategic Centers while they hold one or none")
+	return " and ".join(bits)

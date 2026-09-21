@@ -630,7 +630,7 @@ class TestLostContestedPurchaseOverAWholeTurn(unittest.TestCase):
         before = count()
         engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, T)])
         engine.confirm_purchases('NAA')
-        while gs.active_faction == 'NAA' and gs.phase != Phase.ALLIANCES:
+        while gs.active_faction == 'NAA' and gs.phase != Phase.DIPLOMACY:
             ph = gs.phase
             if ph == Phase.COMBAT_MOVE:
                 engine.confirm_combat_moves('NAA')
@@ -641,7 +641,6 @@ class TestLostContestedPurchaseOverAWholeTurn(unittest.TestCase):
                 engine.confirm_noncombat_moves('NAA')
             elif ph == Phase.CAPTURE:
                 engine.process_capture_territory('NAA')
-                engine.process_elimination_check()
                 self.assertEqual(gs.territories[T].owner, 'GPC', 'the battle was lost, and with it the territory')
             elif ph == Phase.DEPLOY_INCOME:
                 engine.deploy_and_collect_income('NAA')
@@ -1527,7 +1526,7 @@ class TestCombatResolutionThenCaptureTerritory(unittest.TestCase):
         self.assertEqual(gs.territories[2].contested_by, {'NAA', 'AAC'})
         gs.phase = Phase.DEPLOY_INCOME
         engine.deploy_and_collect_income('NAA')
-        gs.phase = Phase.ALLIANCES
+        gs.phase = Phase.DIPLOMACY
         # Not calling process_game_end_check here -- AAC being DEFENSIVE
         # (not HUMAN/BOT) means it's the only active faction, and
         # would_game_end() treats "1 active faction left" as game over,
@@ -2408,121 +2407,167 @@ class TestCaptureTerritory(unittest.TestCase):
             engine.process_capture_territory('NAA')
 
 
-class TestEliminationCheck(unittest.TestCase):
-    def test_faction_with_zero_scs_is_eliminated(self):
+class TestSurrender(unittest.TestCase):
+    """Nobody is eliminated for being down to 0-1 Strategic Centers any more: a faction leaves the
+    game when another forces its surrender in the Diplomacy phase -- because the demander's
+    income (the value of its uncontested territories) is more than 200% of the target's, or the target
+    holds 0-1 Strategic Centers and the demander controls one that was originally the target's."""
+
+    def rich_and_poor(self, **kw):
+        # NAA: value 5 + 3 + 2 = 10 (uncontested); AAC: value 1 + 1 = 2 -- more than double.
+        data = FakeData(
+            territories={
+                1: {'type': 'land', 'value': 5, 'faction': 'NAA'}, 2: {'type': 'land', 'value': 3, 'faction': 'NAA'},
+                3: {'type': 'land', 'value': 2, 'faction': 'NAA'},
+                4: {'type': 'land', 'value': 1, 'faction': 'AAC'}, 5: {'type': 'land', 'value': 1, 'faction': 'AAC'},
+            },
+            adjacency={},
+        )
+        gs = make_state(data, {1: 'NAA', 2: 'NAA', 3: 'NAA', 4: 'AAC', 5: 'AAC'},
+                        {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DIPLOMACY, **kw)
+        gs.active_faction = 'NAA'
+        return data, gs, GameEngine(gs, data)
+
+    def test_nobody_is_eliminated_for_holding_no_strategic_centers(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 3}}, adjacency={})
         gs = make_state(data, {1: 'AAC'}, {'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE)
+        gs.active_faction = 'AAC'
         engine = GameEngine(gs, data)
-        engine.process_elimination_check()
-        self.assertTrue(gs.factions['AAC'].eliminated)
-
-    def test_faction_with_exactly_one_sc_is_eliminated(self):
-        data = FakeData(territories={1: {'type': 'land', 'value': 2, 'strategic_center': True}}, adjacency={})
-        gs = make_state(data, {1: 'AAC'}, {'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE)
-        engine = GameEngine(gs, data)
-        engine.process_elimination_check()
-        self.assertTrue(gs.factions['AAC'].eliminated)
-
-    def test_faction_with_two_scs_survives(self):
-        data = FakeData(
-            territories={1: {'type': 'land', 'strategic_center': True}, 2: {'type': 'land', 'strategic_center': True}},
-            adjacency={},
-        )
-        gs = make_state(data, {1: 'AAC', 2: 'AAC'}, {'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE)
-        engine = GameEngine(gs, data)
-        engine.process_elimination_check()
+        engine.process_capture_territory('AAC')
         self.assertFalse(gs.factions['AAC'].eliminated)
+        self.assertFalse(hasattr(engine, 'process_elimination_check'))
 
-    def test_eliminated_factions_units_are_removed_from_the_whole_board(self):
+    def test_more_than_double_the_income_is_grounds(self):
+        _, _, engine = self.rich_and_poor()
+        self.assertEqual(engine.surrender_grounds('NAA', 'AAC'), ['income'])
+        self.assertEqual(engine.surrender_grounds('AAC', 'NAA'), [])
+
+    def test_exactly_double_is_not_enough(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 4}, 2: {'type': 'land', 'value': 2}}, adjacency={})
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
+        self.assertEqual(GameEngine(gs, data).surrender_grounds('NAA', 'AAC'), [])
+
+    def test_contested_territory_is_left_out_of_the_income(self):
+        # NAA's 5- and 3-value territories are contested: only the 2 is left, which is not more than double AAC's 2.
+        _, _, engine = self.rich_and_poor(contested={1: {'NAA', 'UE'}, 2: {'NAA', 'UE'}})
+        self.assertEqual(engine.surrender_grounds('NAA', 'AAC'), [])
+
+    def test_a_captured_strategic_center_of_a_faction_with_one_or_none_is_grounds(self):
         data = FakeData(
-            territories={1: {'type': 'land'}, 2: {'type': 'sea'}},
+            territories={
+                1: {'type': 'land', 'value': 1, 'strategic_center': True, 'faction': 'AAC'},   # AAC's, held by NAA
+                2: {'type': 'land', 'value': 3, 'strategic_center': True, 'faction': 'NAA'},
+                3: {'type': 'land', 'value': 3, 'strategic_center': True, 'faction': 'AAC'},   # AAC's own last one
+                4: {'type': 'land', 'value': 3, 'faction': 'AAC'},
+            },
             adjacency={},
         )
-        stranded_here = make_unit('Infantry', 'AAC')
-        stranded_there = make_unit('Cruiser', 'AAC')
-        gs = make_state(
-            data, {1: 'AAC'}, {'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE,
-            units_by_territory={1: [stranded_here], 2: [stranded_there]},
-        )
+        gs = make_state(data, {1: 'NAA', 2: 'NAA', 3: 'AAC', 4: 'AAC'},
+                        {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
-        engine.process_elimination_check()
-        self.assertNotIn(stranded_here, gs.territories[1].units)
-        self.assertNotIn(stranded_there, gs.territories[2].units)
+        self.assertEqual(engine.surrender_grounds('NAA', 'AAC'), ['strategic_center'])
+        gs.territories[4].owner = 'NAA'
+        gs.territories[3].owner = 'NAA'   # now AAC has none left
+        self.assertIn('strategic_center', engine.surrender_grounds('NAA', 'AAC'))
 
-    def test_contested_sc_still_counts_toward_the_registered_owner(self):
-        # SC 1 is contested but AAC still owns it (ownership only
-        # changes via process_capture_territory, already run this turn)
-        # -- AAC's count should still include it, keeping AAC above 1.
+    def test_two_strategic_centers_are_safe_and_a_stranger_s_center_is_no_grounds(self):
         data = FakeData(
-            territories={1: {'type': 'land', 'strategic_center': True}, 2: {'type': 'land', 'strategic_center': True}},
+            territories={
+                1: {'type': 'land', 'value': 1, 'strategic_center': True, 'faction': 'AAC'},
+                2: {'type': 'land', 'value': 1, 'strategic_center': True, 'faction': 'AAC'},
+                3: {'type': 'land', 'value': 1, 'strategic_center': True, 'faction': 'UE'},   # not AAC's
+                4: {'type': 'land', 'value': 1, 'strategic_center': True, 'faction': 'AAC'},
+            },
             adjacency={},
         )
-        gs = make_state(
-            data, {1: 'AAC', 2: 'AAC'}, {'AAC': FactionMode.HUMAN, 'NAA': FactionMode.HUMAN}, phase=Phase.CAPTURE,
-            contested={1: {'AAC', 'NAA'}},
-        )
+        gs = make_state(data, {1: 'AAC', 2: 'AAC', 3: 'NAA', 4: 'NAA'},
+                        {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
-        engine.process_elimination_check()
-        self.assertFalse(gs.factions['AAC'].eliminated)
+        self.assertEqual(engine.surrender_grounds('NAA', 'AAC'), [])  # AAC still holds two
+        gs.territories[2].owner = 'UE'
+        self.assertEqual(engine.surrender_grounds('NAA', 'AAC'), ['strategic_center'])  # one left, and NAA has 4 (AAC's)
+        gs.territories[4].owner = 'AAC'
+        self.assertEqual(engine.surrender_grounds('NAA', 'AAC'), [])  # AAC took its own back: out of risk
 
-    def test_eliminated_faction_is_excluded_from_active_factions(self):
-        data = FakeData(
-            territories={1: {'type': 'land'}, 2: {'type': 'land', 'strategic_center': True}, 3: {'type': 'land', 'strategic_center': True}},
-            adjacency={},
-        )
-        gs = make_state(
-            data, {1: 'AAC', 2: 'NAA', 3: 'NAA'}, {'AAC': FactionMode.HUMAN, 'NAA': FactionMode.HUMAN}, phase=Phase.CAPTURE,
-        )
-        engine = GameEngine(gs, data)
-        engine.process_elimination_check()
+    def test_the_demand_eliminates_and_clears_the_board(self):
+        data, gs, engine = self.rich_and_poor(
+            units_by_territory={4: [make_unit('Infantry', 'AAC')], 1: [make_unit('Infantry', 'NAA')]},
+            pending_by_territory={5: [make_unit('Infantry', 'AAC')]})
+        log = TurnLog()
+        engine.turn_log = log
+        reasons = engine.demand_surrender('NAA', 'AAC')
+        self.assertEqual(reasons, ['income'])
+        self.assertTrue(gs.factions['AAC'].eliminated)
         self.assertNotIn('AAC', gs.active_factions())
-        self.assertIn('NAA', gs.active_factions())
+        self.assertEqual([u.owner for t in gs.territories.values() for u in t.units], ['NAA'])
+        self.assertEqual(gs.territories[5].pending_deployment, [])
+        self.assertEqual(gs.territories[4].owner, 'AAC')  # its land stays as it is
+        kinds = [e['kind'] for e in log.events]
+        self.assertEqual(kinds, ['surrender', 'faction_eliminated'])
+        self.assertEqual(log.events[0]['reasons'], ['income'])
 
-    def test_neutral_factions_are_never_eliminated(self):
-        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'PAF'}, {'PAF': FactionMode.NEUTRAL}, phase=Phase.CAPTURE)
-        engine = GameEngine(gs, data)
-        engine.process_elimination_check()
-        self.assertFalse(gs.factions['PAF'].eliminated)
-
-    def test_defensive_factions_are_never_eliminated_and_keep_their_units(self):
-        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        stranded = make_unit('Infantry', 'AAC')
-        gs = make_state(
-            data, {1: 'AAC'}, {'AAC': FactionMode.DEFENSIVE}, phase=Phase.CAPTURE,
-            units_by_territory={1: [stranded]},
-        )
-        engine = GameEngine(gs, data)
-        engine.process_elimination_check()
-        self.assertFalse(gs.factions['AAC'].eliminated)
-        self.assertIn(stranded, gs.territories[1].units)
-
-    def test_calling_twice_is_idempotent(self):
-        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'AAC'}, {'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE)
-        engine = GameEngine(gs, data)
-        engine.process_elimination_check()
-        engine.process_elimination_check()  # should not raise
-        self.assertTrue(gs.factions['AAC'].eliminated)
-
-    def test_wrong_phase_is_rejected(self):
-        data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'AAC'}, {'AAC': FactionMode.HUMAN}, phase=Phase.NONCOMBAT_MOVE)
-        engine = GameEngine(gs, data)
+    def test_a_demand_without_grounds_or_out_of_turn_is_refused(self):
+        _, gs, engine = self.rich_and_poor()
         with self.assertRaises(ValueError):
-            engine.process_elimination_check()
+            engine.demand_surrender('AAC', 'NAA')
+        with self.assertRaises(ValueError):
+            engine.demand_surrender('NAA', 'NAA')
+        gs.phase = Phase.CAPTURE
+        with self.assertRaises(ValueError):
+            engine.demand_surrender('NAA', 'AAC')
+        gs.phase = Phase.DIPLOMACY
+        gs.active_faction = 'AAC'
+        with self.assertRaises(ValueError):
+            engine.demand_surrender('NAA', 'AAC')
+
+    def test_neutral_and_defensive_factions_are_never_targets(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 1}, 3: {'type': 'land', 'value': 1}}, adjacency={})
+        gs = make_state(data, {1: 'NAA', 2: 'PAF', 3: 'UE'},
+                        {'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL, 'UE': FactionMode.DEFENSIVE}, phase=Phase.DIPLOMACY)
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+        self.assertEqual(engine.legal_surrender_targets('NAA'), [])
+        with self.assertRaises(ValueError):
+            engine.demand_surrender('NAA', 'PAF')
+
+    def test_allies_can_be_demanded_and_are_flagged(self):
+        _, gs, engine = self.rich_and_poor()
+        gs.factions['NAA'].alliance = gs.factions['AAC'].alliance = 'pact'
+        targets = engine.legal_surrender_targets('NAA')
+        self.assertEqual([(t['target'], t['allied'], t['reasons']) for t in targets], [('AAC', True, ['income'])])
+        self.assertEqual(targets[0]['income'], {'yours': 10, 'theirs': 2})
+
+    def test_eliminating_a_member_cuts_its_ties_and_a_lone_alliance_dissolves(self):
+        data = FakeData(
+            territories={i: {'type': 'land', 'value': v, 'faction': f} for i, v, f in
+                         [(1, 6, 'NAA'), (2, 1, 'AAC'), (3, 1, 'UE')]},
+            adjacency={})
+        gs = make_state(data, {1: 'NAA', 2: 'AAC', 3: 'UE'},
+                        {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
+        gs.active_faction = 'NAA'
+        gs.factions['AAC'].alliance = gs.factions['UE'].alliance = 'pact'
+        engine = GameEngine(gs, data)
+        engine.demand_surrender('NAA', 'AAC')
+        self.assertIsNone(gs.factions['AAC'].alliance)
+        self.assertIsNone(gs.factions['UE'].alliance)  # an alliance of one is no alliance
+
+    def test_the_last_demand_ends_the_game(self):
+        _, gs, engine = self.rich_and_poor()
+        engine.demand_surrender('NAA', 'AAC')
+        self.assertTrue(engine.would_game_end())
+        self.assertTrue(engine.process_game_end_check('NAA'))
 
 
 class TestGameEndCheck(unittest.TestCase):
     def test_would_game_end_true_with_a_single_active_faction(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
         self.assertTrue(engine.would_game_end())
 
     def test_would_game_end_true_when_all_active_factions_share_an_alliance(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
         engine = GameEngine(gs, data)
@@ -2530,7 +2575,7 @@ class TestGameEndCheck(unittest.TestCase):
 
     def test_would_game_end_false_when_non_allied_factions_remain(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
         self.assertFalse(engine.would_game_end())
 
@@ -2539,7 +2584,7 @@ class TestGameEndCheck(unittest.TestCase):
         # mutually allied, so there's still someone to fight.
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
-            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -2553,7 +2598,7 @@ class TestGameEndCheck(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -2563,7 +2608,7 @@ class TestGameEndCheck(unittest.TestCase):
 
     def test_process_game_end_check_sets_game_over(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
         engine = GameEngine(gs, data)
@@ -2577,7 +2622,7 @@ class TestGameEndCheck(unittest.TestCase):
         # action (withdraw_from_alliance), same as any other turn,
         # called BEFORE process_game_end_check.
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
         engine = GameEngine(gs, data)
@@ -2595,7 +2640,7 @@ class TestGameEndCheck(unittest.TestCase):
         # faction didn't withdraw during its own regular turn, the game
         # simply ends.
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
         engine = GameEngine(gs, data)
@@ -2613,7 +2658,7 @@ class TestGameEndCheck(unittest.TestCase):
 
     def test_non_active_faction_is_rejected(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.NEUTRAL}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.NEUTRAL}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.process_game_end_check('NAA')
@@ -2627,7 +2672,7 @@ class TestLegalAllianceOptions(unittest.TestCase):
 
     def test_excludes_self(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
         options = engine.legal_alliance_options('NAA')
         self.assertNotIn('NAA', options['eligible_invite_targets'])
@@ -2637,7 +2682,7 @@ class TestLegalAllianceOptions(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.factions['UE'].alliance = 'pact'
         gs.factions['AAC'].alliance = 'pact'
@@ -2649,7 +2694,7 @@ class TestLegalAllianceOptions(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -2660,7 +2705,7 @@ class TestLegalAllianceOptions(unittest.TestCase):
 
     def test_excludes_former_allies_when_rejoining_disabled(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.can_rejoin_alliances = False
         gs.factions['NAA'].former_allies = {'UE'}
         gs.factions['UE'].former_allies = {'NAA'}
@@ -2676,7 +2721,7 @@ class TestLegalAllianceOptions(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.max_alliance_size = 1  # NAA+UE would already be at the cap
         gs.factions['NAA'].alliance = 'pact'
@@ -2689,7 +2734,7 @@ class TestLegalAllianceOptions(unittest.TestCase):
 
     def test_can_withdraw_true_when_allied_and_allowed(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
         engine = GameEngine(gs, data)
@@ -2697,13 +2742,13 @@ class TestLegalAllianceOptions(unittest.TestCase):
 
     def test_can_withdraw_false_when_not_allied(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
         self.assertFalse(engine.legal_alliance_options('NAA')['can_withdraw'])
 
     def test_can_withdraw_false_when_disabled_by_setting(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
         gs.can_withdraw_from_alliances = False
@@ -2713,7 +2758,7 @@ class TestLegalAllianceOptions(unittest.TestCase):
     def test_can_withdraw_false_when_blocked_by_sc_lock(self):
         data = FakeData(territories={1: {'type': 'land', 'strategic_center': True}}, adjacency={})
         gs = make_state(
-            data, {1: 'UE'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {1: 'UE'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -2731,7 +2776,7 @@ class TestInviteToAlliance(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         engine = GameEngine(gs, data)
         accepted = engine.invite_to_alliance('NAA', 'UE', target_accepts=True)
@@ -2748,7 +2793,7 @@ class TestInviteToAlliance(unittest.TestCase):
         gs = make_state(
             data, {},
             {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -2762,7 +2807,7 @@ class TestInviteToAlliance(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         engine = GameEngine(gs, data)
         accepted = engine.invite_to_alliance('NAA', 'UE', target_accepts=False)
@@ -2772,21 +2817,21 @@ class TestInviteToAlliance(unittest.TestCase):
 
     def test_cannot_invite_self(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.invite_to_alliance('NAA', 'NAA', target_accepts=True)
 
     def test_cannot_invite_a_neutral_faction(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.NEUTRAL}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.NEUTRAL}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.invite_to_alliance('NAA', 'UE', target_accepts=True)
 
     def test_cannot_invite_a_defensive_faction(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.DEFENSIVE}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.DEFENSIVE}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.invite_to_alliance('NAA', 'UE', target_accepts=True)
@@ -2795,7 +2840,7 @@ class TestInviteToAlliance(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.factions['UE'].alliance = 'pact'
         gs.factions['AAC'].alliance = 'pact'
@@ -2807,7 +2852,7 @@ class TestInviteToAlliance(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -2818,7 +2863,7 @@ class TestInviteToAlliance(unittest.TestCase):
 
     def test_rejoin_banned_by_default(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.factions['NAA'].former_allies.add('UE')
         gs.factions['UE'].former_allies.add('NAA')
         engine = GameEngine(gs, data)
@@ -2829,7 +2874,7 @@ class TestInviteToAlliance(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].former_allies.add('UE')
         gs.factions['UE'].former_allies.add('NAA')
@@ -2850,7 +2895,7 @@ class TestInviteToAlliance(unittest.TestCase):
         gs = make_state(
             data, {},
             {'NAA': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['GPC'].alliance = 'pact'
@@ -2872,7 +2917,7 @@ class TestInviteToAlliance(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES, global_turn=7,
+            phase=Phase.DIPLOMACY, global_turn=7,
         )
         stats = GameStats()
         engine = GameEngine(gs, data, stats=stats)
@@ -2891,7 +2936,7 @@ class TestInviteToAlliance(unittest.TestCase):
         gs = make_state(
             data, {},
             {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -2905,7 +2950,7 @@ class TestInviteToAlliance(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         stats = GameStats()
         engine = GameEngine(gs, data, stats=stats)
@@ -2916,7 +2961,7 @@ class TestInviteToAlliance(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         engine = GameEngine(gs, data)
         engine.invite_to_alliance('NAA', 'UE', target_accepts=True)
@@ -2938,7 +2983,7 @@ class TestEffectiveMaxAllianceSize(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.max_alliance_size = 5  # configured ceiling higher than 3 active factions - 1
         engine = GameEngine(gs, data)
@@ -2949,7 +2994,7 @@ class TestEffectiveMaxAllianceSize(unittest.TestCase):
         gs = make_state(
             data, {},
             {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.max_alliance_size = 2  # lower than 4 active factions - 1 = 3
         engine = GameEngine(gs, data)
@@ -2960,7 +3005,7 @@ class TestEffectiveMaxAllianceSize(unittest.TestCase):
         gs = make_state(
             data, {},
             {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.max_alliance_size = 5
         engine = GameEngine(gs, data)
@@ -2973,7 +3018,7 @@ class TestEffectiveMaxAllianceSize(unittest.TestCase):
         gs = make_state(
             data, {},
             {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.max_alliance_size = 3
         gs.factions['NAA'].alliance = 'pact'
@@ -2992,7 +3037,7 @@ class TestEffectiveMaxAllianceSize(unittest.TestCase):
         gs = make_state(
             data, {},
             {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.max_alliance_size = 3
         gs.factions['NAA'].alliance = 'pact'
@@ -3008,7 +3053,7 @@ class TestWithdrawFromAlliance(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -3025,7 +3070,7 @@ class TestWithdrawFromAlliance(unittest.TestCase):
 
     def test_disabled_by_setting(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
         gs.can_withdraw_from_alliances = False
@@ -3035,7 +3080,7 @@ class TestWithdrawFromAlliance(unittest.TestCase):
 
     def test_raises_with_no_alliance_to_leave(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.withdraw_from_alliance('NAA')
@@ -3043,7 +3088,7 @@ class TestWithdrawFromAlliance(unittest.TestCase):
     def test_sc_lock_blocks_withdrawal(self):
         data = FakeData(territories={1: {'type': 'land', 'strategic_center': True}}, adjacency={})
         gs = make_state(
-            data, {1: 'UE'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {1: 'UE'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -3055,7 +3100,7 @@ class TestWithdrawFromAlliance(unittest.TestCase):
     def test_sc_lock_does_not_block_withdrawal_from_own_sc(self):
         data = FakeData(territories={1: {'type': 'land', 'strategic_center': True}}, adjacency={})
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -3067,7 +3112,7 @@ class TestWithdrawFromAlliance(unittest.TestCase):
     def test_occupied_former_ally_territory_becomes_contested_with_reclaim_bonus_queued(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         gs = make_state(
-            data, {1: 'UE'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {1: 'UE'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -3081,7 +3126,7 @@ class TestWithdrawFromAlliance(unittest.TestCase):
     def test_unoccupied_former_ally_territory_is_unaffected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         gs = make_state(
-            data, {1: 'UE'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {1: 'UE'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -3095,7 +3140,7 @@ class TestWithdrawFromAlliance(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -3116,7 +3161,7 @@ class TestWithdrawFromAlliance(unittest.TestCase):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES, global_turn=12,
+            phase=Phase.DIPLOMACY, global_turn=12,
         )
         gs.factions['NAA'].alliance = 'pact'
         gs.factions['UE'].alliance = 'pact'
@@ -3137,7 +3182,7 @@ class TestWithdrawFromAlliance(unittest.TestCase):
 class TestGameStatsAllianceReporting(unittest.TestCase):
     def test_report_lists_alliance_policies_when_game_state_given(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.factions['NAA'].alliance_strategy = 'aggressive'
         gs.factions['NAA'].alliance_behavior = 'treacherous'
         gs.factions['UE'].alliance_strategy = 'passive'
@@ -3503,13 +3548,13 @@ class TestAdvancePhase(unittest.TestCase):
         engine = GameEngine(gs, data)
         expected = [
             Phase.COMBAT_MOVE, Phase.COMBAT_RESOLUTION, Phase.NONCOMBAT_MOVE,
-            Phase.CAPTURE, Phase.DEPLOY_INCOME, Phase.ALLIANCES,
+            Phase.CAPTURE, Phase.DEPLOY_INCOME, Phase.DIPLOMACY,
         ]
         for phase in expected:
             engine.advance_phase()
             self.assertEqual(gs.phase, phase)
         engine.advance_phase()  # one more call past the end -- stays put
-        self.assertEqual(gs.phase, Phase.ALLIANCES)
+        self.assertEqual(gs.phase, Phase.DIPLOMACY)
 
 
 class TestFirstTurnGameStartSettings(unittest.TestCase):
@@ -3572,7 +3617,7 @@ class TestFirstTurnGameStartSettings(unittest.TestCase):
     def test_advance_turn_increments_turns_taken(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 0, 'strategic_center': True}}, adjacency={})
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DIPLOMACY,
         )
         gs.active_faction = 'NAA'
         engine = GameEngine(gs, data)
@@ -3588,7 +3633,7 @@ class TestAdvanceTurn(unittest.TestCase):
         mover.has_moved_combat = True
         mover.has_moved_noncombat = True
         gs = make_state(
-            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DIPLOMACY,
             units_by_territory={1: [mover]},
         )
         gs.active_faction = 'NAA'
@@ -3599,7 +3644,7 @@ class TestAdvanceTurn(unittest.TestCase):
 
     def test_clears_phase_confirmation_guards_so_the_next_turn_works(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.active_faction = 'NAA'
         engine = GameEngine(gs, data)
         # Simulate NAA having already confirmed every phase this turn.
@@ -3621,23 +3666,23 @@ class TestAdvanceTurn(unittest.TestCase):
     def test_cycles_to_the_next_active_faction_and_wraps_around(self):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
-            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY,
         )
         gs.active_faction = 'NAA'
         engine = GameEngine(gs, data)
         engine.advance_turn()
         self.assertEqual(gs.active_faction, 'AAC')
-        gs.phase = Phase.ALLIANCES
+        gs.phase = Phase.DIPLOMACY
         engine.advance_turn()
         self.assertEqual(gs.active_faction, 'UE')
-        gs.phase = Phase.ALLIANCES
+        gs.phase = Phase.DIPLOMACY
         engine.advance_turn()
         self.assertEqual(gs.active_faction, 'NAA', 'wraps back around to the first')
 
     def test_skips_a_faction_eliminated_since_its_turn_began(self):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
-            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.ALLIANCES,
+            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'UE': FactionMode.HUMAN}, phase=Phase.DIPLOMACY,
         )
         gs.active_faction = 'NAA'
         gs.factions['AAC'].eliminated = True  # eliminated during NAA's own turn
@@ -3647,7 +3692,7 @@ class TestAdvanceTurn(unittest.TestCase):
 
     def test_increments_global_turn(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES, global_turn=5)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DIPLOMACY, global_turn=5)
         gs.active_faction = 'NAA'
         engine = GameEngine(gs, data)
         engine.advance_turn()
@@ -3655,7 +3700,7 @@ class TestAdvanceTurn(unittest.TestCase):
 
     def test_resets_phase_to_purchase(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.active_faction = 'NAA'
         engine = GameEngine(gs, data)
         engine.advance_turn()
@@ -3663,7 +3708,7 @@ class TestAdvanceTurn(unittest.TestCase):
 
     def test_sets_game_over_when_no_active_factions_remain(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.active_faction = 'NAA'
         gs.factions['NAA'].eliminated = True  # the only active faction, gone
         engine = GameEngine(gs, data)
@@ -3673,7 +3718,7 @@ class TestAdvanceTurn(unittest.TestCase):
 
     def test_raises_if_the_game_is_already_over(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.ALLIANCES)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN}, phase=Phase.DIPLOMACY)
         gs.game_over = True
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
@@ -3719,14 +3764,13 @@ class TestFullTurnLoopIntegration(unittest.TestCase):
 
         self.assertEqual(gs.phase, Phase.CAPTURE)
         engine.process_capture_territory(faction)
-        engine.process_elimination_check()
         engine.advance_phase()
 
         self.assertEqual(gs.phase, Phase.DEPLOY_INCOME)
         engine.deploy_and_collect_income(faction)
         engine.advance_phase()
 
-        self.assertEqual(gs.phase, Phase.ALLIANCES)
+        self.assertEqual(gs.phase, Phase.DIPLOMACY)
         engine.process_game_end_check(faction)
         engine.advance_turn()
 
@@ -3804,7 +3848,6 @@ class TestFullTurnLoopIntegration(unittest.TestCase):
         self.assertTrue(mover.has_moved_noncombat)
         engine.advance_phase()
         engine.process_capture_territory('NAA')
-        engine.process_elimination_check()
         engine.advance_phase()
         engine.deploy_and_collect_income('NAA')
         engine.advance_phase()
@@ -3838,7 +3881,7 @@ class TestWithdrawingFromAPairDissolvesIt(unittest.TestCase):
     def _setup(self, members):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
         modes = {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'GPC': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}
-        gs = make_state(data, {1: 'NAA'}, modes, phase=Phase.ALLIANCES)
+        gs = make_state(data, {1: 'NAA'}, modes, phase=Phase.DIPLOMACY)
         gs.active_faction = 'NAA'
         for code in members:
             gs.factions[code].alliance = 'ALLIANCE_1'

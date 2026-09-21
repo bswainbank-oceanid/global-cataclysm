@@ -210,23 +210,25 @@ class TestTurnLogEngineIntegration(unittest.TestCase):
         income_events = [e for e in log.events if e['kind'] == 'income_collected']
         self.assertEqual(income_events, [{'kind': 'income_collected', 'faction': 'NAA', 'amount': 3}])
 
-    def test_process_elimination_check_logs_elimination(self):
-        data = FakeData(territories={1: {'type': 'land', 'strategic_center': True}}, adjacency={})
+    def test_a_surrender_demand_logs_the_surrender_and_the_elimination(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5, 'faction': 'AAC'}, 2: {'type': 'land', 'value': 1, 'faction': 'NAA'}}, adjacency={})
         gs = make_state(
-            data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE,
+            data, {1: 'AAC', 2: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.DIPLOMACY,
         )
-        # NAA owns nothing, AAC owns the only SC -- NAA has 0 SCs.
-        gs.territories[1].owner = 'AAC'
+        gs.active_faction = 'AAC'
         log = TurnLog()
         engine = GameEngine(gs, data, turn_log=log)
-        engine.process_elimination_check()
+        engine.demand_surrender('AAC', 'NAA')
+        self.assertEqual([e['kind'] for e in log.events], ['surrender', 'faction_eliminated'])
+        self.assertEqual({k: log.events[0][k] for k in ('faction', 'target', 'reasons')},
+                         {'faction': 'AAC', 'target': 'NAA', 'reasons': ['income']})
         self.assertIn({'kind': 'faction_eliminated', 'faction': 'NAA'}, log.events)
 
     def test_invite_and_withdraw_are_logged(self):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
-            phase=Phase.ALLIANCES,
+            phase=Phase.DIPLOMACY,
         )
         log = TurnLog()
         engine = GameEngine(gs, data, turn_log=log)
@@ -234,7 +236,7 @@ class TestTurnLogEngineIntegration(unittest.TestCase):
         self.assertEqual(log.events[-1]['kind'], 'alliance_joined')
         self.assertTrue(log.events[-1]['new_alliance'])
 
-        gs.phase = Phase.ALLIANCES
+        gs.phase = Phase.DIPLOMACY
         engine._alliance_action_taken.discard('NAA')
         engine.withdraw_from_alliance('NAA')
         self.assertEqual(log.events[-1]['kind'], 'alliance_withdrawal')

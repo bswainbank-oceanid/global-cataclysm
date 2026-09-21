@@ -33,7 +33,7 @@ func _initialize() -> void:
 		{"kind": "alliance_declined", "turn": 13, "faction": "NAA", "target": "UER"},
 	])
 	_check(got.size() == 1 and got[0].size() == 4, "an elimination, two joins and a withdrawal are announced; purchases and refusals are not (%d)" % (got[0].size() if got.size() == 1 else -1))
-	_check(str(got[0][0]["title"]).contains("UE") and str(got[0][0]["body"]).contains("eliminated"), "the elimination names the faction")
+	_check(str(got[0][0]["title"]).contains("UE") and str(got[0][0]["body"]).contains("out of the game"), "the elimination names the faction")
 	_check(str(got[0][1]["title"]) == "New alliance" and str(got[0][2]["title"]).contains("AAC"), "a new alliance and a joining are told apart")
 	_check(str(got[0][3]["body"]).contains("AAC") and str(got[0][3]["body"]).contains("NAA") and not str(got[0][3]["body"]).contains("with [b]Global"), "a withdrawal names the former allies")
 
@@ -54,7 +54,7 @@ func _initialize() -> void:
 	window.clear()
 	_check(not window.visible and not store.announcement_open, "a new game clears announcements")
 	# The player's own invitation being declined is announced; a bot's is not.
-	store.set_state({"global_turn": 0, "active_faction": "NAA", "phase": "ALLIANCES", "territories": {}, "factions": {
+	store.set_state({"global_turn": 0, "active_faction": "NAA", "phase": "DIPLOMACY", "territories": {}, "factions": {
 		"NAA": {"code": "NAA", "mode": "HUMAN", "treasury_mpc": 0, "alliance": null, "eliminated": false},
 		"UE": {"code": "UE", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false}}})
 	got.clear()
@@ -63,6 +63,14 @@ func _initialize() -> void:
 		{"kind": "alliance_declined", "turn": 4, "faction": "NAA", "target": "UE"}])
 	_check(got.size() == 1 and got[0].size() == 1, "only the player's declined invitation is news")
 	_check(str(got[0][0]["title"]).begins_with("UE declines") and str(got[0][0]["body"]).contains("your invitation"), "it names who declined: %s" % str(got[0][0]["title"]))
+	# A forced surrender is announced once, as the surrender (not again as a plain elimination).
+	got.clear()
+	stepper._announce([
+		{"kind": "surrender", "turn": 5, "faction": "NAA", "target": "UE", "reasons": ["income"]},
+		{"kind": "faction_eliminated", "faction": "UE"},
+	])
+	_check(got.size() == 1 and got[0].size() == 1, "a surrender and its elimination make one announcement")
+	_check(str(got[0][0]["title"]) == "UE surrenders" and str(got[0][0]["body"]).contains("twice"), "the surrender says why")
 	window.clear()
 	print("announcement test: failures=%d" % _failures)
 	quit(1 if _failures > 0 else 0)

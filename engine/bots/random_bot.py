@@ -396,7 +396,7 @@ class RandomBot:
         here, using this bot's own seeded rng, and stashes the result on
         FactionState.pending_treacherous_withdrawal for
         alliance_policy.should_withdraw to read later this same turn, at
-        the Alliances phase. Only rolls while actually in an alliance --
+        the Diplomacy phase. Only rolls while actually in an alliance --
         nothing to withdraw from otherwise, so the decision is moot.
         Reads the EFFECTIVE behavior (alliance_policy.effective_alliance_
         behavior), not the raw field, so a 'variable' bot whose re-roll
@@ -453,6 +453,72 @@ class RandomBot:
                 self.engine.invite_to_alliance(self.faction, plan['target'], plan['accepts'])
         except ValueError:
             pass
+
+    # ---- the Diplomacy phase: alliance action + surrender demands -----------------
+
+    def take_diplomacy_phase(self):
+        self.commit_diplomacy_phase(self.plan_diplomacy_phase())
+
+    def plan_diplomacy_phase(self):
+        """This turn's whole Diplomacy phase, decided but not executed: the alliance action of
+        plan_alliance_phase() ({'action', 'target', 'accepts'}) plus the surrender demands --
+
+          * 'demands': factions to force to surrender outright, after the alliance action;
+          * 'demand_if_declined': the invited faction is to be forced to surrender if it turns the
+            invitation down (only a human can);
+          * 'win': True when every other faction can be forced to surrender, so the bot ends the
+            game -- allies included.
+
+        A bot never demands an ally's surrender otherwise. Before eliminating a faction it always
+        asks it into an alliance if that is legal: the invitation is never declined by a bot (its
+        'accepts' is True whatever the invitee's alliance strategy), and a faction that accepts is
+        not eliminated. It has one alliance action a turn, so it asks one such faction at a time;
+        the others wait for a later turn (their grounds do not go away). A faction it cannot ask at
+        all is forced to surrender at once."""
+        engine, gs = self.engine, self.engine.game_state
+        others = [c for c in gs.active_factions() if c != self.faction]
+        targets = engine.legal_surrender_targets(self.faction)
+        eligible = [t['target'] for t in targets]
+        if others and set(eligible) >= set(others):
+            return {'action': 'none', 'demands': list(others), 'win': True}
+
+        plan = self.plan_alliance_phase()
+        plan['demands'] = []
+        wanted = [t['target'] for t in targets if not t['allied']]
+        if not wanted:
+            return plan
+        invitable = {t for t in wanted if engine.can_invite_to_alliance(self.faction, t)}
+        askable = sorted(invitable)
+        if askable and plan['action'] != 'withdraw':
+            target = self.rng.choice(askable)
+            plan.update({'action': 'invite', 'target': target, 'demand_if_declined': True,
+                         'accepts': True if gs.factions[target].mode == FactionMode.BOT else None})
+        plan['demands'] = [t for t in wanted if t not in invitable]
+        return plan
+
+    def commit_diplomacy_phase(self, plan):
+        """Executes a plan_diplomacy_phase() result: the alliance action, then the surrender demands.
+        An illegal step (the advisory plan no longer holds up) is simply skipped."""
+        engine = self.engine
+        accepted = None
+        try:
+            if plan['action'] == 'withdraw':
+                engine.withdraw_from_alliance(self.faction)
+            elif plan['action'] == 'invite':
+                accepts = plan.get('accepts')
+                if accepts is None:
+                    accepts = alliance_policy.accepts_invite(engine, plan['target'], self.faction)
+                accepted = engine.invite_to_alliance(self.faction, plan['target'], accepts)
+        except ValueError:
+            pass
+        demands = list(plan.get('demands', []))
+        if plan.get('demand_if_declined') and accepted is False:
+            demands.insert(0, plan['target'])
+        for target in demands:
+            try:
+                engine.demand_surrender(self.faction, target)
+            except ValueError:
+                pass
 
     # ---- shared submission helper ---------------------------------------
 

@@ -33,7 +33,7 @@ Center count and eliminates -- clears remaining units, and excludes from
 GameState.active_factions() forever after, which is what actually enforces
 "no more turns" -- anyone down to 1 or 0. process_game_end_check
 (victory.game_end_rule, meant to run once at the very end of a
-faction's full turn, after the stubbed Alliances phase) sets
+faction's full turn, after the stubbed Diplomacy phase) sets
 GameState.game_over once every remaining active faction is mutually
 allied with every other -- nobody non-allied left to keep fighting --
 but first gives the faction whose turn is ending one last chance to
@@ -43,7 +43,7 @@ the rest of alliances remaining a v1 stub.
 
 Orchestration: advance_phase() steps GameState.phase through the fixed
 7-phase sequence; advance_turn() (call once, right after
-process_game_end_check, at the end of the Alliances phase) closes out
+process_game_end_check, at the end of the Diplomacy phase) closes out
 the active faction's turn -- resetting ITS units' has_moved_combat/
 has_moved_noncombat flags and clearing it from every phase-confirmation
 guard set, both of which nothing else in the engine ever does, so
@@ -85,7 +85,7 @@ from .turn_log import TurnLog
 # turn_order's fixed 7-phase sequence for one faction's full turn.
 _PHASE_ORDER = [
     Phase.PURCHASE, Phase.COMBAT_MOVE, Phase.COMBAT_RESOLUTION, Phase.NONCOMBAT_MOVE,
-    Phase.CAPTURE, Phase.DEPLOY_INCOME, Phase.ALLIANCES,
+    Phase.CAPTURE, Phase.DEPLOY_INCOME, Phase.DIPLOMACY,
 ]
 
 
@@ -165,7 +165,7 @@ class GameEngine:
         self._staged_noncombat_moves = {}  # faction_code -> [NonCombatMoveOrder, ...]
         self._noncombat_moves_confirmed = set()
         self._return_to_base_processed = set()  # faction_codes that have already run process_return_to_base this turn
-        self._alliance_action_taken = set()  # faction_codes that have already invited or withdrawn this turn (the Alliances phase's "one of two things")
+        self._alliance_action_taken = set()  # faction_codes that have already invited or withdrawn this turn (the Diplomacy phase's "one of two things")
 
     def _purchase_sources(self, deploy_at, faction):
         """Ordered list of territory_ids whose capacity/cost apply to a
@@ -1589,51 +1589,93 @@ class GameEngine:
 
         return max(by_owner, key=sort_key)
 
-    def process_elimination_check(self):
-        """victory.elimination_rule: any HUMAN/BOT faction
-        currently controlling <=1 Strategic Center (original or
-        captured; a contested one still counts, since its
-        TerritoryState.owner doesn't change until the contest actually
-        resolves in Capture Territory -- see combat.contested_territory_rule)
-        is eliminated -- FactionState.eliminated is set True, and every
-        unit it still has anywhere on the board is removed immediately.
-        NEUTRAL and DEFENSIVE are skipped: neither ever had turns to lose,
-        and a Defensive power has no Strategic Centers -- its units stay in
-        play until they are individually killed.
+    # ---- surrender (victory.surrender_rule) -----------------------------------
+    # A faction is no longer eliminated automatically for being down to 0-1 Strategic
+    # Centers. It is eliminated when another faction forces its surrender in the
+    # Diplomacy phase, which needs one of two grounds (surrender_grounds).
 
-        Ownership only ever changes via process_capture_territory, so
-        this should run right after it, once per turn -- automatic, no
-        player choice, nothing to roll back, same as that phase. Global:
-        sweeps every faction's SC count, not just whichever one's turn
-        it is, since one faction's own Capture Territory can reduce
-        ANOTHER faction down to elimination. Idempotent -- safe to call
-        even when nothing changed; an already-eliminated faction is
-        simply skipped.
-
-        GameState.active_factions() is what actually enforces "gets no
-        more turns" -- it excludes eliminated factions, and every phase
-        method in this class gates on it, so nothing else needed to
-        change to make that stick."""
-        if self.game_state.phase != Phase.CAPTURE:
-            raise ValueError('process_elimination_check is only valid during the Capture Territory phase')
-
+    def _controlled_scs(self, faction):
+        """Territory ids of the Strategic Centers `faction` currently owns (a contested one
+        still counts: ownership only changes when the contest resolves)."""
         terrs = self.data.territories()
-        sc_counts = {}
-        for tid, t in self.game_state.territories.items():
-            if terrs[tid]['type'] != 'land' or not self.game_state.is_strategic_center(tid, terrs[tid]):
-                continue
-            if t.owner:
-                sc_counts[t.owner] = sc_counts.get(t.owner, 0) + 1
+        gs = self.game_state
+        return [tid for tid, t in gs.territories.items()
+                if t.owner == faction and terrs[tid]['type'] == 'land' and gs.is_strategic_center(tid, terrs[tid])]
 
-        for code, fstate in self.game_state.factions.items():
-            if fstate.eliminated or fstate.mode in (FactionMode.NEUTRAL, FactionMode.DEFENSIVE):
-                continue
-            if sc_counts.get(code, 0) <= 1:
-                fstate.eliminated = True
-                for t in self.game_state.territories.values():
-                    t.units = [u for u in t.units if u.owner != code]
-                if self.turn_log is not None:
-                    self.turn_log.record_elimination(code)
+    def surrender_grounds(self, demander, target):
+        """Why `demander` may force `target`'s surrender right now: a list with 'income' (the
+        demander's income -- the value of its uncontested territories -- is more than 200% of the
+        target's) and/or 'strategic_center' (the target holds 0-1 Strategic Centers and the demander
+        controls a Strategic Center that was originally the target's). Empty when it may not. Pure
+        query; both must be factions still in play."""
+        gs = self.game_state
+        active = gs.active_factions()
+        if demander == target or demander not in active or target not in active:
+            return []
+        reasons = []
+        if compute_income(demander, gs, self.data) > 2 * compute_income(target, gs, self.data):
+            reasons.append('income')
+        if len(self._controlled_scs(target)) <= 1:
+            terrs = self.data.territories()
+            if any(terrs[tid].get('faction') == target for tid in self._controlled_scs(demander)):
+                reasons.append('strategic_center')
+        return reasons
+
+    def legal_surrender_targets(self, faction):
+        """[{'target', 'reasons', 'allied', 'income': {'yours', 'theirs'}}] -- every other faction
+        `faction` may force to surrender right now (allies included: whether to demand an ally's
+        surrender is the caller's choice; a bot never does, except to win outright)."""
+        gs = self.game_state
+        out = []
+        members = self._alliance_members(faction)
+        for code in gs.active_factions():
+            reasons = self.surrender_grounds(faction, code)
+            if reasons:
+                out.append({'target': code, 'reasons': reasons, 'allied': code in members,
+                            'income': {'yours': compute_income(faction, gs, self.data),
+                                       'theirs': compute_income(code, gs, self.data)}})
+        return out
+
+    def demand_surrender(self, faction, target):
+        """Diplomacy phase, any number of times a turn (before or after the alliance action): forces
+        `target` to surrender -- it is eliminated at once, its units leave the board. Raises ValueError
+        when it is not `faction`'s Diplomacy phase or neither ground holds. Returns the reasons."""
+        gs = self.game_state
+        if faction not in gs.active_factions():
+            raise ValueError(f'{faction} is not an active faction')
+        if gs.phase != Phase.DIPLOMACY or gs.active_faction != faction:
+            raise ValueError('a surrender can only be demanded during the demander\'s own Diplomacy phase')
+        if target not in gs.active_factions():
+            raise ValueError(f'{target} is not a faction in play')
+        if target == faction:
+            raise ValueError('a faction cannot demand its own surrender')
+        reasons = self.surrender_grounds(faction, target)
+        if not reasons:
+            raise ValueError(f'{faction} has no grounds to demand the surrender of {target}')
+        if self.turn_log is not None:
+            self.turn_log.record_surrender(gs.global_turn, faction, target, reasons)
+        self._eliminate(target)
+        return reasons
+
+    def _eliminate(self, code):
+        """Takes `code` out of the game: eliminated, its units (and purchases waiting to deploy)
+        gone from the board, and its alliance ties cut -- an alliance left with one member is no
+        alliance at all. Its territory stays as it is. active_factions() excludes it from now on,
+        which is what actually ends its turns."""
+        gs = self.game_state
+        fstate = gs.factions[code]
+        fstate.eliminated = True
+        for t in gs.territories.values():
+            t.units = [u for u in t.units if u.owner != code]
+            t.pending_deployment = [u for u in t.pending_deployment if u.owner != code]
+        tag, fstate.alliance = fstate.alliance, None
+        if tag is not None:
+            left = [f for f in gs.factions.values() if f.alliance == tag and not f.eliminated]
+            if len(left) <= 1:
+                for f in left:
+                    f.alliance = None
+        if self.turn_log is not None:
+            self.turn_log.record_elimination(code)
 
     def _alliance_members(self, faction):
         """{faction} ∪ every other faction currently sharing its
@@ -1697,6 +1739,10 @@ class GameEngine:
         )
         return {'eligible_invite_targets': sorted(targets), 'can_withdraw': can_withdraw}
 
+    def alliance_action_taken(self, faction):
+        """True once `faction` has used its one invite-or-withdraw this turn."""
+        return faction in self._alliance_action_taken
+
     def alliance_members(self, faction):
         """Every faction in `faction`'s alliance, itself included (just {faction}
         when it has none)."""
@@ -1724,34 +1770,15 @@ class GameEngine:
         validation below consults this at all."""
         return min(self.game_state.max_alliance_size, len(self.game_state.active_factions()) - 1)
 
-    def invite_to_alliance(self, faction, target, target_accepts):
-        """Alliances phase, one of the two things `faction` may
-        optionally do this turn (the other is withdraw_from_alliance;
-        never both -- see _alliance_action_taken). `target` immediately
-        decides (alliances.invite_immediate_decision) -- `target_accepts`
-        is supplied by the caller, exactly like every other order this
-        engine takes a decision as an input rather than making one
-        itself; whichever bot/human logic controls `target` is
-        responsible for it, consulted synchronously before this call.
-
-        Raises ValueError if the invite could never be validly accepted
-        at all -- wrong phase, `faction` already took its one alliance
-        action this turn, `target` is `faction` itself or not a valid
-        ally-eligible active faction, `target` is already in an alliance
-        (must withdraw first, on its own separate turn), accepting would
-        exceed _effective_max_alliance_size() (game_start_settings.
-        max_alliance_size, further capped by the CURRENT number of
-        active factions -- see that method), or -- when
-        can_rejoin_alliances is False -- `target` has a former_allies
-        conflict with anyone already in `faction`'s alliance. A
-        `target_accepts=False` decline is NOT an error (nothing changes,
-        but the one-action-per-turn slot is still spent); returns
-        `target_accepts` either way."""
+    def _check_invite(self, faction, target, ignore_action_taken=False):
+        """Raises ValueError unless `faction` may invite `target` right now (invite_to_alliance's
+        own checks). ignore_action_taken: leave out the once-a-turn limit -- "could it ask, were the
+        action free?", which a bot needs to know before it plans to."""
         if faction not in self.game_state.active_factions():
             raise ValueError(f'{faction} is not an active faction')
-        if self.game_state.phase != Phase.ALLIANCES:
-            raise ValueError('invite_to_alliance is only valid during the Alliances phase')
-        if faction in self._alliance_action_taken:
+        if self.game_state.phase != Phase.DIPLOMACY:
+            raise ValueError('invite_to_alliance is only valid during the Diplomacy phase')
+        if faction in self._alliance_action_taken and not ignore_action_taken:
             raise ValueError(f'{faction} has already taken its one alliance action this turn')
         if target == faction:
             raise ValueError('a faction cannot invite itself')
@@ -1774,6 +1801,40 @@ class GameEngine:
                 raise ValueError(
                     f"{target} can no longer ally with {sorted(banned)} (can_rejoin_alliances is False)"
                 )
+
+
+    def can_invite_to_alliance(self, faction, target, ignore_action_taken=True):
+        """Whether invite_to_alliance(faction, target, ...) would be legal (pure query)."""
+        try:
+            self._check_invite(faction, target, ignore_action_taken)
+        except ValueError:
+            return False
+        return True
+
+    def invite_to_alliance(self, faction, target, target_accepts):
+        """Diplomacy phase, one of the two things `faction` may
+        optionally do this turn (the other is withdraw_from_alliance;
+        never both -- see _alliance_action_taken). `target` immediately
+        decides (alliances.invite_immediate_decision) -- `target_accepts`
+        is supplied by the caller, exactly like every other order this
+        engine takes a decision as an input rather than making one
+        itself; whichever bot/human logic controls `target` is
+        responsible for it, consulted synchronously before this call.
+
+        Raises ValueError if the invite could never be validly accepted
+        at all -- wrong phase, `faction` already took its one alliance
+        action this turn, `target` is `faction` itself or not a valid
+        ally-eligible active faction, `target` is already in an alliance
+        (must withdraw first, on its own separate turn), accepting would
+        exceed _effective_max_alliance_size() (game_start_settings.
+        max_alliance_size, further capped by the CURRENT number of
+        active factions -- see that method), or -- when
+        can_rejoin_alliances is False -- `target` has a former_allies
+        conflict with anyone already in `faction`'s alliance. A
+        `target_accepts=False` decline is NOT an error (nothing changes,
+        but the one-action-per-turn slot is still spent); returns
+        `target_accepts` either way."""
+        self._check_invite(faction, target)
 
         self._alliance_action_taken.add(faction)
         asker = self.game_state.factions[faction]
@@ -1816,7 +1877,7 @@ class GameEngine:
         return False
 
     def withdraw_from_alliance(self, faction):
-        """Alliances phase, the other of the two things `faction` may
+        """Diplomacy phase, the other of the two things `faction` may
         optionally do this turn (see invite_to_alliance) -- there is no
         separate 'last chance' version of this at game-end time; this
         IS the only withdrawal action, and it's this faction's one
@@ -1843,8 +1904,8 @@ class GameEngine:
         unit on an ally's Strategic Center (the design doc's SC lock)."""
         if faction not in self.game_state.active_factions():
             raise ValueError(f'{faction} is not an active faction')
-        if self.game_state.phase != Phase.ALLIANCES:
-            raise ValueError('withdraw_from_alliance is only valid during the Alliances phase')
+        if self.game_state.phase != Phase.DIPLOMACY:
+            raise ValueError('withdraw_from_alliance is only valid during the Diplomacy phase')
         if faction in self._alliance_action_taken:
             raise ValueError(f'{faction} has already taken its one alliance action this turn')
         if not self.game_state.can_withdraw_from_alliances:
@@ -1900,7 +1961,7 @@ class GameEngine:
 
     def process_game_end_check(self, faction):
         """victory.game_end_rule, checked once at the very end of
-        `faction`'s full turn -- after the Alliances phase, the last of
+        `faction`'s full turn -- after the Diplomacy phase, the last of
         the 7 turn_order phases. Pure query+set: sets GameState.game_over
         to match would_game_end() and returns it. NOT a separate
         decision point -- whatever alliance action `faction` took this
@@ -1912,8 +1973,8 @@ class GameEngine:
         during its regular turn, before this runs."""
         if faction not in self.game_state.active_factions():
             raise ValueError(f'{faction} is not an active faction')
-        if self.game_state.phase != Phase.ALLIANCES:
-            raise ValueError('process_game_end_check is only valid during the Alliances phase')
+        if self.game_state.phase != Phase.DIPLOMACY:
+            raise ValueError('process_game_end_check is only valid during the Diplomacy phase')
 
         self.game_state.game_over = self.would_game_end()
         return self.game_state.game_over
@@ -1980,11 +2041,11 @@ class GameEngine:
         to PURCHASE.
 
         Raises ValueError if the game is already over or this isn't
-        called at the end of the Alliances phase."""
+        called at the end of the Diplomacy phase."""
         if self.game_state.game_over:
             raise ValueError('the game is already over')
-        if self.game_state.phase != Phase.ALLIANCES:
-            raise ValueError('advance_turn is only valid at the end of the Alliances phase')
+        if self.game_state.phase != Phase.DIPLOMACY:
+            raise ValueError('advance_turn is only valid at the end of the Diplomacy phase')
 
         finishing = self.game_state.active_faction
         if finishing is not None:

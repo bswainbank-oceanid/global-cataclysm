@@ -180,6 +180,9 @@ class TurnLog:
     def record_elimination(self, faction):
         self.events.append({'kind': 'faction_eliminated', 'faction': faction})
 
+    def record_surrender(self, turn, faction, target, reasons):
+        self.events.append({'kind': 'surrender', 'turn': turn, 'faction': faction, 'target': target, 'reasons': list(reasons)})
+
     def record_alliance_joined(self, turn, faction, target, tag, new_alliance):
         self.events.append({
             'kind': 'alliance_joined', 'turn': turn, 'faction': faction, 'target': target,

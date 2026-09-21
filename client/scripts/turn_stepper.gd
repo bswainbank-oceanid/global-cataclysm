@@ -67,7 +67,7 @@ func _on_message(msg: Dictionary) -> void:
 			var block: Dictionary = msg.get("human", {})
 			var kind := str(block.get("kind", ""))
 			GameStore.set_invitation(msg.get("invitation", {}))
-			if kind == "alliance":
+			if kind == "diplomacy":
 				GameStore.set_human_purchase("", {})
 				GameStore.set_human_move("", {})
 				GameStore.set_human_alliance(str(msg["faction"]), block)
@@ -106,6 +106,10 @@ func _on_message(msg: Dictionary) -> void:
 			else:
 				executed.emit(_header(str(msg["faction"]), str(msg["phase"])), msg["events"])
 				_announce(msg["events"])
+		"diplomacy_result":
+			# One of the player's own Diplomacy actions, carried out at once: its outcome goes in the Events box.
+			executed.emit("%s - Diplomacy" % str(msg["faction"]), msg["events"])
+			_announce(msg["events"])
 		"error":
 			_awaiting = false
 			log_line.emit("[color=#ff7060]server: %s[/color]" % str(msg.get("message", "")))
@@ -136,12 +140,22 @@ static func _color(code: String) -> Color:
 ## the middle of the screen.
 func _announce(events: Array) -> void:
 	var items := []
+	var surrendered := {}
+	for e in events:
+		if str(e.get("kind", "")) == "surrender":
+			surrendered[str(e["target"])] = true
 	for e in events:
 		match str(e.get("kind", "")):
+			"surrender":
+				var t := str(e["target"])
+				items.append({"title": "%s surrenders" % t, "color": _color(t),
+					"body": "%s has forced %s to surrender: %s.\n\n%s is out of the game and all of its units are removed from the board; its territory stays where it is." % [
+						_name(str(e["faction"])), _name(t), EventText.surrender_reasons(e.get("reasons", [])), _name(t)]})
 			"faction_eliminated":
 				var f := str(e["faction"])
-				items.append({"title": "%s eliminated" % f, "color": _color(f),
-					"body": "%s has been eliminated. It held one Strategic Center or fewer, so it is out of the game and all of its units are removed from the board." % _name(f)})
+				if not surrendered.has(f):
+					items.append({"title": "%s eliminated" % f, "color": _color(f),
+						"body": "%s is out of the game and all of its units are removed from the board." % _name(f)})
 			"alliance_joined":
 				var f := str(e["faction"])
 				var t := str(e["target"])
@@ -208,7 +222,7 @@ func _refresh() -> void:
 		button_text = "Pausing..." if _pause_requested else "Pause"
 		button_active = not _pause_requested
 	elif _queued_phase != "" and not _awaiting:
-		needs_hold = GameStore.is_player(_queued_faction) and ["PURCHASE", "COMBAT_MOVE", "NONCOMBAT_MOVE", "ALLIANCES"].has(_queued_phase)
+		needs_hold = GameStore.is_player(_queued_faction) and ["PURCHASE", "COMBAT_MOVE", "NONCOMBAT_MOVE", "DIPLOMACY"].has(_queued_phase)
 		if needs_hold:
 			button_text = "Hold to submit  -  %s" % _header(_queued_faction, _queued_phase)
 		elif _queued_phase == "START_OF_TURN":
@@ -415,11 +429,12 @@ func _change_purchase(unit_type: String, tid: int, delta: int) -> void:
 	Net.send_msg({"type": "stage_purchase", "faction": GameStore.human_purchase["faction"], "orders": _edit_orders})
 
 
-## The player's Alliances choice: "none", "invite" (a target faction) or "withdraw".
-func alliance_stage(action: String, target: String = "") -> void:
+## One of the player's Diplomacy actions, carried out at once: "invite" or "surrender" (a target
+## faction), or "withdraw". The outcome comes back as a diplomacy_result for the Events box.
+func diplomacy_action(action: String, target: String = "") -> void:
 	if not GameStore.human_alliance_active():
 		return
-	var msg := {"type": "stage_alliance", "faction": GameStore.human_alliance["faction"], "action": action}
+	var msg := {"type": "diplomacy_action", "faction": GameStore.human_alliance["faction"], "action": action}
 	if target != "":
 		msg["target"] = target
 	Net.send_msg(msg)

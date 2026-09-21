@@ -192,7 +192,7 @@ class TestHandleMessage(unittest.TestCase):
 
         messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
         prompt = next(m for m in messages if m['type'] == 'your_turn')
-        self.assertEqual(prompt['phase'], 'ALLIANCES', 'Alliances is a real decision point now too')
+        self.assertEqual(prompt['phase'], 'DIPLOMACY', 'Alliances is a real decision point now too')
 
         messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
         types = [m['type'] for m in messages]
@@ -210,7 +210,7 @@ class TestHandleMessage(unittest.TestCase):
 
         messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
         prompt = next(m for m in messages if m['type'] == 'your_turn')
-        self.assertEqual(prompt['phase'], 'ALLIANCES')
+        self.assertEqual(prompt['phase'], 'DIPLOMACY')
 
         messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
         types = [m['type'] for m in messages]
@@ -345,7 +345,7 @@ class TestTurnEventsForAHumansAutomaticPhases(unittest.TestCase):
         messages = session.handle_message({'type': 'noncombat_move', 'faction': 'NAA', 'orders': []})
         types = [m['type'] for m in messages]
         self.assertEqual(types, ['turn_events', 'your_turn'])
-        self.assertEqual(messages[1]['phase'], 'ALLIANCES')
+        self.assertEqual(messages[1]['phase'], 'DIPLOMACY')
         kinds = {e['kind'] for e in messages[0]['events']}
         self.assertIn('unit_deployed', kinds)
         self.assertIn('income_collected', kinds)
@@ -514,7 +514,7 @@ class TestNonCombatMovePlayback(unittest.TestCase):
         # NAA's own turn still has Alliances left -- confirm that too,
         # then play moves on to UE.
         prompt = next(m for m in messages if m['type'] == 'your_turn')
-        self.assertEqual(prompt['phase'], 'ALLIANCES')
+        self.assertEqual(prompt['phase'], 'DIPLOMACY')
 
         messages = session.handle_message({'type': 'alliance_action', 'faction': 'NAA', 'action': 'none'})
         types = [m['type'] for m in messages]
@@ -531,7 +531,7 @@ class TestAllianceActionPlayback(unittest.TestCase):
         session = _three_human_session()
         messages = _advance_to_alliances(session)
         prompt = next(m for m in messages if m['type'] == 'your_turn')
-        self.assertEqual(prompt['phase'], 'ALLIANCES')
+        self.assertEqual(prompt['phase'], 'DIPLOMACY')
         options = prompt['legal_alliance_options']
         self.assertEqual(set(options['eligible_invite_targets']), {'UE', 'AAC'})
         self.assertFalse(options['can_withdraw'], 'NAA is not currently in any alliance')
@@ -541,7 +541,7 @@ class TestAllianceActionPlayback(unittest.TestCase):
         _advance_to_alliances(session)
         messages = session.connect('NAA')
         prompt = next(m for m in messages if m['type'] == 'your_turn')
-        self.assertEqual(prompt['phase'], 'ALLIANCES')
+        self.assertEqual(prompt['phase'], 'DIPLOMACY')
 
     def test_alliance_action_out_of_turn_is_rejected(self):
         session = _three_human_session()
@@ -736,7 +736,7 @@ class TestAllianceInviteResponse(unittest.TestCase):
         self.assertEqual(types, ['error', 'your_turn'])
         self.assertEqual(messages[0]['to'], 'UE')
         self.assertEqual(messages[1]['faction'], 'NAA', "NAA's one action was never actually consumed")
-        self.assertEqual(messages[1]['phase'], 'ALLIANCES')
+        self.assertEqual(messages[1]['phase'], 'DIPLOMACY')
 
 
 if __name__ == '__main__':

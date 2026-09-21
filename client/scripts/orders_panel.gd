@@ -79,11 +79,14 @@ func _rebuild() -> void:
 	_add_budget()
 
 
-## Alliances: this turn's one optional action -- invite a faction, or withdraw from
-## the alliance you are in, or nothing. The staged choice is highlighted.
+const HOLD_SECONDS := 0.8   # a Diplomacy action is a long-click: hold the button until its ring is full
+
+## Diplomacy: everything is a long-click action, carried out at once (the outcome goes in the Events
+## box). One alliance action a turn -- invite a faction OR withdraw from the alliance you are in --
+## and any number of surrender demands, before or after it. Next ends the phase.
 func _add_alliance_options() -> void:
 	var ha: Dictionary = GameStore.human_alliance
-	_content.add_child(HudStyle.label("Alliances", 14, HudStyle.GOLD))
+	_content.add_child(HudStyle.label("Diplomacy", 14, HudStyle.GOLD))
 	var members: Array = ha["members"]
 	var me := str(ha["faction"])
 	var status: String
@@ -97,30 +100,33 @@ func _add_alliance_options() -> void:
 		status = "You are not in an alliance."
 	var rules := "Leaving alliances is %s; rejoining one you left is %s." % [
 		"allowed" if GameStore.can_withdraw_from_alliances() else "off", "allowed" if GameStore.can_rejoin_alliances() else "off"]
-	var status_l := HudStyle.label(status + "  One action per turn: invite OR withdraw. " + rules, 11, HudStyle.TEXT_DIM)
+	var status_l := HudStyle.label(status + "  Hold a button to act. One alliance action a turn: invite OR withdraw. " + rules, 11, HudStyle.TEXT_DIM)
 	status_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_content.add_child(status_l)
 	if ha["game_would_end"]:
-		var warn := HudStyle.label("Every remaining faction is allied: the game ends at the end of this phase unless you withdraw.", 11, Color(1.0, 0.6, 0.45))
+		var warn := HudStyle.label("Every remaining faction is allied, or you are the only one left: the game ends at the end of this phase.", 11, Color(1.0, 0.6, 0.45))
 		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_content.add_child(warn)
-	var staged: Dictionary = ha["staged"]
-	_content.add_child(_choice("Do nothing", "", staged["action"] == "none", true, "", func(): Stepper.alliance_stage("none")))
+
+	_content.add_child(HudStyle.label("Alliance", 12, HudStyle.TEXT))
+	var used: bool = bool(ha["options"].get("alliance_action_used", false))
+	if used:
+		var done := HudStyle.label("You have used this turn's alliance action.", 11, HudStyle.TEXT_DIM)
+		_content.add_child(done)
 	if members.size() > 1:
-		var can: bool = ha["options"]["can_withdraw"]
-		var why := ""
+		var can: bool = ha["options"]["can_withdraw"] and not used
+		var why := "Hold to leave the alliance."
 		if not GameStore.can_withdraw_from_alliances():
 			why = "Withdrawing from alliances is turned off in this game."
-		elif not can:
+		elif not ha["options"]["can_withdraw"]:
 			why = "Not allowed now: a unit of yours is standing on an ally's Strategic Center."
-		var text := "Withdraw from the alliance" if why == "" else "Withdraw from the alliance  (not allowed)"
-		_content.add_child(_choice(text, "", staged["action"] == "withdraw", can, why, func(): Stepper.alliance_stage("withdraw")))
+		var text := "Withdraw from the alliance" if ha["options"]["can_withdraw"] else "Withdraw from the alliance  (not allowed)"
+		_content.add_child(_choice(text, "", false, can, why, func(): Stepper.diplomacy_action("withdraw"), true))
 	var targets: Array = ha["options"]["eligible_invite_targets"]
 	for code in targets:
 		var c := str(code)
-		var label: String = "Invite %s" % GameData.factions[c].name
-		_content.add_child(_choice(label, c, staged["action"] == "invite" and str(staged.get("target", "")) == c, true,
-			"They answer when the phase runs.", func(): Stepper.alliance_stage("invite", c)))
+		_content.add_child(_choice("Invite %s" % GameData.factions[c].name, c, false, not used,
+			"Hold to invite them. They answer at once.", func(): Stepper.diplomacy_action("invite", c), true))
 	if targets.is_empty() and members.size() <= 1:
 		_content.add_child(HudStyle.label("No one can be invited right now.", 11, HudStyle.TEXT_DIM))
 	for pair in GameStore.uninvitable_reasons(me, members, targets):
@@ -128,9 +134,26 @@ func _add_alliance_options() -> void:
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_content.add_child(l)
 
+	_content.add_child(HudStyle.label("Surrender", 12, HudStyle.TEXT))
+	var demands: Array = ha.get("surrender", [])
+	if demands.is_empty():
+		var none := HudStyle.label("Nobody can be forced to surrender: you need more than twice a faction's income, or one of the Strategic Centers of a faction down to one or none.", 11, HudStyle.TEXT_DIM)
+		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_content.add_child(none)
+	for d in demands:
+		var t := str(d["target"])
+		var tip := "Hold to force %s to surrender: %s.\nIncome %d against %d.%s" % [
+			GameData.factions[t].name, EventText.surrender_reasons(d["reasons"]), int(d["income"]["yours"]), int(d["income"]["theirs"]),
+			"\nThey are your ally." if bool(d["allied"]) else ""]
+		_content.add_child(_choice("Force %s to surrender%s" % [GameData.factions[t].name, "  (ally)" if bool(d["allied"]) else ""], t, false, true,
+			tip, func(): Stepper.diplomacy_action("surrender", t), true))
 
-func _choice(text: String, faction: String, selected: bool, enabled: bool, tip: String, action: Callable) -> Control:
-	var b := Button.new()
+
+## A row button. With `hold`, a long-click: it fires once its ring is full (HoldButton).
+func _choice(text: String, faction: String, selected: bool, enabled: bool, tip: String, action: Callable, hold := false) -> Control:
+	var b: Button = HoldButton.new() if hold else Button.new()
+	if hold:
+		(b as HoldButton).hold_seconds = HOLD_SECONDS
 	b.text = "   " + text
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.disabled = not enabled
@@ -145,7 +168,10 @@ func _choice(text: String, faction: String, selected: bool, enabled: bool, tip: 
 	b.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, bg, 2))
 	b.add_theme_stylebox_override("disabled", HudStyle.box(Color(0.16, 0.19, 0.24), Color(0.09, 0.105, 0.135), 1))
 	b.add_theme_color_override("font_color", HudStyle.GOLD if selected else HudStyle.TEXT)
-	b.pressed.connect(action)
+	if hold:
+		(b as HoldButton).activated.connect(action)
+	else:
+		b.pressed.connect(action)
 	if faction != "":
 		var chip := ColorRect.new()
 		chip.color = GameData.factions[faction].color

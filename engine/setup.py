@@ -152,7 +152,7 @@ def build_game_state(scenario_name, faction_modes, defensive_scenario_name='star
       setup -- see GameState's own docstring comment on these fields.
     - max_alliance_size (default 2) / can_withdraw_from_alliances
       (default True) / can_rejoin_alliances (default False): stored
-      directly on GameState and enforced every Alliances phase by
+      directly on GameState and enforced every Diplomacy phase by
       GameEngine.invite_to_alliance/withdraw_from_alliance -- not
       validated here (trusted, not range-checked against the number of
       factions in play). max_alliance_size is only ever a CEILING:
