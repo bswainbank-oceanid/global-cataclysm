@@ -37,7 +37,10 @@ def _find_invitation_of_the_human(strategies=('aggressive', 'aggressive')):
         session = _session(strategies, seed=seed)
         messages = session.handle_message({'type': 'watch'})
         for _ in range(80):
-            queue = _by_type(messages, 'phase_queue')[0]
+            queues = _by_type(messages, 'phase_queue')
+            if not queues:
+                break  # this seed's game ended first: try the next
+            queue = queues[0]
             if queue['phase'] == 'ALLIANCES' and queue.get('invitation'):
                 return session, queue
             messages = session.handle_message({'type': 'next'})

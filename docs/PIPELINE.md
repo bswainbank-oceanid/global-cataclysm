@@ -31,7 +31,7 @@ which runs, in order:
    `data/factions.json` → `exports/GC1972_Territories.xlsx` ('All
    Territories' tab + 6 faction subtabs + Unassigned)
 5. `tools/build_setup_tab.py` — needs (3) and (4); adds/replaces the
-   'Initial Setup' tab on the same workbook from
+   'Initial Setup (125 MPC)' tab on the same workbook from
    `data/scenarios/starting_setup_125ipc.json` + `data/units.json`
 6. `tools/recalc_xlsx.py exports/GC1972_Territories.xlsx`
    — recalculates all live formulas via LibreOffice so the workbook opens
@@ -100,8 +100,10 @@ produce ruleset variants, not just the canonical scenario.
 
 Two scenarios exist today:
 - `data/scenarios/starting_setup_125ipc.json` — the canonical scenario:
-  125 MPC, Strategic Centers apply (cost discount + cap bonus), >=6 unit
-  types, 3 promotions per faction. Built by `tools/generate_scenario.py`.
+  125 MPC, Strategic Centers apply (cost discount + cap bonus), >=7 unit
+  types, 3 promotions per faction: one Infantry in every territory, then units
+  drawn by each faction's Unit Weights (`data/bot_settings.json`), seeded so the
+  file is reproducible. Built by `tools/generate_scenario_weighted.py`.
 - `data/scenarios/starting_setup_100ipc.json` — a smaller, faster-setup
   alternative: 100 IPC, no Strategic Centers at all (flat value+2 cap, no
   cost discount), >=5 unit types, 0 promotions. A small (1-2 IPC) leftover
@@ -112,7 +114,7 @@ Two scenarios exist today:
 
 `tools/build_setup_tab.py`'s `build_setup_tab()` function is similarly
 parameterized (scenario path, sheet name, use_sc, min_types) and renders
-both: `python3 tools/build_setup_tab.py` builds the 'Initial Setup' tab
+both: `python3 tools/build_setup_tab.py` builds the 'Initial Setup (125 MPC)' tab
 from the 125-MPC scenario and the 'Initial Setup (100 IPC)' tab from the
 100-IPC one, in one workbook. `tools/validate_setup.py` takes the same
 parameters as CLI flags (`--scenario`, `--no-sc`, `--min-types`,

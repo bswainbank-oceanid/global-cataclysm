@@ -618,13 +618,15 @@ class TestLostContestedPurchaseOverAWholeTurn(unittest.TestCase):
         modes = {f: FactionMode.BOT for f in real_data.factions()}
         gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False)
         engine = GameEngine(gs, real_data, combat_rng=random.Random(1))
-        T = 10  # Western Canada, NAA's, with one NAA Mech Inf in it
+        T = 10  # Western Canada, NAA's, with one NAA Infantry in it
         for i in range(4):  # GPC's promoted Armor holds it against that lone defender
             gs.territories[T].units.append(UnitInstance(unit_id=9000 + i, unit_type='Armor', owner='GPC', current_hp=4, promotions=3))
         gs.territories[T].contested_by = {'GPC', 'NAA'}
         for n in hand_over_to_gpc:
             gs.territories[n].owner = 'GPC'
-        count = lambda: {tid: sum(1 for u in t.units if u.owner == 'NAA' and u.unit_type == 'Infantry') for tid, t in gs.territories.items()}
+        original = {u.unit_id for t in gs.territories.values() for u in t.units}  # the starting Infantry are not what is counted
+        count = lambda: {tid: sum(1 for u in t.units if u.owner == 'NAA' and u.unit_type == 'Infantry' and u.unit_id not in original)
+                         for tid, t in gs.territories.items()}
         before = count()
         engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, T)])
         engine.confirm_purchases('NAA')

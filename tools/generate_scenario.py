@@ -3,7 +3,9 @@ Generate a starting-setup scenario from scratch: territory ownership from
 data/territories.json, doctrine emphasis from data/factions.json's 'focus'
 lists. The core generate_scenario() function is parameterized so it can
 produce variant rulesets (see tools/generate_scenario_100ipc.py); this
-file's own __main__ block produces the canonical 125-MPC/SC scenario.
+file's own __main__ block only points at tools/generate_scenario_weighted.py, which
+produces the canonical 125-MPC scenario (this algorithm is what the 100-MPC Defensive
+scenario still uses).
 
 Algorithm per faction:
   1. Baseline garrison: 1 unit of the faction's primary land type, at every
@@ -375,6 +377,20 @@ def generate_scenario(*, budget, use_sc, min_types, promotions_count,
                     break
             if not upgraded:
                 break
+        # a remainder of 2 (Infantry -> Mechanized Infantry costs 3, so it cannot close it): upgrade a
+        # Mechanized Infantry to Armor instead (+2 at any price)
+        if remainder >= 2:
+            for r in sorted(profile[fac], key=lambda r: r['sc'], reverse=True):
+                tid = r['id']
+                delta = cost_at('Armor', r['sc']) - cost_at('Mechanized Infantry', r['sc'])
+                if delta <= remainder and purchases[fac].get(tid, {}).get('Mechanized Infantry', 0) >= 1:
+                    purchases[fac][tid]['Mechanized Infantry'] -= 1
+                    if purchases[fac][tid]['Mechanized Infantry'] == 0:
+                        del purchases[fac][tid]['Mechanized Infantry']
+                    purchases[fac][tid]['Armor'] = purchases[fac][tid].get('Armor', 0) + 1
+                    spend[fac] += delta
+                    remainder -= delta
+                    break
         # SC-swap: a unit bought at a Strategic Center costs its sc_cost, the same
         # unit bought anywhere else its full cost -- so when the remainder equals
         # that difference, moving one land unit from an SC to a non-SC territory
@@ -464,16 +480,5 @@ def generate_scenario(*, budget, use_sc, min_types, promotions_count,
 
 
 if __name__ == '__main__':
-    rules = json.load(open('data/rules.json'))['setup']
-    generate_scenario(
-        budget=rules['starting_unit_budget_mpc'],
-        use_sc=True,
-        min_types=6,
-        promotions_count=rules['promotions_per_faction_at_setup'],
-        garrison_all_territories=True,
-        out_path='data/scenarios/starting_setup_125ipc.json',
-        comment=("Starting-setup scenario: 125 MPC of units per faction, territory ownership from "
-                 "data/territories.json. purchases is per-territory unit buys; "
-                 "promotions/carrier_escorts/naval_overrides are the fixed setup-time picks "
-                 "layered on top."),
-    )
+    print('The canonical 125-MPC scenario is made by tools/generate_scenario_weighted.py; '
+          'the 100-MPC one by tools/generate_scenario_100ipc.py.')

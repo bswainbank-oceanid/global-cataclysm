@@ -35,7 +35,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--scenario', default='data/scenarios/starting_setup_125ipc.json')
 parser.add_argument('--no-sc', action='store_true', help='ignore strategic_center: flat value+cap-bonus cap, no sc_cost discount')
 parser.add_argument('--cap-bonus', type=int, default=2, help='with --no-sc, cap = value + this (0 = no bonus at all)')
-parser.add_argument('--min-types', type=int, default=6, help='minimum distinct unit types required per faction')
+parser.add_argument('--min-types', type=int, default=7, help='minimum distinct unit types required per faction')
 parser.add_argument('--budget-tolerance', type=int, default=0,
                      help='allow up to this many IPC unspent (small change) instead of requiring an exact match')
 parser.add_argument('--exclude-zone', type=int, action='append', default=[43],

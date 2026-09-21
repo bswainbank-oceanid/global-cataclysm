@@ -6,7 +6,7 @@ scenario file (data/scenarios/*.json) + data/units.json + data/factions.json
 + derived/faction_territory_profile.json.
 
 build_setup_tab() is parameterized so it can render either ruleset:
-  - the canonical 125-MPC/SC scenario -> 'Initial Setup' tab
+  - the canonical 125-MPC/SC scenario -> 'Initial Setup (125 MPC)' tab
   - the 100-IPC/no-SC scenario -> 'Initial Setup (100 IPC)' tab
 This module's __main__ block builds both, in that order.
 
@@ -94,7 +94,7 @@ def promoted_hp(hp):
     return hp + 1
 
 
-def build_setup_tab(wb, sheet_name, scenario_path, use_sc, min_types, cap_bonus=2):
+def build_setup_tab(wb, sheet_name, scenario_path, use_sc, min_types, cap_bonus=2, unit_name='IPC'):
     """Add/replace `sheet_name` on the already-open workbook `wb`, built
     from the scenario at `scenario_path`. use_sc mirrors
     tools/generate_scenario.py's flag: False means the stacking cap is a
@@ -121,7 +121,7 @@ def build_setup_tab(wb, sheet_name, scenario_path, use_sc, min_types, cap_bonus=
     ws = wb.create_sheet(sheet_name)
 
     # ---- Title ----
-    ws['A1'] = f'Global Cataclysm: 1972 — Initial Force Setup ({BUDGET} IPC)'
+    ws['A1'] = f'Global Cataclysm: 1972 — Initial Force Setup ({BUDGET} {unit_name})'
     ws['A1'].font = TITLE_FONT
     ws.merge_cells('A1:I1')
     if use_sc:
@@ -140,15 +140,21 @@ def build_setup_tab(wb, sheet_name, scenario_path, use_sc, min_types, cap_bonus=
     promo_desc = (f'Each faction also promotes {scenario_promo_count(PROMOTIONS)} units at setup — a promoted unit '
                   'permanently steps up one attack-die size (max D12), gains +1 defense (max 10), and gains +1 HP. '
                   ) if scenario_promo_count(PROMOTIONS) > 0 else 'This scenario grants no promotions at setup. '
-    ws['A2'] = (f'Every faction spends up to {BUDGET} IPC on starting units (a small remainder may be left as '
-                f'change if it can\'t buy a whole unit). {cap_desc} — this cap is a starting-purchase limit only '
+    if unit_name == 'MPC':
+        buy_desc = ' -- one Infantry in every territory first, then units drawn by the faction\'s Unit Weights (GC Bot Settings)'
+        types_desc = ', drawn by its Unit Weights'
+    else:
+        buy_desc = ' (a small remainder may be left as change if it can\'t buy a whole unit)'
+        types_desc = ', guided by its doctrine focus'
+    ws['A2'] = (f'Every faction spends {"exactly" if unit_name == "MPC" else "up to"} {BUDGET} {unit_name} on starting units{buy_desc}. '
+                f'{cap_desc} — this cap is a starting-purchase limit only '
                 '(not an in-game one) and counts every unit bought at that territory, including naval units and '
                 'any aircraft riding a carrier as its escort. Naval units are bought at a coastal territory and '
                 'begin in their own sea zone — no two factions deploy naval units to the same sea zone. Every '
                 'Aircraft Carrier has at least 1 escorting Fighter/Bomber that deploys aboard it, in the same sea '
                 'zone. Every territory bordering a foreign faction has at least 1 land unit (Infantry, Mechanized '
                 f'Infantry, or Armor). Each faction purchases at least {min_types} of the 8 purchasable unit '
-                f'types, guided by its doctrine focus.{sc_desc} {promo_desc}'
+                f'types{types_desc}.{sc_desc} {promo_desc}'
                 'Territory / Faction / SC / cost / cap columns below are LIVE — edit ‘All Territories’ and they '
                 'recalc automatically. Only the Territory ID / Unit / Qty columns, the carrier escort assignments, '
                 'and the Promoted Units picks are the fixed setup plan.')
@@ -191,7 +197,7 @@ def build_setup_tab(wb, sheet_name, scenario_path, use_sc, min_types, cap_bonus=
     r += 2
     ws.cell(row=r, column=1, value='Faction Summary').font = H1_FONT
     r += 1
-    summary_cols = ['Faction', 'Name', 'IPC Spent', 'IPC Unspent', 'Land Units', 'Air Units', 'Naval Units', 'Total Units', 'Promotions']
+    summary_cols = ['Faction', 'Name', f'{unit_name} Spent', f'{unit_name} Unspent', 'Land Units', 'Air Units', 'Naval Units', 'Total Units', 'Promotions']
     for i, col in enumerate(summary_cols):
         c = ws.cell(row=r, column=i + 1, value=col)
         c.font = HEADER_FONT
@@ -505,7 +511,7 @@ def scenario_promo_count(promotions_dict):
 
 if __name__ == '__main__':
     wb = load_workbook(XLSX_PATH, data_only=False)
-    build_setup_tab(wb, 'Initial Setup', 'data/scenarios/starting_setup_125ipc.json', use_sc=True, min_types=6)
+    build_setup_tab(wb, 'Initial Setup (125 MPC)', 'data/scenarios/starting_setup_125ipc.json', use_sc=True, min_types=7, unit_name='MPC')
     build_setup_tab(wb, 'Initial Setup (100 IPC)', 'data/scenarios/starting_setup_100ipc.json', use_sc=False, min_types=5, cap_bonus=0)
     wb.save(XLSX_PATH)
     print('saved', XLSX_PATH, 'sheets:', wb.sheetnames)
