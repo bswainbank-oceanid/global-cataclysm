@@ -459,6 +459,12 @@ class GameState:
         self._next_unit_id += 1
         return uid
 
+    @property
+    def alliances_enabled(self):
+        """False when the game was set up with a maximum alliance size of 1: nobody can ally, and
+        there is no Alliances phase (the turn ends after Deploy + Income)."""
+        return self.max_alliance_size >= 2
+
     def is_strategic_center(self, territory_id, terr):
         """Whether the territory counts as a Strategic Center in this game: it is one on the
         map (`terr` is its territories.json entry) and hasn't been switched off -- a territory

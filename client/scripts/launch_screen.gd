@@ -26,6 +26,8 @@ var _randomize: CheckBox
 var _can_withdraw: CheckBox
 var _can_rejoin: CheckBox
 var _max_alliance: OptionButton
+var _combat_first: CheckBox
+var _noncombat_first: CheckBox
 var _max_pref := 3  # the maximum alliance size the player asked for
 var _max_size := 3  # ...as offered: kept within 2 .. players-1 for the players there are
 var _message: Label
@@ -95,6 +97,18 @@ func _ready() -> void:
 	_check_style(_can_rejoin)
 	_can_rejoin.toggled.connect(func(_on): _changed())
 	v.add_child(_can_rejoin)
+	_combat_first = CheckBox.new()
+	_combat_first.text = "Combat Moves allowed on a faction's first turn"
+	_combat_first.button_pressed = false
+	_combat_first.focus_mode = Control.FOCUS_NONE
+	_check_style(_combat_first)
+	v.add_child(_combat_first)
+	_noncombat_first = CheckBox.new()
+	_noncombat_first.text = "Non-Combat Moves allowed on a faction's first turn"
+	_noncombat_first.button_pressed = true
+	_noncombat_first.focus_mode = Control.FOCUS_NONE
+	_check_style(_noncombat_first)
+	v.add_child(_noncombat_first)
 	var size_row := HBoxContainer.new()
 	size_row.add_theme_constant_override("separation", 10)
 	size_row.add_child(HudStyle.label("Maximum alliance size", 14))
@@ -103,7 +117,7 @@ func _ready() -> void:
 		_max_pref = int(_max_alliance.get_item_text(i))
 		_max_size = _max_pref
 		_changed())
-	_max_alliance.tooltip_text = "The most factions one alliance may hold: 2 up to the number of players minus one."
+	_max_alliance.tooltip_text = "The most factions one alliance may hold, from 1 to the number of players minus one. 1 means no alliances at all, and no Alliances phase."
 	size_row.add_child(_max_alliance)
 	v.add_child(size_row)
 
@@ -212,8 +226,9 @@ func settings() -> Dictionary:
 		})
 	var s := {"seats": seats, "randomize_order": _randomize.button_pressed,
 		"can_withdraw": _can_withdraw.button_pressed, "can_rejoin": _can_rejoin.button_pressed}
-	if not _max_alliance.disabled:
-		s["max_alliance_size"] = _max_size  # (with fewer than three players no alliance can form, so nothing is sent)
+	s["max_alliance_size"] = _max_size
+	s["allow_combat_first_turn"] = _combat_first.button_pressed
+	s["allow_noncombat_first_turn"] = _noncombat_first.button_pressed
 	if Dbg.args.has("combat_first_turn"):
 		s["dev"] = {"combat_first_turn": true}  # scripted runs only: the rules skip it
 	return s
@@ -239,7 +254,7 @@ func problems() -> Array:
 	if humans > 1:
 		out.append("At most one human player.")
 	for a in groups:
-		if groups[a] > _max_size and players >= 3:
+		if groups[a] > _max_size and players >= 2:
 			out.append("Alliance %d has %d members, more than the maximum alliance size (%d)." % [a, groups[a], _max_size])
 		elif groups[a] < 2:
 			out.append("Alliance %d has only one member: an alliance needs two or more." % a)
@@ -253,6 +268,7 @@ func problems() -> Array:
 func _changed() -> void:
 	if _loading:
 		return
+	_refresh_max_alliance()  # (first: the alliance choices below depend on the size)
 	var human_seat := -1
 	var taken := {}
 	for i in SEATS:
@@ -273,12 +289,13 @@ func _changed() -> void:
 		var f := _faction_of(row)
 		(row["chip"] as ColorRect).color = GameData.factions[f].color if f != "random" else Color(0.3, 0.34, 0.4)
 		var player: bool = mode == "HUMAN" or mode == "BOT"
-		(row["alliance"] as OptionButton).disabled = not player
+		(row["alliance"] as OptionButton).disabled = not player or _max_size < 2
+		if _max_size < 2:
+			(row["alliance"] as OptionButton).select(0)
 		(row["strategy"] as OptionButton).disabled = mode != "BOT"
 		(row["behavior"] as OptionButton).disabled = mode != "BOT"
 		(row["ai"] as OptionButton).disabled = mode != "BOT"
 	_can_rejoin.disabled = not _can_withdraw.button_pressed  # nobody leaves, so nobody rejoins
-	_refresh_max_alliance()
 	var p := problems()
 	_message.text = "\n".join(p) if not p.is_empty() else ""
 	_start.disabled = not p.is_empty()
@@ -309,15 +326,12 @@ func _refresh_max_alliance() -> void:
 		if mode == "HUMAN" or mode == "BOT":
 			players += 1
 	_max_alliance.clear()
-	_max_alliance.disabled = players < 3
-	for n in range(2, players):
+	var top := maxi(players - 1, 1)  # sizes 1 .. players-1; 1 = no alliances (and no Alliances phase)
+	for n in range(1, top + 1):
 		_max_alliance.add_item(str(n))
-	if players < 3:
-		_max_alliance.add_item("-")  # nothing to choose: no alliance fits with fewer than three players
-		_max_alliance.select(0)
-	else:
-		_max_size = clampi(_max_pref, 2, players - 1)
-		_max_alliance.select(_max_size - 2)
+	_max_alliance.disabled = top == 1
+	_max_size = clampi(_max_pref, 1, top)
+	_max_alliance.select(_max_size - 1)
 
 
 # ---- remembering the last setup ---------------------------------------------------------
@@ -331,6 +345,8 @@ func _save() -> void:
 	cfg.set_value("launch", "can_withdraw", s["can_withdraw"])
 	cfg.set_value("launch", "can_rejoin", s["can_rejoin"])
 	cfg.set_value("launch", "max_alliance_size", _max_pref)
+	cfg.set_value("launch", "combat_first", _combat_first.button_pressed)
+	cfg.set_value("launch", "noncombat_first", _noncombat_first.button_pressed)
 	for i in SEATS:
 		var row: Dictionary = _rows[i]
 		for key in ["mode", "faction", "alliance", "strategy", "behavior", "ai"]:
@@ -348,7 +364,9 @@ func _load() -> void:
 	_randomize.button_pressed = bool(cfg.get_value("launch", "randomize_order", true))
 	_can_withdraw.button_pressed = bool(cfg.get_value("launch", "can_withdraw", true))
 	_can_rejoin.button_pressed = bool(cfg.get_value("launch", "can_rejoin", false))
-	_max_pref = maxi(2, int(cfg.get_value("launch", "max_alliance_size", 3)))
+	_max_pref = maxi(1, int(cfg.get_value("launch", "max_alliance_size", 3)))
+	_combat_first.button_pressed = bool(cfg.get_value("launch", "combat_first", false))
+	_noncombat_first.button_pressed = bool(cfg.get_value("launch", "noncombat_first", true))
 	_max_size = _max_pref
 	for i in SEATS:
 		var row: Dictionary = _rows[i]

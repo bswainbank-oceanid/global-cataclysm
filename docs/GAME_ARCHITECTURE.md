@@ -385,10 +385,16 @@ the same JSON, not a parallel editing path.
   strategy and behavior (default random); "Randomize turn order" defaults on. Rules:
   at least two players, at most one human, each faction once, an alliance needs two
   or more members, can't be every player, and can't exceed the **Maximum alliance
-  size** setting (default 3; choosable from 2 up to the number of players minus
-  one, greyed out below three players; `max_alliance_size` in the `new_game`
-  settings, validated by `server/lobby.py`; the engine still caps it by the number of
-  factions still in play). A game can be seeded (`seed` in the `new_game` settings, `--seed` for the demo server and scripted client runs): setup, the bots and the dice all come from it, so the game replays exactly whatever Python's hash seed is (`server/tests/test_reproducible.py` checks that under different `PYTHONHASHSEED`s; the lobby used to leave the dice unseeded, which was the only source of variation). Every faction is in exactly one seat: explicit picks
+  size** setting (default 3; choosable from 1 up to the number of players minus
+  one; `max_alliance_size` in the `new_game` settings, validated by `server/lobby.py`;
+  the engine still caps it by the number of factions still in play). **1 means no
+  alliances**: the starting-alliance pickers are disabled and the Alliances phase is
+  skipped outright (`GameState.alliances_enabled`; `server/stepper.py` commits it and
+  goes straight to the next faction's turn, so no Alliances step is queued). Two
+  more startup checkboxes, "Combat Moves allowed on a faction's first turn"
+  (default off) and "Non-Combat Moves allowed on a faction's first turn" (default on),
+  send `allow_combat_first_turn` / `allow_noncombat_first_turn`, which set the
+  engine's `allow_combat_moves_first_turn` / `allow_noncombat_moves_first_turn`. A game can be seeded (`seed` in the `new_game` settings, `--seed` for the demo server and scripted client runs): setup, the bots and the dice all come from it, so the game replays exactly whatever Python's hash seed is (`server/tests/test_reproducible.py` checks that under different `PYTHONHASHSEED`s; the lobby used to leave the dice unseeded, which was the only source of variation). Every faction is in exactly one seat: explicit picks
   first, random seats take what is left; Defense seats use the 100-IPC setup, as
   before. Two more game settings, "Players can withdraw from alliances" (default yes)
   and "Players can rejoin alliances they left" (default no; greyed out when
@@ -441,7 +447,8 @@ the same JSON, not a parallel editing path.
   and as "Incoming" at the destination, and the queue lists each (from, to)
   group; any of the three lets you recall a unit, a group, or all incoming. The
   remaining units stay available. `python -m server.app --combat-first-turn`
-  (dev) allows Combat Move on the first turn, which the rules skip.
+  (dev) allows Combat Move on the first turn, which the rules skip by default (the
+  launch screen has a checkbox for it now).
   shortening. While phases are running unpaused the Next button becomes a **Pause**
   button: it holds the phase in hand (or the next one, mid-execution) and
   offers Next as a scheduled pause would; after that Settings apply again. A battle that pauses because of the battle options (not an

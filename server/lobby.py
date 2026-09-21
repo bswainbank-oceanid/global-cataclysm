@@ -14,7 +14,9 @@ Settings (the "new_game" message's "settings"):
      "randomize_order": true,                            # default true
      "can_withdraw": true,                               # players may leave an alliance (default true)
      "can_rejoin": false,                                # ...and may re-ally with those they left (default false)
-     "max_alliance_size": 3,                             # most factions in one alliance (default 3; 2 .. players-1)
+     "max_alliance_size": 3,                             # most factions in one alliance (default 3; 1 .. players-1; 1 = no alliances and no Alliances phase)
+     "allow_combat_first_turn": false,                   # may a faction make Combat Moves on its first turn (default false)
+     "allow_noncombat_first_turn": true,                 # ...and Non-Combat Moves (default true)
      "seed": 12345,                                      # optional: a seeded game replays exactly (setup, bots AND dice)
      "dev": {"combat_first_turn": false}}                # optional, testing only
 
@@ -89,7 +91,7 @@ def check_settings(settings):
 
     if 'seed' in settings and (not isinstance(settings['seed'], int) or isinstance(settings['seed'], bool)):
         problems.append('seed must be a whole number')
-    for key in ('randomize_order', 'can_withdraw', 'can_rejoin'):
+    for key in ('randomize_order', 'can_withdraw', 'can_rejoin', 'allow_combat_first_turn', 'allow_noncombat_first_turn'):
         if key in settings and not isinstance(settings[key], bool):
             problems.append(f'{key} must be true or false')
     max_size = settings.get('max_alliance_size', DEFAULT_MAX_ALLIANCE_SIZE)
@@ -105,8 +107,11 @@ def check_settings(settings):
     if len(humans) > 1:
         problems.append('at most one human player is supported')
 
-    if 'max_alliance_size' in settings and size_ok and len(players) >= 3 and not 2 <= max_size <= len(players) - 1:
-        problems.append(f'the maximum alliance size must be between 2 and {len(players) - 1} (the number of players minus one)')
+    if 'max_alliance_size' in settings and size_ok:
+        if max_size < 1:
+            problems.append('the maximum alliance size must be at least 1 (1 means no alliances)')
+        elif len(players) >= 3 and max_size > len(players) - 1:
+            problems.append(f'the maximum alliance size must be between 1 and {len(players) - 1} (the number of players minus one)')
     groups = {}
     for i in players:
         n = int(seats[i - 1].get('alliance') or 0)
@@ -168,7 +173,8 @@ def build_session(settings, rng=None):
         starting_alliances=groups,
         can_withdraw_from_alliances=bool(settings.get('can_withdraw', True)),
         can_rejoin_alliances=bool(settings.get('can_rejoin', False)),
-        allow_combat_moves_first_turn=bool(settings.get('dev', {}).get('combat_first_turn', False)),
+        allow_combat_moves_first_turn=bool(settings.get('allow_combat_first_turn', False) or settings.get('dev', {}).get('combat_first_turn', False)),
+        allow_noncombat_moves_first_turn=bool(settings.get('allow_noncombat_first_turn', True)),
     )
     turn_log = TurnLog()
     # The dice come from the same seed as everything else, so a seeded game replays exactly.

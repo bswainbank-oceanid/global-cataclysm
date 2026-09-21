@@ -223,7 +223,8 @@ class TestMaxAllianceSize(unittest.TestCase):
     def test_it_can_be_at_most_the_number_of_players_minus_one(self):
         self.assertEqual(check_settings(self.four_players(max_alliance_size=3)), [])
         self.assertTrue(check_settings(self.four_players(max_alliance_size=4)))
-        self.assertTrue(check_settings(self.four_players(max_alliance_size=1)))
+        self.assertEqual(check_settings(self.four_players(max_alliance_size=1)), [])  # 1 = no alliances
+        self.assertTrue(check_settings(self.four_players(max_alliance_size=0)))
         three = settings(seat('HUMAN'), seat('BOT'), seat('BOT'), max_alliance_size=2)
         self.assertEqual(check_settings(three), [])
         self.assertTrue(check_settings(settings(seat('HUMAN'), seat('BOT'), seat('BOT'), max_alliance_size=3)))
@@ -243,3 +244,36 @@ class TestMaxAllianceSize(unittest.TestCase):
         self.assertTrue(any('maximum alliance size' in p for p in problems), problems)
         big['max_alliance_size'] = 3
         self.assertEqual(check_settings(big), [])
+
+
+class TestStartupOptions(unittest.TestCase):
+    def game(self, **kw):
+        session, _ = build_session(settings(seat('HUMAN'), seat('BOT'), seat('BOT'), **kw), random.Random(1))
+        return session, session.engine.game_state
+
+    def test_the_first_turn_defaults_are_no_combat_yes_non_combat(self):
+        _, gs = self.game()
+        self.assertFalse(gs.allow_combat_moves_first_turn)
+        self.assertTrue(gs.allow_noncombat_moves_first_turn)
+
+    def test_the_first_turn_options_reach_the_game(self):
+        _, gs = self.game(allow_combat_first_turn=True, allow_noncombat_first_turn=False)
+        self.assertTrue(gs.allow_combat_moves_first_turn)
+        self.assertFalse(gs.allow_noncombat_moves_first_turn)
+
+    def test_they_must_be_true_or_false(self):
+        self.assertTrue(check_settings(settings(seat('HUMAN'), seat('BOT'), allow_combat_first_turn='yes')))
+        self.assertTrue(check_settings(settings(seat('HUMAN'), seat('BOT'), allow_noncombat_first_turn=1)))
+
+    def test_a_maximum_alliance_size_of_one_means_no_alliances(self):
+        _, gs = self.game(max_alliance_size=1)
+        self.assertFalse(gs.alliances_enabled)
+        _, gs = self.game()
+        self.assertTrue(gs.alliances_enabled)
+
+    def test_a_two_player_game_may_pick_one_too(self):
+        self.assertEqual(check_settings(settings(seat('HUMAN'), seat('BOT'), max_alliance_size=1)), [])
+
+    def test_no_starting_alliance_fits_a_maximum_of_one(self):
+        s = settings(seat('HUMAN', alliance=1), seat('BOT', alliance=1), seat('BOT'), max_alliance_size=1)
+        self.assertTrue(any('maximum alliance size' in p for p in check_settings(s)))

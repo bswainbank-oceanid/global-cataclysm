@@ -99,6 +99,17 @@ class TestWatch(unittest.TestCase):
         self.assertGreaterEqual(len(seen), 2)  # (the game may end early: two bots can eliminate each other)
         self.assertEqual(seen[:3], expected[:len(seen[:3])])
 
+    def test_with_a_maximum_alliance_size_of_one_a_turn_has_no_alliances_phase(self):
+        session = _watch_session()
+        session.engine.game_state.max_alliance_size = 1
+        _watch(session)
+        seen = []
+        for _ in range(6):
+            queue = _by_type(session.handle_message({'type': 'next'}), 'phase_queue')[0]
+            seen.append((queue['faction'], queue['phase']))
+        self.assertEqual(seen, [('NAA', 'COMBAT_RESOLUTION'), ('NAA', 'NONCOMBAT_MOVE'), ('NAA', 'CAPTURE'),
+                                ('NAA', 'DEPLOY_INCOME'), ('AAC', 'START_OF_TURN'), ('AAC', 'PURCHASE')])
+
     def test_the_announcement_does_not_repeat_when_the_turn_is_replanned(self):
         session = _watch_session()
         session.handle_message({'type': 'watch'})

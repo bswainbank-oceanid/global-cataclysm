@@ -276,6 +276,14 @@ class PhaseStepper:
             before = _PHASES.index(phase)
             self.engine.advance_phase()
             self._skipped_before = _PHASES[before + 1:_PHASES.index(gs.phase)]
+            if gs.phase == Phase.ALLIANCES and not gs.alliances_enabled:
+                # A game with a maximum alliance size of 1 has no Alliances phase: nothing to decide, so the
+                # turn just ends here (only the game-over check still runs).
+                self._commit(faction, Phase.ALLIANCES)
+                if gs.game_over:
+                    return messages + [self._state_message(), {'type': 'game_over'}]
+                self.engine.advance_turn()
+                self._skipped_before = []
         self._plan_current_phase()
         return messages + [self._queue, self._state_message()]
 
