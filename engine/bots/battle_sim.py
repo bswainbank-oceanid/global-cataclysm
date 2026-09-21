@@ -14,7 +14,7 @@ This re-plays the same rules without the narration, on plain lists:
   * a unit that has nothing it could hit does not roll; the battle ends when a side is gone or neither
     side can hit the other;
   * XP and promotions after every round (survive +1, deal damage +1, kill a promoted unit +1; 5 XP per
-    promotion, no cap), Dig In (defending Infantry +1 defense), the first-round bonus (amphibious
+    promotion, up to the rules' max_promotions), Dig In (defending Infantry +1 defense), the first-round bonus (amphibious
     landing / ambush / reclaim), and Transport form in sea battles.
 
 "Success" is the attacker's -- all defenders eliminated and at least one attacker left, as if the
@@ -44,7 +44,7 @@ class _Side:
     """One side of a battle, prepared once: per-unit static facts, and the stats each kind of round
     uses (which change as units are promoted mid-battle -- see stats())."""
 
-    def __init__(self, units, is_defender, bonus, battle_type, unit_defs, type_order, xp_required):
+    def __init__(self, units, is_defender, bonus, battle_type, unit_defs, type_order, xp_required, max_promotions=None):
         self.units = units
         self.n = len(units)
         self.is_defender = is_defender
@@ -52,6 +52,7 @@ class _Side:
         self.unit_defs = unit_defs
         self.type_order = type_order
         self.xp_required = xp_required
+        self.max_promotions = max_promotions
         self.type = [u.unit_type for u in units]
         self.is_air = [unit_defs[u.unit_type]['category'] == 'Air' for u in units]
         self.is_sub = [t == 'Submarine' for t in self.type]
@@ -174,20 +175,25 @@ def _can_hit(side, enemies, alive, enemy_alive, order):
 
 def _award(side, hp, alive_before_mask, dealt, kill_credits, xp, extras, promoted_flag):
     """XP and promotions after a round, as engine.combat._apply_xp_and_check_promotions does them."""
+    cap = side.max_promotions
+
+    def capped(i):
+        return cap is not None and side.promotions0[i] + extras[i] >= cap
+
     for i in range(side.n):
-        if hp[i] <= 0 or side.cargo[i] or not alive_before_mask[i]:
+        if hp[i] <= 0 or side.cargo[i] or not alive_before_mask[i] or capped(i):
             continue
         xp[i] += 1
         if i in dealt:
             xp[i] += 1
     for killer in kill_credits:
-        if hp[killer] > 0 and not side.cargo[killer]:
+        if hp[killer] > 0 and not side.cargo[killer] and not capped(killer):
             xp[killer] += 1
     changed = False
     for i in range(side.n):
         if hp[i] <= 0 or side.cargo[i] or not alive_before_mask[i]:
             continue
-        while xp[i] >= side.xp_required:
+        while xp[i] >= side.xp_required and not capped(i):
             xp[i] -= side.xp_required
             extras[i] += 1
             hp[i] += 1
@@ -277,8 +283,9 @@ def estimate(attackers, defenders, battle_type, unit_defs, rules, rng=None, samp
         return BattleOdds(1.0, 0.0, 0.0, 0)
     type_order = rules['combat']['resolution_order'][battle_type]
     xp_required = rules['promotion']['xp_required']
-    att = _Side(list(attackers), False, round1_bonus_side == 'attacker', battle_type, unit_defs, type_order, xp_required)
-    dfn = _Side(list(defenders), True, round1_bonus_side == 'defender', battle_type, unit_defs, type_order, xp_required)
+    max_promotions = rules['promotion'].get('max_promotions')
+    att = _Side(list(attackers), False, round1_bonus_side == 'attacker', battle_type, unit_defs, type_order, xp_required, max_promotions)
+    dfn = _Side(list(defenders), True, round1_bonus_side == 'defender', battle_type, unit_defs, type_order, xp_required, max_promotions)
     air_round = any(att.is_air) and any(dfn.is_air) and ('Fighter' in att.type or 'Fighter' in dfn.type)
     counts = {'attacker': 0, 'defender': 0, 'neither': 0}
     done = 0

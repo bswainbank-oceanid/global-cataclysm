@@ -24,6 +24,7 @@ extends RefCounted
 
 enum Resolve { ENTIRE_BATTLE, ROUND, SIDE, UNIT_TYPE, UNIT }
 const RESOLVE_NAMES := ["Entire Battle", "Round", "Side", "Unit Type", "Unit"]
+const MAX_PROMOTIONS := 5   # rules.json promotion.max_promotions: a top-rank unit earns no more XP
 enum Mark { NONE, HIT, DEAD }
 
 var territory_id := -1
@@ -326,10 +327,12 @@ func _apply_roll(e: Dictionary) -> void:
 		# end): +1 for a unit's first damage this round, and +1 more for the
 		# killing blow on a promoted unit. The round-end snapshot then settles it.
 		var hitter: Dictionary = units[int(e["unit_id"])]
+		var top_rank := int(hitter.get("promotions", 0)) >= MAX_PROMOTIONS  # nothing left to earn
 		if not _damaged_this_round.has(hitter["unit_id"]):
 			_damaged_this_round[hitter["unit_id"]] = true
-			hitter["xp"] = int(hitter["xp"]) + 1
-		if int(e["target_hp_after"]) <= 0 and bool(t["promoted"]) and not bool(t["cargo"]):
+			if not top_rank:
+				hitter["xp"] = int(hitter["xp"]) + 1
+		if int(e["target_hp_after"]) <= 0 and bool(t["promoted"]) and not bool(t["cargo"]) and not top_rank:
 			hitter["xp"] = int(hitter["xp"]) + 1
 
 

@@ -25,6 +25,7 @@ const HP_W := 7.0
 const HP_TWO_COLUMNS := 6   # more HP than this is drawn in two columns
 const HP_TEXT_FROM := 5     # this much max HP or more also gets the "left/max" text
 const XP_PIPS := 5  # rules.json promotion.xp_required
+const MAX_PROMOTIONS := 5  # rules.json promotion.max_promotions: a unit at this rank earns no more XP
 const CARGO_BOX := Rect2(43, 1, 58, 64)   # the bordered box around the carried unit (transport form)
 const CARGO_OFFSET := Vector2(46, 2)      # where that unit's package starts inside it
 
@@ -86,7 +87,7 @@ func max_hp() -> int:
 func _describe() -> String:
 	var line := "%s #%d\nHP %d/%d   XP %d/%d%s" % [
 		unit["unit_type"], int(unit["unit_id"]), int(unit["current_hp"]), max_hp(),
-		mini(int(unit.get("xp", 0)), XP_PIPS), XP_PIPS, "   (%d promotion%s)" % [int(unit.get("promotions", 0)), "" if int(unit.get("promotions", 0)) == 1 else "s"] if int(unit.get("promotions", 0)) > 0 else ""]
+		mini(int(unit.get("xp", 0)), XP_PIPS), XP_PIPS, "   (%d promotion%s%s)" % [int(unit.get("promotions", 0)), "" if int(unit.get("promotions", 0)) == 1 else "s", ", top rank" if int(unit.get("promotions", 0)) >= MAX_PROMOTIONS else ""] if int(unit.get("promotions", 0)) > 0 else ""]
 	return "Transport carrying " + line if in_transport else line
 
 
@@ -182,8 +183,8 @@ func _draw_package(offset: Vector2, owner_col: Color) -> void:
 			_draw_star(offset + Vector2(cx - offset.x, 6.5), 7.0)
 			draw_string(ThemeDB.fallback_font, offset + Vector2(cx - offset.x - 10.0, 9.6), str(ranks), HORIZONTAL_ALIGNMENT_CENTER, 20.0, 9, Color(0.1, 0.06, 0.0))
 
-	# XP pips under the unit.
-	var xp := mini(int(unit.get("xp", 0)), XP_PIPS)
+	# XP pips under the unit (a top-rank unit has nothing left to earn: all gold).
+	var xp := XP_PIPS if ranks >= MAX_PROMOTIONS else mini(int(unit.get("xp", 0)), XP_PIPS)
 	var pip := 4.0
 	var gap := 2.0
 	var row_w := XP_PIPS * pip + (XP_PIPS - 1) * gap

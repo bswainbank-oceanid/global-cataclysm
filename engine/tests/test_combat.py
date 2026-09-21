@@ -716,6 +716,23 @@ class TestRepeatedPromotions(unittest.TestCase):
         self.assertEqual((stats(3)['attack_die'], stats(3)['defense']), ('D12', 8))
         self.assertEqual((stats(9)['attack_die'], stats(9)['defense'], stats(9)['max_hp']), ('D12', 10, base['hp'] + 9))
 
+    def test_promotions_stop_at_the_cap_and_top_rank_units_earn_no_xp(self):
+        cap = RULES['promotion']['max_promotions']
+        self.assertEqual(cap, 5)
+        unit = make(1, 'Infantry', 'NAA', promoted=cap - 1)
+        unit.xp = 9  # +2 -> 11: would be two promotions, but only one rank is left
+        events = self.promote(unit, hit=True)
+        self.assertEqual([e.promotion_rank for e in events], [cap])
+        self.assertEqual((unit.promotions, unit.xp), (cap, 0))  # the surplus is dropped
+        top = make(2, 'Infantry', 'NAA', promoted=cap)
+        self.assertEqual(self.promote(top, hit=True), [])
+        self.assertEqual((top.promotions, top.xp), (cap, 0))
+
+    def test_a_top_rank_killer_gets_no_bonus_xp(self):
+        killer = make(1, 'Infantry', 'NAA', promoted=RULES['promotion']['max_promotions'])
+        self.promote(killer, hit=True, killed_promoted=make(2, 'Armor', 'AAC', promoted=2))
+        self.assertEqual(killer.xp, 0)
+
     def test_killing_a_unit_promoted_more_than_once_still_pays_the_bonus(self):
         killer = make(1, 'Infantry', 'NAA')
         killer.xp = 0

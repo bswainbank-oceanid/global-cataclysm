@@ -58,6 +58,8 @@ SCENARIOS = {
                    lambda: [mk(11, 'Infantry', 'B'), mk(12, 'Mechanized Infantry', 'B'), mk(13, 'Submarine', 'B')], 'sea', None),
     'amphibious bonus': (lambda: [mk(1, 'Armor', 'A'), mk(2, 'Mechanized Infantry', 'A'), mk(3, 'Infantry', 'A')],
                          lambda: [mk(11, 'Armor', 'B'), mk(12, 'Infantry', 'B')], 'land', 'defender'),
+    'one rank from the cap': (lambda: [mk(1, 'Armor', 'A', promotions=4), mk(2, 'Infantry', 'A', promotions=4), mk(3, 'Armor', 'A', promotions=5)],
+                              lambda: [mk(11, 'Armor', 'B', promotions=4), mk(12, 'Infantry', 'B', promotions=5), mk(13, 'Infantry', 'B')], 'land', None),
     'submarines v aircraft': (lambda: [mk(1, 'Submarine', 'A'), mk(2, 'Submarine', 'A')],
                               lambda: [mk(11, 'Bomber', 'B'), mk(12, 'Cruiser', 'B')], 'sea', None),
 }

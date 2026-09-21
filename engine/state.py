@@ -72,7 +72,7 @@ class UnitInstance:
     owner: str
     current_hp: int
     xp: int = 0
-    # How many promotions the unit has earned (no fixed cap): each steps the attack die up one
+    # How many promotions the unit has earned (up to rules.json promotion.max_promotions): each steps the attack die up one
     # size (max D12), adds +1 defense (max 10) and +1 max HP. XP toward the next one is `xp`.
     promotions: int = 0
     has_moved_combat: bool = False

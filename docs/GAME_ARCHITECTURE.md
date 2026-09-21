@@ -47,7 +47,7 @@ app would.
 
 ## Rules engine: one module, two deployment modes
 
-Promotion is repeatable (`UnitInstance.promotions`, no fixed cap): every 5 XP after a round is a promotion -- die up one size (max D12), +1 defense (max 10), +1 HP -- and surplus XP carries over; see `data/rules.json` promotion. The combat/production/promotion rules (already specified in
+Promotion is repeatable (`UnitInstance.promotions`, up to `promotion.max_promotions` = 5 in rules.json; a top-rank unit earns no more XP and its surplus is dropped -- the fast bot simulator and the client's XP pips follow suit): every 5 XP after a round is a promotion -- die up one size (max D12), +1 defense (max 10), +1 HP -- and surplus XP carries over; see `data/rules.json` promotion. The combat/production/promotion rules (already specified in
 `data/rules.json` and `data/units.json`) should be implemented as a single
 standalone, testable module — not duplicated per-platform:
 - **Single player vs. bots**: runs locally (embedded/local process),
