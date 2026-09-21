@@ -221,12 +221,17 @@ class TestWatch(unittest.TestCase):
         for seed in range(1, 15):
             session = _watch_session(seed)
             messages = _watch(session)[1:]
+            found = False
             for _ in range(60):
-                queue = _by_type(messages, 'phase_queue')[0]
+                queues = _by_type(messages, 'phase_queue')
+                if not queues:
+                    break  # this seed's game ended first
+                queue = queues[0]
                 if queue['phase'] == 'RETURN_TO_BASE':
+                    found = True
                     break
                 messages = session.handle_message({'type': 'next'})
-            else:
+            if not found:
                 continue
             gs = session.engine.game_state
             flights = queue['events'][0]['orders']

@@ -23,8 +23,8 @@
     },
     "UE": {
       "Infantry": 6,
-      "Mechanized Infantry": 4,
-      "Armor": 3,
+      "Mechanized Infantry": 3,
+      "Armor": 4,
       "Aircraft Carrier": 2,
       "Cruiser": 2,
       "Submarine": 2,
@@ -44,7 +44,7 @@
     "PAF": {
       "Infantry": 9,
       "Mechanized Infantry": 3,
-      "Armor": 3,
+      "Armor": 4,
       "Aircraft Carrier": 2,
       "Cruiser": 2,
       "Submarine": 4,
@@ -54,7 +54,7 @@
     "UER": {
       "Infantry": 8,
       "Mechanized Infantry": 2,
-      "Armor": 5,
+      "Armor": 6,
       "Aircraft Carrier": 1,
       "Cruiser": 2,
       "Submarine": 3,

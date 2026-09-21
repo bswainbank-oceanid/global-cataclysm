@@ -112,6 +112,14 @@ Two scenarios exist today:
   `tools/generate_scenario_100ipc.py`, a thin wrapper around the same
   `generate_scenario()` function with these parameters.
 
+The 125-MPC scenario can also be tuned by hand in the spreadsheet: edit the rows (territory ID, unit, qty,
+deploys-to, promoted units) of the 'Initial Setup (125 MPC)' tab, then run
+`python3 tools/sync_scenario_from_xlsx.py` (`--check` first to see the differences) to read it back into
+`data/scenarios/starting_setup_125ipc.json`, and `python3 tools/validate_setup.py`. A naval row whose Deploys To
+names a zone the territory does not border (a row moved to another territory) falls back to the territory's own
+zone; a promotion row whose ID and territory name disagree goes by the name. Re-running `build_setup_tab.py`
+refreshes the tab from the JSON.
+
 `tools/build_setup_tab.py`'s `build_setup_tab()` function is similarly
 parameterized (scenario path, sheet name, use_sc, min_types) and renders
 both: `python3 tools/build_setup_tab.py` builds the 'Initial Setup (125 MPC)' tab
