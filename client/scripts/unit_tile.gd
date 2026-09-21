@@ -4,7 +4,9 @@ extends Button
 ##   - gold stars above it, one per promotion (up to four; beyond that one bigger
 ##     star carrying the number),
 ##   - XP pips beneath it (one per XP toward the next promotion),
-##   - a column of HP boxes on its right: white for HP left, red for HP lost.
+##   - a column of HP boxes on its right: white for HP left, red for HP lost (two columns
+##     once there are more than six, and the numbers "left/max" written under the unit
+##     from five up, so the HP left can always be read).
 ## The tile itself is an invisible toggle button -- nothing is drawn for it
 ## until it is hovered (thin outline) or selected (gold outline) -- so a set
 ## of units can be picked for orders later.
@@ -20,6 +22,8 @@ const ICON := 32.0
 const ICON_POS := Vector2(3, 13)
 const HP_X := 40.0
 const HP_W := 7.0
+const HP_TWO_COLUMNS := 6   # more HP than this is drawn in two columns
+const HP_TEXT_FROM := 5     # this much max HP or more also gets the "left/max" text
 const XP_PIPS := 5  # rules.json promotion.xp_required
 const CARGO_BOX := Rect2(43, 1, 58, 64)   # the bordered box around the carried unit (transport form)
 const CARGO_OFFSET := Vector2(46, 2)      # where that unit's package starts inside it
@@ -193,13 +197,26 @@ func _draw_package(offset: Vector2, owner_col: Color) -> void:
 			draw_rect(r, Color(0.5, 0.55, 0.62, 0.35))
 		draw_rect(r, Color(0, 0, 0, 0.8), false, 1.0)
 
-	# HP boxes, right of the icon, filling up from the bottom; red = HP lost.
+	# HP boxes, right of the icon, filling up from the bottom; red = HP lost. A tall stack
+	# (more than HP_TWO_COLUMNS) is split into two columns so each box stays big enough to read.
 	var total := max_hp()
 	var hp := clampi(int(unit["current_hp"]), 0, total)
-	var box_gap := 2.0
-	var box_h := (ICON - box_gap * (total - 1)) / total
-	for i in total:  # i = 0 is the bottom box
-		var y := offset.y + ICON_POS.y + ICON - (i + 1) * box_h - i * box_gap
-		var r := Rect2(offset.x + HP_X, y, HP_W, box_h)
+	var columns := 2 if total > HP_TWO_COLUMNS else 1
+	var rows := ceili(float(total) / columns)
+	var box_gap := 2.0 if rows <= 5 else 1.0
+	var box_h := (ICON - box_gap * (rows - 1)) / rows
+	var box_w := HP_W if columns == 1 else 6.0
+	var x0 := HP_X if columns == 1 else 37.5
+	for i in total:  # i = 0 is the bottom box of the first column
+		var col := i / rows
+		var row := i % rows
+		var y := offset.y + ICON_POS.y + ICON - (row + 1) * box_h - row * box_gap
+		var r := Rect2(offset.x + x0 + col * (box_w + 1.0), y, box_w, box_h)
 		draw_rect(r, Color.WHITE if i < hp else Color(0.9, 0.15, 0.15))
-		draw_rect(r, Color(0, 0, 0, 0.85), false, 1.0)
+		if box_h >= 4.0:
+			draw_rect(r, Color(0, 0, 0, 0.85), false, 1.0)
+	if total >= HP_TEXT_FROM:
+		var text := "%d/%d" % [hp, total]
+		var at := offset + Vector2(ICON_POS.x - 1.0, 62.0)
+		draw_string_outline(ThemeDB.fallback_font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, 3, Color(0, 0, 0, 0.9))
+		draw_string(ThemeDB.fallback_font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE if hp > 0 else Color(1.0, 0.4, 0.35))

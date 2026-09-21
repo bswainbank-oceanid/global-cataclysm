@@ -72,9 +72,10 @@ func group_rect(tid: int, owner: String) -> Rect2:
 	return Rect2()
 
 
-## A soft gold glow that breathes around the player's movable badge groups, at every zoom.
+## A bright gold glow that throbs around the player's movable badge groups, with a ring that
+## ripples outwards from it, at every zoom.
 class _PulseLayer extends Node2D:
-	const PERIOD := 2.4  # seconds per breath
+	const PERIOD := 1.3  # seconds per throb
 
 	var units: MapUnits
 
@@ -87,7 +88,9 @@ class _PulseLayer extends Node2D:
 	func _draw() -> void:
 		if units == null or units.pulse_spaces.is_empty():
 			return
-		var breath := 0.5 + 0.5 * sin(float(Time.get_ticks_msec()) / 1000.0 * TAU / PERIOD)
+		var t := float(Time.get_ticks_msec()) / 1000.0 / PERIOD
+		var breath := 0.5 + 0.5 * sin(t * TAU)
+		var ripple := fposmod(t, 1.0)  # 0 -> 1: the ring grows from the badge outwards as it fades
 		var owner := GameStore.move_faction()
 		var inv := units._badge_scale() / units.zoom
 		for copy in [-1, 0, 1]:
@@ -97,9 +100,11 @@ class _PulseLayer extends Node2D:
 					continue
 				var anchor: Vector2 = GameData.label_points[int(tid)] + Vector2(copy * GameData.map_w, 0)
 				draw_set_transform(anchor + Vector2(0, 11.0 / units.zoom), 0.0, Vector2(inv, inv))
-				var glow := rect.grow(2.5)
-				draw_rect(glow, Color(1.0, 0.9, 0.5, 0.05 + 0.14 * breath))
-				draw_rect(glow, Color(1.0, 0.9, 0.5, 0.25 + 0.5 * breath), false, 1.5)
+				var glow := rect.grow(3.0 + 2.0 * breath)
+				draw_rect(glow, Color(1.0, 0.85, 0.2, 0.22 + 0.33 * breath))
+				draw_rect(glow, Color(0.0, 0.0, 0.0, 0.7), false, 5.0)
+				draw_rect(glow, Color(1.0, 0.95, 0.55, 0.75 + 0.25 * breath), false, 3.0)
+				draw_rect(rect.grow(4.0 + 12.0 * ripple), Color(1.0, 0.92, 0.4, 0.9 * (1.0 - ripple)), false, 3.0)
 
 
 func _style() -> int:
