@@ -39,9 +39,11 @@ class TestSettings(unittest.TestCase):
     def test_a_few_known_cells(self):
         self.assertEqual(self.s.unit_weights['NAA']['Mechanized Infantry'], 6)
         self.assertEqual(self.s.strategy_weights['GPC']['Controlling'], 7)
-        self.assertEqual(self.s.thresholds['Strategic']['hold_sc'], {'min': 0.001, 'max': 95})
+        self.assertEqual(self.s.thresholds['Strategic']['hold_sc'], {'min': 0.001, 'max': 75})
         self.assertEqual(self.s.thresholds['Controlling']['control_oceans'], {'weight': 10, 'min': 65, 'max': 95})
-        self.assertEqual(self.s.limits('Defensive', 'hold_sc'), (0.00001, 0.99))
+        self.assertEqual(self.s.limits('Defensive', 'hold_sc'), (0.00001, 0.75))
+        self.assertEqual(self.s.thresholds['Expansive']['empty_land_grab'], {'weight': 10})
+        self.assertIn('empty_land_grab', SECONDARY)
 
     def test_a_weight_of_zero_is_never_drawn(self):
         rng = random.Random(1)
@@ -185,6 +187,50 @@ class TestPlanner(unittest.TestCase):
         for uid, path in p.moves_combat.items():
             self.assertEqual(path[-1], gpc_sc)
 
+    def test_an_eliminated_factions_empty_strategic_center_is_still_a_target(self):
+        engine, gs = make_game({**{f: FactionMode.NEUTRAL for f in FACTIONS}, 'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        gpc_sc = next(t for t, x in data.territories().items() if x['type'] == 'land' and x.get('faction') == 'GPC' and x.get('strategic_center'))
+        neighbours = data.adjacency()[gpc_sc]
+        land_neighbour = next(n for n in neighbours if data.territories()[n]['type'] == 'land')
+        gs.territories[land_neighbour].owner = 'NAA'
+        put(gs, land_neighbour, 'Infantry', 'NAA', 1)
+        gs.territories[gpc_sc].units = []
+        gs.factions['GPC'].eliminated = True   # surrendered: its land stays, empty
+        p = planner_for(engine)
+        self.assertTrue(p.capturable('GPC'))
+        self.assertFalse(p.hostile('GPC'))
+        self.assertIn(gpc_sc, [t[1] for t in p.sc_targets()])
+        p.objective_capture_scs()
+        self.assertEqual([path[-1] for path in p.moves_combat.values()], [gpc_sc])
+
+    def test_a_neutral_factions_land_is_never_a_target(self):
+        engine, gs = make_game({**{f: FactionMode.NEUTRAL for f in FACTIONS}, 'NAA': FactionMode.BOT})
+        p = planner_for(engine)
+        self.assertFalse(p.capturable('GPC'))
+        self.assertFalse(p.capturable('NAA'))
+
+    def test_the_min_risk_of_an_sc_attack_is_the_chance_to_force_a_contest(self):
+        engine, gs = make_game({**{f: FactionMode.NEUTRAL for f in FACTIONS}, 'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        gpc_sc = next(t for t, x in data.territories().items() if x['type'] == 'land' and x.get('faction') == 'GPC' and x.get('strategic_center'))
+        land_neighbour = next(n for n in data.adjacency()[gpc_sc] if data.territories()[n]['type'] == 'land')
+        gs.territories[land_neighbour].owner = 'NAA'
+        put(gs, land_neighbour, 'Infantry', 'NAA', 6)   # far too weak to win outright...
+        gs.territories[gpc_sc].units = []
+        put(gs, gpc_sc, 'Armor', 'GPC', 3, promotions=1)
+        p = planner_for(engine)
+        win = p.assess_assault(gpc_sc, ('Land', 'Air', 'Sea'))
+        held = p.assess_assault(gpc_sc, ('Land', 'Air', 'Sea'), contest=True)
+        self.assertLess(win, 0.15)
+        self.assertGreater(held, 0.3)   # ...but they can often hang on through the three rounds
+        # a min of 0% risk of a contest: the attack goes in even though victory is unlikely
+        p2 = planner_for(engine)
+        self.assertTrue(p2.assault(gpc_sc, 'capture_sc', (held - 0.2, 0.95), ('Land', 'Air', 'Sea'), min_is_contest=True))
+        self.assertTrue(p2.moves_combat)
+        # with the min above what a contest can be had for, it stays home
+        p3 = planner_for(engine)
+        self.assertFalse(p3.assault(gpc_sc, 'capture_sc', (min(held + 0.25, 0.99), 0.95), ('Land', 'Air', 'Sea'), min_is_contest=True))
+        self.assertFalse(p3.moves_combat)
+
     def test_planning_effort_is_a_budget_of_simulated_battles(self):
         p = planner_for(self.engine, budget=40)
         p.run()
@@ -196,6 +242,80 @@ class TestPlanner(unittest.TestCase):
         self.assertEqual([(o.unit_type, o.qty, o.deploy_at) for o in a.purchases], [(o.unit_type, o.qty, o.deploy_at) for o in b.purchases])
         self.assertEqual([(o.unit_id, o.path) for o in a.combat], [(o.unit_id, o.path) for o in b.combat])
 
+
+
+class TestEmptyLandGrab(unittest.TestCase):
+    """The secondary objective: Mechanized Infantry take undefended enemy land."""
+
+    def setUp(self):
+        modes = {f: FactionMode.NEUTRAL for f in FACTIONS}
+        modes['NAA'] = modes['GPC'] = FactionMode.BOT
+        self.engine, self.gs = make_game(modes)
+        # Scotland (13) is NAA's next to England (21); GPC's garrison there is gone: an empty territory.
+        self.gs.territories[13].owner = 'GPC'
+        self.gs.territories[13].units = []
+        self.mech = None
+
+    def with_mech(self, at=21):
+        put(self.gs, at, 'Mechanized Infantry', 'NAA')
+        self.mech = self.gs.territories[at].units[-1]
+
+    def test_the_weight_is_a_secondary_objective_like_the_others(self):
+        for style in ALL_STYLES:
+            self.assertGreater(load_settings().thresholds['Strategic' if style == 'Variable' else style]['empty_land_grab']['weight'], 0)
+
+    def test_undefended_land_is_found_nearest_first(self):
+        p = planner_for(self.engine)
+        found = p._undefended_land()
+        self.assertIn(13, [t for _, _, t in found])
+        hops = [h for h, _, _ in found]
+        self.assertEqual(hops, sorted(hops))
+        # a defended one is not there
+        put(self.gs, 13, 'Infantry', 'GPC')
+        self.assertNotIn(13, [t for _, _, t in planner_for(self.engine)._undefended_land()])
+
+    def test_an_eliminated_factions_land_counts_as_undefended_too(self):
+        self.gs.territories[13].owner = 'UER'
+        self.gs.factions['UER'].eliminated = True
+        self.gs.factions['UER'].mode = FactionMode.BOT
+        self.assertIn(13, [t for _, _, t in planner_for(self.engine)._undefended_land()])
+
+    def test_a_mech_inf_in_reach_goes_to_take_it(self):
+        self.with_mech()
+        p = planner_for(self.engine)
+        p.objective_empty_land_grab()
+        self.assertEqual(p.moves_combat[self.mech.unit_id][-1], 13)
+        self.assertEqual(p.claimed[self.mech.unit_id], 'empty_land_grab')
+        self.gs.phase = Phase.COMBAT_MOVE
+        self.gs.active_faction = 'NAA'
+        self.engine.submit_combat_moves('NAA', p.combat_orders())  # and it is a legal move
+
+    def test_only_mechanized_infantry_are_sent(self):
+        put(self.gs, 21, 'Infantry', 'NAA', 2)
+        put(self.gs, 21, 'Armor', 'NAA', 1)
+        p = planner_for(self.engine)
+        p.objective_empty_land_grab()
+        self.assertEqual({tid for tid in p.moves_combat}, set())
+
+    def test_with_no_mech_inf_in_reach_one_is_bought_toward_it(self):
+        p = planner_for(self.engine)
+        p.objective_empty_land_grab()
+        self.assertTrue(p.purchases)
+        self.assertEqual({t for (t, _) in p.purchases}, {'Mechanized Infantry'})
+        self.engine._resolve_and_cost(p.purchase_orders(), 'NAA')   # everything bought is legal
+
+    def test_the_last_defender_of_a_threatened_territory_is_not_sent(self):
+        self.gs.territories[21].units = []
+        self.with_mech()
+        put(self.gs, 13, 'Armor', 'GPC', 1)  # not empty any more...
+        self.gs.territories[13].units = []   # (keep it empty, but let a GPC land unit threaten England from next door)
+        put(self.gs, 12, 'Armor', 'GPC', 1)
+        self.gs.territories[12].owner = 'GPC'
+        p = planner_for(self.engine)
+        p.objective_empty_land_grab()
+        # England's only defender is the Mech Inf and an enemy Armor can walk in: it stays (a purchase stands in instead)
+        if self.mech.unit_id in p.moves_combat:
+            self.assertTrue(p.threats(21) == {} or any(v.unit_id != self.mech.unit_id for v in p.defenders_at(21, claimed_only=False)))
 
 class TestStrategyBotPlaysTurns(unittest.TestCase):
     def game(self, seed=3, budget=250):

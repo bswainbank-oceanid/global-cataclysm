@@ -14,7 +14,7 @@ STYLES = ('Strategic', 'Defensive', 'Expansive', 'Controlling')  # the concrete 
 ALL_STYLES = STYLES + ('Variable',)
 
 # The secondary objectives, in the sheet's own names (the threshold rows are keyed by these).
-SECONDARY = ('expand_territory', 'hold_frontier', 'control_oceans', 'pursue_sc_1', 'pursue_sc_2', 'pursue_sc_3')
+SECONDARY = ('expand_territory', 'hold_frontier', 'control_oceans', 'pursue_sc_1', 'pursue_sc_2', 'pursue_sc_3', 'empty_land_grab')
 
 _cache = None
 

@@ -92,6 +92,34 @@ class TestFastEstimatorAgreesWithTheResolver(unittest.TestCase):
         battle_sim.estimate(a, d, kind, UNIT_DEFS, RULES, random.Random(3), 200)
         self.assertLess(time.time() - start, 0.15, '200 samples should take a few milliseconds each at most')
 
+    def test_a_round_limited_estimate_counts_the_contest(self):
+        # 3 Infantry against 2 promoted Armor: they lose the fight but often survive three rounds of it
+        a = [mk(i, 'Infantry', 'A') for i in range(1, 4)]
+        d = [mk(20, 'Armor', 'B', promotions=1), mk(21, 'Armor', 'B', promotions=1)]
+        limited = battle_sim.estimate(a, d, 'land', UNIT_DEFS, RULES, random.Random(4), 800, max_rounds=3)
+        free = battle_sim.estimate(a, d, 'land', UNIT_DEFS, RULES, random.Random(4), 800)
+        self.assertGreater(limited.contested, 0.05)
+        self.assertGreaterEqual(limited.attacker_wins + limited.contested, free.attacker_wins)
+        self.assertAlmostEqual(limited.attacker_wins + limited.defender_wins + limited.neither + limited.contested, 1.0, places=6)
+        self.assertEqual(free.contested, 0.0)
+
+    def test_the_contest_estimate_agrees_with_the_real_resolver(self):
+        for name in ('even land', 'big attack', 'promoted defender'):
+            att, dfn, kind, bonus = SCENARIOS[name]
+            rng = random.Random(9)
+            held = 0
+            n = 800
+            for _ in range(n):
+                a = [copy.copy(u) for u in att()]
+                d = [copy.copy(u) for u in dfn()]
+                outcome = None
+                for e in resolve_battle(a, d, kind, rng, 0, UNIT_DEFS, RULES, round1_bonus_side=bonus):
+                    if e.kind == EventKind.BATTLE_END:
+                        outcome = e.outcome
+                held += outcome != 'attacker_eliminated'   # the attack won or left the territory contested
+            fast = battle_sim.estimate(att(), dfn(), kind, UNIT_DEFS, RULES, random.Random(10), 800, bonus, max_rounds=3)
+            self.assertAlmostEqual(held / n, fast.attacker_wins + fast.contested, delta=0.06, msg=name)
+
     def test_the_obvious_cases(self):
         strong = [mk(i, 'Armor', 'A') for i in range(1, 7)]
         weak = [mk(20, 'Infantry', 'B')]

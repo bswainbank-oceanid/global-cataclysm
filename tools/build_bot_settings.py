@@ -73,10 +73,10 @@ def main():
 
     # Thresholds: after a header row, one row per style. Columns (from the sheet):
     # Hold SC (min,max) | Capture SC (min,max) | Reinforce (min,max) | Punish (min,max) |
-    # Expand (weight,min,max) | Frontier (w,min,max) | Oceans (w,min,max) | Pursue SC (w,min,max) | 2nd | 3rd
+    # Expand (weight,min,max) | Frontier (w,min,max) | Oceans (w,min,max) | Pursue SC (w,min,max) | 2nd | 3rd | Empty Land Grab (weight)
     shape = [('hold_sc', 2), ('capture_sc', 2), ('reinforce_contested', 2), ('punish_betrayers', 2),
              ('expand_territory', 3), ('hold_frontier', 3), ('control_oceans', 3),
-             ('pursue_sc_1', 3), ('pursue_sc_2', 3), ('pursue_sc_3', 3)]
+             ('pursue_sc_1', 3), ('pursue_sc_2', 3), ('pursue_sc_3', 3), ('empty_land_grab', 1)]
     thresholds = {}
     for r in sheets['Thresholds']:
         if r and isinstance(r[0], str) and r[0].strip() in ('Strategic', 'Defensive', 'Expansive', 'Controlling'):
@@ -85,8 +85,11 @@ def main():
             for name, width in shape:
                 chunk = vals[i:i + width]
                 i += width
-                entry[name] = ({'min': chunk[0], 'max': chunk[1]} if width == 2
-                               else {'weight': chunk[0], 'min': chunk[1], 'max': chunk[2]})
+                if name == 'empty_land_grab':   # only a weight: it takes undefended land, so there is no risk to weigh
+                    entry[name] = {'weight': chunk[0]}
+                else:
+                    entry[name] = ({'min': chunk[0], 'max': chunk[1]} if width == 2
+                                   else {'weight': chunk[0], 'min': chunk[1], 'max': chunk[2]})
             thresholds[r[0].strip()] = entry
 
     distance = {}

@@ -27,13 +27,30 @@ Primary, in this order: **hold SCs**, **capture SCs**, **reinforce contested**, 
 where `reclaim_bonus_for` is the bot), **fill defensive gaps**. A treacherous bot that has decided to withdraw then
 does **treasonous capture** (non-combat moves into allied non-SC land; it uses the *expand territory* limits).
 Secondary, in a weighted order drawn each turn from the style's weights: **expand territory**, **hold frontier**,
-**control oceans**, **pursue SC 1 / 2 / 3**. Last, whatever is left goes to **pursuing SCs** (below).
+**control oceans**, **pursue SC 1 / 2 / 3**, **empty land grab**. Last, whatever is left goes to **pursuing SCs** (below).
 
 Each objective rates its chance of success with the fast simulator (`bots/battle_sim.py`: 200 samples, the
 battle run without a round limit, stopping early when the answer is clear) and applies its style's limits:
 if everything that could be committed leaves the chance under the objective's **min**, it is not pursued (nothing
 is committed); otherwise resources are added -- units already there, then purchases (by the faction's unit odds),
 then units that can move in, cheapest first -- until the chance passes the objective's **max**.
+
+**Capturing Strategic Centers** measures the two limits differently: the **min** risk is the chance the attack at least
+forces a *contest* -- the attackers hang on through the 3 rounds of a battle, or win outright -- estimated by the same
+simulator run for 3 rounds (`battle_sim.estimate(..., max_rounds=3)`, `Planner.contest_odds`); the **max** is still the
+chance of total victory, which is what the added resources aim at. So a bot will throw a force at an SC it cannot
+quite beat if it can likely make it a contested territory. (Hold SC's max is lower than it was, so the bots defend their
+Strategic Centers -- still always -- but not as vigorously.)
+
+A faction that has been eliminated (surrendered) leaves its territory and Strategic Centers on the board, likely empty.
+They stay in the set of Strategic Centers the bots try to capture (`Planner.capturable`), in the capture, pursue and
+expand objectives alike.
+
+**Empty land grab** (secondary; its weight in the settings sheet): finds enemy or eliminated-faction land nobody defends
+or contests, nearest to the bot's own land first and then by value, and sends the nearest Mechanized Infantry that can get
+there by combat move (never the last defender of a territory an enemy land unit could walk into). Where none can, it buys a
+Mechanized Infantry at the purchase spot nearest the target (at most 3 a turn, targets within 2 hops of its land, so it can reach them the turn after), which
+goes the turn after. There is no battle, so there is no risk to weigh.
 
 Exceptions to "nothing is committed below the min", chosen so money is not left idle:
 

@@ -31,14 +31,17 @@ MAX_ROUNDS = 100
 
 
 class BattleOdds:
-    """attacker_wins / defender_wins / neither (a stalemate or mutual destruction), as fractions."""
-    __slots__ = ('attacker_wins', 'defender_wins', 'neither', 'samples')
+    """attacker_wins / defender_wins / neither (a stalemate or mutual destruction), as fractions. In a
+    battle with a round limit (estimate's max_rounds) `contested` is the share where both sides still had
+    units when the rounds ran out -- the territory becomes contested -- and `neither` is then mutual destruction."""
+    __slots__ = ('attacker_wins', 'defender_wins', 'neither', 'samples', 'contested')
 
-    def __init__(self, attacker_wins, defender_wins, neither, samples):
+    def __init__(self, attacker_wins, defender_wins, neither, samples, contested=0.0):
         self.attacker_wins = attacker_wins
         self.defender_wins = defender_wins
         self.neither = neither
         self.samples = samples
+        self.contested = contested
 
 
 class _Side:
@@ -192,8 +195,9 @@ def _award(side, hp, alive_before_mask, dealt, xp, extras):
     return changed
 
 
-def simulate_once(rng, att, dfn, air_round):
-    """One battle. Returns 'attacker', 'defender' or 'neither'."""
+def simulate_once(rng, att, dfn, air_round, max_rounds=MAX_ROUNDS):
+    """One battle. Returns 'attacker', 'defender', 'neither' -- or, when the rounds are limited and ran out
+    with both sides standing, 'contested'."""
     ahp, dhp = list(att.hp0), list(dfn.hp0)
     axp, dxp = list(att.xp0), list(dfn.xp0)
     aex, dex = [0] * att.n, [0] * dfn.n
@@ -229,7 +233,7 @@ def simulate_once(rng, att, dfn, air_round):
         if _award(dfn, dhp, da, ddealt, dxp, dex):
             dtabs.clear()
 
-    for rnd in range(1, MAX_ROUNDS + 1):
+    for rnd in range(1, max_rounds + 1):
         a_alive = [h > 0 for h in ahp]
         d_alive = [h > 0 for h in dhp]
         if not any(a_alive) or not any(d_alive):
@@ -251,6 +255,8 @@ def simulate_once(rng, att, dfn, air_round):
         return 'attacker'
     if d_left and not a_left:
         return 'defender'
+    if a_left and d_left and max_rounds < MAX_ROUNDS:
+        return 'contested'
     return 'neither'
 
 
@@ -258,12 +264,14 @@ BATCH = 25
 
 
 def estimate(attackers, defenders, battle_type, unit_defs, rules, rng=None, samples=200, round1_bonus_side=None,
-             cut=None):
+             cut=None, max_rounds=None):
     """Odds for a battle between `attackers` and `defenders` (lists of UnitInstance; not modified).
     round1_bonus_side: None | 'attacker' | 'defender', as GameEngine.round1_bonus reports it.
     cut: attacker-win probabilities the caller is going to compare the answer with; sampling stops early
     once the estimate is clearly on one side of all of them (about three standard errors), which saves most
-    of the work for lopsided battles."""
+    of the work for lopsided battles.
+    max_rounds: fight only that many rounds (the real battle's 3, after the air-superiority round) and count a
+    battle still standing at the end as contested, instead of fighting on to a finish."""
     rng = rng or random.Random()
     if not attackers:
         return BattleOdds(0.0, 1.0 if defenders else 0.0, 0.0 if defenders else 1.0, 0)
@@ -274,15 +282,16 @@ def estimate(attackers, defenders, battle_type, unit_defs, rules, rng=None, samp
     att = _Side(list(attackers), False, round1_bonus_side == 'attacker', battle_type, unit_defs, type_order, xp_required, rules['promotion'])
     dfn = _Side(list(defenders), True, round1_bonus_side == 'defender', battle_type, unit_defs, type_order, xp_required, rules['promotion'])
     air_round = any(att.is_air) and any(dfn.is_air) and ('Fighter' in att.type or 'Fighter' in dfn.type)
-    counts = {'attacker': 0, 'defender': 0, 'neither': 0}
+    counts = {'attacker': 0, 'defender': 0, 'neither': 0, 'contested': 0}
+    rounds = max_rounds or MAX_ROUNDS
     done = 0
     while done < samples:
         for _ in range(min(BATCH, samples - done)):
-            counts[simulate_once(rng, att, dfn, air_round)] += 1
+            counts[simulate_once(rng, att, dfn, air_round, rounds)] += 1
             done += 1
         if cut and done >= 2 * BATCH and done < samples:
             p = counts['attacker'] / done
             margin = 3.0 * (max(p * (1 - p), 0.01) / done) ** 0.5 + 0.02
             if all(abs(p - c) > margin for c in cut):
                 break
-    return BattleOdds(counts['attacker'] / done, counts['defender'] / done, counts['neither'] / done, done)
+    return BattleOdds(counts['attacker'] / done, counts['defender'] / done, counts['neither'] / done, done, counts['contested'] / done)

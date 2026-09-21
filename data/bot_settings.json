@@ -110,11 +110,11 @@
     "Strategic": {
       "hold_sc": {
         "min": 0.001,
-        "max": 95
+        "max": 75
       },
       "capture_sc": {
-        "min": 30,
-        "max": 90
+        "min": 60,
+        "max": 95
       },
       "reinforce_contested": {
         "min": 1,
@@ -153,12 +153,15 @@
         "weight": 2,
         "min": 60,
         "max": 90
+      },
+      "empty_land_grab": {
+        "weight": 8
       }
     },
     "Defensive": {
       "hold_sc": {
         "min": 0.001,
-        "max": 99
+        "max": 75
       },
       "capture_sc": {
         "min": 60,
@@ -201,12 +204,15 @@
         "weight": 0,
         "min": 60,
         "max": 90
+      },
+      "empty_land_grab": {
+        "weight": 5
       }
     },
     "Expansive": {
       "hold_sc": {
         "min": 0.001,
-        "max": 95
+        "max": 75
       },
       "capture_sc": {
         "min": 60,
@@ -249,15 +255,18 @@
         "weight": 0,
         "min": 60,
         "max": 90
+      },
+      "empty_land_grab": {
+        "weight": 10
       }
     },
     "Controlling": {
       "hold_sc": {
         "min": 0.001,
-        "max": 95
+        "max": 75
       },
       "capture_sc": {
-        "min": 40,
+        "min": 60,
         "max": 95
       },
       "reinforce_contested": {
@@ -297,6 +306,9 @@
         "weight": 2,
         "min": 60,
         "max": 90
+      },
+      "empty_land_grab": {
+        "weight": 8
       }
     }
   },
