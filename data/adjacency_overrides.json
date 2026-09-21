@@ -1,5 +1,5 @@
 {
- "_note": "Hand-confirmed corrections applied on top of the outline-derived adjacency (tools/compute_adjacency.py). 'remove': pairs whose outlines touch but that are NOT adjacent in play (mostly a sea zone whose polygon only overlaps a coast it does not border). 'add': pairs adjacent in play whose outlines do not touch. Each entry is [id, id, 'names']; only the ids are read. Source: reference/GC Adjacency.ods ('Wrong' and 'Missing' columns). Bering Strait / Hudson Bay (150, 11) was first marked wrong, then listed as Missing and dropped from the Wrong list; its outlines touch, so it stays adjacent: it is simply no longer in 'remove' (no 'add' entry needed).",
+ "_note": "Hand-confirmed corrections applied on top of the outline-derived adjacency (tools/compute_adjacency.py). 'remove': pairs whose outlines touch but that are NOT adjacent in play (mostly a sea zone whose polygon only overlaps a coast it does not border). 'add': pairs adjacent in play whose outlines do not touch. Each entry is [id, id, 'names']; only the ids are read. Source: reference/GC Adjacency.ods ('Wrong' and 'Missing' columns). Bering Strait / Hudson Bay (150, 11) was first marked wrong, then listed as Missing and dropped from the Wrong list; its outlines touch, so it stays adjacent: it is simply no longer in 'remove' (no 'add' entry needed). North Atlantic / West Africa (59, 90) and Sargasso Sea / West Africa (60, 90) were also marked Wrong, but their outlines no longer touch (after the base-map fixes), so they need no entry.",
  "remove": [
   [
    4,
@@ -150,7 +150,23 @@
    45,
    65,
    "Sea of Japan / Eastern China"
+  ],
+  [
+   42,
+   40,
+   "Black Sea / Czechia"
   ]
  ],
- "add": []
+ "add": [
+  [
+   94,
+   80,
+   "Colombia / Panama"
+  ],
+  [
+   82,
+   64,
+   "Egypt / Middle East"
+  ]
+ ]
 }
