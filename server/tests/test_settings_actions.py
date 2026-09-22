@@ -186,6 +186,45 @@ class TestProposeArmistice(unittest.TestCase):
         self.assertIn('game_over', [m['type'] for m in r2])
 
 
+class TestArmisticeCooldown(unittest.TestCase):
+    """A proposer whose armistice was declined can't propose another for
+    GameSession.ARMISTICE_COOLDOWN_ROUNDS rounds (server/session.py)."""
+
+    def test_a_declined_proposer_must_wait_before_proposing_again(self):
+        session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
+        session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
+        resolved = session.handle_message({'type': 'respond_armistice', 'faction': 'UE', 'accept': False})
+        declined = _by_type(resolved, 'armistice_resolved')[0]
+        self.assertFalse(declined['accepted'])
+        self.assertEqual(declined['cooldown_until_round'], session.engine.game_state.round_number + 5)
+        reply = session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
+        self.assertEqual(reply[0]['type'], 'error')
+        self.assertIn('wait', reply[0]['message'])
+
+    def test_the_cooldown_lifts_once_enough_rounds_have_passed(self):
+        session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
+        session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
+        session.handle_message({'type': 'respond_armistice', 'faction': 'UE', 'accept': False})
+        session.engine.game_state.round_number += 5
+        reply = session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
+        self.assertNotEqual(reply[0]['type'], 'error')
+
+    def test_the_cooldown_does_not_lift_early(self):
+        session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
+        session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
+        session.handle_message({'type': 'respond_armistice', 'faction': 'UE', 'accept': False})
+        session.engine.game_state.round_number += 4
+        reply = session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
+        self.assertEqual(reply[0]['type'], 'error')
+
+    def test_only_the_declined_proposer_is_cooled_down_not_anyone_else(self):
+        session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
+        session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
+        session.handle_message({'type': 'respond_armistice', 'faction': 'UE', 'accept': False})
+        reply = session.handle_message({'type': 'propose_armistice', 'faction': 'UE'})
+        self.assertNotEqual(reply[0]['type'], 'error')
+
+
 class TestSpectatorArmistice(unittest.TestCase):
     """A pure spectator -- nobody's own faction, proposing with no "faction" in the message at all
     (what a watch-mode connection to a game with no HUMAN seat IS, in this client)."""
@@ -231,6 +270,16 @@ class TestSpectatorArmistice(unittest.TestCase):
         self.assertTrue(session.engine.game_state.game_over)
         reply = session.handle_message({'type': 'propose_armistice'})
         self.assertEqual(reply[0]['type'], 'error')
+
+    def test_a_declined_spectator_proposal_is_cooled_down_too_but_a_seated_human_is_unaffected(self):
+        session = _session(humans=('NAA',), bots=('UE', 'GPC'))
+        session.handle_message({'type': 'propose_armistice'})
+        session.handle_message({'type': 'respond_armistice', 'faction': 'NAA', 'accept': False})
+        reply = session.handle_message({'type': 'propose_armistice'})
+        self.assertEqual(reply[0]['type'], 'error')
+        self.assertIn('spectator', reply[0]['message'])
+        reply2 = session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
+        self.assertNotEqual(reply2[0]['type'], 'error')  # a different proposer identity: not cooled down
 
 
 if __name__ == '__main__':

@@ -128,6 +128,8 @@ func _on_message(msg: Dictionary) -> void:
 			if bool(msg.get("accepted", false)):
 				_announce(msg.get("events", []))  # the 'armistice' event itself carries the announcement
 			else:
+				if _is_my_own_proposal(msg.get("from")):
+					GameStore.set_armistice_cooldown_until_round(int(msg.get("cooldown_until_round", -1)))
 				var by := str(msg.get("declined_by", ""))
 				announced.emit([{"title": "Armistice declined", "color": Color(1.0, 0.6, 0.5),
 					"body": "%s declined %s's armistice proposal. The game goes on." % [_name(by), _proposer_name(msg.get("from"))]}])
@@ -161,6 +163,14 @@ static func _color(code: String) -> Color:
 ## own faction, watching rather than playing -- see propose_armistice); this names either one.
 static func _proposer_name(code) -> String:
 	return _name(str(code)) if code != null else "a spectator"
+
+
+## Whether an armistice_resolved's "from" was THIS client's own proposal -- its own human_faction()
+## if it plays one, or null (a spectator's identity) if it doesn't. Used to know whether a decline's
+## cooldown (armistice_resolved's cooldown_until_round) applies to this client, not someone else's.
+static func _is_my_own_proposal(from) -> bool:
+	var me := GameStore.human_faction()
+	return from == null if me == "" else from == me
 
 
 ## Turn the significant events of an executed phase (an elimination, an alliance formed

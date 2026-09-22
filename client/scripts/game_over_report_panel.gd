@@ -104,7 +104,7 @@ func _rebuild(report: Array) -> void:
 	# rounds_in_game is the SAME value on every row (server/report.py) -- shown once, in the title,
 	# rather than as a repeated column.
 	var rounds = report[0].get("rounds_in_game") if not report.is_empty() else null
-	_title.text = "Game Over - Final Report (%s rounds)" % str(rounds) if rounds != null else "Game Over - Final Report"
+	_title.text = "Game Over - Final Report (%d rounds)" % int(rounds) if rounds != null else "Game Over - Final Report"
 	for c in _grid.get_children():
 		_grid.remove_child(c)
 		c.queue_free()
@@ -124,11 +124,11 @@ func _add_row(row: Dictionary) -> void:
 	var reasons: Array = row.get("elimination_reason", []) if row.get("elimination_reason") != null else []
 	_cell(", ".join(reasons) if not reasons.is_empty() else "-", HudStyle.TEXT_DIM)
 	_cell(_or_dash(row.get("eliminated_by")), HudStyle.TEXT_DIM)
-	_cell(_or_dash(row.get("round_eliminated")), HudStyle.TEXT_DIM)
-	_cell(str(row.get("strategic_centers", 0)))
-	_cell(str(row.get("territory_mpc", 0)))
-	_cell(str(row.get("units_produced", 0)))
-	_cell(str(row.get("units_destroyed", 0)))
+	_cell(_int_or_dash(row.get("round_eliminated")), HudStyle.TEXT_DIM)
+	_cell(str(int(row.get("strategic_centers", 0))))
+	_cell(str(int(row.get("territory_mpc", 0))))
+	_cell(str(int(row.get("units_produced", 0))))
+	_cell(str(int(row.get("units_destroyed", 0))))
 	_cell(_or_dash(row.get("seat_type")))
 	_cell(_or_dash(row.get("bot_type")))
 	_cell(_or_dash(row.get("bot_strategy")))
@@ -140,6 +140,13 @@ func _add_row(row: Dictionary) -> void:
 
 func _or_dash(v) -> String:
 	return "-" if v == null else str(v)
+
+
+## Like _or_dash, but for a value that's genuinely a whole number (round_eliminated) --
+## JSON.parse_string() decodes every JSON number as a float, so a plain str(v) would show
+## "3.0" rather than "3" without this cast.
+func _int_or_dash(v) -> String:
+	return "-" if v == null else str(int(v))
 
 
 func _cell(text: String, colour: Color = HudStyle.TEXT) -> void:

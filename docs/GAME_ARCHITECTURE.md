@@ -503,7 +503,17 @@ the same JSON, not a parallel editing path.
   screen today -- `ArmisticeWindow` (mirroring `InvitationWindow`) exists for it anyway,
   against the day that limit is lifted, and is exercised directly in
   `server/tests/test_settings_actions.py` (bypassing the lobby) and in the client's
-  headless test. **A pure spectator can propose one too** -- nobody's own faction,
+  headless test. **A declined proposal starts a cooldown**: the specific proposer who
+  was turned down (a faction code, or the spectator identity below) can't propose
+  again for `GameSession.ARMISTICE_COOLDOWN_ROUNDS` (5) rounds, measured against
+  `GameState.round_number` -- anyone else may still propose freely in the meantime.
+  `armistice_resolved`'s declined reply carries `cooldown_until_round`; the client
+  remembers it only when the decline was of ITS OWN proposal (`TurnStepper.
+  _is_my_own_proposal`, comparing against its `human_faction()`, or null for a
+  spectator) as `GameStore.armistice_cooldown_until_round`, and the Settings panel's
+  Propose Armistice button disables itself with a "wait N more round(s)" tooltip for
+  as long as `GameStore.armistice_cooldown_remaining() > 0` -- lifting on its own as
+  `round_number()` catches up, no reconnect or extra message needed. **A pure spectator can propose one too** -- nobody's own faction,
   what a client watching a game with no HUMAN seat at all IS (`propose_armistice`
   with no `faction` at all; `GameStore.human_faction() == ""`, i.e. `has_player()`
   false). There's then no proposer's own seat to fold into "accepted" for free, so
@@ -557,10 +567,25 @@ the same JSON, not a parallel editing path.
   so the player can put it aside and bring it back at will while reviewing the final
   board. An armistice-ended game's "Game over" announcement says so explicitly
   (`GameStore.game_ended_by_armistice`), rather than wrongly naming a "last faction
-  standing". **The report is non-modal by design, and significant-event popups
-  (`AnnouncementWindow`) stay fully dismissible while it's open** -- neither blocks the
-  other (different z-indices, `MOUSE_FILTER_IGNORE` everywhere except each one's own
-  inner panel); covered by a dedicated headless check rather than left to visual
-  inspection. Headless: `godot --headless --path client -s
-  res://tests/settings_actions_test.gd`; server-side: `server/tests/test_settings_actions.py`,
+  standing". Every genuinely-integer field (Strategic Centers, Territory MPC, Units
+  produced/destroyed, Round eliminated) is explicitly `int(...)`-cast before display --
+  `JSON.parse_string()` decodes every JSON number as a `float`, so without the cast
+  the report showed "5.0" rather than "5" (there's no float field in the report at
+  all; the values just arrive as one over the wire).
+  **The report is meant to be non-modal, and significant-event popups (`AnnouncementWindow`)
+  are meant to stay fully dismissible while it's open** -- but actually WAS blocking them
+  (reported): `Control` GUI input hit-testing in Godot follows TREE order, not `z_index`
+  -- `z_index` only affects DRAW order -- so with the report panel added to `main.gd`
+  AFTER its popup windows, the report -- later in the tree, despite its lower z_index --
+  silently won every click in the region where its large table overlapped a smaller,
+  visually-on-top popup; a popup could only be dismissed after minimizing the report
+  first. Fixed by adding `game_over_report` to the tree BEFORE every popup window in
+  `main.gd`, so tree order agrees with z_index for all of them. Guarded by a headless
+  test that injects a REAL synthetic click (`Viewport.push_input`, not a direct
+  `.acknowledge()` script call, which would have passed even with the bug present) on a
+  popup's OK button while the report overlaps it -- proven meaningful by first
+  reproducing the bug with the popup added before the report (the broken order), then
+  showing the fix (report added first) makes the same click land. Headless: `godot
+  --headless --path client -s res://tests/settings_actions_test.gd`; server-side:
+  `server/tests/test_settings_actions.py` (including `TestArmisticeCooldown`),
   `server/tests/test_report.py`, `engine/tests/test_self_surrender_and_armistice.py`.

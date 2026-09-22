@@ -121,6 +121,12 @@ func _sync() -> void:
 	_surrender_btn.tooltip_text = "Hold for %ds to give up and leave the game at once." % int(HOLD_SECONDS)
 	# Propose Armistice: stays available even after elimination (an eliminated human may still propose
 	# one) and to a pure SPECTATOR with no faction of their own at all (me == "") -- only a live game
-	# actually being in progress, the game being over, or another proposal already in flight, blocks it.
-	_armistice_btn.disabled = not has_game or over or proposal_in_flight
-	_armistice_btn.tooltip_text = "Hold for %ds to propose ending the game right here. Bots always accept; any human player is asked." % int(HOLD_SECONDS)
+	# actually being in progress, the game being over, another proposal already in flight, or (server/
+	# session.py's ARMISTICE_COOLDOWN_ROUNDS) still cooling down from having proposed one that was
+	# declined, blocks it.
+	var cooldown := GameStore.armistice_cooldown_remaining()
+	_armistice_btn.disabled = not has_game or over or proposal_in_flight or cooldown > 0
+	if cooldown > 0:
+		_armistice_btn.tooltip_text = "You must wait %d more round(s) to propose an armistice again -- your last proposal was declined." % cooldown
+	else:
+		_armistice_btn.tooltip_text = "Hold for %ds to propose ending the game right here. Bots always accept; any human player is asked." % int(HOLD_SECONDS)

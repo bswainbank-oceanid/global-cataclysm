@@ -17,6 +17,26 @@ func _state(factions: Dictionary, game_over := false) -> Dictionary:
 		"territories": {}, "factions": factions}
 
 
+## A real, injected mouse click at `pos` (root/window coordinates) -- press then release, one frame
+## apart -- so a test exercises Godot's actual Control GUI input hit-testing, not just a direct script
+## call (which would pass even if a real click were silently swallowed by an overlapping control).
+func _click_at(pos: Vector2) -> void:
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.position = pos
+	down.global_position = pos
+	down.pressed = true
+	root.push_input(down)
+	await process_frame
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.position = pos
+	up.global_position = pos
+	up.pressed = false
+	root.push_input(up)
+	await process_frame
+
+
 func _initialize() -> void:
 	await process_frame
 	var store = root.get_node("GameStore")
@@ -137,6 +157,54 @@ func _initialize() -> void:
 	_check(not announcement_window2.visible, "dismissing the last popup closes it")
 	_check(report_panel.visible and report_panel._panel.visible, "...and the report is untouched by any of it")
 
+	# The above only calls acknowledge() directly (script state), which would pass even if real clicks
+	# were silently swallowed -- Godot's Control GUI input hit-testing follows TREE order, not z_index,
+	# for overlapping same-canvas-layer MOUSE_FILTER_STOP regions. This is the actual bug that was
+	# reported: main.gd used to add the report AFTER its popup windows, so the report -- later in the
+	# tree, despite its lower z_index -- silently won every overlapping click, and a popup could only be
+	# dismissed after minimizing the report first. Reproduce it for real: inject an actual mouse click on
+	# the popup's OK button, both with the buggy order (proving the test WOULD have caught it) and with
+	# main.gd's fixed order (report added first).
+	root.size = Vector2i(1280, 800)  # headless SceneTree.root defaults to a tiny 64x64 -- too small for real layout/clicks
+	var report_row := [{"faction": "NAA", "seat_type": "HUMAN", "victory_status": "Winner", "elimination_reason": null,
+		"strategic_centers": 1, "territory_mpc": 5, "units_produced": 0, "units_destroyed": 0, "alliance_history": [],
+		"bot_type": null, "bot_strategy": null, "alliance_strategy": null, "alliance_behavior": null,
+		"rounds_in_game": 2, "round_eliminated": null, "eliminated_by": null}]
+
+	var buggy_root := Control.new()
+	buggy_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(buggy_root)
+	var buggy_announce = load("res://scripts/announcement_window.gd").new()
+	buggy_root.add_child(buggy_announce)   # added FIRST -- the bug: the report below wins the click anyway
+	var buggy_report = load("res://scripts/game_over_report_panel.gd").new()
+	buggy_root.add_child(buggy_report)     # added AFTER -- the buggy order main.gd used to have
+	store.set_game_over_report(report_row)
+	buggy_announce.add([{"title": "Game over", "body": "x", "color": Color.WHITE}])
+	for i in 3:
+		await process_frame  # let layout settle so the OK button has a real global_position/size
+	_check(buggy_report.visible and buggy_report._panel.visible and buggy_announce.visible, "both showing, overlapping, in the buggy order")
+	await _click_at(buggy_announce._ok.global_position + buggy_announce._ok.size / 2.0)
+	_check(buggy_announce.visible, "confirms the bug: with the report added AFTER the popup, the popup's OK button can't be clicked")
+	buggy_root.queue_free()
+	store.set_game_over_report([])
+
+	var click_root := Control.new()
+	click_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(click_root)
+	var click_report = load("res://scripts/game_over_report_panel.gd").new()
+	click_root.add_child(click_report)     # added FIRST, like main.gd's fixed order
+	var click_announce = load("res://scripts/announcement_window.gd").new()
+	click_root.add_child(click_announce)   # added AFTER -- must win any overlapping click
+	store.set_game_over_report(report_row)
+	click_announce.add([{"title": "Game over", "body": "x", "color": Color.WHITE}])
+	for i in 3:
+		await process_frame
+	_check(click_report.visible and click_report._panel.visible, "the report is showing for the click test")
+	_check(click_announce.visible, "so is the popup, overlapping it")
+	await _click_at(click_announce._ok.global_position + click_announce._ok.size / 2.0)
+	_check(not click_announce.visible, "with the fixed order, a REAL click on the popup's OK button dismisses it, even overlapping the open report")
+	click_root.queue_free()
+
 	store.set_game_over_report([])
 	_check(not report_panel.visible, "a fresh game (no report) hides the whole panel")
 
@@ -217,6 +285,33 @@ func _initialize() -> void:
 	stepper._on_message({"type": "armistice_resolved", "from": null, "accepted": true, "declined_by": null,
 		"events": [{"kind": "armistice", "turn": 3, "faction": null, "participants": ["NAA", "UE"]}]})
 	_check(announced_items.size() == 1 and str(announced_items[0]["body"]).contains("spectator"), "and accepting one names them too, from the 'armistice' event's null faction")
+
+	# Armistice cooldown (server/session.py's ARMISTICE_COOLDOWN_ROUNDS): a decline of THIS client's own
+	# proposal starts one; someone else's decline (a different proposer identity) never does.
+	store.set_state(_state({
+		"NAA": {"code": "NAA", "mode": "HUMAN", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+		"UE": {"code": "UE", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+	}))
+	var st: Dictionary = store.state.duplicate(true)
+	st["round_number"] = 3
+	store.set_state(st)
+	_check(store.armistice_cooldown_remaining() == 0, "no cooldown in effect yet")
+	stepper._on_message({"type": "armistice_resolved", "from": "NAA", "accepted": false, "declined_by": "UE",
+		"events": [], "cooldown_until_round": 8})
+	_check(store.armistice_cooldown_until_round == 8, "a decline of MY OWN proposal (from == human_faction()) records the cooldown")
+	_check(store.armistice_cooldown_remaining() == 5, "5 rounds left (round 3 of a cooldown until round 8): %d" % store.armistice_cooldown_remaining())
+	_check(panel._armistice_btn.disabled, "the button is disabled while on cooldown")
+	_check(str(panel._armistice_btn.tooltip_text).contains("5"), "...and says how many rounds are left: %s" % panel._armistice_btn.tooltip_text)
+	var st2: Dictionary = store.state.duplicate(true)
+	st2["round_number"] = 8
+	store.set_state(st2)
+	_check(store.armistice_cooldown_remaining() == 0, "the cooldown lifts once round_number catches up")
+	_check(not panel._armistice_btn.disabled, "...and the button is enabled again")
+
+	store.set_armistice_cooldown_until_round(-1)  # reset before the next check
+	stepper._on_message({"type": "armistice_resolved", "from": "UE", "accepted": false, "declined_by": "NAA",
+		"events": [], "cooldown_until_round": 99})
+	_check(store.armistice_cooldown_until_round == -1, "a decline of SOMEONE ELSE's proposal (UE, not me) never sets my own cooldown")
 
 	print("settings actions test: failures=%d" % _failures)
 	quit(1 if _failures > 0 else 0)

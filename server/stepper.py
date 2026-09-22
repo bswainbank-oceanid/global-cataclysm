@@ -113,18 +113,31 @@ Server -> client (always broadcast to watchers):
         A "propose_armistice" was accepted for consideration: `awaiting` lists the HUMAN factions still
         asked to answer (every BOT already has, synchronously). Every asked human's client shows the
         popup; watchers just see it happen. If `awaiting` is already empty (every other active faction
-        was a bot), this is followed immediately by the game ending -- see "game_over" below.
+        was a bot), this is followed immediately by the game ending -- see "game_over" below. `from` is
+        null for a pure spectator's own proposal (nobody's own faction -- see propose_armistice below).
     {"type": "armistice_resolved", "from": "NAA", "accepted": true, "declined_by": null, "events": [...]}
         The pending proposal's outcome: `accepted` false means one human declined (`declined_by` names
-        them, and the game continues, unaffected); true means everyone agreed (an "events" armistice
-        entry, and the game is over -- see "game_over" below).
+        them, and the game continues, unaffected -- this reply also carries `cooldown_until_round`: `from`
+        can't propose another armistice until GameState.round_number reaches it, ARMISTICE_COOLDOWN_ROUNDS
+        rounds after the one it was declined in -- see propose_armistice below); true means everyone
+        agreed (an "events" armistice entry, and the game is over -- see "game_over" below).
     {"type": "game_over", "report": [{faction, seat_type, victory_status, elimination_reason,
-     strategic_centers, territory_mpc, units_produced, units_destroyed, alliance_history, bot_type,
-     bot_strategy, alliance_strategy, alliance_behavior}, ...]}
+     eliminated_by, round_eliminated, rounds_in_game, strategic_centers, territory_mpc, units_produced,
+     units_destroyed, alliance_history, bot_type, bot_strategy, alliance_strategy, alliance_behavior}, ...]}
         Ends the game. `report` (server/report.py's build_game_report) is one row per seat, already
         sorted (Victory status, then Strategic Centers, Territory MPC, Units produced, Units destroyed)
         for the client's Game Over panel.
     {"type": "error", "message": ...}
+
+Settings actions, client -> server (handled by GameSession, not this class -- see its own docstring):
+    {"type": "surrender", "faction": "NAA"}
+    {"type": "propose_armistice", "faction": "NAA"}          -- faction omitted/null: a pure spectator
+    {"type": "respond_armistice", "faction": "UE", "accept": true}
+        propose_armistice is refused (an "error") while another proposal is already pending, once the
+        game is over, or -- new this session -- while the proposer (the same faction, or the same "null"
+        spectator identity) is still cooling down from their last proposal having been declined: see
+        GameSession.ARMISTICE_COOLDOWN_ROUNDS and armistice_resolved's cooldown_until_round above. Only
+        the specific proposer who was turned down is cooled down; anyone else may propose freely.
 """
 import copy
 

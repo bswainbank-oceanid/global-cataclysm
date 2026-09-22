@@ -28,6 +28,11 @@ var state := {}  # last full GameState.to_dict() from the server, {} until one a
 var armistice := {}  # a Propose Armistice proposal in flight, {} if none: {from, awaiting: [faction, ...]}
 var game_over_report := []  # the Game Over report (server/report.py), one row per seat, [] until the game ends
 var game_over_report_minimized := false  # the Game Over report panel's minimize/restore state
+# The round THIS client's own next Propose Armistice becomes legal again, after its last one was
+# declined (server/session.py's ARMISTICE_COOLDOWN_ROUNDS) -- -1 = no cooldown in effect. Set from
+# armistice_resolved's cooldown_until_round, only when the declined proposal was this client's own
+# (see TurnStepper._is_my_own_proposal).
+var armistice_cooldown_until_round := -1
 
 
 func set_state(new_state: Dictionary) -> void:
@@ -110,6 +115,7 @@ func reset() -> void:
 	human_alliance = {}
 	invitation = {}
 	armistice = {}
+	armistice_cooldown_until_round = -1
 	game_over_report = []
 	game_over_report_minimized = false
 	move_origin = -1
@@ -174,6 +180,17 @@ func set_armistice(info: Dictionary) -> void:
 ## answer their own; see server/session.py's _handle_propose_armistice).
 func armistice_pending() -> bool:
 	return not armistice.is_empty() and (armistice.get("awaiting", []) as Array).has(human_faction())
+
+
+func set_armistice_cooldown_until_round(round_num: int) -> void:
+	armistice_cooldown_until_round = round_num
+	armistice_changed.emit()
+
+
+## Rounds left before THIS client's own next Propose Armistice is allowed again, 0 if none
+## (server/session.py's ARMISTICE_COOLDOWN_ROUNDS, started by a declined proposal of its own).
+func armistice_cooldown_remaining() -> int:
+	return maxi(0, armistice_cooldown_until_round - round_number())
 
 
 func set_game_over_report(report: Array) -> void:

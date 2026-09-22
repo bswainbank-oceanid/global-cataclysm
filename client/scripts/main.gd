@@ -102,6 +102,17 @@ func _ready() -> void:
 	battle_panel.roll_requested.connect(Stepper.execute_open_battle)
 	battle_panel.closed.connect(Stepper.release_battle)
 
+	# GameOverReportPanel is added FIRST, before every popup window below it: Control GUI input
+	# hit-testing follows TREE order for overlapping same-canvas-layer MOUSE_FILTER_STOP regions, NOT
+	# z_index (z_index only affects draw/render order) -- with the report added later/on top in the
+	# tree, its own _panel was silently swallowing clicks meant for a popup drawn visually above it
+	# (the report visibly looked like it was underneath, but was still first in line for input), so a
+	# significant-event popup couldn't be dismissed while the report was showing, only after minimizing
+	# it. Adding the report first, and every popup after it, makes tree order agree with z_index for all
+	# of them, so the popups both draw on top AND win any overlapping click, as intended.
+	var game_over_report := GameOverReportPanel.new()
+	add_child(game_over_report)
+
 	var announcement_window := AnnouncementWindow.new()
 	add_child(announcement_window)
 	var invitation_window := InvitationWindow.new()
@@ -110,8 +121,6 @@ func _ready() -> void:
 	var armistice_window := ArmisticeWindow.new()
 	add_child(armistice_window)
 	armistice_window.answered.connect(Stepper.respond_armistice)
-	var game_over_report := GameOverReportPanel.new()
-	add_child(game_over_report)
 
 	var settings_panel := SettingsPanel.new()
 	settings_panel.visible = false

@@ -233,6 +233,10 @@ _AUTOMATIC_PHASE_KINDS = ('territory_captured', 'unit_deployed', 'income_collect
 # module for a real decision -- see connect()/_decision_prompt.
 _HUMAN_DECISION_PHASES = (Phase.PURCHASE, Phase.COMBAT_MOVE, Phase.NONCOMBAT_MOVE, Phase.DIPLOMACY)
 
+# A proposer whose armistice was declined can't propose another for this many rounds (measured against
+# GameState.round_number -- see _handle_propose_armistice's cooldown check).
+ARMISTICE_COOLDOWN_ROUNDS = 5
+
 
 class GameSession:
     def __init__(self, engine, turn_log, bots=None):
@@ -256,6 +260,10 @@ class GameSession:
         # included from the start)}. Only one may be outstanding at a time; "next" is refused while it
         # is (see handle_message) -- the game holds still until it resolves, same idea as _pending_invite.
         self._armistice = None
+        # proposer identity (a faction code, or None for a spectator's own proposal -- see
+        # _handle_propose_armistice) -> GameState.round_number at the moment their LAST proposal was
+        # declined. Checked (and enforced) by _handle_propose_armistice, set by _resolve_armistice.
+        self._armistice_cooldown = {}
 
     def connect(self, faction):
         """A client just identified itself as `faction` ("join"). Pure
@@ -367,12 +375,24 @@ class GameSession:
         faction of the proposer's own to fold into 'accepted' for free: EVERY currently active faction is
         asked/auto-accepted exactly as if it were someone else's. In practice this almost always resolves
         at once, since a spectator only exists when there's no HUMAN seat to ask in the first place --
-        but the general case (a spectator alongside a seated human) is handled all the same."""
+        but the general case (a spectator alongside a seated human) is handled all the same.
+
+        A proposer whose last proposal was DECLINED can't propose again for ARMISTICE_COOLDOWN_ROUNDS
+        rounds (GameState.round_number, measured from the round it was declined in) -- see
+        self._armistice_cooldown, set by _resolve_armistice. Only the specific proposer who was turned
+        down is cooled down; anyone else may still propose freely in the meantime."""
         if self._armistice is not None:
             return [self._error(faction, 'an armistice proposal is already pending')]
         gs = self.engine.game_state
         if gs.game_over:
             return [self._error(faction, 'the game is already over')]
+        declined_round = self._armistice_cooldown.get(faction or None)
+        if declined_round is not None:
+            remaining = ARMISTICE_COOLDOWN_ROUNDS - (gs.round_number - declined_round)
+            if remaining > 0:
+                who = faction if faction else 'a spectator'
+                return [self._error(faction, f'{who} must wait {remaining} more round(s) to propose an armistice again '
+                                              f'(the last proposal was declined in round {declined_round})')]
         if faction:
             fstate = gs.factions.get(faction)
             if fstate is None or fstate.mode != FactionMode.HUMAN:
@@ -406,12 +426,16 @@ class GameSession:
 
     def _resolve_armistice(self, accepted, declined_by=None):
         """Concludes the pending proposal, one way or the other -- clears self._armistice either way, so
-        "next" (refused while one is outstanding) works again immediately."""
+        "next" (refused while one is outstanding) works again immediately. A decline starts that
+        proposer's ARMISTICE_COOLDOWN_ROUNDS-round cooldown (see _handle_propose_armistice) -- the
+        message carries 'cooldown_until_round' so the client can reflect it without guessing."""
         info = self._armistice
         self._armistice = None
         if not accepted:
-            return [{'type': 'armistice_resolved', 'from': info['from'], 'accepted': False,
-                     'declined_by': declined_by, 'events': []}]
+            round_number = self.engine.game_state.round_number
+            self._armistice_cooldown[info['from']] = round_number
+            return [{'type': 'armistice_resolved', 'from': info['from'], 'accepted': False, 'declined_by': declined_by,
+                     'events': [], 'cooldown_until_round': round_number + ARMISTICE_COOLDOWN_ROUNDS}]
         start = len(self.turn_log.events)
         self.engine.end_by_armistice(info['from'], sorted(info['accepted']))
         events = self.turn_log.events[start:]
