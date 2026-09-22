@@ -112,6 +112,15 @@ class TestLegalPurchaseTargets(unittest.TestCase):
         self.assertEqual(set(other_targets), {1})
         self.assertNotIn(2, other_targets)
 
+    def test_a_sea_zone_whose_only_funding_source_is_contested_is_not_a_legal_target(self):
+        # purchase.contested_land_deploy_restriction: a contested territory's port can't fund a
+        # deploy out into adjacent water any more than it can host anything but Infantry itself.
+        data = FakeData(territories={1: {'type': 'land', 'value': 3}, 2: {'type': 'sea'}}, adjacency={1: [2], 2: [1]})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, contested={1: {'NAA', 'AAC'}})
+        engine = GameEngine(gs, data)
+        sc_targets, other_targets = engine.legal_purchase_targets('NAA')
+        self.assertNotIn(2, set(sc_targets) | set(other_targets))
+
 
 class TestLegalCombatMoveOptions(unittest.TestCase):
     """GameEngine.legal_combat_move_options -- the "known at turn start,
@@ -354,6 +363,28 @@ class TestContestedLandDeployRestriction(unittest.TestCase):
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_purchases('NAA', [PurchaseOrder('Armor', 1, 1)])
+
+    def test_a_contested_land_territory_cannot_fund_a_deploy_into_an_adjacent_sea_zone(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={1: [2], 2: [1]})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, contested={1: {'NAA', 'AAC'}})
+        engine = GameEngine(gs, data)
+        with self.assertRaises(ValueError):
+            engine.submit_purchases('NAA', [PurchaseOrder('Cruiser', 1, 2)])
+
+    def test_a_contested_source_is_skipped_in_favour_of_an_uncontested_neighbour(self):
+        # 3 (sea) touches 1 (contested, value 5 -- would otherwise be plenty) and 2 (uncontested, value 2).
+        # The purchase must draw entirely from 2, so a quantity exceeding 2's cap fails outright even
+        # though the (excluded) contested territory 1 alone could easily have covered it.
+        data = FakeData(
+            territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 2}, 3: {'type': 'sea'}},
+            adjacency={3: [1, 2]},
+        )
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.HUMAN}, contested={1: {'NAA', 'AAC'}})
+        engine = GameEngine(gs, data)
+        cost = engine.submit_purchases('NAA', [PurchaseOrder('Cruiser', 2, 3)])
+        self.assertEqual(cost, 22)  # 2 x cost 11, both drawn from territory 2 (cap 2) -- none from contested 1
+        with self.assertRaises(ValueError):
+            engine.submit_purchases('NAA', [PurchaseOrder('Cruiser', 3, 3)])  # exceeds territory 2's cap alone
 
 
 class TestSeaDeployAllocation(unittest.TestCase):

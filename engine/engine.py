@@ -172,9 +172,12 @@ class GameEngine:
         purchase targeting `deploy_at`: just [deploy_at] if it's a land
         territory `faction` owns (empty list if not -- an illegal
         target); for a sea zone, every adjacent land territory `faction`
-        owns, Strategic Center(s) first, then by deploy cap descending
-        (ties broken by territory_id for determinism) -- see
-        rules.json's purchase.multi_adjacent_allocation_order."""
+        owns and is NOT contested (purchase.contested_land_deploy_restriction
+        -- a contested territory's port can't fund power projection out
+        into the water any more than it can host anything but Infantry
+        deploying onto the land itself), Strategic Center(s) first, then
+        by deploy cap descending (ties broken by territory_id for
+        determinism) -- see rules.json's purchase.multi_adjacent_allocation_order."""
         terrs = self.data.territories()
         if terrs[deploy_at]['type'] == 'land':
             return [deploy_at] if self.game_state.territories[deploy_at].owner == faction else []
@@ -182,6 +185,7 @@ class GameEngine:
         owned_land = [
             tid for tid in neighbors
             if terrs[tid]['type'] == 'land' and self.game_state.territories[tid].owner == faction
+            and not self.game_state.territories[tid].contested_by
         ]
 
         def sort_key(tid):
@@ -218,6 +222,8 @@ class GameEngine:
                     sea_candidates.add(n)
         for sea_tid in sea_candidates:
             sources = self._purchase_sources(sea_tid, faction)
+            if not sources:
+                continue  # every adjacent owned territory is contested (or otherwise ineligible) -- no legal target
             if any(gs.is_strategic_center(s, terrs[s]) for s in sources):
                 sc_targets.add(sea_tid)
             else:

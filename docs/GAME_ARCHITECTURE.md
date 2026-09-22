@@ -589,3 +589,33 @@ the same JSON, not a parallel editing path.
   --headless --path client -s res://tests/settings_actions_test.gd`; server-side:
   `server/tests/test_settings_actions.py` (including `TestArmisticeCooldown`),
   `server/tests/test_report.py`, `engine/tests/test_self_surrender_and_armistice.py`.
+  **Three more bugs found and fixed.** (1) A Diplomacy-box row's faction-colour chip
+  (`OrdersPanel._choice`) leaked out of its button: it was given `PRESET_LEFT_WIDE`
+  anchors (full-height stretch) and THEN a fixed `position`/`size` -- but with
+  `anchor_bottom == 1`, Godot recomputes the actual rect from anchors+offsets on
+  every later layout pass once the button gets its real size from the VBoxContainer
+  (which it doesn't have yet at construction time), stretching the chip down well
+  past the button. Fixed by leaving the chip at the Control default (all-zero, non-
+  stretching) anchors -- a plain fixed-offset rect never touched by a parent resize.
+  `godot --headless --path client -s res://tests/orders_panel_chip_test.gd` reproduces
+  the exact bug against the pre-fix code (a resized button stretches the chip to its
+  own new height) before confirming the fix. (2) A contested land territory could
+  still fund a purchase deployed into an ADJACENT SEA ZONE -- `GameEngine.
+  _purchase_sources` never checked `contested_by` for a sea target's eligible land
+  sources (only the separate, correct check for deploying directly onto the contested
+  land itself, Infantry-only, existed). Fixed by excluding a contested territory from
+  a sea target's `owned_land` sources entirely -- see rules.json's
+  `purchase.contested_land_deploy_restriction`, and `GameEngine.legal_purchase_targets`
+  needed its own related fix (it used to list a sea target even with zero actual
+  sources, `any(...)` over an empty list being vacuously `False`). Covered by
+  `engine/tests/test_engine.py`'s `TestContestedLandDeployRestriction` and
+  `TestLegalPurchaseTargets`. (3) `reference/GC Adjacency.ods`'s "Wrong" column (pairs
+  that should NOT be adjacent) had two new corrections not yet in `data/
+  adjacency_overrides.json`: Sea of Okhotsk / Manchuria (25, 33) and India / Western
+  Indian Ocean (73, 106), both still adjacent per the outlines. Added to `overrides`'s
+  `remove` list and `data/adjacency.json` regenerated (`python tools/
+  compute_adjacency.py`); `tools/validate_setup.py` confirms the starting scenario
+  still validates, and both territories keep other sea neighbors (still coastal).
+  Cross-checked the REST of the spreadsheet's "Missing"/"Wrong" columns against the
+  live data first -- every other entry was already covered by an existing override,
+  so nothing else needed changing.

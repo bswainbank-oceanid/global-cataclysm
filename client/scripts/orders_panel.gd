@@ -175,13 +175,16 @@ func _choice(text: String, faction: String, selected: bool, enabled: bool, tip: 
 	if faction != "":
 		var chip := ColorRect.new()
 		chip.color = GameData.factions[faction].color
-		chip.custom_minimum_size = Vector2(6, 0)
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		chip.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
-		chip.custom_minimum_size = Vector2(6, 20)
-		b.add_child(chip)
+		# Left at the default TOP_LEFT anchors (0,0,0,0): a fixed-offset rect that never stretches.
+		# PRESET_LEFT_WIDE (full-height anchors) used to be set here and then "overridden" with an
+		# explicit position/size -- but with anchor_bottom == 1, Godot recomputes the chip's actual
+		# rect from anchors+offsets on every later layout pass (once the button gets its real size
+		# from the VBoxContainer, which it doesn't have yet at construction time), stretching the
+		# chip down well past the button's own height -- the reported "leaking out" of the box.
 		chip.position = Vector2(4, 3)
 		chip.size = Vector2(6, 20)
+		b.add_child(chip)
 	return b
 
 
