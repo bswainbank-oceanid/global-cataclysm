@@ -9,6 +9,8 @@ signal state_changed
 signal alliance_changed  # the human player's Diplomacy options or a pending invitation changed
 signal move_changed  # the human player's move queue, options or selection changed
 signal purchase_changed  # the human player's purchase queue/options changed
+signal armistice_changed  # a Propose Armistice proposal (in flight, or awaiting this human's own answer) changed
+signal game_over_report_changed  # the Game Over report arrived, or its minimize/restore state was toggled
 
 var human_move := {}      # the human's Combat/Non-Combat Move in progress: {kind, faction, options{uid: {unit_type, origin, dests{dest: path}}}, orders[{unit_id, unit_type, from, dest, path?}]}
 var tile_drag_armed := false  # a selected unit tile was pressed: a move drag may follow (see main.gd)
@@ -23,6 +25,9 @@ var queued_step := ""  # a queue step that isn't a game phase (START_OF_TURN, RE
 var queued_purchase := {}  # the purchase event awaiting execution, {} if none
 var queued_attack := {}    # the combat_move event awaiting execution, {} if none
 var state := {}  # last full GameState.to_dict() from the server, {} until one arrives
+var armistice := {}  # a Propose Armistice proposal in flight, {} if none: {from, awaiting: [faction, ...]}
+var game_over_report := []  # the Game Over report (server/report.py), one row per seat, [] until the game ends
+var game_over_report_minimized := false  # the Game Over report panel's minimize/restore state
 
 
 func set_state(new_state: Dictionary) -> void:
@@ -104,6 +109,9 @@ func reset() -> void:
 	human_move = {}
 	human_alliance = {}
 	invitation = {}
+	armistice = {}
+	game_over_report = []
+	game_over_report_minimized = false
 	move_origin = -1
 	move_selected.clear()
 	queued_step = ""
@@ -114,6 +122,8 @@ func reset() -> void:
 	purchase_changed.emit()
 	move_changed.emit()
 	alliance_changed.emit()
+	armistice_changed.emit()
+	game_over_report_changed.emit()
 
 
 ## A unit's dict (as the server sent it) by id, {} if there is none.
@@ -135,6 +145,53 @@ func is_player(code: String) -> bool:
 func has_player() -> bool:
 	for code in state.get("factions", {}):
 		if is_player(code):
+			return true
+	return false
+
+
+## The one HUMAN faction's code, "" if this is a bot-vs-bot game (has_player() is false then).
+## At most one is ever seated (server/lobby.py), so there's no ambiguity to resolve.
+func human_faction() -> String:
+	for code in state.get("factions", {}):
+		if is_player(code):
+			return code
+	return ""
+
+
+# ---- Settings actions: Surrender / Propose Armistice ------------------------------
+
+## A Propose Armistice proposal in flight, from the phase queue (independent of it,
+## really -- it can happen in any phase) ({} = none pending).
+func set_armistice(info: Dictionary) -> void:
+	if info == armistice:
+		return
+	armistice = info
+	armistice_changed.emit()
+
+
+## True while a pending armistice proposal awaits THIS human's own answer -- someone
+## else proposed it (proposing counts as agreeing, so a proposer is never asked to
+## answer their own; see server/session.py's _handle_propose_armistice).
+func armistice_pending() -> bool:
+	return not armistice.is_empty() and (armistice.get("awaiting", []) as Array).has(human_faction())
+
+
+func set_game_over_report(report: Array) -> void:
+	game_over_report = report
+	game_over_report_minimized = false
+	game_over_report_changed.emit()
+
+
+func toggle_game_over_report_minimized() -> void:
+	game_over_report_minimized = not game_over_report_minimized
+	game_over_report_changed.emit()
+
+
+## Whether the game that just ended finished via a unanimous Propose Armistice rather
+## than the ordinary elimination/alliance victory condition (server/report.py's rows).
+func game_ended_by_armistice() -> bool:
+	for row in game_over_report:
+		if row.get("victory_status") == "Armistice":
 			return true
 	return false
 

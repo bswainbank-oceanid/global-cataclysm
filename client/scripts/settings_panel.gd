@@ -9,7 +9,13 @@ var _opp_battle: CheckBox
 var _opp_battle_mine: CheckBox
 var _your_battle: CheckBox
 var _note: Label
+var _surrender_btn: HoldButton
+var _armistice_btn: HoldButton
 signal new_game_pressed
+
+# Much longer than an ordinary Diplomacy hold (orders_panel.gd's 0.8s): these are
+# irreversible and can end the game, so a stray click must never fire them.
+const HOLD_SECONDS := 3.0
 
 
 func _ready() -> void:
@@ -44,6 +50,14 @@ func _ready() -> void:
 	v.add_child(_note)
 
 	v.add_child(HSeparator.new())
+	v.add_child(HudStyle.label("Game", 13))
+	v.add_child(HudStyle.label("Hold the whole way to confirm -- these can't be undone.", 11, HudStyle.TEXT_DIM))
+	_surrender_btn = _hold_button(v, "Hold to surrender", Color(1.0, 0.55, 0.45))
+	_surrender_btn.activated.connect(func(): Stepper.surrender())
+	_armistice_btn = _hold_button(v, "Hold to propose armistice", HudStyle.GOLD)
+	_armistice_btn.activated.connect(func(): Stepper.propose_armistice())
+
+	v.add_child(HSeparator.new())
 	var new_game := Button.new()
 	new_game.text = "New game..."
 	new_game.focus_mode = Control.FOCUS_NONE
@@ -52,7 +66,26 @@ func _ready() -> void:
 	v.add_child(new_game)
 
 	GameStore.state_changed.connect(_sync)
+	GameStore.armistice_changed.connect(_sync)
 	_sync()
+
+
+func _hold_button(parent: Control, text: String, colour: Color) -> HoldButton:
+	var b := HoldButton.new()
+	b.text = text
+	b.hold_seconds = HOLD_SECONDS
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(0, 36)
+	b.add_theme_font_size_override("font_size", 13)
+	b.add_theme_color_override("font_color", colour)
+	b.add_theme_color_override("font_hover_color", Color.WHITE)
+	b.add_theme_color_override("font_disabled_color", HudStyle.TEXT_DIM)
+	b.add_theme_stylebox_override("normal", HudStyle.box(colour.darkened(0.3), Color(0.12, 0.14, 0.18), 2))
+	b.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.2, 0.22, 0.27), 2))
+	b.add_theme_stylebox_override("pressed", HudStyle.box(colour, Color(0.24, 0.26, 0.3), 2))
+	b.add_theme_stylebox_override("disabled", HudStyle.box(HudStyle.EDGE, HudStyle.BG, 1))
+	parent.add_child(b)
+	return b
 
 
 func _check(parent: Control, text: String, setter: Callable) -> CheckBox:
@@ -76,3 +109,15 @@ func _sync() -> void:
 	_opp_battle_mine.disabled = not has_player
 	_your_battle.disabled = not has_player
 	_note.visible = not has_player
+
+	var me := GameStore.human_faction()
+	var over: bool = bool(GameStore.state.get("game_over", false))
+	var eliminated: bool = me != "" and bool(GameStore.faction_state(me).get("eliminated", false))
+	var proposal_in_flight: bool = not GameStore.armistice.is_empty()
+	# Surrender: nothing left to give up once you're already out, or the game's already over.
+	_surrender_btn.disabled = me == "" or eliminated or over
+	_surrender_btn.tooltip_text = "Hold for %ds to give up and leave the game at once." % int(HOLD_SECONDS)
+	# Propose Armistice: stays available even after elimination (an eliminated human may still
+	# propose one) -- only the game being over, or another proposal already in flight, blocks it.
+	_armistice_btn.disabled = me == "" or over or proposal_in_flight
+	_armistice_btn.tooltip_text = "Hold for %ds to propose ending the game right here. Bots always accept; any other human player is asked." % int(HOLD_SECONDS)

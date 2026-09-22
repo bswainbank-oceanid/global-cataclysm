@@ -484,3 +484,50 @@ the same JSON, not a parallel editing path.
   injects real input through the window, and saves a screenshot (see
   `client/scripts/dbg.gd`); the server keeps one game, so restart it
   between scripted runs.
+  **Settings: Surrender / Propose Armistice, and the Game Over report.** Two more
+  actions live in the Settings panel, each a **very-long-press** `HoldButton` (3
+  seconds -- much longer than an ordinary Diplomacy hold -- so a stray click can't
+  fire something irreversible), and unlike a Diplomacy action neither needs a phase
+  queued for the human at all: both are out-of-band, working from wherever the game
+  currently stands, any phase, anyone's turn. **Surrender** (`GameEngine.surrender`)
+  eliminates the human's own faction at once -- same effect as a forced surrender
+  (units removed, territory stays, alliance ties cut) but nobody demanded it -- and
+  ends the game immediately if that leaves no unallied faction standing. **Propose
+  Armistice** (`GameEngine.end_by_armistice`) offers to end the game right here, a
+  draw: bots always accept, at once; any other human seated is asked (`propose_armistice`
+  /`armistice_proposed` {from, awaiting} / `respond_armistice` / `armistice_resolved`
+  {accepted, declined_by}), and the game can't advance (`next` is refused) while an
+  answer is awaited. A decline just kills that proposal; unanimous acceptance ends the
+  game with nobody eliminated. Since `server/lobby.py` still seats at most one human,
+  the "another human is asked" path can't actually trigger through the ordinary launch
+  screen today -- `ArmisticeWindow` (mirroring `InvitationWindow`) exists for it anyway,
+  against the day that limit is lifted, and is exercised directly in
+  `server/tests/test_settings_actions.py` (bypassing the lobby) and in the client's
+  headless test. **A human player is never removed from the game on elimination** any
+  more, by any of these routes or a forced surrender: they simply default to
+  spectating the rest of the game unpaused the moment their own faction is first seen
+  eliminated (`TurnStepper._check_auto_spectate` sets `Settings.opp_pause = NEVER`
+  as a **session-only** override -- it never calls `Settings.commit()`, so it doesn't
+  touch the player's saved preferences file -- applied once, not every state update,
+  so the player can still turn pausing back on by hand if they want to watch the rest
+  play out step by step). Propose Armistice stays enabled for them even once
+  eliminated, exactly as Surrender does not.
+  **Game Over report** (`server/report.py build_game_report`): when the game ends,
+  by any route, the `game_over` message now carries a `report`, one row per seat,
+  sorted by Victory status (Winner / Armistice / Forced to Surrender / Surrendered),
+  then Strategic Centers, Territory MPC, Units produced, Units destroyed -- plus, per
+  row, the elimination reason where relevant (`['SC Loss']` / `['Economic']` / both /
+  `['Self-Surrender']`, derived from the `surrender` or `self_surrender` turn_log event
+  that eliminated it), Seat-Type, Alliance history (in turn order, from the full
+  turn_log), Bot-Type and Bot Strategy (from the live bot object, since these were
+  never persisted on `GameState`), and Alliance Strategy / Alliance Behavior. The
+  client's `GameOverReportPanel` opens automatically with it: a wide sortable-by-server-order
+  table, non-modal (the map stays visible and clickable underneath), with a
+  **Minimize** button that collapses it to a small reopenable tab in the corner
+  (`GameStore.game_over_report_minimized`, toggled by `GameStore.toggle_game_over_report_minimized`)
+  so the player can put it aside and bring it back at will while reviewing the final
+  board. An armistice-ended game's "Game over" announcement says so explicitly
+  (`GameStore.game_ended_by_armistice`), rather than wrongly naming a "last faction
+  standing". Headless: `godot --headless --path client -s
+  res://tests/settings_actions_test.gd`; server-side: `server/tests/test_settings_actions.py`,
+  `server/tests/test_report.py`, `engine/tests/test_self_surrender_and_armistice.py`.

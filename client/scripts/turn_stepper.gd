@@ -39,6 +39,7 @@ var _held: Array = []              # messages received meanwhile (result, state,
 var _held_result: Dictionary = {}
 var _edit_orders: Array = []  # the human's staged purchase as last sent/received: [{unit_type, qty, deploy_at}]
 var _awaiting := false  # a `next` is in flight; the reply is the next queue
+var _was_human_eliminated := false  # tracks the transition for _check_auto_spectate (fires once, not every state)
 
 
 func _ready() -> void:
@@ -61,6 +62,7 @@ func _on_message(msg: Dictionary) -> void:
 	match str(msg.get("type", "")):
 		"state":
 			GameStore.set_state(msg["game_state"])
+			_check_auto_spectate()
 		"phase_queue":
 			_awaiting = false
 			_last_queue = msg
@@ -110,6 +112,24 @@ func _on_message(msg: Dictionary) -> void:
 			# One of the player's own Diplomacy actions, carried out at once: its outcome goes in the Events box.
 			executed.emit("%s - Diplomacy" % str(msg["faction"]), msg["events"])
 			_announce(msg["events"])
+		"self_surrender_result":
+			# The Settings "Surrender" action, carried out at once, from wherever the game stood -- not
+			# tied to any queued phase, so (unlike diplomacy_result) there's no phase to name in the header.
+			executed.emit("%s - Surrender" % str(msg["faction"]), msg["events"])
+			_announce(msg["events"])
+		"armistice_proposed":
+			# A Propose Armistice offer is out and awaiting an answer from every human it names (bots
+			# already answered, synchronously, before this ever arrives -- see server/session.py).
+			GameStore.set_armistice({"from": msg["from"], "awaiting": msg["awaiting"]})
+			log_line.emit("[color=#ffd23f]%s proposes an armistice -- awaiting: %s[/color]" % [str(msg["from"]), ", ".join(msg["awaiting"])])
+		"armistice_resolved":
+			GameStore.set_armistice({})
+			if bool(msg.get("accepted", false)):
+				_announce(msg.get("events", []))  # the 'armistice' event itself carries the announcement
+			else:
+				var by := str(msg.get("declined_by", ""))
+				announced.emit([{"title": "Armistice declined", "color": Color(1.0, 0.6, 0.5),
+					"body": "%s declined %s's armistice proposal. The game goes on." % [_name(by), _name(str(msg["from"]))]}])
 		"error":
 			_awaiting = false
 			log_line.emit("[color=#ff7060]server: %s[/color]" % str(msg.get("message", "")))
@@ -120,6 +140,7 @@ func _on_message(msg: Dictionary) -> void:
 			_auto = false
 			_playing = false
 			game_over = true
+			GameStore.set_game_over_report(msg.get("report", []))
 			log_line.emit("[b]Game over[/b]")
 			announced.emit([game_over_announcement()])
 	_refresh()
@@ -142,8 +163,11 @@ func _announce(events: Array) -> void:
 	var items := []
 	var surrendered := {}
 	for e in events:
-		if str(e.get("kind", "")) == "surrender":
+		var k := str(e.get("kind", ""))
+		if k == "surrender":
 			surrendered[str(e["target"])] = true
+		elif k == "self_surrender":
+			surrendered[str(e["faction"])] = true
 	for e in events:
 		match str(e.get("kind", "")):
 			"surrender":
@@ -151,6 +175,16 @@ func _announce(events: Array) -> void:
 				items.append({"title": "%s surrenders" % t, "color": _color(t),
 					"body": "%s has forced %s to surrender: %s.\n\n%s is out of the game and all of its units are removed from the board; its territory stays where it is." % [
 						_name(str(e["faction"])), _name(t), EventText.surrender_reasons(e.get("reasons", [])), _name(t)]})
+			"self_surrender":
+				var f := str(e["faction"])
+				items.append({"title": "%s surrenders" % f, "color": _color(f),
+					"body": "%s has surrendered.\n\n%s is out of the game and all of its units are removed from the board; its territory stays where it is." % [_name(f), _name(f)]})
+			"armistice":
+				var names := []
+				for p in e.get("participants", []):
+					names.append(_name(str(p)))
+				items.append({"title": "Armistice agreed", "color": HudStyle.GOLD,
+					"body": "%s proposed an armistice, and everyone agreed: %s.\n\nThe game ends here; nobody is declared the winner." % [_name(str(e["faction"])), ", ".join(names)]})
 			"faction_eliminated":
 				var f := str(e["faction"])
 				if not surrendered.has(f):
@@ -185,6 +219,11 @@ func _announce(events: Array) -> void:
 
 ## The game's end: who is left.
 func game_over_announcement() -> Dictionary:
+	if GameStore.game_ended_by_armistice():
+		# The "Armistice agreed" announcement (above, from the 'armistice' turn_log event) already
+		# named the participants; this one just marks that the game itself is over now.
+		return {"title": "Game over", "color": HudStyle.GOLD,
+			"body": "The game has ended by armistice: every remaining faction agreed to stop here. See the Game Over report for the final standings."}
 	var left: Array = GameStore.active_factions()
 	var body := ""
 	var color := HudStyle.GOLD
@@ -400,6 +439,7 @@ func _queue_reset() -> void:
 	_held_result = {}
 	_edit_orders = []
 	GameStore.set_invitation({})
+	_was_human_eliminated = false
 
 
 ## The player's purchase edits: send the whole staged list to the server, which
@@ -444,6 +484,49 @@ func diplomacy_action(action: String, target: String = "") -> void:
 func invitation_respond(accept: bool) -> void:
 	if GameStore.invitation_pending():
 		Net.send_msg({"type": "respond_invitation", "faction": GameStore.invitation["to"], "accept": accept})
+
+
+# ---- Settings actions: Surrender / Propose Armistice -----------------------------
+# Both are out-of-band: unlike diplomacy_action, neither needs a phase queued for the
+# human at all -- they work from wherever the game currently stands (a very-long-press
+# in Settings guards against a stray click; see settings_panel.gd's HoldButtons).
+
+## Give up now: the human's own faction is eliminated at once, from wherever the game
+## currently stands.
+func surrender() -> void:
+	var me := GameStore.human_faction()
+	if me != "":
+		Net.send_msg({"type": "surrender", "faction": me})
+
+
+## Propose ending the game right here, immediately. Bots always accept at once; any
+## other human player seated is asked (armistice_proposed / armistice_resolved).
+func propose_armistice() -> void:
+	var me := GameStore.human_faction()
+	if me != "":
+		Net.send_msg({"type": "propose_armistice", "faction": me})
+
+
+## The human's own answer to someone ELSE's pending armistice proposal.
+func respond_armistice(accept: bool) -> void:
+	if GameStore.armistice_pending():
+		Net.send_msg({"type": "respond_armistice", "faction": GameStore.human_faction(), "accept": accept})
+
+
+## When the human's own faction is eliminated, default to letting the rest of the game
+## play out unpaused (Settings.OppPause.NEVER) so there's nothing left to click through --
+## a SESSION-ONLY override (never Settings.commit(), so it doesn't overwrite the player's
+## saved preferences file), applied exactly once, the moment their faction is first seen
+## eliminated. Propose Armistice stays available to them regardless (settings_panel.gd).
+func _check_auto_spectate() -> void:
+	var me := GameStore.human_faction()
+	if me == "":
+		return
+	var eliminated: bool = bool(GameStore.faction_state(me).get("eliminated", false))
+	if eliminated and not _was_human_eliminated:
+		Settings.opp_pause = Settings.OppPause.NEVER
+		Settings.changed.emit()
+	_was_human_eliminated = eliminated
 
 
 ## Send the human's whole staged move list (the server validates it and answers

@@ -107,6 +107,11 @@ func _ready() -> void:
 	var invitation_window := InvitationWindow.new()
 	add_child(invitation_window)
 	invitation_window.answered.connect(Stepper.invitation_respond)
+	var armistice_window := ArmisticeWindow.new()
+	add_child(armistice_window)
+	armistice_window.answered.connect(Stepper.respond_armistice)
+	var game_over_report := GameOverReportPanel.new()
+	add_child(game_over_report)
 
 	var settings_panel := SettingsPanel.new()
 	settings_panel.visible = false
