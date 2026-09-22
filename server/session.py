@@ -135,7 +135,12 @@ not PhaseStepper, since neither is tied to any particular queued phase.
 Once a human's own faction is eliminated (self-surrendered or forced out),
 nothing further is asked of it; the game simply carries on without it, and
 the client's own default is to keep spectating from there (Propose Armistice
-stays available to them -- see "propose_armistice" below).
+stays available to them -- see "propose_armistice" below). "propose_armistice"
+may also carry no "faction" at all -- a pure SPECTATOR, watching rather than
+playing (which is what a "join"-less watch-mode connection to a game with no
+HUMAN seat at all IS, in this client), proposing the very same thing;
+"surrender" has no such form (a spectator has no faction of its own to give
+up).
 
 Server -> client (each a dict; a "to": faction_code key means send only
 to that faction's connection(s), no "to" key means broadcast to every
@@ -354,20 +359,34 @@ class GameSession:
         BOT does at once (folded into 'accepted' below, nothing asked of it); a HUMAN is asked and
         answers via respond_armistice. `faction` itself may be an already-eliminated HUMAN (proposing is
         still allowed then -- see this module's own docstring) -- it's simply never asked to answer its
-        own proposal, whether active or not."""
+        own proposal, whether active or not.
+
+        `faction` may also be falsy (None, or simply omitted from the message): a pure SPECTATOR --
+        nobody's own faction, watching rather than playing (the client only ever has one in a game with
+        no HUMAN seat at all, see settings_panel.gd) -- proposing the very same thing. There is then no
+        faction of the proposer's own to fold into 'accepted' for free: EVERY currently active faction is
+        asked/auto-accepted exactly as if it were someone else's. In practice this almost always resolves
+        at once, since a spectator only exists when there's no HUMAN seat to ask in the first place --
+        but the general case (a spectator alongside a seated human) is handled all the same."""
         if self._armistice is not None:
             return [self._error(faction, 'an armistice proposal is already pending')]
         gs = self.engine.game_state
         if gs.game_over:
             return [self._error(faction, 'the game is already over')]
-        fstate = gs.factions.get(faction)
-        if fstate is None or fstate.mode != FactionMode.HUMAN:
-            return [self._error(faction, f'{faction} is not a human-controlled faction')]
-        others = [c for c in gs.active_factions() if c != faction]
-        pending = {c for c in others if gs.factions[c].mode == FactionMode.HUMAN}
-        self._armistice = {'from': faction, 'pending': pending, 'accepted': {faction} | (set(others) - pending)}
+        if faction:
+            fstate = gs.factions.get(faction)
+            if fstate is None or fstate.mode != FactionMode.HUMAN:
+                return [self._error(faction, f'{faction} is not a human-controlled faction')]
+            others = [c for c in gs.active_factions() if c != faction]
+            pending = {c for c in others if gs.factions[c].mode == FactionMode.HUMAN}
+            accepted = {faction} | (set(others) - pending)
+        else:
+            active = gs.active_factions()
+            pending = {c for c in active if gs.factions[c].mode == FactionMode.HUMAN}
+            accepted = set(active) - pending
+        self._armistice = {'from': faction or None, 'pending': pending, 'accepted': accepted}
         if pending:
-            return [{'type': 'armistice_proposed', 'from': faction, 'awaiting': sorted(pending)}]
+            return [{'type': 'armistice_proposed', 'from': faction or None, 'awaiting': sorted(pending)}]
         return self._resolve_armistice(accepted=True)
 
     def _handle_respond_armistice(self, faction, accept):

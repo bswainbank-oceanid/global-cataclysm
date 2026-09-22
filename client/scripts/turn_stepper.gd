@@ -119,9 +119,10 @@ func _on_message(msg: Dictionary) -> void:
 			_announce(msg["events"])
 		"armistice_proposed":
 			# A Propose Armistice offer is out and awaiting an answer from every human it names (bots
-			# already answered, synchronously, before this ever arrives -- see server/session.py).
+			# already answered, synchronously, before this ever arrives -- see server/session.py). "from"
+			# is null when a pure SPECTATOR proposed it (nobody's own faction -- see propose_armistice).
 			GameStore.set_armistice({"from": msg["from"], "awaiting": msg["awaiting"]})
-			log_line.emit("[color=#ffd23f]%s proposes an armistice -- awaiting: %s[/color]" % [str(msg["from"]), ", ".join(msg["awaiting"])])
+			log_line.emit("[color=#ffd23f]%s proposes an armistice -- awaiting: %s[/color]" % [_proposer_name(msg["from"]), ", ".join(msg["awaiting"])])
 		"armistice_resolved":
 			GameStore.set_armistice({})
 			if bool(msg.get("accepted", false)):
@@ -129,7 +130,7 @@ func _on_message(msg: Dictionary) -> void:
 			else:
 				var by := str(msg.get("declined_by", ""))
 				announced.emit([{"title": "Armistice declined", "color": Color(1.0, 0.6, 0.5),
-					"body": "%s declined %s's armistice proposal. The game goes on." % [_name(by), _name(str(msg["from"]))]}])
+					"body": "%s declined %s's armistice proposal. The game goes on." % [_name(by), _proposer_name(msg.get("from"))]}])
 		"error":
 			_awaiting = false
 			log_line.emit("[color=#ff7060]server: %s[/color]" % str(msg.get("message", "")))
@@ -154,6 +155,12 @@ static func _name(code: String) -> String:
 
 static func _color(code: String) -> Color:
 	return GameData.factions[code].color.lightened(0.2) if GameData.factions.has(code) else HudStyle.GOLD
+
+
+## An armistice proposal's "from"/"faction" is null when a pure SPECTATOR proposed it (nobody's
+## own faction, watching rather than playing -- see propose_armistice); this names either one.
+static func _proposer_name(code) -> String:
+	return _name(str(code)) if code != null else "a spectator"
 
 
 ## Turn the significant events of an executed phase (an elimination, an alliance formed
@@ -184,7 +191,7 @@ func _announce(events: Array) -> void:
 				for p in e.get("participants", []):
 					names.append(_name(str(p)))
 				items.append({"title": "Armistice agreed", "color": HudStyle.GOLD,
-					"body": "%s proposed an armistice, and everyone agreed: %s.\n\nThe game ends here; nobody is declared the winner." % [_name(str(e["faction"])), ", ".join(names)]})
+					"body": "%s proposed an armistice, and everyone agreed: %s.\n\nThe game ends here; nobody is declared the winner." % [_proposer_name(e.get("faction")), ", ".join(names)]})
 			"faction_eliminated":
 				var f := str(e["faction"])
 				if not surrendered.has(f):
@@ -500,11 +507,17 @@ func surrender() -> void:
 
 
 ## Propose ending the game right here, immediately. Bots always accept at once; any
-## other human player seated is asked (armistice_proposed / armistice_resolved).
+## other human player seated is asked (armistice_proposed / armistice_resolved). Also
+## callable with no faction of your own at all -- a pure SPECTATOR (this client, in a
+## game with no HUMAN seat: has_player() is false, human_faction() is "") -- in which
+## case the server asks/auto-accepts every active faction, since there's no proposer's
+## own seat to fold in for free.
 func propose_armistice() -> void:
 	var me := GameStore.human_faction()
+	var msg := {"type": "propose_armistice"}
 	if me != "":
-		Net.send_msg({"type": "propose_armistice", "faction": me})
+		msg["faction"] = me
+	Net.send_msg(msg)
 
 
 ## The human's own answer to someone ELSE's pending armistice proposal.

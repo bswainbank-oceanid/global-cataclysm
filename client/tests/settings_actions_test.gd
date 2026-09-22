@@ -140,5 +140,40 @@ func _initialize() -> void:
 	}, true))
 	_check(panel._armistice_btn.disabled, "the game is over: nothing left to propose")
 
+	# A pure SPECTATOR (a bot-vs-bot game, no HUMAN seat at all -- human_faction() is ""): Propose
+	# Armistice is still available; Surrender is not (nothing of their own to give up).
+	store.set_state(_state({
+		"NAA": {"code": "NAA", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+		"UE": {"code": "UE", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+	}))
+	_check(store.human_faction() == "", "no HUMAN seat: a pure spectator")
+	_check(panel._surrender_btn.disabled, "a spectator has no faction of their own to surrender")
+	_check(not panel._armistice_btn.disabled, "but can still propose an armistice")
+	store.set_state(_state({
+		"NAA": {"code": "NAA", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+		"UE": {"code": "UE", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+	}, true))
+	_check(panel._armistice_btn.disabled, "...except once the game is over")
+	store.set_state({})
+	_check(panel._armistice_btn.disabled, "...or before any game has even started")
+
+	# A spectator's proposal carries no "faction" (null) -- server/session.py treats that as nobody's
+	# own seat, asking/auto-accepting every active faction instead. The client must announce and
+	# display that gracefully, never crash trying to look up a faction that doesn't exist.
+	announced_items.clear()
+	stepper._on_message({"type": "armistice_proposed", "from": null, "awaiting": ["NAA"]})
+	_check(store.armistice.get("from") == null, "a spectator's proposal in flight has a null proposer")
+	store.set_state(_state({"NAA": {"code": "NAA", "mode": "HUMAN", "treasury_mpc": 0, "alliance": null, "eliminated": false}}))
+	var armistice_window2 = load("res://scripts/armistice_window.gd").new()
+	root.add_child(armistice_window2)
+	await process_frame
+	_check(armistice_window2.visible and str(armistice_window2._title.text).contains("spectator"), "the window names a null proposer as a spectator, not a crash")
+	stepper._on_message({"type": "armistice_resolved", "from": null, "accepted": false, "declined_by": "NAA", "events": []})
+	_check(announced_items.size() == 1 and str(announced_items[0]["body"]).contains("spectator"), "declining a spectator's proposal is announced, naming them as such")
+	announced_items.clear()
+	stepper._on_message({"type": "armistice_resolved", "from": null, "accepted": true, "declined_by": null,
+		"events": [{"kind": "armistice", "turn": 3, "faction": null, "participants": ["NAA", "UE"]}]})
+	_check(announced_items.size() == 1 and str(announced_items[0]["body"]).contains("spectator"), "and accepting one names them too, from the 'armistice' event's null faction")
+
 	print("settings actions test: failures=%d" % _failures)
 	quit(1 if _failures > 0 else 0)

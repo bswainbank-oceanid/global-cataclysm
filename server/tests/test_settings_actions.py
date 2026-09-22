@@ -186,5 +186,52 @@ class TestProposeArmistice(unittest.TestCase):
         self.assertIn('game_over', [m['type'] for m in r2])
 
 
+class TestSpectatorArmistice(unittest.TestCase):
+    """A pure spectator -- nobody's own faction, proposing with no "faction" in the message at all
+    (what a watch-mode connection to a game with no HUMAN seat IS, in this client)."""
+
+    def test_a_spectator_can_propose_in_an_all_bot_game_and_the_bots_all_accept_at_once(self):
+        session = _session(humans=(), bots=('NAA', 'UE', 'GPC'))
+        reply = session.handle_message({'type': 'propose_armistice'})
+        self.assertIn('game_over', [m['type'] for m in reply])
+        resolved = _by_type(reply, 'armistice_resolved')[0]
+        self.assertTrue(resolved['accepted'])
+        self.assertIsNone(resolved['from'])
+        report = _by_type(reply, 'game_over')[0]['report']
+        by_fac = {r['faction']: r for r in report}
+        for code in ('NAA', 'UE', 'GPC'):
+            self.assertEqual(by_fac[code]['victory_status'], 'Armistice')
+
+    def test_a_spectator_alongside_a_seated_human_still_asks_the_human(self):
+        session = _session(humans=('NAA',), bots=('UE', 'GPC'))
+        reply = session.handle_message({'type': 'propose_armistice'})
+        self.assertEqual([m['type'] for m in reply], ['armistice_proposed'])
+        self.assertEqual(reply[0]['awaiting'], ['NAA'])
+        self.assertIsNone(reply[0]['from'])
+        accept = session.handle_message({'type': 'respond_armistice', 'faction': 'NAA', 'accept': True})
+        self.assertIn('game_over', [m['type'] for m in accept])
+
+    def test_the_asked_human_can_decline_a_spectators_proposal_and_the_game_goes_on(self):
+        session = _session(humans=('NAA',), bots=('UE', 'GPC'))
+        session.handle_message({'type': 'propose_armistice'})
+        reply = session.handle_message({'type': 'respond_armistice', 'faction': 'NAA', 'accept': False})
+        self.assertNotIn('game_over', [m['type'] for m in reply])
+        self.assertFalse(session.engine.game_state.game_over)
+        self.assertNotIn('error', [m['type'] for m in session.handle_message({'type': 'next'})])
+
+    def test_a_spectator_cannot_propose_while_one_is_already_pending(self):
+        session = _session(humans=('NAA',), bots=('UE', 'GPC'))
+        session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
+        reply = session.handle_message({'type': 'propose_armistice'})
+        self.assertEqual(reply[0]['type'], 'error')
+
+    def test_a_spectator_cannot_propose_once_the_game_is_over(self):
+        session = _session(humans=(), bots=('NAA', 'UE'))
+        session.engine.surrender('NAA')
+        self.assertTrue(session.engine.game_state.game_over)
+        reply = session.handle_message({'type': 'propose_armistice'})
+        self.assertEqual(reply[0]['type'], 'error')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -111,13 +111,16 @@ func _sync() -> void:
 	_note.visible = not has_player
 
 	var me := GameStore.human_faction()
+	var has_game: bool = not GameStore.state.is_empty()
 	var over: bool = bool(GameStore.state.get("game_over", false))
 	var eliminated: bool = me != "" and bool(GameStore.faction_state(me).get("eliminated", false))
 	var proposal_in_flight: bool = not GameStore.armistice.is_empty()
-	# Surrender: nothing left to give up once you're already out, or the game's already over.
+	# Surrender: nothing left to give up once you're already out, the game's already over, or (a pure
+	# spectator watching a bot-vs-bot game) there was never anything of your own to give up in the first place.
 	_surrender_btn.disabled = me == "" or eliminated or over
 	_surrender_btn.tooltip_text = "Hold for %ds to give up and leave the game at once." % int(HOLD_SECONDS)
-	# Propose Armistice: stays available even after elimination (an eliminated human may still
-	# propose one) -- only the game being over, or another proposal already in flight, blocks it.
-	_armistice_btn.disabled = me == "" or over or proposal_in_flight
-	_armistice_btn.tooltip_text = "Hold for %ds to propose ending the game right here. Bots always accept; any other human player is asked." % int(HOLD_SECONDS)
+	# Propose Armistice: stays available even after elimination (an eliminated human may still propose
+	# one) and to a pure SPECTATOR with no faction of their own at all (me == "") -- only a live game
+	# actually being in progress, the game being over, or another proposal already in flight, blocks it.
+	_armistice_btn.disabled = not has_game or over or proposal_in_flight
+	_armistice_btn.tooltip_text = "Hold for %ds to propose ending the game right here. Bots always accept; any human player is asked." % int(HOLD_SECONDS)

@@ -503,7 +503,21 @@ the same JSON, not a parallel editing path.
   screen today -- `ArmisticeWindow` (mirroring `InvitationWindow`) exists for it anyway,
   against the day that limit is lifted, and is exercised directly in
   `server/tests/test_settings_actions.py` (bypassing the lobby) and in the client's
-  headless test. **A human player is never removed from the game on elimination** any
+  headless test. **A pure spectator can propose one too** -- nobody's own faction,
+  what a client watching a game with no HUMAN seat at all IS (`propose_armistice`
+  with no `faction` at all; `GameStore.human_faction() == ""`, i.e. `has_player()`
+  false). There's then no proposer's own seat to fold into "accepted" for free, so
+  every currently active faction is asked/auto-accepted exactly as if it were
+  someone else's -- in practice this almost always resolves at once, since a
+  spectator only exists when there's no human to ask in the first place, but the
+  general case (a spectator alongside a seated human) works all the same and is
+  covered by `TestSpectatorArmistice`. The Settings panel's Propose Armistice button
+  is enabled for a spectator exactly as for a seated human (only "no game running" or
+  "already over" or "a proposal is already in flight" disable it -- Surrender, having
+  nothing of a spectator's own to give up, stays disabled for them); a spectator-
+  proposed armistice names its proposer as "a spectator" throughout the client
+  (`TurnStepper._proposer_name`, and `ArmisticeWindow`) rather than a null/blank
+  faction. **A human player is never removed from the game on elimination** any
   more, by any of these routes or a forced surrender: they simply default to
   spectating the rest of the game unpaused the moment their own faction is first seen
   eliminated (`TurnStepper._check_auto_spectate` sets `Settings.opp_pause = NEVER`

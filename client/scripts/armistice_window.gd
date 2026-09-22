@@ -76,9 +76,11 @@ func _sync() -> void:
 		return
 	if Dbg.args.has("shot"):
 		print("[dbg] armistice window shown")
-	var from := str(GameStore.armistice["from"])
-	_title.text = "%s proposes an armistice" % from
-	var text := "[b]%s[/b] proposes ending the game right here, immediately -- an armistice." % GameData.factions[from].name
+	# "from" is null when a pure SPECTATOR proposed it (nobody's own faction) rather than a faction.
+	var from = GameStore.armistice["from"]
+	var proposer := "[b]%s[/b]" % GameData.factions[str(from)].name if from != null and GameData.factions.has(str(from)) else "A spectator"
+	_title.text = "%s proposes an armistice" % (str(from) if from != null else "A spectator")
+	var text := "%s proposes ending the game right here, immediately -- an armistice." % proposer
 	text += "\n\nNobody wins: the game simply stops, and the Game Over report shows how everyone stood when it did."
 	text += "\n\nIf anyone declines, the proposal falls through and the game continues as normal."
 	_body.text = text
