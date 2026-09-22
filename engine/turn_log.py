@@ -183,6 +183,18 @@ class TurnLog:
     def record_surrender(self, turn, faction, target, reasons):
         self.events.append({'kind': 'surrender', 'turn': turn, 'faction': faction, 'target': target, 'reasons': list(reasons)})
 
+    def record_self_surrender(self, turn, faction):
+        """The Settings 'Surrender' action: `faction` eliminates itself, not forced by anyone
+        (GameEngine.surrender). A 'faction_eliminated' event for it always follows right after, same
+        pairing as a forced 'surrender'."""
+        self.events.append({'kind': 'self_surrender', 'turn': turn, 'faction': faction})
+
+    def record_armistice(self, turn, proposer, participants):
+        """The Settings 'Propose Armistice' action succeeded: every faction in `participants` (the
+        proposer, plus everyone who accepted) agreed to end the game right here -- not a win for anyone
+        (GameEngine.end_by_armistice)."""
+        self.events.append({'kind': 'armistice', 'turn': turn, 'faction': proposer, 'participants': list(participants)})
+
     def record_alliance_joined(self, turn, faction, target, tag, new_alliance):
         self.events.append({
             'kind': 'alliance_joined', 'turn': turn, 'faction': faction, 'target': target,

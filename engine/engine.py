@@ -1657,6 +1657,44 @@ class GameEngine:
         self._eliminate(target)
         return reasons
 
+    def surrender(self, faction):
+        """The Settings 'Surrender' action: `faction` eliminates itself, of its own accord -- not
+        demanded by anyone, and not gated to its own turn or the Diplomacy phase at all, since this
+        isn't a move being made IN the game, it's a player choosing to stop playing. Same effect as
+        being forced to surrender (demand_surrender): its units and pending purchases leave the board,
+        its alliance ties are cut, its territory stays as it is. Checks the game-end condition right
+        away (would_game_end()) rather than waiting for the next Diplomacy phase's
+        process_game_end_check, since this can happen at any moment -- e.g. it may leave only one
+        faction standing, or leave everyone left mutually allied. Raises ValueError if the game is
+        already over, there is no such faction, its mode isn't HUMAN/BOT, or it is already eliminated."""
+        gs = self.game_state
+        if gs.game_over:
+            raise ValueError('the game is already over')
+        if faction not in gs.factions:
+            raise ValueError(f'no such faction: {faction}')
+        fstate = gs.factions[faction]
+        if fstate.mode not in (FactionMode.HUMAN, FactionMode.BOT):
+            raise ValueError(f'{faction} is not a HUMAN or BOT faction')
+        if fstate.eliminated:
+            raise ValueError(f'{faction} is already eliminated')
+        if self.turn_log is not None:
+            self.turn_log.record_self_surrender(gs.global_turn, faction)
+        self._eliminate(faction)
+        gs.game_over = self.would_game_end()
+
+    def end_by_armistice(self, proposer, participants):
+        """The Settings 'Propose Armistice' action, once every other active faction has accepted it
+        (a bot always does; a human is asked): ends the game right here, immediately -- not one of the
+        ordinary ways a game ends (victory.game_end_rule), and not gated to any phase, since a proposal
+        can be made from anywhere. `participants`: every faction whose agreement made this happen (the
+        proposer, plus everyone who accepted) -- purely for the record (turn_log/the Game Over report);
+        nobody here is a winner or a loser. Raises ValueError if the game is already over."""
+        if self.game_state.game_over:
+            raise ValueError('the game is already over')
+        self.game_state.game_over = True
+        if self.turn_log is not None:
+            self.turn_log.record_armistice(self.game_state.global_turn, proposer, sorted(participants))
+
     def _eliminate(self, code):
         """Takes `code` out of the game: eliminated, its units (and purchases waiting to deploy)
         gone from the board, and its alliance ties cut -- an alliance left with one member is no

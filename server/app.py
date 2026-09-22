@@ -35,6 +35,7 @@ from engine.bots.random_bot import RandomBot
 from engine.engine import GameEngine
 from engine.setup import build_game_state
 from engine.state import FactionMode
+from engine.stats import GameStats
 from engine.turn_log import TurnLog
 from .host import GameHost
 from .session import GameSession
@@ -55,7 +56,7 @@ def _build_demo_session(human='NAA', combat_first_turn=False, seed=None):
     gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False,
                           allow_combat_moves_first_turn=combat_first_turn, rng=rng)
     turn_log = TurnLog()
-    engine = GameEngine(gs, data_module, turn_log=turn_log, combat_rng=random.Random(rng.random()))
+    engine = GameEngine(gs, data_module, turn_log=turn_log, combat_rng=random.Random(rng.random()), stats=GameStats())
     bots = {code: RandomBot(engine, code, rng=random.Random(rng.random()))
             for code in ('NAA', 'GPC') if modes[code] == FactionMode.BOT}
     return GameSession(engine, turn_log, bots)

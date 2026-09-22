@@ -126,7 +126,16 @@ Client -> server (each a dict with at least "type" and "faction"):
 
 Watch mode (every faction a BOT, a spectator steps the game one phase at a
 time): "watch" / "next" and the "phase_queue" / "phase_result" messages are
-documented in server/stepper.py.
+documented in server/stepper.py. So are the client's real, active-today
+protocol additions -- "surrender" (a Settings action: a HUMAN eliminates
+itself, from anywhere, any time) and "propose_armistice"/"respond_armistice"
+(a Settings action: end the game right now by agreement -- every BOT accepts
+at once, a HUMAN is asked) -- both handled directly by THIS class (below),
+not PhaseStepper, since neither is tied to any particular queued phase.
+Once a human's own faction is eliminated (self-surrendered or forced out),
+nothing further is asked of it; the game simply carries on without it, and
+the client's own default is to keep spectating from there (Propose Armistice
+stays available to them -- see "propose_armistice" below).
 
 Server -> client (each a dict; a "to": faction_code key means send only
 to that faction's connection(s), no "to" key means broadcast to every
@@ -204,6 +213,7 @@ session) -- the server never paces delivery itself.
 from engine.bots.alliance_policy import accepts_invite
 from engine.engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from engine.state import FactionMode, Phase
+from .report import build_game_report
 from .stepper import PhaseStepper
 
 # turn_log event kinds a HUMAN's own drained (automatic) phases produce, and
@@ -236,6 +246,11 @@ class GameSession:
         # its accept/decline is still resolved synchronously via
         # engine.bots.alliance_policy.accepts_invite, same as bot-to-bot.
         self._pending_invite = None
+        # A pending "propose_armistice", or None: {'from': faction, 'pending': {code, ...} (HUMAN
+        # factions still asked), 'accepted': {code, ...} (everyone who has agreed so far, the proposer
+        # included from the start)}. Only one may be outstanding at a time; "next" is refused while it
+        # is (see handle_message) -- the game holds still until it resolves, same idea as _pending_invite.
+        self._armistice = None
 
     def connect(self, faction):
         """A client just identified itself as `faction` ("join"). Pure
@@ -281,7 +296,15 @@ class GameSession:
         if msg_type == 'watch':
             return self.stepper.watch()
         if msg_type == 'next':
+            if self._armistice is not None:
+                return [{'type': 'error', 'message': "an armistice proposal is awaiting an answer"}]
             return self.stepper.next()
+        if msg_type == 'surrender':
+            return self._handle_self_surrender(faction)
+        if msg_type == 'propose_armistice':
+            return self._handle_propose_armistice(faction)
+        if msg_type == 'respond_armistice':
+            return self._handle_respond_armistice(faction, msg.get('accept'))
         if msg_type == 'diplomacy_action':
             return self.stepper.diplomacy_action(faction, msg.get('action'), msg.get('target'))
         if msg_type == 'respond_invitation':
@@ -301,6 +324,84 @@ class GameSession:
         if msg_type == 'alliance_invite_response':
             return self._handle_alliance_invite_response(faction, msg.get('accept'))
         return [self._error(faction, f'unknown message type: {msg_type!r}')]
+
+    # ---- Settings actions: surrender and armistice, out-of-band, not tied to any queued phase --------
+
+    def _handle_self_surrender(self, faction):
+        """The Settings 'Surrender' action (see this module's own docstring). Restricted to a HUMAN seat
+        here at the protocol layer -- GameEngine.surrender itself is more general (also takes a BOT code),
+        but this message is specifically the player's own "give up" button, not a way to eliminate
+        anyone else's faction by naming it."""
+        if self._armistice is not None:
+            return [self._error(faction, 'an armistice proposal is awaiting an answer')]
+        gs = self.engine.game_state
+        if faction not in gs.factions or gs.factions[faction].mode != FactionMode.HUMAN:
+            return [self._error(faction, f'{faction} is not a human-controlled faction')]
+        start = len(self.turn_log.events)
+        try:
+            self.engine.surrender(faction)
+        except ValueError as e:
+            return [self._error(faction, str(e))]
+        events = self.turn_log.events[start:]
+        self.stepper.invalidate_queue()  # its cached queue may reference the faction that just left
+        messages = [{'type': 'self_surrender_result', 'faction': faction, 'events': events}, self._state_message()]
+        if self.engine.game_state.game_over:
+            messages.append(self._game_over_message())
+        return messages
+
+    def _handle_propose_armistice(self, faction):
+        """The Settings 'Propose Armistice' action. Every other currently ACTIVE faction must agree: a
+        BOT does at once (folded into 'accepted' below, nothing asked of it); a HUMAN is asked and
+        answers via respond_armistice. `faction` itself may be an already-eliminated HUMAN (proposing is
+        still allowed then -- see this module's own docstring) -- it's simply never asked to answer its
+        own proposal, whether active or not."""
+        if self._armistice is not None:
+            return [self._error(faction, 'an armistice proposal is already pending')]
+        gs = self.engine.game_state
+        if gs.game_over:
+            return [self._error(faction, 'the game is already over')]
+        fstate = gs.factions.get(faction)
+        if fstate is None or fstate.mode != FactionMode.HUMAN:
+            return [self._error(faction, f'{faction} is not a human-controlled faction')]
+        others = [c for c in gs.active_factions() if c != faction]
+        pending = {c for c in others if gs.factions[c].mode == FactionMode.HUMAN}
+        self._armistice = {'from': faction, 'pending': pending, 'accepted': {faction} | (set(others) - pending)}
+        if pending:
+            return [{'type': 'armistice_proposed', 'from': faction, 'awaiting': sorted(pending)}]
+        return self._resolve_armistice(accepted=True)
+
+    def _handle_respond_armistice(self, faction, accept):
+        """A HUMAN's answer to a pending armistice proposal."""
+        info = self._armistice
+        if info is None or faction not in info['pending']:
+            return [self._error(faction, 'no armistice proposal is awaiting your answer')]
+        if accept is None:
+            return [self._error(faction, "'accept' is required (true or false)")]
+        if not accept:
+            return self._resolve_armistice(accepted=False, declined_by=faction)
+        info['pending'].discard(faction)
+        info['accepted'].add(faction)
+        if info['pending']:
+            return [{'type': 'armistice_proposed', 'from': info['from'], 'awaiting': sorted(info['pending'])}]
+        return self._resolve_armistice(accepted=True)
+
+    def _resolve_armistice(self, accepted, declined_by=None):
+        """Concludes the pending proposal, one way or the other -- clears self._armistice either way, so
+        "next" (refused while one is outstanding) works again immediately."""
+        info = self._armistice
+        self._armistice = None
+        if not accepted:
+            return [{'type': 'armistice_resolved', 'from': info['from'], 'accepted': False,
+                     'declined_by': declined_by, 'events': []}]
+        start = len(self.turn_log.events)
+        self.engine.end_by_armistice(info['from'], sorted(info['accepted']))
+        events = self.turn_log.events[start:]
+        self.stepper.invalidate_queue()
+        return [{'type': 'armistice_resolved', 'from': info['from'], 'accepted': True, 'declined_by': None, 'events': events},
+                self._state_message(), self._game_over_message()]
+
+    def _game_over_message(self):
+        return {'type': 'game_over', 'report': build_game_report(self.engine, self.turn_log, self.bots)}
 
     def _handle_purchase(self, faction, raw_orders):
         gs = self.engine.game_state

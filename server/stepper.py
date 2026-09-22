@@ -29,6 +29,33 @@ Client -> server:
                         it logged, for the Events box), the refreshed phase_queue and the state;
                         an illegal one is an "error" plus the unchanged queue. "next" then just
                         ends the phase.
+    {"type": "surrender", "faction": "NAA"}
+                        the Settings 'Surrender' action: `faction` (a HUMAN) eliminates itself,
+                        outright -- unlike "diplomacy_action"'s "surrender" (forcing SOMEONE ELSE
+                        out on grounds, only during the demander's own Diplomacy phase), this is
+                        always legal for `faction` itself, from anywhere in the game, any phase,
+                        whether or not it is `faction`'s turn (GameEngine.surrender). A long-click
+                        in the client, kept well away from an accidental tap. Answered with a
+                        "self_surrender_result" (the events it logged), the state, and -- if this
+                        was the last active faction or leaves everyone left mutually allied -- a
+                        "game_over"; otherwise "next" carries on queuing the game exactly as before
+                        (this faction just never comes up again). An "error" if illegal (already
+                        eliminated, the game is already over, or not a HUMAN/BOT faction).
+    {"type": "propose_armistice", "faction": "NAA"}
+                        the Settings 'Propose Armistice' action: `faction` (a HUMAN, active or
+                        already eliminated -- see below) proposes ending the game right now, no
+                        winner declared. Every other ACTIVE faction must agree: a BOT always does,
+                        at once; a HUMAN is asked (a popup, "respond_armistice" answers it) and
+                        "next" is refused game-wide until every asked human has. If everyone agrees,
+                        GameEngine.end_by_armistice runs and the game is over. A single decline ends
+                        the proposal (no game-over) and is announced to everyone. Only one proposal
+                        may be pending at a time. An ELIMINATED human may still propose one (they
+                        have nothing left to play for but may want to see the game end) -- everyone
+                        still active is asked the same way; the proposer isn't, since proposing
+                        already counts as agreeing.
+    {"type": "respond_armistice", "faction": "NAA", "accept": true}
+                        a HUMAN's answer to a pending "armistice_proposed" prompt. An "error" if
+                        `faction` has nothing pending to answer.
     {"type": "respond_invitation", "faction": "NAA", "accept": true}
                         the HUMAN target of a bot's invitation answering it (see
                         below); "next" is refused until it does.
@@ -80,7 +107,23 @@ Server -> client (always broadcast to watchers):
         What executing that phase actually logged (for Combat Resolution:
         the roll-by-roll events and one battle_summary per battle).
     {"type": "state", "game_state": ...}   sent after every executed phase.
-    {"type": "game_over"}
+    {"type": "self_surrender_result", "faction": "NAA", "events": [...]}
+        The events a "surrender" logged (self_surrender, faction_eliminated) -- shown in the Events box.
+    {"type": "armistice_proposed", "from": "NAA", "awaiting": ["UE", "GPC"]}
+        A "propose_armistice" was accepted for consideration: `awaiting` lists the HUMAN factions still
+        asked to answer (every BOT already has, synchronously). Every asked human's client shows the
+        popup; watchers just see it happen. If `awaiting` is already empty (every other active faction
+        was a bot), this is followed immediately by the game ending -- see "game_over" below.
+    {"type": "armistice_resolved", "from": "NAA", "accepted": true, "declined_by": null, "events": [...]}
+        The pending proposal's outcome: `accepted` false means one human declined (`declined_by` names
+        them, and the game continues, unaffected); true means everyone agreed (an "events" armistice
+        entry, and the game is over -- see "game_over" below).
+    {"type": "game_over", "report": [{faction, seat_type, victory_status, elimination_reason,
+     strategic_centers, territory_mpc, units_produced, units_destroyed, alliance_history, bot_type,
+     bot_strategy, alliance_strategy, alliance_behavior}, ...]}
+        Ends the game. `report` (server/report.py's build_game_report) is one row per seat, already
+        sorted (Victory status, then Strategic Centers, Territory MPC, Units produced, Units destroyed)
+        for the client's Game Over panel.
     {"type": "error", "message": ...}
 """
 import copy
@@ -89,6 +132,7 @@ from engine.bots.alliance_policy import accepts_invite
 from engine.engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from engine.state import FactionMode, Phase
 from engine.turn_log import TurnLog
+from .report import build_game_report
 
 _PHASES = list(Phase)
 
@@ -115,6 +159,13 @@ class PhaseStepper:
 
     # ---- protocol entry points -------------------------------------------
 
+    def invalidate_queue(self):
+        """Drops the cached queue so the next watch()/next() rebuilds it from scratch -- for a change
+        that happened OUTSIDE this class's own step-by-step flow (GameSession's self-surrender and
+        armistice handling), which may have made the current queue stale (e.g. it named a faction that
+        is no longer in the game, or its legal_surrender_targets no longer holds)."""
+        self._queue = None
+
     def watch(self):
         """Current state, plus the queue awaiting execution (planned now if
         this is the very first join)."""
@@ -123,7 +174,7 @@ class PhaseStepper:
             return [self._error(problem)]
         gs = self.engine.game_state
         if gs.game_over:
-            return [self._state_message(), {'type': 'game_over'}]
+            return [self._state_message(), self._game_over_message()]
         if self._queue is None:
             self._plan_current_phase()
         return [self._state_message(), self._queue]
@@ -240,7 +291,7 @@ class PhaseStepper:
             return [self._error(problem)]
         gs = self.engine.game_state
         if gs.game_over:
-            return [{'type': 'game_over'}]
+            return [self._game_over_message()]
         if self._queue is None:
             self._plan_current_phase()
         if self._invitation is not None and not self._invitation['answered']:
@@ -263,7 +314,12 @@ class PhaseStepper:
         elif queued == RETURN_TO_BASE:
             # Its own step, ahead of the rest of Non-Combat Move: air units
             # that fought this turn fly home. GameState.phase doesn't move.
-            self.engine.process_return_to_base(faction)
+            # `faction` was active when this was queued (_plan_current_phase only ever builds this step
+            # for one that still is) -- but the Settings 'Surrender' action can take it out of the game
+            # in the meantime, between the queue being built and this "next"; skip if so, same as
+            # _commit's own active guards below.
+            if faction in gs.active_factions():
+                self.engine.process_return_to_base(faction)
             phase = None
         else:
             phase = gs.phase
@@ -280,7 +336,7 @@ class PhaseStepper:
             self._skipped_before = []
         elif phase == Phase.DIPLOMACY:
             if gs.game_over:
-                return messages + [self._state_message(), {'type': 'game_over'}]
+                return messages + [self._state_message(), self._game_over_message()]
             self.engine.advance_turn()
             self._skipped_before = []
         else:
@@ -291,19 +347,29 @@ class PhaseStepper:
         return messages + [self._queue, self._state_message()]
 
     def _commit(self, faction, phase):
-        """Executes the queued phase. (A faction is only ever eliminated by another's
-        surrender demand in that faction's own Diplomacy phase, so the active faction is
-        still in play here; the `active` guards are a safety net, as in engine.bots.driver.)"""
+        """Executes the queued phase. `active` guards every branch: a faction can be eliminated at any
+        point now, not just via another's surrender demand in ITS OWN Diplomacy phase (still true) --
+        the Settings 'Surrender' action (GameEngine.surrender) is out-of-band and can strike at any
+        moment, including mid this very faction's OWN turn, before its currently-queued phase (Purchase,
+        Combat Move, whatever) ever gets committed. When that happens, every remaining phase call for it
+        this turn is simply a no-op, same handling as engine.bots.driver already used for the
+        Capture/Deploy/Diplomacy phases -- extended here to cover every phase, since now any of them can
+        be the one left holding a stale queue."""
         engine, bot = self.engine, self.bots.get(faction)
         active = faction in engine.game_state.active_factions()
         if phase == Phase.PURCHASE:
-            engine.confirm_purchases(faction)
+            if active:
+                engine.confirm_purchases(faction)
         elif phase == Phase.COMBAT_MOVE:
-            engine.confirm_combat_moves(faction)
+            if active:
+                engine.confirm_combat_moves(faction)
         elif phase == Phase.COMBAT_RESOLUTION:
-            return self._commit_one_battle(faction)
+            if active:
+                return self._commit_one_battle(faction)
+            self._battles = None
         elif phase == Phase.NONCOMBAT_MOVE:
-            engine.confirm_noncombat_moves(faction)
+            if active:
+                engine.confirm_noncombat_moves(faction)
         elif phase == Phase.CAPTURE:
             if active:
                 engine.process_capture_territory(faction)
@@ -503,6 +569,9 @@ class PhaseStepper:
 
     def _state_message(self):
         return {'type': 'state', 'game_state': self.engine.game_state.to_dict()}
+
+    def _game_over_message(self):
+        return {'type': 'game_over', 'report': build_game_report(self.engine, self.turn_log, self.bots)}
 
     @staticmethod
     def _error(message):

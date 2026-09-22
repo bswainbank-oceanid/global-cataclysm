@@ -42,6 +42,7 @@ from engine.bots.strategy_bot import StrategyBot
 from engine.engine import GameEngine
 from engine.setup import build_game_state
 from engine.state import FactionMode
+from engine.stats import GameStats
 from engine.turn_log import TurnLog
 from .session import GameSession
 
@@ -177,8 +178,10 @@ def build_session(settings, rng=None):
         allow_noncombat_moves_first_turn=bool(settings.get('allow_noncombat_first_turn', True)),
     )
     turn_log = TurnLog()
-    # The dice come from the same seed as everything else, so a seeded game replays exactly.
-    engine = GameEngine(gs, data_module, turn_log=turn_log, combat_rng=random.Random(rng.random()))
+    # The dice come from the same seed as everything else, so a seeded game replays exactly. `stats`
+    # (deploys/kills/etc, per faction) feeds the Game Over report (server/report.py) -- purely
+    # informational, so nothing about the game itself depends on it being attached.
+    engine = GameEngine(gs, data_module, turn_log=turn_log, combat_rng=random.Random(rng.random()), stats=GameStats())
     budget = int(settings.get('dev', {}).get('bot_budget', DEFAULT_BUDGET))  # the heuristic bots' planning effort per pass
     bots = {}
     for a in assignments:
