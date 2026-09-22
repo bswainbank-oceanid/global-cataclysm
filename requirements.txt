@@ -1,4 +1,8 @@
 # server/ (the WebSocket server wrapping engine/) needs this; engine/ and
-# tools/ remain pure stdlib -- this is the project's first external
-# dependency, deliberately kept to just one package.
+# tools/ remain pure stdlib except for the optional Claude bot seat below.
 websockets>=17.1
+
+# engine/bots/claude_bot.py (an optional "Claude" bot seat -- see server/lobby.py's BOT_AIS): only
+# needed if a game actually uses that seat type, which also requires ANTHROPIC_API_KEY set in the
+# server's environment.
+anthropic>=1.8.0

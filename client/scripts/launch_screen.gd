@@ -18,7 +18,7 @@ const MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Defense", "DEFENSIVE"], ["
 const ALLIANCES := ["None", "Alliance 1", "Alliance 2", "Alliance 3"]
 const STRATEGIES := ["random", "aggressive", "passive", "counterweight", "independent", "variable"]
 const BEHAVIORS := ["random", "loyal", "opportunistic", "treacherous", "variable"]
-const BOT_AIS := [["Strategy", "strategy"], ["Random", "random"]]  # [label, server value]: the heuristic bot (default) and the random baseline
+const BOT_AIS := [["Strategy", "strategy"], ["Random", "random"], ["Claude", "claude"]]  # [label, server value]: the heuristic bot (default), the random baseline, and Claude itself (needs ANTHROPIC_API_KEY set on the server)
 const PATH := "user://launch.cfg"
 
 var _rows: Array = []  # per seat: {mode, faction, chip, alliance, strategy, behavior, ai}

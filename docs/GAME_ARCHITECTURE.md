@@ -619,3 +619,39 @@ the same JSON, not a parallel editing path.
   Cross-checked the REST of the spreadsheet's "Missing"/"Wrong" columns against the
   live data first -- every other entry was already covered by an existing override,
   so nothing else needed changing.
+- ⬜ **A third bot AI, `ClaudeBot`** (`engine/bots/claude_bot.py`, `server/lobby.py`'s
+  `BOT_AIS`), alongside the heuristic `StrategyBot` and the `RandomBot` baseline --
+  a seat actually played by Claude itself, one API call (with an unlimited-use
+  `battle_sim_estimate` tool) per phase, choosing only from the same pre-validated
+  "legal options" queries (`purchase_options`, `legal_combat_move_options`,
+  `legal_noncombat_move_options`, `legal_alliance_options`, `legal_surrender_targets`)
+  a human client already uses -- no fog of war (full public board state, same as a
+  human sees) but nothing about any other seat's own bot configuration
+  (alliance_strategy/alliance_behavior/style). `ClaudeBot` subclasses `RandomBot` and
+  overrides only the four `plan_*_phase` methods, so `server/stepper.py`'s existing
+  generic, duck-typed `bot.plan_*_phase()`/`bot.commit_diplomacy_phase()` dispatch
+  (no `isinstance` checks anywhere) needed zero changes to support it -- it slots in
+  exactly where `StrategyBot`/`RandomBot` already do. Each phase's decision is a
+  bounded tool-use loop (`MAX_TOOL_ROUNDS = 6`): an illegal decision's `ValueError`
+  is fed straight back as the next turn's retry context; a stuck model or a network
+  failure both fall back to a safe, always-legal no-op (empty purchase/move list, or
+  `{'action': 'none', 'demands': []}` for Diplomacy) rather than ever raising out of
+  a bot's turn. `battle_sim_estimate` passes `max_rounds=3` to `battle_sim.estimate`
+  to match the real engine (only 3 rounds of main combat before a stalemate is
+  "contested", not a fight to the death -- easy to get wrong, since `estimate()`
+  itself defaults to unbounded). Needs `ANTHROPIC_API_KEY` in the *server's*
+  environment (never the client's, never asked for in chat, never logged): checked
+  eagerly at seat-construction time (`ClaudeBot.__init__` -> `_default_client()`),
+  so starting a game with a Claude seat and no key fails clearly right away rather
+  than mid-game on that seat's first turn. Defaults to `claude-haiku-4-5-20251001`
+  (`DEFAULT_MODEL`); the launch screen has no model picker by design (`client/
+  scripts/launch_screen.gd`'s `BOT_AIS` just adds a `["Claude", "claude"]` option
+  alongside Strategy/Random). Real, non-deterministic API calls mean this bot can't
+  join the automated test suite or bulk simulation runs (`tools/bot_arena.py` and
+  friends) the way `StrategyBot`/`RandomBot` do -- `engine/tests/test_claude_bot.py`
+  covers it instead with an injected fake `client` (scripted `tool_use` responses,
+  no network, no cost), including the retry-after-illegal-order path, the max-
+  rounds and network-error fallbacks, and the battle_sim tool round-trip.
+  `requirements.txt` gained its second dependency, `anthropic`, for this alone --
+  `engine/`/`tools/` otherwise stay pure stdlib, and a game with no Claude seat
+  never imports it beyond the class definition itself.

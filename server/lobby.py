@@ -8,7 +8,7 @@ Settings (the "new_game" message's "settings"):
                  "faction": "random" | "NAA" | "UE" | "UER" | "GPC" | "PAF" | "AAC",
                  "alliance": 0 | 1 | 2 | 3,             # 0 = none; players only
                  "strategy": "random" | aggressive | passive | counterweight | independent | variable,   # bots only
-                 "ai": "strategy" | "random",                                                             # bots only: the heuristic bot (default) or the random baseline
+                 "ai": "strategy" | "random" | "claude",                                                  # bots only: the heuristic bot (default), the random baseline, or Claude itself
                  "behavior": "random" | loyal | opportunistic | treacherous | variable},                  # bots only
                 ... exactly six ...],
      "randomize_order": true,                            # default true
@@ -36,6 +36,7 @@ import random
 
 from engine import data as data_module
 from engine.bots.alliance_policy import BEHAVIORS, STRATEGIES
+from engine.bots.claude_bot import ClaudeBot
 from engine.bots.random_bot import RandomBot
 from engine.bots.planner import DEFAULT_BUDGET
 from engine.bots.strategy_bot import StrategyBot
@@ -50,7 +51,10 @@ SEAT_COUNT = 6
 MODES = ('HUMAN', 'BOT', 'DEFENSIVE', 'NEUTRAL')
 ALLIANCE_NUMBERS = (1, 2, 3)
 PLAYER_MODES = ('HUMAN', 'BOT')
-BOT_AIS = ('strategy', 'random')  # the heuristic bot (engine/bots/strategy_bot.py) and the random baseline
+# The heuristic bot (engine/bots/strategy_bot.py), the random baseline, and Claude itself
+# (engine/bots/claude_bot.py -- needs ANTHROPIC_API_KEY in the server's own environment; checked at
+# ClaudeBot construction time below, not here, so this list itself never depends on a key being set).
+BOT_AIS = ('strategy', 'random', 'claude')
 DEFAULT_BOT_AI = 'strategy'
 DEFAULT_MAX_ALLIANCE_SIZE = 3
 
@@ -190,6 +194,11 @@ def build_session(settings, rng=None):
         bot_rng = random.Random(rng.random())
         if a['ai'] == 'random':
             bots[a['faction']] = RandomBot(engine, a['faction'], rng=bot_rng)
+        elif a['ai'] == 'claude':
+            # ClaudeBot's own __init__ (via _default_client()) raises RuntimeError right here, clearly,
+            # if ANTHROPIC_API_KEY isn't set in the server's environment -- not silently, not deferred
+            # to this seat's first turn.
+            bots[a['faction']] = ClaudeBot(engine, a['faction'], rng=bot_rng)
         else:
             bots[a['faction']] = StrategyBot(engine, a['faction'], rng=bot_rng, budget=budget)
     seats = [dict(a, seat=i) for i, a in enumerate(assignments, 1)]
