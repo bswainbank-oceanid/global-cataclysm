@@ -29,6 +29,19 @@ func _initialize() -> void:
 	}))
 	_check(store.human_faction() == "NAA", "the one HUMAN seat is found")
 
+	# round_number(): reads GameState's own authoritative counter when the server sends one (every live
+	# game does), not the old global_turn // len(active_factions()) guess -- see its own docstring for why
+	# that guess is wrong once an elimination has shrunk active_factions() partway through the game.
+	var s: Dictionary = store.state.duplicate(true)
+	s["round_number"] = 7
+	store.set_state(s)
+	_check(store.round_number() == 7, "reads GameState.round_number directly: %d" % store.round_number())
+	var s2: Dictionary = store.state.duplicate(true)
+	s2.erase("round_number")
+	s2["global_turn"] = 3
+	store.set_state(s2)
+	_check(store.round_number() == 3 / maxi(1, store.active_factions().size()) + 1, "falls back to the old formula only for a state that predates the field")
+
 	# armistice_pending: only the human this proposal AWAITS is asked to answer.
 	_check(not store.armistice_pending(), "nothing pending at first")
 	store.set_armistice({"from": "UE", "awaiting": ["NAA"]})
@@ -76,8 +89,13 @@ func _initialize() -> void:
 	stepper._on_message({"type": "game_over", "report": [{
 		"faction": "NAA", "seat_type": "HUMAN", "victory_status": "Armistice", "elimination_reason": null,
 		"strategic_centers": 3, "territory_mpc": 20, "units_produced": 5, "units_destroyed": 2,
-		"alliance_history": [], "bot_type": null, "bot_strategy": null, "alliance_strategy": null, "alliance_behavior": null}]})
-	_check(stepper.game_over and store.game_over_report.size() == 1, "the report lands in GameStore")
+		"alliance_history": [], "bot_type": null, "bot_strategy": null, "alliance_strategy": null, "alliance_behavior": null,
+		"rounds_in_game": 6, "round_eliminated": null, "eliminated_by": null}, {
+		"faction": "UE", "seat_type": "BOT", "victory_status": "Forced to Surrender", "elimination_reason": ["Economic"],
+		"strategic_centers": 0, "territory_mpc": 0, "units_produced": 2, "units_destroyed": 1,
+		"alliance_history": [], "bot_type": "Random", "bot_strategy": null, "alliance_strategy": null, "alliance_behavior": null,
+		"rounds_in_game": 6, "round_eliminated": 3, "eliminated_by": "NAA"}]})
+	_check(stepper.game_over and store.game_over_report.size() == 2, "the report lands in GameStore")
 	_check(store.game_ended_by_armistice(), "...and is recognised as an armistice ending")
 	_check(announced_items.size() == 1 and str(announced_items[0]["body"]).contains("armistice"), "an armistice-ended game says so, not 'last faction standing'")
 
@@ -87,6 +105,12 @@ func _initialize() -> void:
 	root.add_child(report_panel)
 	await process_frame
 	_check(report_panel.visible and report_panel._panel.visible and not report_panel._tab.visible, "the table shows once there's a report")
+	_check(str(report_panel._title.text).contains("6 rounds"), "the title names how many rounds the game lasted: %s" % report_panel._title.text)
+	var cell_texts := []
+	for c in report_panel._grid.get_children():
+		if c is Label:
+			cell_texts.append(str(c.text))
+	_check(cell_texts.has("3") and cell_texts.has("NAA"), "round eliminated and who eliminated them show up as cells: %s" % str(cell_texts))
 	store.toggle_game_over_report_minimized()
 	await process_frame
 	_check(store.game_over_report_minimized and report_panel.visible and not report_panel._panel.visible and report_panel._tab.visible,
@@ -94,6 +118,25 @@ func _initialize() -> void:
 	store.toggle_game_over_report_minimized()
 	await process_frame
 	_check(not store.game_over_report_minimized and report_panel._panel.visible and not report_panel._tab.visible, "restored: the table is back")
+
+	# The report is non-modal: a significant-event popup (AnnouncementWindow) queued while it's up must
+	# stay fully dismissible, and the report itself must keep showing throughout -- neither blocks the other.
+	var announcement_window2 = load("res://scripts/announcement_window.gd").new()
+	root.add_child(announcement_window2)
+	await process_frame
+	announcement_window2.add([{"title": "UE eliminated", "body": "...", "color": Color.WHITE}, {"title": "Game over", "body": "...", "color": Color.WHITE}])
+	await process_frame
+	_check(announcement_window2.visible, "a popup can come up over the open report")
+	_check(report_panel.visible and report_panel._panel.visible, "...and the report stays open underneath it")
+	announcement_window2.acknowledge()
+	await process_frame
+	_check(announcement_window2.visible and announcement_window2._ok.text == "OK", "dismissing the first popup works fine with the report open, and shows the next")
+	_check(report_panel.visible and report_panel._panel.visible, "...the report is still right there")
+	announcement_window2.acknowledge()
+	await process_frame
+	_check(not announcement_window2.visible, "dismissing the last popup closes it")
+	_check(report_panel.visible and report_panel._panel.visible, "...and the report is untouched by any of it")
+
 	store.set_game_over_report([])
 	_check(not report_panel.visible, "a fresh game (no report) hides the whole panel")
 

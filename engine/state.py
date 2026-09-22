@@ -425,8 +425,18 @@ class FactionState:
 class GameState:
     # Monotonically-increasing counter, one tick per faction-turn (not per
     # round) -- the recovery/heal rule is measured against this, not a
-    # per-faction turn number. A "round" is global_turn // num_active_factions.
+    # per-faction turn number. A "round" is one full lap through active_factions().
     global_turn: int = 0
+    # 1-based, authoritative: incremented by GameEngine.advance_turn() exactly when
+    # turn order wraps back to the first still-active faction -- i.e. once per actual
+    # completed lap, using however many factions were active AT THAT MOMENT. Unlike
+    # deriving it after the fact as global_turn // len(active_factions()), a STORED
+    # counter stays correct for events from earlier in the game even once later
+    # eliminations have shrunk active_factions() -- exactly what server/report.py's
+    # "round eliminated" and "rounds in the game" need. Server/stepper.py's own
+    # start_of_turn announcement (round/turn/turns_in_round, shown live) reads this
+    # same field, so the live display and the endgame report can never disagree.
+    round_number: int = 1
     active_faction: Optional[str] = None
     phase: Phase = Phase.PURCHASE
     territories: dict = field(default_factory=dict)  # dict[int, TerritoryState]
@@ -502,6 +512,7 @@ class GameState:
     def to_dict(self):
         return {
             'global_turn': self.global_turn,
+            'round_number': self.round_number,
             'active_faction': self.active_faction,
             'phase': self.phase.value,
             'territories': {str(tid): t.to_dict() for tid, t in self.territories.items()},
@@ -520,6 +531,7 @@ class GameState:
     def from_dict(d):
         return GameState(
             global_turn=d['global_turn'],
+            round_number=d.get('round_number', 1),
             active_faction=d['active_faction'],
             phase=Phase(d['phase']),
             territories={int(k): TerritoryState.from_dict(v) for k, v in d['territories'].items()},

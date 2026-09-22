@@ -42,6 +42,23 @@ def _elimination_reason(elim_event):
     return [_REASON_LABELS[r] for r in _REASON_ORDER if r in elim_event['reasons']]
 
 
+def _round_eliminated(elim_event):
+    """The round (GameState.round_number, as it stood at the moment -- see record_surrender/
+    record_self_surrender) the faction was put out, or None if `elim_event` is None. Older turn_log
+    events (recorded before this field existed, e.g. a save from an earlier version) simply have no
+    'round' key -- .get(...) rather than a KeyError."""
+    return elim_event.get('round') if elim_event is not None else None
+
+
+def _eliminated_by(elim_event):
+    """Who eliminated this faction: the demander's code for a forced surrender ('surrender' event's own
+    'faction'), or None -- nobody eliminated them but themselves for a self-surrender, and there is
+    nobody at all for a faction still in the game."""
+    if elim_event is None or elim_event['kind'] != 'surrender':
+        return None
+    return elim_event['faction']
+
+
 def _victory_status(code, gs, active_at_end, armistice_participants, elim_event):
     """One of 'Winner', 'Armistice', 'Forced to Surrender', 'Surrendered' for a HUMAN/BOT seat; None
     for a Defensive/Neutral one (never a competitor, so it has no such thing as a victory status).
@@ -95,13 +112,20 @@ def _bot_info(bot):
 def build_game_report(engine, turn_log, bots):
     """[{faction, seat_type, victory_status, elimination_reason, strategic_centers, territory_mpc,
     units_produced, units_destroyed, alliance_history, bot_type, bot_strategy, alliance_strategy,
-    alliance_behavior}, ...] -- one row per seated faction (all 6, Defensive/Neutral included), sorted by
-    the report's own order: Victory status, then Strategic Centers, Territory MPC, Units produced, Units
-    destroyed, each descending (a None victory status -- Defensive/Neutral -- sorts after every real
-    one), a final alphabetical tie-break. elimination_reason is only for an eliminated faction (why it's
-    out -- see _elimination_reason), None for anyone still in the game and for Defensive/Neutral seats.
-    Units produced/destroyed are 0 if `engine.stats` is None (a GameStats wasn't attached) rather than an
-    error -- purely cosmetic, never required for the game itself to run."""
+    alliance_behavior, rounds_in_game, round_eliminated, eliminated_by}, ...] -- one row per seated
+    faction (all 6, Defensive/Neutral included), sorted by the report's own order: Victory status, then
+    Strategic Centers, Territory MPC, Units produced, Units destroyed, each descending (a None victory
+    status -- Defensive/Neutral -- sorts after every real one), a final alphabetical tie-break.
+    elimination_reason is only for an eliminated faction (why it's out -- see _elimination_reason), None
+    for anyone still in the game and for Defensive/Neutral seats. Units produced/destroyed are 0 if
+    `engine.stats` is None (a GameStats wasn't attached) rather than an error -- purely cosmetic, never
+    required for the game itself to run. rounds_in_game (GameState.round_number, the SAME value on every
+    row) is how long the whole game ran; round_eliminated (per row, None unless the faction was actually
+    eliminated) is which round it happened in -- both read from the authoritative, monotonically-
+    incrementing round counter (see GameState.round_number / GameEngine.advance_turn), not derived after
+    the fact from global_turn, which would give wrong answers for earlier eliminations once later ones
+    have shrunk active_factions(). eliminated_by (per row) is who forced a demanded surrender (None for a
+    self-surrender -- nobody eliminated them but themselves -- and for anyone never eliminated)."""
     gs = engine.game_state
     data = engine.data
     terrs = data.territories()
@@ -131,6 +155,9 @@ def build_game_report(engine, turn_log, bots):
             'bot_strategy': bot_strategy,
             'alliance_strategy': fstate.alliance_strategy,
             'alliance_behavior': fstate.alliance_behavior,
+            'rounds_in_game': gs.round_number,
+            'round_eliminated': _round_eliminated(elim_event),
+            'eliminated_by': _eliminated_by(elim_event),
         })
 
     rows.sort(key=lambda r: (

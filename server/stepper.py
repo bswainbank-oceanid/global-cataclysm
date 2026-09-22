@@ -510,12 +510,19 @@ class PhaseStepper:
         return (faction, self.engine.game_state.global_turn)
 
     def _start_of_turn_event(self, faction):
-        """Round and turn, in the client's own terms: a round is one turn for each
-        faction still in play, and the turn is this faction's place in it."""
+        """Round and turn, in the client's own terms: a round is one turn for each faction still in
+        play, and the turn is this faction's place in it. `round` is GameState.round_number, the real,
+        authoritative counter (GameEngine.advance_turn increments it on wraparound) -- NOT global_turn //
+        len(active_factions()) (this method's own former formula): that gives a WRONG, inflated answer
+        once an earlier elimination has already shrunk active_factions() partway through the game, since
+        the same global_turn then divides by a smaller n than it should. A stored counter that only ever
+        increments at the moment a lap genuinely completes has no such problem -- see GameState.
+        round_number's own docstring, and server/report.py's round_eliminated/rounds_in_game, which read
+        the very same field for exactly this reason."""
         gs = self.engine.game_state
         order = gs.active_factions()
         n = max(1, len(order))
-        return TurnLog.start_of_turn_event(faction, gs.global_turn // n + 1, order.index(faction) + 1, n)
+        return TurnLog.start_of_turn_event(faction, gs.round_number, order.index(faction) + 1, n)
 
     def _dry_run(self, action):
         """The events `action(sim_engine)` would log, run against a private

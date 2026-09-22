@@ -9,15 +9,16 @@ extends Control
 ## they review the final state.
 
 const COLUMNS := [
-	["Faction", 70], ["Victory status", 130], ["Elimination reason", 130], ["SCs", 44],
-	["Territory MPC", 100], ["Units produced", 100], ["Units destroyed", 100], ["Seat", 64],
-	["Bot type", 80], ["Bot strategy", 90], ["Alliance strategy", 110], ["Alliance behavior", 110],
-	["Alliance history", 260],
+	["Faction", 70], ["Victory status", 130], ["Elimination reason", 130], ["Eliminated by", 90],
+	["Round eliminated", 100], ["SCs", 44], ["Territory MPC", 100], ["Units produced", 100],
+	["Units destroyed", 100], ["Seat", 64], ["Bot type", 80], ["Bot strategy", 90],
+	["Alliance strategy", 110], ["Alliance behavior", 110], ["Alliance history", 260],
 ]
 
 var _panel: PanelContainer
 var _grid: GridContainer
 var _tab: Button  # the minimized state's reopen affordance
+var _title: Label
 
 
 func _ready() -> void:
@@ -42,9 +43,9 @@ func _ready() -> void:
 	_panel.add_child(v)
 
 	var head := HBoxContainer.new()
-	var title := HudStyle.label("Game Over - Final Report", 18, HudStyle.GOLD)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(title)
+	_title = HudStyle.label("Game Over - Final Report", 18, HudStyle.GOLD)
+	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(_title)
 	var minimize := Button.new()
 	minimize.text = "Minimize"
 	minimize.focus_mode = Control.FOCUS_NONE
@@ -100,6 +101,10 @@ func _sync() -> void:
 
 
 func _rebuild(report: Array) -> void:
+	# rounds_in_game is the SAME value on every row (server/report.py) -- shown once, in the title,
+	# rather than as a repeated column.
+	var rounds = report[0].get("rounds_in_game") if not report.is_empty() else null
+	_title.text = "Game Over - Final Report (%s rounds)" % str(rounds) if rounds != null else "Game Over - Final Report"
 	for c in _grid.get_children():
 		_grid.remove_child(c)
 		c.queue_free()
@@ -118,6 +123,8 @@ func _add_row(row: Dictionary) -> void:
 	_cell(_or_dash(row.get("victory_status")), col)
 	var reasons: Array = row.get("elimination_reason", []) if row.get("elimination_reason") != null else []
 	_cell(", ".join(reasons) if not reasons.is_empty() else "-", HudStyle.TEXT_DIM)
+	_cell(_or_dash(row.get("eliminated_by")), HudStyle.TEXT_DIM)
+	_cell(_or_dash(row.get("round_eliminated")), HudStyle.TEXT_DIM)
 	_cell(str(row.get("strategic_centers", 0)))
 	_cell(str(row.get("territory_mpc", 0)))
 	_cell(str(row.get("units_produced", 0)))

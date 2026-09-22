@@ -532,16 +532,35 @@ the same JSON, not a parallel editing path.
   then Strategic Centers, Territory MPC, Units produced, Units destroyed -- plus, per
   row, the elimination reason where relevant (`['SC Loss']` / `['Economic']` / both /
   `['Self-Surrender']`, derived from the `surrender` or `self_surrender` turn_log event
-  that eliminated it), Seat-Type, Alliance history (in turn order, from the full
-  turn_log), Bot-Type and Bot Strategy (from the live bot object, since these were
-  never persisted on `GameState`), and Alliance Strategy / Alliance Behavior. The
-  client's `GameOverReportPanel` opens automatically with it: a wide sortable-by-server-order
-  table, non-modal (the map stays visible and clickable underneath), with a
-  **Minimize** button that collapses it to a small reopenable tab in the corner
+  that eliminated it), who eliminated them (`eliminated_by`: the demander's code for a
+  forced surrender, None for a self-surrender -- nobody eliminated them but themselves),
+  which round it happened in (`round_eliminated`), Seat-Type, Alliance history (in turn
+  order, from the full turn_log), Bot-Type and Bot Strategy (from the live bot object,
+  since these were never persisted on `GameState`), Alliance Strategy / Alliance
+  Behavior, and `rounds_in_game` (the same value on every row: how long the whole game
+  ran). **`GameState.round_number`**: a real, 1-based, authoritative counter -- NOT
+  derived after the fact as `global_turn // len(active_factions())`, which the client's
+  live "Round N" display and the server's own `start_of_turn` announcement (`round`,
+  `turn`, `turns_in_round`) already computed that way, but which gives WRONG answers for
+  an earlier event once a later elimination has shrunk `active_factions()` (the same
+  global_turn, divided by an ever-smaller denominator, inflates). `GameEngine.
+  advance_turn()` instead increments it exactly once per actual completed lap (when
+  turn order wraps back to the first still-active faction, using however many factions
+  were active AT THAT MOMENT), so a value captured earlier in the game -- specifically,
+  `record_surrender`/`record_self_surrender` now also stamp a `round` field on their
+  turn_log event, at the moment of elimination -- stays correct no matter how much
+  the game shrinks afterward. The client's `GameOverReportPanel` opens automatically
+  with the report: a wide sortable-by-server-order table, non-modal (the map stays
+  visible and clickable underneath), its title naming the round count ("(N rounds)"),
+  with a **Minimize** button that collapses it to a small reopenable tab in the corner
   (`GameStore.game_over_report_minimized`, toggled by `GameStore.toggle_game_over_report_minimized`)
   so the player can put it aside and bring it back at will while reviewing the final
   board. An armistice-ended game's "Game over" announcement says so explicitly
   (`GameStore.game_ended_by_armistice`), rather than wrongly naming a "last faction
-  standing". Headless: `godot --headless --path client -s
+  standing". **The report is non-modal by design, and significant-event popups
+  (`AnnouncementWindow`) stay fully dismissible while it's open** -- neither blocks the
+  other (different z-indices, `MOUSE_FILTER_IGNORE` everywhere except each one's own
+  inner panel); covered by a dedicated headless check rather than left to visual
+  inspection. Headless: `godot --headless --path client -s
   res://tests/settings_actions_test.gd`; server-side: `server/tests/test_settings_actions.py`,
   `server/tests/test_report.py`, `engine/tests/test_self_surrender_and_armistice.py`.

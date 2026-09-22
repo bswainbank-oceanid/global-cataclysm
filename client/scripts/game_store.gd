@@ -704,7 +704,13 @@ func allies_of(code: String) -> Array:
 
 
 ## 1-based round number: every active faction has had one turn per round.
+## The authoritative round counter (GameState.round_number -- see its own docstring: a real, stored
+## count of completed laps through the turn order, not derived from global_turn, which would give a
+## wrong answer once an elimination has shrunk active_factions() partway through the game). Falls back
+## to the old formula only for a state dict that predates this field (e.g. a stale --state fixture).
 func round_number() -> int:
+	if state.has("round_number"):
+		return int(state["round_number"])
 	var n := maxi(1, active_factions().size())
 	return int(state.get("global_turn", 0)) / n + 1
 

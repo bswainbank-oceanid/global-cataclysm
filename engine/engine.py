@@ -1653,7 +1653,7 @@ class GameEngine:
         if not reasons:
             raise ValueError(f'{faction} has no grounds to demand the surrender of {target}')
         if self.turn_log is not None:
-            self.turn_log.record_surrender(gs.global_turn, faction, target, reasons)
+            self.turn_log.record_surrender(gs.global_turn, gs.round_number, faction, target, reasons)
         self._eliminate(target)
         return reasons
 
@@ -1678,7 +1678,7 @@ class GameEngine:
         if fstate.eliminated:
             raise ValueError(f'{faction} is already eliminated')
         if self.turn_log is not None:
-            self.turn_log.record_self_surrender(gs.global_turn, faction)
+            self.turn_log.record_self_surrender(gs.global_turn, gs.round_number, faction)
         self._eliminate(faction)
         gs.game_over = self.would_game_end()
 
@@ -2075,8 +2075,9 @@ class GameEngine:
         to the next one in active_factions()
         (wrapping around, and naturally skipping anyone eliminated since
         this faction's turn began, since active_factions() is always
-        recomputed fresh), increments global_turn, and resets phase back
-        to PURCHASE.
+        recomputed fresh -- and bumping GameState.round_number exactly
+        when it wraps, i.e. once per actual completed lap), increments
+        global_turn, and resets phase back to PURCHASE.
 
         Raises ValueError if the game is already over or this isn't
         called at the end of the Diplomacy phase."""
@@ -2110,6 +2111,8 @@ class GameEngine:
             return
 
         next_index = (active.index(finishing) + 1) % len(active) if finishing in active else 0
+        if next_index == 0:
+            self.game_state.round_number += 1  # wrapped back to the top of the (possibly-shrunk) turn order: a new lap
         self.game_state.active_faction = active[next_index]
         self.game_state.global_turn += 1
         self.game_state.phase = Phase.PURCHASE
