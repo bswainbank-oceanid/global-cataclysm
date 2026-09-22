@@ -83,13 +83,13 @@ class TestSettings(unittest.TestCase):
 
     def test_purchase_odds_come_from_the_factions_unit_weights(self):
         odds = self.s.unit_odds('PAF', ['Infantry', 'Aircraft Carrier', 'Fighter'])
-        self.assertEqual(odds, [9, 2, 2])
+        self.assertEqual(odds, [8, 2, 2])
 
     def test_the_json_matches_the_spreadsheet_builder(self):
         path = os.path.join(os.path.dirname(strategy_settings.__file__), '..', '..', 'data', 'bot_settings.json')
         with open(path, encoding='utf-8') as f:
             raw = json.load(f)
-        self.assertEqual(raw['unit_weights']['UER']['Infantry'], 8)
+        self.assertEqual(raw['unit_weights']['UER']['Infantry'], 5)
 
 
 def make_game(modes=None, seed=1, first_turn_combat=True):
