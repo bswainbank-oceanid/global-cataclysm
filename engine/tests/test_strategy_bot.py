@@ -16,6 +16,7 @@ from engine.bots.strategy_settings import (
 from engine.engine import GameEngine
 from engine.setup import build_game_state
 from engine.state import FactionMode, Phase, UnitInstance
+from engine.tests.test_engine import FakeData, make_state
 
 FACTIONS = ('NAA', 'AAC', 'UE', 'GPC', 'PAF', 'UER')
 UNITS = ('Infantry', 'Mechanized Infantry', 'Armor', 'Aircraft Carrier', 'Cruiser', 'Submarine', 'Bomber', 'Fighter')
@@ -316,6 +317,102 @@ class TestEmptyLandGrab(unittest.TestCase):
         # England's only defender is the Mech Inf and an enemy Armor can walk in: it stays (a purchase stands in instead)
         if self.mech.unit_id in p.moves_combat:
             self.assertTrue(p.threats(21) == {} or any(v.unit_id != self.mech.unit_id for v in p.defenders_at(21, claimed_only=False)))
+
+
+class TestEmptyLandGrabReach(unittest.TestCase):
+    """GRAB_REACH (6 hops): how far a target may be for the objective to bother buying a Mech Inf toward it."""
+
+    def _chain_engine(self):
+        # 1 (NAA) -- 2..5 (a neutral faction's land: filler, never a target) -- 6, 7, 8 (GPC, undefended land,
+        # at hops 5, 6 and 7 from NAA's only territory).
+        territories = {1: {'type': 'land', 'value': 30, 'name': 'NAA Land'}}
+        for i in range(2, 6):
+            territories[i] = {'type': 'land', 'value': 1, 'name': f'Neutral {i}'}
+        for i in range(6, 9):
+            territories[i] = {'type': 'land', 'value': 1, 'name': f'GPC Land {i}'}
+        adjacency = {i: [] for i in range(1, 9)}
+        for i in range(1, 8):
+            adjacency[i].append(i + 1)
+            adjacency[i + 1].append(i)
+        data = FakeData(territories=territories, adjacency=adjacency)
+        owners = {1: 'NAA', **{i: 'UER' for i in range(2, 6)}, **{i: 'GPC' for i in range(6, 9)}}
+        gs = make_state(data, owners, {'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT, 'UER': FactionMode.NEUTRAL})
+        gs.active_faction = 'NAA'
+        return GameEngine(gs, data), gs
+
+    def test_a_target_at_the_reach_limit_is_bought_toward_but_one_beyond_it_is_not(self):
+        engine, gs = self._chain_engine()
+        p = planner_for(engine)
+        hops = {tid: h for h, _, tid in p._undefended_land()}
+        self.assertEqual((hops[6], hops[7], hops[8]), (5, 6, 7))
+        p.objective_empty_land_grab()
+        bought_at = {tid for (t, tid), q in p.purchases.items() if t == 'Mechanized Infantry' for _ in range(q)}
+        self.assertEqual(bought_at, {1})   # NAA's only territory is the only legal purchase spot in this graph
+        total_bought = sum(q for (t, _), q in p.purchases.items() if t == 'Mechanized Infantry')
+        self.assertEqual(total_bought, 2)  # tiles 6 (hops 5) and 7 (hops 6) are within reach; tile 8 (hops 7) is not
+        engine._resolve_and_cost(p.purchase_orders(), 'NAA')  # everything bought is legal
+
+
+class TestEmptyLandGrabSeaDeploy(unittest.TestCase):
+    """A Mech Inf bought toward a target may be deployed straight into a safe sea space next to it, rather than
+    onto the land that funds it, when that is genuinely closer -- it saves the turn the water crossing would take."""
+
+    def _diamond_engine(self, hostile_sea=False):
+        # 1 (NAA land, the only owned territory) is adjacent to both:
+        #   M (GPC land, occupied -- an expensive "enemy" hop) and S (a sea zone, empty unless hostile_sea).
+        # Both M and S are adjacent to T (GPC land, undefended -- the target): a land route through hostile
+        # territory, and a sea route across open (or, in the second scenario, occupied) water.
+        territories = {
+            1: {'type': 'land', 'value': 10, 'name': 'NAA Land'},
+            2: {'type': 'land', 'value': 1, 'name': 'Hostile Buffer'},    # M
+            3: {'type': 'sea', 'name': 'Near Sea'},                      # S
+            4: {'type': 'land', 'value': 1, 'name': 'The Island'},       # T
+        }
+        adjacency = {1: [2, 3], 2: [1, 4], 3: [1, 4], 4: [2, 3]}
+        data = FakeData(territories=territories, adjacency=adjacency)
+        units = {2: [UnitInstance(unit_id=901, unit_type='Armor', owner='GPC', current_hp=4)]}
+        if hostile_sea:
+            units[3] = [UnitInstance(unit_id=902, unit_type='Cruiser', owner='GPC', current_hp=5)]
+        gs = make_state(data, {1: 'NAA', 2: 'GPC', 4: 'GPC'}, {'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT},
+                        units_by_territory=units)
+        gs.active_faction = 'NAA'
+        return GameEngine(gs, data), gs
+
+    def test_the_nearer_safe_sea_spot_is_chosen_over_the_costlier_land_route(self):
+        engine, gs = self._diamond_engine()
+        p = planner_for(engine)
+        dist = p.costs_from(4)[0]
+        self.assertLess(dist[3], dist[1])  # the sea square is genuinely the cheaper way to the island
+        self.assertTrue(p.sea_zone_safe(3))
+        stub = p.buy_toward(dist, ('Land',), 'empty_land_grab', only=('Mechanized Infantry',))
+        self.assertIsNotNone(stub)
+        self.assertEqual(list(p.purchases.keys()), [('Mechanized Infantry', 3)])
+        engine._resolve_and_cost(p.purchase_orders(), 'NAA')  # a legal order: Mech Inf may deploy to sea
+
+    def test_a_hostile_sea_zone_is_not_used_even_when_it_is_nearer(self):
+        engine, gs = self._diamond_engine(hostile_sea=True)
+        p = planner_for(engine)
+        dist = p.costs_from(4)[0]
+        self.assertLess(dist[3], dist[1])       # still the shorter path...
+        self.assertFalse(p.sea_zone_safe(3))    # ...but it is not safe to land an undefended Transport there
+        stub = p.buy_toward(dist, ('Land',), 'empty_land_grab', only=('Mechanized Infantry',))
+        self.assertIsNotNone(stub)
+        self.assertEqual(list(p.purchases.keys()), [('Mechanized Infantry', 1)])  # falls back to the land spot
+
+    def test_buy_still_refuses_infantry_and_armor_at_sea_even_when_it_is_safe(self):
+        engine, gs = self._diamond_engine()
+        p = planner_for(engine)
+        for unit_type in ('Infantry', 'Armor'):
+            self.assertIsNone(p.buy(3, ('Land',), 'empty_land_grab', only=(unit_type,)))
+
+    def test_the_reach_end_to_end_through_the_objective(self):
+        # The same diamond, run through objective_empty_land_grab as a bot actually would.
+        engine, gs = self._diamond_engine()
+        p = planner_for(engine)
+        p.objective_empty_land_grab()
+        self.assertEqual(list(p.purchases.keys()), [('Mechanized Infantry', 3)])
+        engine._resolve_and_cost(p.purchase_orders(), 'NAA')
+
 
 class TestStrategyBotPlaysTurns(unittest.TestCase):
     def game(self, seed=3, budget=250):

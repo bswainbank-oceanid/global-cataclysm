@@ -26,7 +26,7 @@ from ..movement import (
     _is_ally_or_self, graph_distances, legal_air_move_destinations, legal_combat_move_paths,
     legal_noncombat_move_paths, trace_combat_move,
 )
-from ..state import FactionMode, UnitInstance
+from ..state import FactionMode, UnitInstance, is_amphibious
 from . import battle_sim
 from .policy import excluded_naval_purchase_zones
 from .strategy_settings import weighted_order
@@ -169,6 +169,15 @@ class Planner:
 
     def enemies_at(self, tid):
         return [u for u in self.gs.territories[tid].units if self.hostile(u.owner)]
+
+    def sea_zone_safe(self, tid):
+        """True if a sea zone has nothing hostile in it and no contest under way -- the test for whether
+        Mechanized Infantry may be purchased straight into it (rather than onto the land that funds it):
+        it would land as an undefended Transport (defense 6, 1 HP), so this only happens somewhere quiet."""
+        t = self.gs.territories[tid]
+        if t.contested_by:
+            return False
+        return not any(not self.allied(u.owner) for u in t.units)
 
     def snapshot(self):
         return (dict(self.claimed), dict(self.moves_combat), dict(self.moves_nc), set(self.stay),
@@ -334,10 +343,16 @@ class Planner:
     def buy(self, tid, categories, name, prefer=None, only=None):
         """Buys one unit for `tid` by the faction's unit odds among the categories allowed (or, with `prefer`,
         that type first if it can be bought; with `only`, none but those types), if the treasury and the deploy
-        capacity allow it. Returns the stand-in unit, or None."""
+        capacity allow it. Returns the stand-in unit, or None.
+
+        A Land-category unit can be bought at a sea target too, but only if it's amphibious (Mechanized
+        Infantry -- it deploys straight there as a Transport, exactly as if it had walked into the water) and
+        the zone is currently safe (sea_zone_safe) -- landing undefended among enemies would just lose it."""
         if not self.allow_purchase or tid in self._excluded_zones:
             return None
         contested = bool(self.gs.territories[tid].contested_by) and self.is_land(tid)
+        sea_target = not self.is_land(tid)
+        sea_ok = sea_target and self.sea_zone_safe(tid)
         candidates = []
         for cat in categories:
             for t in CATEGORY_POOL[cat]:
@@ -346,7 +361,7 @@ class Planner:
                     continue
                 if contested and t != 'Infantry':
                     continue
-                if not self.is_land(tid) and d['category'] == 'Land':
+                if sea_target and d['category'] == 'Land' and not (sea_ok and is_amphibious(d)):
                     continue
                 if only is not None and t not in only:
                     continue
@@ -1016,6 +1031,7 @@ class Planner:
     # -- Empty Land Grab ------------------------------------------------------------------------------
 
     GRAB_PURCHASES = 3  # at most this many Mechanized Infantry bought per turn for grabs
+    GRAB_REACH = 6      # a target this many hops from my land or closer is worth buying a Mech Inf toward
 
     def _undefended_land(self):
         """Land of an enemy (or an eliminated faction) that nobody defends and nobody contests, nearest my
@@ -1049,8 +1065,13 @@ class Planner:
     def objective_empty_land_grab(self):
         """Mechanized Infantry take undefended territory. Looks for enemy land nobody is defending, nearest to
         my own land first and then by value; sends the nearest Mech Inf that can get there (never the last
-        defender of a territory an enemy could walk into), and where none can, buys one at the purchase spot
-        nearest the target -- it goes the turn after. (There is no battle, so no risk to weigh.)"""
+        defender of a territory an enemy could walk into), and where none can and the target is within
+        GRAB_REACH (6) hops, buys one at the purchase spot nearest the target -- it goes the turn after.
+        buy_toward already ranks a safe sea zone right next to the target above a land spot further off
+        (square_cost's sea cost is close to a friendly hop's), so a distant or island target often gets its
+        Mech Inf bought straight into the water -- one hop closer, one turn sooner -- rather than on land where
+        it would still have to walk to the coast first (buy's own amphibious/sea_zone_safe check keeps this to
+        genuinely quiet water). There is no battle here, so no risk to weigh."""
         if not self.allow_combat and not self.allow_purchase:
             return
         sent = bought = 0
@@ -1077,7 +1098,7 @@ class Planner:
                 self.moves_combat[u.unit_id] = path
                 sent += 1
                 self.note(f'empty_land_grab: a Mech Inf takes {self.terrs[tid]["name"]}')
-            elif self.allow_purchase and bought < self.GRAB_PURCHASES and hops <= 2:   # near enough for a Mech Inf to reach next turn
+            elif self.allow_purchase and bought < self.GRAB_PURCHASES and hops <= self.GRAB_REACH:
                 stub = self.buy_toward(self.costs_from(tid)[0], ('Land',), 'empty_land_grab', only=('Mechanized Infantry',))
                 if stub is not None:
                     bought += 1
