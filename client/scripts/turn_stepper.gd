@@ -18,6 +18,8 @@ signal battle_focus(preview: Dictionary)    # a battle paused: zoom the map to i
 signal battle_opened(preview: Dictionary)   # the player asked for it: show the battle board
 signal combat_resolution_ended              # the phase moved on after battles were focused: zoom back out
 signal battle_result(events: Array)         # ...its fought events, for the board to reveal
+signal bombardment_focus(preview: Dictionary)  # rules.json's combat.cruiser_bombardment: paused, zoom and select it
+signal bombardment_rolled(event: Dictionary)   # ...its one roll, for the side panel to mark like a battle board would
 
 var button_text := "Connecting..."
 var button_enabled := false  # Next can execute the queued phase
@@ -35,6 +37,8 @@ var _auto := false  # the queued phase should run by itself (Settings say not to
 var _battle_zoomed := false        # the map was auto-zoomed to a battle during this Combat Resolution
 var _battle_pending: Dictionary = {}  # a battle is paused, map zoomed to it, awaiting the player's go-ahead
 var _battle_open := false          # the battle board is up: hold everything it would spoil
+var _bombardment_pending: Dictionary = {}  # a bombardment is paused, map zoomed to it, awaiting the player's go-ahead
+var _bombardment_open := false     # it's been fired and its mark is showing: hold everything it would spoil, same as a battle
 var _held: Array = []              # messages received meanwhile (result, state, next queue)
 var _held_result: Dictionary = {}
 var _edit_orders: Array = []  # the human's staged purchase as last sent/received: [{unit_type, qty, deploy_at}]
@@ -56,8 +60,8 @@ func _ready() -> void:
 
 
 func _on_message(msg: Dictionary) -> void:
-	if _battle_open and str(msg.get("type", "")) in ["state", "phase_queue"]:
-		_held.append(msg)  # applying these would show the battle's outcome before the board does
+	if (_battle_open or _bombardment_open) and str(msg.get("type", "")) in ["state", "phase_queue"]:
+		_held.append(msg)  # applying these would show the outcome before the board/mark does
 		return
 	match str(msg.get("type", "")):
 		"state":
@@ -89,7 +93,11 @@ func _on_message(msg: Dictionary) -> void:
 				combat_resolution_ended.emit()
 			_auto = not _should_pause(msg) and not _pause_requested
 			if _battle_pause(msg) and not _pause_requested:
-				_open_battle(_battle_in(msg))  # sets _auto false; the board takes over from here
+				var battle := _battle_in(msg)
+				if not battle.is_empty():
+					_open_battle(battle)  # sets _auto false; the board takes over from here
+				else:
+					_open_bombardment(_bombardment_in(msg))  # sets _auto false; fires on the player's own go-ahead
 			_pause_requested = false  # a manual pause is held for exactly one phase; settings decide after
 			_playing = _auto
 			_queued_faction = str(msg["faction"])
@@ -100,11 +108,19 @@ func _on_message(msg: Dictionary) -> void:
 			var header := _header(_queued_faction, _queued_phase)
 			if msg.has("battle"):
 				header += " (battle %d of %d)" % [int(msg["battle"]["index"]) + 1, int(msg["battle"]["count"])]
+			elif msg.has("bombardment"):
+				header += " (bombardment %d of %d)" % [int(msg["bombardment"]["index"]) + 1, int(msg["bombardment"]["count"])]
 			queue_shown.emit(header, msg.get("skipped", []), msg["events"])
 		"phase_result":
 			if _battle_open:
 				_held_result = msg
 				battle_result.emit(msg["events"])
+			elif _bombardment_open:
+				_held_result = msg
+				for e in msg["events"]:
+					if str(e.get("kind", "")) == "bombardment":
+						bombardment_rolled.emit(e)
+						break
 			else:
 				executed.emit(_header(str(msg["faction"]), str(msg["phase"])), msg["events"])
 				_announce(msg["events"])
@@ -274,6 +290,12 @@ func _refresh() -> void:
 	elif not _battle_pending.is_empty():
 		button_text = "Next  >  Open battle board  (%s)" % GameData.territories[int(_battle_pending["territory_id"])]["name"]
 		button_active = true
+	elif not _bombardment_pending.is_empty():
+		button_text = "Next  >  Fire bombardment  (%s)" % GameData.territories[int(_bombardment_pending["territory_id"])]["name"]
+		button_active = true
+	elif _bombardment_open:
+		button_text = "Next  >  Continue"
+		button_active = true
 	elif _playing:
 		button_text = "Pausing..." if _pause_requested else "Pause"
 		button_active = not _pause_requested
@@ -294,6 +316,26 @@ func _refresh() -> void:
 	changed.emit()
 
 
+## True if the player controls any participant in `battle` (attackers/
+## defenders rows) or `bombardment` (cruiser/defenders rows) -- whichever one
+## is non-empty; rules.json's combat.cruiser_bombardment is treated by every
+## one of the "general combat indicators" settings exactly as if it were an
+## ordinary battle, just with the Cruiser standing in for "attackers".
+func _involves_player(battle: Dictionary, bombardment: Dictionary) -> bool:
+	if not battle.is_empty():
+		for side in ["attackers", "defenders"]:
+			for u in battle[side]:
+				if GameStore.is_player(str(u["owner"])):
+					return true
+	if not bombardment.is_empty():
+		if GameStore.is_player(str(bombardment["cruiser"]["owner"])):
+			return true
+		for u in bombardment["defenders"]:
+			if GameStore.is_player(str(u["owner"])):
+				return true
+	return false
+
+
 ## Whether the queued phase waits for the Next button, per Settings.
 func _should_pause(msg: Dictionary) -> bool:
 	var inv: Dictionary = msg.get("invitation", {})
@@ -301,11 +343,12 @@ func _should_pause(msg: Dictionary) -> bool:
 		return true  # the player has to answer an invitation first
 	var faction := str(msg["faction"])
 	var battle := _battle_in(msg)
+	var bombardment := _bombardment_in(msg)
 	if GameStore.is_player(faction):
 		# A player's own turn needs their decisions, so every phase waits --
-		# except Combat Resolution, which only waits per battle if asked.
+		# except Combat Resolution, which only waits per battle/bombardment if asked.
 		if str(msg["phase"]) == "COMBAT_RESOLUTION":
-			return not battle.is_empty() and Settings.your_pause_battle
+			return (not battle.is_empty() or not bombardment.is_empty()) and Settings.your_pause_battle
 		return true
 	match Settings.opp_pause:
 		Settings.OppPause.PHASE:
@@ -313,33 +356,29 @@ func _should_pause(msg: Dictionary) -> bool:
 		Settings.OppPause.TURN:
 			if str(msg["phase"]) == "START_OF_TURN":
 				return true  # one pause per turn, before it starts
-	if battle.is_empty():
+	if battle.is_empty() and bombardment.is_empty():
 		return false
 	if Settings.opp_pause_battle:
 		return true
 	if Settings.opp_pause_battle_mine:
-		for side in ["attackers", "defenders"]:
-			for u in battle[side]:
-				if GameStore.is_player(str(u["owner"])):
-					return true
+		return _involves_player(battle, bombardment)
 	return false
 
 
-## True when this queued battle should stop for the battle board, as opposed to
-## an ordinary phase pause (which just offers the Next button).
+## True when this queued battle or bombardment should stop for the battle
+## board (or the bombardment's own, lighter equivalent), as opposed to an
+## ordinary phase pause (which just offers the Next button).
 func _battle_pause(msg: Dictionary) -> bool:
 	var battle := _battle_in(msg)
-	if battle.is_empty():
+	var bombardment := _bombardment_in(msg)
+	if battle.is_empty() and bombardment.is_empty():
 		return false
 	if GameStore.is_player(str(msg["faction"])):
 		return Settings.your_pause_battle
 	if Settings.opp_pause_battle:
 		return true
 	if Settings.opp_pause_battle_mine:
-		for side in ["attackers", "defenders"]:
-			for u in battle[side]:
-				if GameStore.is_player(str(u["owner"])):
-					return true
+		return _involves_player(battle, bombardment)
 	return false
 
 
@@ -351,6 +390,17 @@ func _open_battle(preview: Dictionary) -> void:
 	_auto = false
 	_playing = false
 	battle_focus.emit(preview)
+
+
+## A bombardment paused: zoom to it and select it, then WAIT -- exactly like a
+## battle, but with no board to open: the player's own next press fires it
+## directly (_fire_bombardment), and its one roll is what gets shown.
+func _open_bombardment(preview: Dictionary) -> void:
+	_battle_zoomed = true
+	_bombardment_pending = preview
+	_auto = false
+	_playing = false
+	bombardment_focus.emit(preview)
 
 
 ## Next was pressed on a paused battle: bring up its board.
@@ -392,6 +442,43 @@ func release_battle() -> void:
 	_refresh()
 
 
+## Dev/scripted: is a bombardment paused, waiting to be fired?
+func has_pending_bombardment() -> bool:
+	return not _bombardment_pending.is_empty()
+
+
+## Next was pressed on a paused bombardment: fire it -- no separate board to
+## open first, the one roll IS the reveal, so this goes straight to the real
+## server round trip (its phase_result/state/next queue arrive held, same as
+## a battle's do, so the map keeps showing the pre-bombardment board -- the
+## target still standing -- until bombardment_rolled's mark has had its say).
+func _fire_bombardment() -> void:
+	_bombardment_pending = {}
+	_bombardment_open = true
+	_held = []
+	_held_result = {}
+	_do_advance()
+
+
+## The player's acknowledgement of a shown bombardment result (there's no
+## board of its own with a "closed" signal to call this from) -- release
+## whatever was held back, same as End Battle does.
+func release_bombardment() -> void:
+	if not _bombardment_open:
+		return
+	_bombardment_open = false
+	GameStore.clear_bombardment_mark()
+	if not _held_result.is_empty():
+		executed.emit(_header(str(_held_result["faction"]), str(_held_result["phase"])), _held_result["events"])
+		_announce(_held_result["events"])
+	_held_result = {}
+	var pending := _held
+	_held = []
+	for m in pending:
+		_on_message(m)
+	_refresh()
+
+
 ## The battle_preview a Combat Resolution queue is holding ({} if none).
 func _battle_in(msg: Dictionary) -> Dictionary:
 	if str(msg["phase"]) != "COMBAT_RESOLUTION":
@@ -400,6 +487,16 @@ func _battle_in(msg: Dictionary) -> Dictionary:
 		if str(e.get("kind", "")) == "battle_preview":
 			if e["defenders"].is_empty():
 				return {}  # walking into an empty territory: a capture, not a battle
+			return e
+	return {}
+
+
+## The bombardment_preview a Combat Resolution queue is holding ({} if none).
+func _bombardment_in(msg: Dictionary) -> Dictionary:
+	if str(msg["phase"]) != "COMBAT_RESOLUTION":
+		return {}
+	for e in msg["events"]:
+		if str(e.get("kind", "")) == "bombardment_preview":
 			return e
 	return {}
 
@@ -420,6 +517,12 @@ func _process(_delta: float) -> void:
 func button_pressed() -> void:
 	if not _battle_pending.is_empty():
 		_show_battle_board()
+		return
+	if not _bombardment_pending.is_empty():
+		_fire_bombardment()
+		return
+	if _bombardment_open:
+		release_bombardment()  # no separate board with its own "closed" button -- this press IS that
 		return
 	if not _playing:
 		advance()
@@ -629,7 +732,8 @@ func _do_advance() -> void:
 ## Waits (bounded) until a press is possible, for scripted runs.
 func wait_ready(max_seconds: float = 15.0) -> void:
 	var waited := 0.0
-	while not button_enabled and not game_over and not _battle_open and _battle_pending.is_empty() and waited < max_seconds:
+	while (not button_enabled and not game_over and not _battle_open and _battle_pending.is_empty()
+			and not _bombardment_open and _bombardment_pending.is_empty() and waited < max_seconds):
 		await get_tree().process_frame
 		waited += get_process_delta_time()
 

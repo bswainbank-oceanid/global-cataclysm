@@ -143,5 +143,29 @@ func _initialize() -> void:
 	t = store.move_targets()
 	_check(t.size() == 1 and t.has(86), "the same holds for non-combat moves: %s" % str(t.keys()))
 
+	# rules.json's combat.cruiser_bombardment: a Cruiser (5) can also target land
+	# (33) -- a Submarine (6) selected alongside it rides along, even though 33 is
+	# never in the Submarine's OWN destinations at all (matching the real engine --
+	# only a Cruiser's own legal_combat_move_paths ever lists a bombardment target).
+	store.set_human_move("NAA", _block("combat", {
+		"5": {"unit_type": "Cruiser", "territory_id": 25, "destinations": {"45": [25, 45], "33": [25, 33]}},
+		"6": {"unit_type": "Submarine", "territory_id": 25, "destinations": {"45": [25, 45]}},
+	}))
+	store.move_origin = 25
+	_select([5, 6])
+	t = store.move_targets()
+	_check(t.has(33), "the land bombardment target is offered even though only the cruiser's own dests list it")
+	_check(t.has(45), "an ordinary shared sea target is still offered too")
+	var bombard: Array = t[33]["orders"]
+	_check(bombard.size() == 2, "both the cruiser and its escort get an order: %d" % bombard.size())
+	var cruiser_order: Dictionary = bombard.filter(func(o): return o["unit_id"] == 5)[0]
+	var sub_order: Dictionary = bombard.filter(func(o): return o["unit_id"] == 6)[0]
+	_check(cruiser_order["path"] == [25, 33], "the cruiser's own bombardment path: %s" % str(cruiser_order["path"]))
+	_check(sub_order["path"] == [25, 33], "the escort rides the exact same path: %s" % str(sub_order["path"]))
+	# A lone Cruiser (no escort selected) still works exactly the ordinary way.
+	_select([5])
+	t = store.move_targets()
+	_check(t.has(33) and t[33]["orders"].size() == 1, "a lone cruiser bombards on its own, unaffected")
+
 	print("move targets test: failures=%d" % _failures)
 	quit(1 if _failures > 0 else 0)

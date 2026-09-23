@@ -302,6 +302,10 @@ func _tiles_for(tid: int, units: Array, mine: bool) -> Control:
 	for u in units:
 		var uid := int(u["unit_id"])
 		var tile := UnitTile.make(u, GameStore.in_transport_form(tid, u))
+		if uid == int(GameStore.bombardment_mark.get("unit_id", -1)):
+			tile.mark = int(GameStore.bombardment_mark["mark"])
+			if tile.mark != 0:
+				tile.bounce()
 		if mine and committed.has(uid):
 			tile.toggle_mode = false
 			tile.committed = true

@@ -560,17 +560,26 @@ class BombardmentTrace:
         self.target_id = target_id
 
 
-def _trace_bombardment(owner, path, game_state, data_module):
-    """A Cruiser's combat move whose final hop targets enemy-occupied land:
-    rules.json's combat.cruiser_bombardment. It may reposition ONE sea hop
-    first -- open, non-combative water only, exactly like
-    _legal_bombardment_targets computes -- before its final, notional hop
-    onto the target; it never actually enters, and stays at whichever sea
-    zone its real movement (if any) left it in. Raises ValueError if the
-    path isn't exactly this shape, the sea leg isn't legal, or the target
-    has no enemy units to bombard."""
+def _trace_bombardment_movement(unit_type, owner, path, game_state, data_module):
+    """The movement half of a bombardment-shaped path (path[-1] is land):
+    at most one real sea hop -- open, non-combative water only, exactly
+    like _legal_bombardment_targets computes -- then a final, notional hop
+    onto the target, which is never actually entered. Returns (final_sea_id,
+    target_id). Raises ValueError if the path isn't exactly this shape or
+    the sea leg isn't legal.
+
+    Validates ONLY the movement -- not whether `owner`'s `unit_type` unit is
+    actually allowed to end up bombarding/escorting at target_id, which is a
+    different rule for a Cruiser declaring a fresh bombardment (rules.json's
+    combat.cruiser_bombardment: enemy units must actually be present) than
+    for another Sea unit riding along a sibling Cruiser's bombardment this
+    same turn (engine.engine.GameEngine._execute_combat_moves: legal only
+    when a Cruiser of the same faction is already bombarding that exact
+    target this same order batch) -- see _trace_bombardment for the former;
+    the latter is batch-aware and lives in engine.py instead, since this
+    module's functions only ever see one order at a time."""
     if len(path) > 3:
-        raise ValueError('a Cruiser may reposition at most one sea zone before bombarding')
+        raise ValueError(f'{unit_type} may reposition at most one sea zone before bombarding')
     territories = data_module.territories()
     adjacency = data_module.adjacency()
     unit_defs = data_module.units()
@@ -582,7 +591,7 @@ def _trace_bombardment(owner, path, game_state, data_module):
             raise ValueError(f'{origin_id} and {sea_id} are not adjacent')
         if territories[sea_id]['type'] != 'sea':
             raise ValueError(f'{sea_id} is not a sea zone')
-        hop = _classify_combat_hop(sea_id, owner, 'Cruiser', False, game_state, territories, unit_defs)
+        hop = _classify_combat_hop(sea_id, owner, unit_type, False, game_state, territories, unit_defs)
         if not hop.pass_through:
             raise ValueError(f'{sea_id} is not a legal repositioning move (it would be a naval attack, not a bombardment)')
     else:
@@ -594,11 +603,22 @@ def _trace_bombardment(owner, path, game_state, data_module):
         raise ValueError(f'{target_id} is not a land territory')
     if _is_neutral(target_id, game_state):
         raise ValueError(f'{target_id} is neutral territory and cannot be bombarded')
+
+    return sea_id, target_id
+
+
+def _trace_bombardment(owner, path, game_state, data_module):
+    """A Cruiser's own combat move whose final hop targets enemy-occupied
+    land: rules.json's combat.cruiser_bombardment -- see
+    _trace_bombardment_movement for the shared repositioning rules. Adds
+    the Cruiser-specific eligibility check on top: there must actually be
+    enemy units present to bombard. Raises ValueError if either check
+    fails."""
+    final_sea_id, target_id = _trace_bombardment_movement('Cruiser', owner, path, game_state, data_module)
     defenders = game_state.territories[target_id].units
     if not any(not _is_ally_or_self(game_state, owner, u.owner) for u in defenders):
         raise ValueError(f'{target_id} has no enemy units to bombard')
-
-    return BombardmentTrace(final_sea_id=sea_id, target_id=target_id)
+    return BombardmentTrace(final_sea_id=final_sea_id, target_id=target_id)
 
 
 def trace_combat_move(unit_type, owner, path, game_state, data_module):

@@ -37,6 +37,14 @@ var announcement_open := false  # an announcement panel is up: the game waits fo
 var queued_step := ""  # a queue step that isn't a game phase (START_OF_TURN, RETURN_TO_BASE) while it is up, else ""
 var queued_purchase := {}  # the purchase event awaiting execution, {} if none
 var queued_attack := {}    # the combat_move event awaiting execution, {} if none
+## rules.json's combat.cruiser_bombardment: {unit_id, mark} for the target of a
+## bombardment currently being shown ({} = none) -- side_panel.gd applies this
+## to that unit's own UnitTile (mark 1 = hit but alive "/", 2 = eliminated "X"),
+## the same visual language the battle board uses. Set by main.gd on
+## Stepper.bombardment_rolled; cleared by Stepper.release_bombardment (the
+## player's acknowledgement -- "as you begin the regular combat resolution
+## phase" moves on to whatever's next).
+var bombardment_mark := {}
 var state := {}  # last full GameState.to_dict() from the server, {} until one arrives
 var armistice := {}  # a Propose Armistice proposal in flight, {} if none: {from, awaiting: [faction, ...]}
 var game_over_report := []  # the Game Over report (server/report.py), one row per seat, [] until the game ends
@@ -552,6 +560,43 @@ func move_targets() -> Dictionary:
 					if opts[uid]["dests"].has(zone):
 						orders.append(_order_for(kind, uid, opts[uid]["dests"][zone]))
 		out[d] = {"orders": orders, "count": orders.size() + riders.size()}
+
+	# rules.json's combat.cruiser_bombardment: an all-Sea selection with at least
+	# one Cruiser and at least one OTHER sea unit (Submarine, Aircraft Carrier) --
+	# a land bombardment target never survives the ordinary intersection above
+	# (only a Cruiser's own "dests" ever lists one; an escort's own would need to
+	# have it too, and never does), so it's added here instead, once. The escort's
+	# order reuses the SAME path as the lead Cruiser's -- both start at the same
+	# origin (this whole selection is one territory's units), so it's exactly as
+	# legal for the escort as for the Cruiser (see engine.engine.GameEngine.
+	# _execute_combat_moves' bombarded_this_batch): it just rides along, never
+	# attacking, wherever that Cruiser itself ends up.
+	if kind == "combat" and has_sea and not has_land:
+		var cruisers := []
+		var escorts_b := []
+		for uid in ids:
+			if opts[uid]["unit_type"] == "Cruiser":
+				cruisers.append(uid)
+			else:
+				escorts_b.append(uid)
+		if not cruisers.is_empty() and not escorts_b.is_empty():
+			for d in opts[cruisers[0]]["dests"]:
+				if out.has(d) or GameData.territories[d]["type"] != "land":
+					continue
+				var ok := true
+				for uid in cruisers:
+					if not opts[uid]["dests"].has(d):
+						ok = false
+						break
+				if not ok:
+					continue
+				var orders := []
+				for uid in cruisers:
+					orders.append(_order_for(kind, uid, opts[uid]["dests"][d]))
+				var lead_path: Array = opts[cruisers[0]]["dests"][d]
+				for uid in escorts_b:
+					orders.append(_order_for(kind, uid, lead_path))
+				out[d] = {"orders": orders, "count": orders.size()}
 	return out
 
 

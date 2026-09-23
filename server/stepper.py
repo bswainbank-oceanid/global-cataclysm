@@ -88,10 +88,12 @@ Server -> client (always broadcast to watchers):
         What `faction` WILL do this phase, in turn_log's event shapes
         (purchase / combat_move / noncombat_move / alliance_plan / surrender_plan), plus
         'battle_preview' (the battles about to be fought and who is in
-        them) for Combat Resolution, or -- for the automatic Capture and
-        Deploy + Income phases -- the events a dry run of the phase
-        produces. `skipped`: phases the game passed over just before this
-        one (e.g. Combat Move on a faction's first turn).
+        them) or 'bombardment_preview' (rules.json's combat.cruiser_bombardment
+        -- the Cruiser and who it's about to fire at) for Combat Resolution,
+        or -- for the automatic Capture and Deploy + Income phases -- the
+        events a dry run of the phase produces. `skipped`: phases the game
+        passed over just before this one (e.g. Combat Move on a faction's
+        first turn).
     Every faction's turn opens with a phase "START_OF_TURN" (also not a
     GameState phase): its one event, start_of_turn {faction, round, turn,
     turns_in_round}, just says which round and which turn is starting;
@@ -100,9 +102,13 @@ Server -> client (always broadcast to watchers):
     two steps: first phase "RETURN_TO_BASE" (not a GameState phase; its
     events are the return_to_base flights the game makes automatically),
     then the ordinary "NONCOMBAT_MOVE" queue, planned once they have landed.
-    Combat Resolution is queued one battle at a time: each phase_queue holds
-    that battle's battle_preview and a "battle": {"index": i, "count": n};
-    "next" fights it, and the phase stays Combat Resolution until the last.
+    Combat Resolution is queued one bombardment, then one battle, at a time --
+    every declared bombardment fires (each its own phase_queue, holding that
+    bombardment's bombardment_preview and a "bombardment": {"index": i, "count": n})
+    before any battle is even previewed; only once none remain does the phase
+    queue battles the usual way (battle_preview and a "battle": {"index": i,
+    "count": n}). "next" fights whichever is queued, and the phase stays
+    Combat Resolution until the last battle.
     {"type": "phase_result", "faction": ..., "phase": ..., "events": [...]}
         What executing that phase actually logged (for Combat Resolution:
         the roll-by-roll events and one battle_summary per battle).
@@ -164,8 +170,11 @@ class PhaseStepper:
         self._queue = None  # the phase_queue message awaiting "next"
         self._skipped_before = []
         self._alliance_plan = None  # a bot's whole Diplomacy plan (see RandomBot.plan_diplomacy_phase)
+        self._bombardments = None  # the current Combat Resolution's [(cruiser_unit_id, territory_id), ...]
+        self._bombardment_index = 0  # which of them is queued now -- fought before self._battles, always
         self._battles = None       # the current Combat Resolution's [(territory_id, battle_type), ...]
         self._battle_index = 0     # which of them is queued now
+        self._combat_resolution_begun = False  # engine.begin_combat_resolution called yet, this instance?
         self._alliance_plan_for = None  # (faction, global_turn) the current _alliance_plan belongs to
         self._invitation = None    # a bot's invitation to a human awaiting its answer: {from, to, answered}
         self._turn_announced = None  # (faction, global_turn) whose Start of Turn has been executed
@@ -378,8 +387,15 @@ class PhaseStepper:
                 engine.confirm_combat_moves(faction)
         elif phase == Phase.COMBAT_RESOLUTION:
             if active:
+                if not self._combat_resolution_begun:
+                    engine.begin_combat_resolution(faction)
+                    self._combat_resolution_begun = True
+                if self._bombardments:
+                    return self._commit_one_bombardment(faction)
                 return self._commit_one_battle(faction)
+            self._bombardments = None
             self._battles = None
+            self._combat_resolution_begun = False
         elif phase == Phase.NONCOMBAT_MOVE:
             if active:
                 engine.confirm_noncombat_moves(faction)
@@ -406,24 +422,51 @@ class PhaseStepper:
     def _alliance_key(self, faction):
         return (faction, self.engine.game_state.global_turn)
 
+    def _commit_one_bombardment(self, faction):
+        """Combat Resolution goes bombardment by bombardment FIRST, each its
+        own queue step (so a watcher can pause/preview per bombardment,
+        exactly like a battle) -- rules.json's combat.cruiser_bombardment:
+        every one of these fires before self._battles' real battles. Fights
+        the queued one; returns True while more remain. Only ever called
+        while self._bombardments is non-empty (see _commit); the
+        once-per-turn begin_combat_resolution gate is _commit's own job,
+        since it must fire even when there's nothing declared at all.
+
+        Once the last bombardment fires, self._battles is STILL None -- it's
+        only computed lazily, once bombardments are exhausted (see
+        _plan_current_phase) -- so this peeks at declared_battles itself to
+        decide whether to report "stay" (keeping Combat Resolution queued so
+        the next planning pass can queue the first battle) rather than
+        wrongly letting the caller advance the phase with a real battle
+        still undeclared."""
+        engine = self.engine
+        cruiser_unit_id, _territory_id = self._bombardments[self._bombardment_index]
+        engine.resolve_one_bombardment(faction, cruiser_unit_id)
+        self._bombardment_index += 1
+        if self._bombardment_index < len(self._bombardments):
+            return True
+        self._bombardments = None
+        return bool(engine.declared_battles(faction))
+
     def _commit_one_battle(self, faction):
         """Combat Resolution goes battle by battle (each its own queue step, so
         a watcher can pause between them): fights the queued one. Returns True
-        while more battles remain in the phase. With none declared, just runs
-        the (empty) resolution so the phase is marked done."""
+        while more battles remain in the phase. With none declared, the phase
+        is simply done -- begin_combat_resolution, and every declared
+        bombardment, already ran via _commit's own gate and
+        _commit_one_bombardment before this is ever reached."""
         engine = self.engine
         if not self._battles:
-            engine.resolve_combat(faction)
             self._battles = None
+            self._combat_resolution_begun = False  # Combat Resolution is now fully done, bombardments and battles alike
             return False
-        if self._battle_index == 0:
-            engine.begin_combat_resolution(faction)
         territory_id, battle_type = self._battles[self._battle_index]
         engine.resolve_one_battle(faction, territory_id, battle_type)
         self._battle_index += 1
         if self._battle_index < len(self._battles):
             return True
         self._battles = None
+        self._combat_resolution_begun = False
         return False
 
     # ---- plan ------------------------------------------------------------
@@ -460,12 +503,20 @@ class PhaseStepper:
                 bot.plan_combat_move_phase()
             events = [engine.staged_combat_move_event(faction)]
         elif phase == Phase.COMBAT_RESOLUTION:
-            if self._battles is None:
-                self._battles = engine.declared_battles(faction)
-                self._battle_index = 0
+            # Bombardments queue -- and fully drain -- before battles ever get a look in
+            # (rules.json's combat.cruiser_bombardment: the very start of Combat Resolution).
+            if self._bombardments is None:
+                self._bombardments = engine.declared_bombardments(faction)
+                self._bombardment_index = 0
             events = []
-            if self._battles:
-                events = [engine.battle_preview(faction, *self._battles[self._battle_index])]
+            if self._bombardments:
+                events = [engine.bombardment_preview(faction, *self._bombardments[self._bombardment_index])]
+            else:
+                if self._battles is None:
+                    self._battles = engine.declared_battles(faction)
+                    self._battle_index = 0
+                if self._battles:
+                    events = [engine.battle_preview(faction, *self._battles[self._battle_index])]
         elif phase == Phase.NONCOMBAT_MOVE:
             if not engine.has_processed_return_to_base(faction):
                 homeward = self._dry_run(lambda sim: sim.process_return_to_base(faction))
@@ -516,7 +567,9 @@ class PhaseStepper:
 
         self._queue = {'type': 'phase_queue', 'faction': faction, 'phase': phase.value,
                        'events': events, 'skipped': [p.value for p in self._skipped_before], **extra}
-        if phase == Phase.COMBAT_RESOLUTION and self._battles:
+        if phase == Phase.COMBAT_RESOLUTION and self._bombardments:
+            self._queue['bombardment'] = {'index': self._bombardment_index, 'count': len(self._bombardments)}
+        elif phase == Phase.COMBAT_RESOLUTION and self._battles:
             self._queue['battle'] = {'index': self._battle_index, 'count': len(self._battles)}
 
     def _turn_key(self, faction):

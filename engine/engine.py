@@ -76,8 +76,9 @@ from . import data as _default_data
 from .combat import BattleResult, EventKind, resolve_battle, resolve_bombardment, unit_stat_rows
 from .economy import compute_income
 from .movement import (
-    BombardmentTrace, _is_ally_or_self, find_emergency_landing, legal_air_move_destinations,
-    legal_combat_move_continuations, legal_combat_move_paths, legal_noncombat_move_destinations, trace_combat_move,
+    BombardmentTrace, _is_ally_or_self, _trace_bombardment_movement, find_emergency_landing,
+    legal_air_move_destinations, legal_combat_move_continuations, legal_combat_move_paths,
+    legal_noncombat_move_destinations, trace_combat_move,
 )
 from .state import Phase, FactionMode, UnitInstance, is_amphibious
 from .turn_log import TurnLog
@@ -680,7 +681,20 @@ class GameEngine:
         combatant, since Combat Resolution's gather_battle_units already
         includes anyone physically present, however they got there."""
         unit_defs = self.data.units()
+        terrs = self.data.territories()
         units_with_own_order = {o.unit_id for o in orders}
+        # rules.json's combat.cruiser_bombardment: every land territory some
+        # Cruiser of `faction`'s ALSO in this batch is bombarding -- what lets
+        # another selected Sea unit's own order target that same land this
+        # same batch (an escort, riding along; see the isinstance(trace,
+        # BombardmentTrace) branch below). A pure lookahead over the raw
+        # orders, before any of them are actually processed -- an escort's
+        # own order can legally come before OR after its Cruiser's.
+        bombarded_this_batch = set()
+        for o in orders:
+            mover, _ = self._find_unit(game_state, o.unit_id, faction)
+            if mover.unit_type == 'Cruiser' and len(o.path) >= 2 and terrs[o.path[-1]]['type'] == 'land':
+                bombarded_this_batch.add(o.path[-1])
         for order in orders:
             if len(order.path) < 2:
                 raise ValueError(f'unit {order.unit_id}: a combat move path needs at least an origin and a destination')
@@ -713,6 +727,19 @@ class GameEngine:
                 origin_state.units.remove(unit)
                 dest_state.units.append(unit)
                 self._mark_contested_by_attack(dest_state, faction, game_state)  # air alone can't capture, only attack
+            elif category == 'Sea' and unit.unit_type != 'Cruiser' and len(order.path) >= 2 and terrs[dest_id]['type'] == 'land':
+                # rules.json's combat.cruiser_bombardment: riding along a sibling
+                # Cruiser's bombardment this same batch (bombarded_this_batch,
+                # precomputed above) -- never attacks, never contests anything,
+                # just relocates to wherever that Cruiser itself ends up (which
+                # may be nowhere at all, if neither of them repositions).
+                if dest_id not in bombarded_this_batch:
+                    raise ValueError(f"{dest_id} has no Cruiser of {faction}'s bombarding it this turn "
+                                      f'for unit {order.unit_id} to escort')
+                final_sea_id, _target_id = _trace_bombardment_movement(unit.unit_type, faction, order.path, game_state, self.data)
+                if final_sea_id != origin_id:
+                    origin_state.units.remove(unit)
+                    game_state.territories[final_sea_id].units.append(unit)
             else:
                 trace = trace_combat_move(unit.unit_type, faction, order.path, game_state, self.data)
                 if isinstance(trace, BombardmentTrace):
@@ -1049,25 +1076,25 @@ class GameEngine:
 
         `rng` overrides self._combat_rng for just this one call (tests
         use this with a ScriptedRNG); leave it out to draw from the
-        engine's own persistent combat_rng stream instead."""
-        self.begin_combat_resolution(faction, rng)
+        engine's own persistent combat_rng stream instead. Every one of
+        `faction`'s declared_bombardments() fires first (combat.
+        cruiser_bombardment: the very start of Combat Resolution, before
+        any of the turn's actual battles), same rng."""
+        self.begin_combat_resolution(faction)
+        rng = rng or self._combat_rng
+        for cruiser_unit_id, _territory_id in self.declared_bombardments(faction):
+            self.resolve_one_bombardment(faction, cruiser_unit_id, rng)
         return [
             self.resolve_one_battle(faction, territory_id, battle_type, rng)
             for territory_id, battle_type in self.declared_battles(faction)
         ]
 
-    def begin_combat_resolution(self, faction, rng=None):
+    def begin_combat_resolution(self, faction):
         """The once-per-turn gate resolve_combat goes through first (and what
-        a caller resolving battles one at a time via resolve_one_battle --
-        the watch-mode stepper -- calls before the first one): validates the
-        phase, marks `faction`'s Combat Resolution as started (so a second
-        resolve_combat this turn is refused), and resolves every one of
-        `faction`'s pending Cruiser bombardments (_resolve_bombardments) --
-        rules.json's combat.cruiser_bombardment happens at the very start of
-        Combat Resolution, before any of the turn's actual battles, whether
-        the caller drains resolve_combat all at once or paces resolve_one_battle
-        one at a time. `rng` overrides self._combat_rng for just this call,
-        same convention as resolve_combat's own rng parameter."""
+        a caller resolving bombardments/battles one at a time -- the watch-mode
+        stepper -- calls before the first one): validates the phase and marks
+        `faction`'s Combat Resolution as started, so a second resolve_combat
+        this turn is refused."""
         if faction not in self.game_state.active_factions():
             raise ValueError(f'{faction} is not an active faction')
         if self.game_state.phase != Phase.COMBAT_RESOLUTION:
@@ -1075,39 +1102,72 @@ class GameEngine:
         if faction in self._combat_resolved:
             raise ValueError(f'{faction} has already resolved combat this turn')
         self._combat_resolved.add(faction)
-        self._resolve_bombardments(faction, rng or self._combat_rng)
 
-    def _resolve_bombardments(self, faction, rng):
-        """rules.json's combat.cruiser_bombardment: every Cruiser of
-        `faction`'s that declared a bombardment this turn
-        (UnitInstance.bombard_target, set by _execute_combat_moves) fires
-        its one attack roll (combat.resolve_bombardment) against the live
-        non-allied units currently in its target territory -- no return
-        fire, no XP for the Cruiser -- applied immediately, one Cruiser at
-        a time (a later Cruiser bombarding the same territory sees the
-        damage an earlier one already did this same call). A wholly
-        separate tally from the battles resolve_one_battle fights right
-        after: never touches contested_by, never feeds combat.
-        first_round_bonuses or _record_combat_stats' own event-stream-based
-        kill/death/promotion accounting -- recorded here directly instead."""
+    def declared_bombardments(self, faction):
+        """Every bombardment `faction`'s Cruisers declared this turn
+        (UnitInstance.bombard_target, set by _execute_combat_moves) --
+        [(cruiser_unit_id, territory_id), ...], in board order. A pure
+        query, exactly like declared_battles; resolve_one_bombardment does
+        the actual work. combat.cruiser_bombardment: every one of these
+        fires before any of declared_battles' real battles."""
+        return [
+            (u.unit_id, u.bombard_target)
+            for t in self.game_state.territories.values()
+            for u in t.units
+            if u.owner == faction and u.bombard_target is not None
+        ]
+
+    def bombardment_preview(self, faction, cruiser_unit_id, territory_id):
+        """A 'bombardment_preview' event for one bombardment resolve_one_
+        bombardment is about to fire: the Cruiser, and the live non-allied
+        units currently in the target territory -- the same per-unit row
+        shape (attack die, defense, HP, ...) battle_preview uses, for a
+        client to place them the same way a real battle board would. (The
+        die hasn't been rolled, so no outcome -- there are no rounds, air
+        superiority, or first-round bonuses to speak of here at all.)"""
+        unit_defs = self.data.units()
+        cruiser, _ = self._find_unit(self.game_state, cruiser_unit_id, faction)
+        defenders = [u for u in self.game_state.territories[territory_id].units
+                     if not _is_ally_or_self(self.game_state, faction, u.owner)]
+        return {
+            'kind': 'bombardment_preview', 'territory_id': territory_id,
+            'cruiser': unit_stat_rows('attacker', [cruiser], unit_defs)[0],
+            'defenders': unit_stat_rows('defender', defenders, unit_defs),
+        }
+
+    def resolve_one_bombardment(self, faction, cruiser_unit_id, rng=None):
+        """Fires ONE of `faction`'s declared_bombardments() entries
+        (combat.resolve_bombardment): the named Cruiser's one attack roll
+        against the live non-allied units in its target territory -- no
+        return fire, no XP for the Cruiser -- applied immediately (an
+        already-declared bombardment against the same territory, resolved
+        earlier this same Combat Resolution, is reflected here: the
+        defender pool is read fresh each call). Never touches contested_by,
+        never feeds combat.first_round_bonuses or a real battle's own
+        event-stream-based kill/death/promotion accounting (_record_combat_
+        stats) -- recorded here directly instead, its own turn_log event
+        kind, a wholly separate tally from any real battle at the same
+        territory. Returns the combat.BombardmentResult. `rng` overrides
+        self._combat_rng for just this call, same convention as
+        resolve_one_battle's own rng parameter."""
+        rng = rng or self._combat_rng
         unit_defs = self.data.units()
         target_cfg = self.data.rules()['combat']['target_selection']
-        bombarding = [u for t in self.game_state.territories.values() for u in t.units
-                      if u.owner == faction and u.bombard_target is not None]
-        for cruiser in bombarding:
-            target_id = cruiser.bombard_target
-            target_state = self.game_state.territories[target_id]
-            defenders = [u for u in target_state.units if not _is_ally_or_self(self.game_state, faction, u.owner)]
-            result = resolve_bombardment(rng, cruiser, defenders, unit_defs, target_cfg)
-            target_owner = next((u.owner for u in defenders if u.unit_id == result.target_unit_id), None)
-            if result.eliminated:
-                target_state.units = [u for u in target_state.units if u.current_hp > 0]
-                if self.stats is not None:
-                    self.stats.record_kill(faction, cruiser.unit_type)
-                    self.stats.record_death(target_owner, result.target_unit_type)
-            cruiser.bombard_target = None
-            if self.turn_log is not None:
-                self.turn_log.record_bombardment(faction, target_id, cruiser, result)
+        cruiser, _ = self._find_unit(self.game_state, cruiser_unit_id, faction)
+        territory_id = cruiser.bombard_target
+        target_state = self.game_state.territories[territory_id]
+        defenders = [u for u in target_state.units if not _is_ally_or_self(self.game_state, faction, u.owner)]
+        result = resolve_bombardment(rng, cruiser, defenders, unit_defs, target_cfg)
+        target_owner = next((u.owner for u in defenders if u.unit_id == result.target_unit_id), None)
+        if result.eliminated:
+            target_state.units = [u for u in target_state.units if u.current_hp > 0]
+            if self.stats is not None:
+                self.stats.record_kill(faction, cruiser.unit_type)
+                self.stats.record_death(target_owner, result.target_unit_type)
+        cruiser.bombard_target = None
+        if self.turn_log is not None:
+            self.turn_log.record_bombardment(faction, territory_id, cruiser, result)
+        return result
 
     def round1_bonus(self, faction, territory_id, battle_type, attacker_units, defender_units):
         """(side, reason) for combat.first_round_bonuses in the battle `faction`

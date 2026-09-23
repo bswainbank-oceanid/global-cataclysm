@@ -6,6 +6,7 @@ from engine.engine import GameEngine
 from engine.setup import build_game_state
 from engine.state import FactionMode, Phase
 from engine.turn_log import TurnLog
+from engine.tests.test_engine import FakeData, make_state, make_unit
 from server.session import GameSession
 
 PHASES = [p.value for p in Phase]
@@ -507,3 +508,142 @@ class TestHumanMoves(unittest.TestCase):
         self.assertEqual(reply[0]['human']['orders'][0]['from'], opt['territory_id'])
         result = _by_type(session.handle_message({'type': 'next'}), 'phase_result')[0]
         self.assertEqual(result['events'][0]['kind'], 'noncombat_move')
+
+
+def _bombardment_session():
+    """NAA human with a Cruiser adjacent to AAC's land Infantry, both HUMAN
+    (AAC never needs to act during NAA's own Combat Resolution) -- a direct,
+    hand-built state (FakeData), not the real map, for a fully deterministic
+    bombardment every time, already parked at NAA's Combat Move."""
+    data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+    cruiser = make_unit('Cruiser', 'NAA')
+    defender = make_unit('Infantry', 'AAC')
+    gs = make_state(
+        data, {2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+        units_by_territory={1: [cruiser], 2: [defender]},
+    )
+    gs.active_faction = 'NAA'
+    turn_log = TurnLog()
+    engine = GameEngine(gs, data, turn_log=turn_log, combat_rng=random.Random(1))
+    session = GameSession(engine, turn_log, {})
+    return session, cruiser, defender
+
+
+class TestBombardmentPacing(unittest.TestCase):
+    """rules.json's combat.cruiser_bombardment, over the wire: declaring it
+    is an ordinary human combat move; it queues and fires as Combat
+    Resolution's own first paced step, strictly before any real battle."""
+
+    def test_declaring_it_is_a_normal_human_combat_move_stage(self):
+        session, cruiser, defender = _bombardment_session()
+        messages = session.handle_message({'type': 'watch'})
+        queue = _by_type(messages, 'phase_queue')[0]
+        self.assertEqual((queue['faction'], queue['phase']), ('NAA', 'COMBAT_MOVE'))
+        reply = session.handle_message({'type': 'stage_moves', 'faction': 'NAA',
+                                         'orders': [{'unit_id': cruiser.unit_id, 'path': [1, 2]}]})
+        self.assertEqual([m['type'] for m in reply], ['phase_queue'])
+        self.assertEqual(reply[0]['human']['orders'][0]['path'], [1, 2])
+
+    def test_it_queues_and_fires_before_any_battle_would(self):
+        session, cruiser, defender = _bombardment_session()
+        session.handle_message({'type': 'watch'})
+        session.handle_message({'type': 'stage_moves', 'faction': 'NAA',
+                                 'orders': [{'unit_id': cruiser.unit_id, 'path': [1, 2]}]})
+        messages = session.handle_message({'type': 'next'})  # commits Combat Move -> queues Combat Resolution
+        queue = _by_type(messages, 'phase_queue')[0]
+        self.assertEqual(queue['phase'], 'COMBAT_RESOLUTION')
+        self.assertEqual(queue['bombardment'], {'index': 0, 'count': 1})
+        self.assertNotIn('battle', queue)
+        self.assertEqual(len(queue['events']), 1)
+        preview = queue['events'][0]
+        self.assertEqual(preview['kind'], 'bombardment_preview')
+        self.assertEqual(preview['territory_id'], 2)
+        self.assertEqual(preview['cruiser']['unit_id'], cruiser.unit_id)
+        self.assertEqual([d['unit_id'] for d in preview['defenders']], [defender.unit_id])
+
+        messages = session.handle_message({'type': 'next'})  # fights it
+        result = _by_type(messages, 'phase_result')[0]
+        self.assertEqual(result['events'][0]['kind'], 'bombardment')
+        self.assertEqual(result['events'][0]['territory_id'], 2)
+        queue = _by_type(messages, 'phase_queue')[0]
+        # Nothing else was ever declared -- Combat Resolution is immediately done.
+        self.assertNotEqual(queue['phase'], 'COMBAT_RESOLUTION')
+
+    def test_the_result_is_logged_in_the_turn_log(self):
+        session, cruiser, defender = _bombardment_session()
+        session.handle_message({'type': 'watch'})
+        session.handle_message({'type': 'stage_moves', 'faction': 'NAA',
+                                 'orders': [{'unit_id': cruiser.unit_id, 'path': [1, 2]}]})
+        session.handle_message({'type': 'next'})  # queue Combat Resolution
+        session.handle_message({'type': 'next'})  # fire the bombardment
+        bombardments = [e for e in session.turn_log.events if e['kind'] == 'bombardment']
+        self.assertEqual(len(bombardments), 1)
+        self.assertEqual(bombardments[0]['territory_id'], 2)
+        self.assertEqual(bombardments[0]['cruiser_unit_id'], cruiser.unit_id)
+
+    def test_a_turn_with_no_bombardment_at_all_skips_straight_to_battles(self):
+        # Control: an ordinary land attack, no Cruiser involved -- Combat
+        # Resolution's queue never mentions 'bombardment' at all.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        attacker = make_unit('Infantry', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [attacker], 2: [defender]},
+        )
+        gs.active_faction = 'NAA'
+        turn_log = TurnLog()
+        engine = GameEngine(gs, data, turn_log=turn_log, combat_rng=random.Random(1))
+        session = GameSession(engine, turn_log, {})
+        session.handle_message({'type': 'watch'})
+        session.handle_message({'type': 'stage_moves', 'faction': 'NAA', 'orders': [{'unit_id': attacker.unit_id, 'path': [1, 2]}]})
+        messages = session.handle_message({'type': 'next'})
+        queue = _by_type(messages, 'phase_queue')[0]
+        self.assertEqual(queue['phase'], 'COMBAT_RESOLUTION')
+        self.assertNotIn('bombardment', queue)
+        self.assertEqual(queue['events'][0]['kind'], 'battle_preview')
+
+    def test_a_bombardment_and_a_real_battle_the_same_turn_queue_in_order(self):
+        # 1 (sea, NAA's Cruiser) -- 2 (land, AAC, Infantry -- bombarded) --
+        # 3 (land, AAC, another Infantry, attacked by NAA's own Infantry from 4).
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}, 3: {'type': 'land'}, 4: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2, 4], 4: [3]},
+        )
+        cruiser = make_unit('Cruiser', 'NAA')
+        bombarded = make_unit('Infantry', 'AAC')
+        attacker = make_unit('Infantry', 'NAA')
+        battled = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {2: 'AAC', 3: 'AAC', 4: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [cruiser], 2: [bombarded], 3: [battled], 4: [attacker]},
+        )
+        gs.active_faction = 'NAA'
+        turn_log = TurnLog()
+        engine = GameEngine(gs, data, turn_log=turn_log, combat_rng=random.Random(1))
+        session = GameSession(engine, turn_log, {})
+        session.handle_message({'type': 'watch'})
+        session.handle_message({'type': 'stage_moves', 'faction': 'NAA', 'orders': [
+            {'unit_id': cruiser.unit_id, 'path': [1, 2]}, {'unit_id': attacker.unit_id, 'path': [4, 3]},
+        ]})
+        messages = session.handle_message({'type': 'next'})  # queues Combat Resolution
+        queue = _by_type(messages, 'phase_queue')[0]
+        self.assertEqual(queue['phase'], 'COMBAT_RESOLUTION')
+        self.assertEqual(queue.get('bombardment'), {'index': 0, 'count': 1}, 'the bombardment queues first')
+        self.assertEqual(queue['events'][0]['kind'], 'bombardment_preview')
+
+        messages = session.handle_message({'type': 'next'})  # fires the bombardment
+        result = _by_type(messages, 'phase_result')[0]
+        self.assertEqual([e['kind'] for e in result['events']], ['bombardment'])
+        queue = _by_type(messages, 'phase_queue')[0]
+        self.assertEqual(queue['phase'], 'COMBAT_RESOLUTION', 'the real battle is still to come')
+        self.assertNotIn('bombardment', queue, 'bombardments are exhausted')
+        self.assertEqual(queue['battle'], {'index': 0, 'count': 1})
+        self.assertEqual(queue['events'][0]['kind'], 'battle_preview')
+        self.assertEqual(queue['events'][0]['territory_id'], 3)
+
+        messages = session.handle_message({'type': 'next'})  # fights the real battle
+        result = _by_type(messages, 'phase_result')[0]
+        self.assertIn('battle_summary', [e['kind'] for e in result['events']])
+        queue = _by_type(messages, 'phase_queue')[0]
+        self.assertNotEqual(queue['phase'], 'COMBAT_RESOLUTION', 'both are now done')

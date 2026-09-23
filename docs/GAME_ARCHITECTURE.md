@@ -168,7 +168,7 @@ the same JSON, not a parallel editing path.
   (`tools/compute_adjacency.py`).
 - ✅ Territory shape/polygon extraction (`tools/extract_territory_shapes.py`
   → `data/territory_shapes.json`).
-- ✅ Rules engine (standalone module, `engine/`, 459 tests) — Purchase
+- ✅ Rules engine (standalone module, `engine/`, 645 tests) — Purchase
   (including the carrierless-air and contested-purchase-lost deploy
   fallbacks), Deploy + Income, Combat Move, Combat Resolution, Non-Combat
   Move, Capture Territory, surrender demands (faction elimination), game-end detection, and
@@ -195,7 +195,30 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-- ⬜ WebSocket server (`server/`, 112 tests) — first vertical slice,
+  **Cruiser Bombardment** (`rules.json`'s `combat.cruiser_bombardment`, 3-phase
+  plan: engine, UI, bots): a Cruiser's combat move may target enemy-occupied
+  LAND instead of a sea zone -- it never enters, staying in whichever sea zone
+  its move (at most one non-combative repositioning hop) left it in; a pure
+  potshot with nothing else attacking that turn does not, on its own, contest
+  the territory. Each bombarding Cruiser fires exactly one attack roll at the
+  very start of Combat Resolution, before any real battle (including one at
+  that same territory) -- ordinary attack die/damage and target selection, no
+  counter-fire, no XP, and its own `record_bombardment` turn-log event and
+  `GameStats` credit, never merged into a real battle's own event stream
+  (`engine.movement._trace_bombardment`/`_trace_bombardment_movement`,
+  `UnitInstance.bombard_target`, `GameEngine.declared_bombardments`/
+  `bombardment_preview`/`resolve_one_bombardment`, `combat.resolve_bombardment`).
+  A Submarine or Aircraft Carrier selected in the same order batch as a
+  bombarding Cruiser may escort it -- riding along to the Cruiser's own final
+  sea position without attacking anything itself, since an ordinary sea unit's
+  combat move can otherwise never legally end without an attack (`GameEngine.
+  _execute_combat_moves`'s `bombarded_this_batch` prescan and escort branch).
+  Bombardments are paced one at a time exactly like battles
+  (`declared_bombardments`/`bombardment_preview`/`resolve_one_bombardment`
+  mirror `declared_battles`/`battle_preview`/`resolve_one_battle`), and always
+  fully drain, server-side, before any real battle is ever queued that same
+  Combat Resolution phase (`server/stepper.py`'s `_commit_one_bombardment`).
+- ⬜ WebSocket server (`server/`, 199 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
   (NAA and GPC both BOTs watched by a spectator client -- see the watch
   mode below; the human-play protocol described next is still in place and
@@ -476,6 +499,30 @@ the same JSON, not a parallel editing path.
   (`client/scripts/battle_model.gd`) holds the stepping logic and is checked
   headlessly: `godot --headless --path client -s res://tests/battle_model_test.gd`. Saved in `user://settings.cfg`; `client_shot.py` takes
   `--pause never|turn|phase` and `--pause_battle`. Layout checks: `godot --headless --path client -s res://tests/battle_layout_test.gd`.
+  **Cruiser Bombardment (client):** land becomes a viable Combat Move drag
+  target for a Cruiser exactly like any other combat move (`GameStore.
+  move_targets()` supplements the strict-intersection destination set with the
+  Cruiser's own bombardment targets; a co-selected Submarine/Aircraft Carrier
+  in the drag gets an order along the identical path even though that target
+  is never in the escort's own destinations query -- `client/tests/
+  move_targets_test.gd`); other than that the escort just sails over and does
+  not attack, while a co-selected Fighter/Bomber attacks the territory as
+  normal. Combat Resolution runs bombardments as their own auto-paced stage
+  before battles, gated by the same opponent/your-turn battle-pause settings a
+  real battle uses (`TurnStepper` treats the Cruiser as the "attacker" for
+  that check). A bombardment the player pauses on zooms to and selects the
+  target territory (reusing `_focus_territory`, the same as a battle) and, in
+  its unit box, marks the target unit's tile the same way the battle board
+  does -- `/` for a hit that survives, `X` for one that's eliminated, via
+  `UnitTile.mark`/`.bounce()` and a new `GameStore.bombardment_mark` -- and,
+  because the phase's next `state`/`phase_queue` messages are held back the
+  same way an open battle board's are, an eliminated unit stays visible with
+  its `X` showing rather than vanishing immediately. The mark clears, and the
+  held messages replay, only once the player acknowledges it and Combat
+  Resolution moves on (`TurnStepper.release_bombardment`,
+  `GameStore.clear_bombardment_mark`). Every bombardment roll is logged in the
+  turn log (`EventText.describe`'s `bombardment_preview`/`bombardment` cases),
+  the same log a real battle's summary appears in.
   Run: `python tools/sync_client_data.py` (copies reference data into the
   gitignored `client/data`, `client/assets`), `python -m server.app`, then
   `godot --path client -- --server`. Scripted UI verification without a

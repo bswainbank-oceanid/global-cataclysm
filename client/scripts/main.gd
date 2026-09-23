@@ -102,6 +102,17 @@ func _ready() -> void:
 	battle_panel.roll_requested.connect(Stepper.execute_open_battle)
 	battle_panel.closed.connect(Stepper.release_battle)
 
+	# A bombardment pause zooms to and selects its target territory, same as a
+	# battle -- but there's no separate board: the one roll marks the target
+	# tile right in the side panel, like a battle board's hit/miss would.
+	Stepper.bombardment_focus.connect(func(preview: Dictionary):
+		if _view_before_battles.is_empty():
+			_view_before_battles = {"pos": _cam.position, "zoom": _cam.zoom.x}
+		_focus_territory(int(preview["territory_id"])))
+	Stepper.bombardment_rolled.connect(func(event: Dictionary):
+		if bool(event["hit"]):
+			GameStore.set_bombardment_mark(int(event["target_unit_id"]), 2 if bool(event["eliminated"]) else 1))
+
 	# GameOverReportPanel is added FIRST, before every popup window below it: Control GUI input
 	# hit-testing follows TREE order for overlapping same-canvas-layer MOUSE_FILTER_STOP regions, NOT
 	# z_index (z_index only affects draw/render order) -- with the report added later/on top in the

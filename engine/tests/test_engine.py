@@ -18,6 +18,8 @@ UNIT_DEFS = {
               'attack_die': 'D8', 'defense': 7, 'damage': 3, 'combat_move': 1, 'non_combat_move': 2},
     'Cruiser': {'category': 'Sea', 'cost': 11, 'sc_cost': 8, 'hp': 5, 'purchasable': True,
                 'attack_die': 'D10', 'defense': 7, 'damage': 3, 'combat_move': 2, 'non_combat_move': 2},
+    'Submarine': {'category': 'Sea', 'cost': 7, 'sc_cost': 5, 'hp': 2, 'purchasable': True,
+                  'attack_die': 'D8', 'defense': 6, 'damage': 3, 'combat_move': 2, 'non_combat_move': 2},
     'Fighter': {'category': 'Air', 'cost': 10, 'sc_cost': 7, 'hp': 2, 'purchasable': True,
                 'attack_die': 'D8', 'defense': 8, 'damage': 3, 'combat_move': 2, 'non_combat_move': 3},
     'Aircraft Carrier': {'category': 'Sea', 'cost': 14, 'sc_cost': 10, 'hp': 6, 'purchasable': True,
@@ -304,6 +306,146 @@ class TestCruiserBombardmentEndToEnd(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].outcome, 'defender_eliminated')
         self.assertIn(attacker, gs.territories[2].units)
+
+
+class TestBombardmentEscorts(unittest.TestCase):
+    """A non-Cruiser Sea unit (Submarine, Aircraft Carrier) selected alongside
+    a bombarding Cruiser for the same drag can ride along -- its own combat
+    move also targets the land, but it never attacks, never contests
+    anything, and just relocates to wherever the Cruiser itself ends up. Only
+    when submitted in the SAME batch as a Cruiser actually bombarding that
+    exact target -- a lone Submarine/Carrier can't declare this on its own."""
+
+    def _setup(self, sea_id=1, escort_type='Submarine'):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        cruiser = make_unit('Cruiser', 'NAA')
+        escort = make_unit(escort_type, 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [cruiser, escort], 2: [defender]},
+        )
+        engine = GameEngine(gs, data)
+        return engine, gs, cruiser, escort, defender
+
+    def test_a_submarine_escorts_a_direct_bombardment(self):
+        engine, gs, cruiser, escort, defender = self._setup()
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(cruiser.unit_id, [1, 2]), CombatMoveOrder(escort.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        self.assertIn(escort, gs.territories[1].units, 'it stays right where the cruiser stayed')
+        self.assertIn(cruiser, gs.territories[1].units)
+        self.assertTrue(escort.has_moved_combat)
+        self.assertIsNone(getattr(escort, 'bombard_target', None), 'an escort never attacks -- no bombard_target of its own')
+        self.assertEqual(cruiser.bombard_target, 2)
+        self.assertIsNone(gs.territories[2].contested_by)
+
+    def test_an_aircraft_carrier_can_escort_too(self):
+        engine, gs, cruiser, escort, defender = self._setup(escort_type='Aircraft Carrier')
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(cruiser.unit_id, [1, 2]), CombatMoveOrder(escort.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        self.assertIn(escort, gs.territories[1].units)
+
+    def test_escort_follows_the_cruisers_one_hop_reposition(self):
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'sea'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        cruiser = make_unit('Cruiser', 'NAA')
+        escort = make_unit('Submarine', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {3: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [cruiser, escort], 3: [defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [
+            CombatMoveOrder(cruiser.unit_id, [1, 2, 3]), CombatMoveOrder(escort.unit_id, [1, 2, 3]),
+        ])
+        engine.confirm_combat_moves('NAA')
+        self.assertIn(cruiser, gs.territories[2].units)
+        self.assertIn(escort, gs.territories[2].units, 'sailed over to the same sea zone the cruiser ended up in')
+        self.assertNotIn(escort, gs.territories[1].units)
+
+    def test_order_within_the_batch_does_not_matter(self):
+        # The escort's own order lists FIRST -- bombarded_this_batch is
+        # precomputed from the whole list before either order is processed.
+        engine, gs, cruiser, escort, defender = self._setup()
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(escort.unit_id, [1, 2]), CombatMoveOrder(cruiser.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        self.assertIn(escort, gs.territories[1].units)
+        self.assertEqual(cruiser.bombard_target, 2)
+
+    def test_a_lone_submarine_cannot_declare_this_without_a_bombarding_cruiser(self):
+        engine, gs, cruiser, escort, defender = self._setup()
+        with self.assertRaisesRegex(ValueError, 'no Cruiser'):
+            engine.submit_combat_moves('NAA', [CombatMoveOrder(escort.unit_id, [1, 2])])
+
+    def test_the_escort_never_actually_bombards_anything(self):
+        stats = GameStats()
+        engine, gs, cruiser, escort, defender = self._setup()
+        engine.stats = stats
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(cruiser.unit_id, [1, 2]), CombatMoveOrder(escort.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        engine.advance_phase()
+        engine.resolve_combat('NAA', rng=ScriptedRNG([6]))
+        self.assertEqual(stats.kills.get(('NAA', 'Submarine')), None, 'only the Cruiser ever gets credit for a kill')
+        self.assertEqual(stats.kills[('NAA', 'Cruiser')], 1)
+
+
+class TestBombardmentPacing(unittest.TestCase):
+    """declared_bombardments / bombardment_preview / resolve_one_bombardment:
+    the paceable API a server watching one bombardment at a time (same
+    shape as declared_battles / battle_preview / resolve_one_battle) drives
+    instead of resolve_combat's all-at-once convenience wrapper."""
+
+    def _setup(self):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        cruiser = make_unit('Cruiser', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [cruiser], 2: [defender]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(cruiser.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        engine.advance_phase()
+        return engine, gs, cruiser, defender
+
+    def test_declared_bombardments_lists_it_before_resolution(self):
+        engine, gs, cruiser, defender = self._setup()
+        self.assertEqual(engine.declared_bombardments('NAA'), [(cruiser.unit_id, 2)])
+
+    def test_preview_shows_both_sides_with_no_outcome_yet(self):
+        engine, gs, cruiser, defender = self._setup()
+        preview = engine.bombardment_preview('NAA', cruiser.unit_id, 2)
+        self.assertEqual(preview['kind'], 'bombardment_preview')
+        self.assertEqual(preview['territory_id'], 2)
+        self.assertEqual(preview['cruiser']['unit_id'], cruiser.unit_id)
+        self.assertEqual([d['unit_id'] for d in preview['defenders']], [defender.unit_id])
+        self.assertEqual(defender.current_hp, UNIT_DEFS['Infantry']['hp'], 'a preview never rolls anything')
+
+    def test_resolving_one_at_a_time_matches_resolve_combat(self):
+        # begin_combat_resolution (the gate) then the paced calls, exactly as
+        # a watching server would drive them, must leave the board in the
+        # same state resolve_combat's all-at-once version does.
+        engine, gs, cruiser, defender = self._setup()
+        engine.begin_combat_resolution('NAA')
+        pending = engine.declared_bombardments('NAA')
+        self.assertEqual(len(pending), 1)
+        result = engine.resolve_one_bombardment('NAA', pending[0][0], rng=ScriptedRNG([6]))
+        self.assertTrue(result.eliminated)
+        self.assertEqual(engine.declared_bombardments('NAA'), [], 'consumed')
+        self.assertNotIn(defender, gs.territories[2].units)
+        self.assertIsNone(cruiser.bombard_target)
+        # Combat Resolution can now proceed to its (empty) battle list normally.
+        self.assertEqual(engine.declared_battles('NAA'), [])
+
+    def test_a_second_call_this_turn_is_refused_by_the_same_gate_battles_use(self):
+        engine, gs, cruiser, defender = self._setup()
+        engine.begin_combat_resolution('NAA')
+        with self.assertRaises(ValueError):
+            engine.begin_combat_resolution('NAA')
 
 
 class TestLegalNoncombatMoveOptions(unittest.TestCase):

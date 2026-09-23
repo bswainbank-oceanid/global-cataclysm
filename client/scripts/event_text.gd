@@ -127,6 +127,18 @@ static func describe(e: Dictionary) -> String:
 		"battle_preview":
 			return "[b]Battle at %s[/b] (%s)\n  Attackers: %s\n  Defenders: %s" % [
 				_terr(e["territory_id"]), e["battle_type"], _by_owner(e["attackers"]), _by_owner(e["defenders"])]
+		"bombardment_preview":
+			return "[b]Bombardment at %s[/b]\n  %s\n  Defenders: %s" % [
+				_terr(e["territory_id"]), _fac(str(e["cruiser"]["owner"])) + "'s Cruiser", _by_owner(e["defenders"])]
+		"bombardment":
+			var outcome: String
+			if not bool(e["hit"]):
+				outcome = "misses"
+			elif bool(e["eliminated"]):
+				outcome = "destroys the %s" % str(e["target_unit_type"])
+			else:
+				outcome = "hits the %s for %d damage" % [str(e["target_unit_type"]), int(e["damage"])]
+			return "%s's Cruiser bombards %s: %s" % [_fac(e["faction"]), _terr(e["territory_id"]), outcome]
 		"surrender_plan":
 			var who := _fac(e["faction"])
 			if bool(e.get("win", false)):
