@@ -210,8 +210,13 @@ class TestSeaUnitsCannotBeOrderedOntoLand(unittest.TestCase):
     land."""
 
     def _setup(self):
+        # Aircraft Carrier, not Cruiser: a Cruiser specifically CAN target enemy-
+        # occupied land now (combat.cruiser_bombardment) -- see
+        # TestCruiserBombardment for that exception; this class is testing the
+        # general sea_units_stay_at_sea rule every OTHER sea unit (and a
+        # Cruiser's own non-bombardment moves) still follows.
         data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
-        ship = make_unit('Cruiser', 'NAA')
+        ship = make_unit('Aircraft Carrier', 'NAA')
         gs = make_state(
             data, {2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             phase=Phase.COMBAT_MOVE, units_by_territory={1: [ship], 2: [make_unit('Infantry', 'AAC')]},
@@ -226,6 +231,79 @@ class TestSeaUnitsCannotBeOrderedOntoLand(unittest.TestCase):
         engine, ship = self._setup()
         with self.assertRaises(ValueError):
             engine.submit_combat_moves('NAA', [CombatMoveOrder(ship.unit_id, [1, 2])])
+
+
+class TestCruiserBombardmentEndToEnd(unittest.TestCase):
+    """rules.json's combat.cruiser_bombardment, the full turn: Combat Move
+    (declaring it) through Combat Resolution (it actually firing)."""
+
+    def _setup(self, stats=None, turn_log=None):
+        # 1 (sea, NAA's Cruiser) -- 2 (land, AAC, one defending Infantry).
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        cruiser = make_unit('Cruiser', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [cruiser], 2: [defender]},
+        )
+        engine = GameEngine(gs, data, stats=stats, turn_log=turn_log)
+        return engine, gs, cruiser, defender
+
+    def test_declaring_it_leaves_the_cruiser_in_its_sea_zone_uncontested(self):
+        engine, gs, cruiser, defender = self._setup()
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(cruiser.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        self.assertIn(cruiser, gs.territories[1].units, 'the Cruiser never actually enters the land territory')
+        self.assertEqual(cruiser.bombard_target, 2)
+        self.assertTrue(cruiser.has_moved_combat)
+        self.assertIsNone(gs.territories[2].contested_by, 'a pure bombardment declaration never contests the territory')
+
+    def test_it_fires_at_the_start_of_combat_resolution_and_can_kill(self):
+        stats = GameStats()
+        log = TurnLog()
+        engine, gs, cruiser, defender = self._setup(stats=stats, turn_log=log)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(cruiser.unit_id, [1, 2])])
+        engine.confirm_combat_moves('NAA')
+        engine.advance_phase()
+        self.assertEqual(gs.phase, Phase.COMBAT_RESOLUTION)
+        # Infantry: defense 5 (6 defending, Dig In); Cruiser: D10, damage 3.
+        engine.resolve_combat('NAA', rng=ScriptedRNG([6]))
+        self.assertNotIn(defender, gs.territories[2].units, 'the bombardment killed it before any real battle')
+        self.assertIsNone(cruiser.bombard_target, 'consumed')
+        self.assertEqual(cruiser.xp, 0, 'no XP for a bombardment')
+        self.assertEqual(stats.kills[('NAA', 'Cruiser')], 1)
+        self.assertEqual(stats.deaths[('AAC', 'Infantry')], 1)
+        bombardments = [e for e in log.events if e['kind'] == 'bombardment']
+        self.assertEqual(len(bombardments), 1)
+        self.assertEqual(bombardments[0]['eliminated'], True)
+        self.assertEqual(bombardments[0]['territory_id'], 2)
+
+    def test_it_does_not_prevent_the_real_battle_from_still_happening_after(self):
+        # A land attacker joins the same turn -- the bombardment fires first (and
+        # can soften the defender), then the actual battle still resolves as its
+        # own, separate thing (combat.cruiser_bombardment's separate_tally).
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        cruiser = make_unit('Cruiser', 'NAA')
+        attacker = make_unit('Infantry', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {2: 'AAC', 3: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [cruiser], 2: [defender], 3: [attacker]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [CombatMoveOrder(cruiser.unit_id, [1, 2]), CombatMoveOrder(attacker.unit_id, [3, 2])])
+        engine.confirm_combat_moves('NAA')
+        engine.advance_phase()
+        # Bombardment roll (6, kills the sole defender) leaves nothing for the
+        # land battle to actually fight -- resolve_combat still runs it, a
+        # trivial, immediate defender_eliminated.
+        results = engine.resolve_combat('NAA', rng=ScriptedRNG([6]))
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].outcome, 'defender_eliminated')
+        self.assertIn(attacker, gs.territories[2].units)
 
 
 class TestLegalNoncombatMoveOptions(unittest.TestCase):

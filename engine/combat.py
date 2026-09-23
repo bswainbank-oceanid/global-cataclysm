@@ -410,6 +410,69 @@ def _has_fighter(units):
     return any(u.unit_type == 'Fighter' for u in units)
 
 
+@dataclass
+class BombardmentResult:
+    """One Cruiser's single bombardment attack roll (rules.json's
+    cruiser_bombardment) -- see resolve_bombardment. Its own shape,
+    deliberately not a BattleEvent: this never belongs to any round, side,
+    or battle -- see engine.engine.GameEngine._resolve_bombardments, which
+    keeps it a wholly separate tally from resolve_one_battle's events."""
+    die: str
+    roll: int
+    hit: bool
+    bypass_hit: bool
+    target_unit_id: Optional[int]
+    target_unit_type: Optional[str]
+    damage: int
+    target_hp_after: Optional[int]
+    eliminated: bool
+
+
+def resolve_bombardment(rng, cruiser, defenders, unit_defs, target_cfg):
+    """rules.json's cruiser_bombardment: `cruiser` (a Cruiser UnitInstance
+    that declared a bombardment -- see movement.trace_combat_move's
+    BombardmentTrace) fires ONE attack roll against `defenders` (the live
+    units currently in its target territory), using its own normal attack
+    die/damage and the exact same target-selection eligibility ordinary
+    combat uses (_select_target: a clean defense<=roll hit preferred, the
+    max-die half-damage bypass otherwise) -- but there is no return fire
+    (defenders never roll back) and the Cruiser earns no XP for this,
+    unlike an ordinary attack. `target_cfg`: data/rules.json's
+    combat.target_selection (same_type_weight/bomber_attacker_weight),
+    exactly as _roll_side is given it.
+
+    Applies damage to current_hp IMMEDIATELY, not staged like a round's
+    pending_damage -- there's no "both sides roll, then remove casualties
+    together" concept here, only this one roll, so nothing needs staging.
+    Does not touch last_combat_global_turn (a bombarding Cruiser was never
+    IN combat itself -- nothing could hit it back) and does not remove an
+    eliminated target from its territory's unit list -- that bookkeeping
+    (and any turn_log/stats recording) is the caller's job, same division
+    as resolve_battle leaves to engine.py."""
+    stats = cruiser.effective_stats(unit_defs)
+    die = stats['attack_die']
+    die_max = DIE_MAX[die]
+    roll = rng.randint(1, die_max)
+    target, is_hit, is_bypass = _select_target(
+        rng, roll, die_max, cruiser.unit_type, _alive(defenders), unit_defs,
+        target_cfg['same_type_weight'], target_cfg['bomber_attacker_weight'], pending_damage=None,
+        enemies_are_defenders=True,
+    )
+    damage = 0
+    target_hp_after = None
+    eliminated = False
+    if is_hit and target is not None:
+        damage = stats['damage'] // 2 if is_bypass else stats['damage']
+        target.current_hp -= damage
+        target_hp_after = target.current_hp
+        eliminated = target.current_hp <= 0
+    return BombardmentResult(
+        die=die, roll=roll, hit=is_hit, bypass_hit=is_bypass if is_hit else False,
+        target_unit_id=target.unit_id if target else None, target_unit_type=target.unit_type if target else None,
+        damage=damage, target_hp_after=target_hp_after, eliminated=eliminated,
+    )
+
+
 def resolve_battle(attacker_units, defender_units, battle_type, rng, current_global_turn, unit_defs, rules,
                     round1_bonus_side=None):
     """attacker_units / defender_units: list[UnitInstance] (mutated in

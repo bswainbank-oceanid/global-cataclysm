@@ -162,6 +162,21 @@ class TurnLog:
             'eliminated_defenders': [entry(i) for i in end.eliminated_defender_ids],
         })
 
+    def record_bombardment(self, faction, territory_id, cruiser, result):
+        """rules.json's combat.cruiser_bombardment: one Cruiser's single
+        bombardment attack roll against a land territory, resolved and
+        applied immediately at the very start of Combat Resolution --
+        `result` is a combat.BombardmentResult. Its own event kind,
+        deliberately never merged into record_battle_events' round-by-
+        round stream (no counter-attack, no XP, not part of any round)."""
+        self.events.append({
+            'kind': 'bombardment', 'faction': faction, 'territory_id': territory_id,
+            'cruiser_unit_id': cruiser.unit_id, 'die': result.die, 'roll': result.roll,
+            'hit': result.hit, 'bypass_hit': result.bypass_hit,
+            'target_unit_id': result.target_unit_id, 'target_unit_type': result.target_unit_type,
+            'damage': result.damage, 'target_hp_after': result.target_hp_after, 'eliminated': result.eliminated,
+        })
+
     def record_capture(self, turn, faction, territory_id, previous_owner):
         self.events.append({
             'kind': 'territory_captured', 'turn': turn, 'faction': faction,

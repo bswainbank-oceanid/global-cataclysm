@@ -377,13 +377,60 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
     return destinations, paths
 
 
+def _legal_bombardment_targets(owner, origin_id, game_state, data_module):
+    """{target_land_id: [origin_id, (sea_hop,) target_land_id]} -- rules.json's
+    cruiser_bombardment: every enemy-occupied land territory reachable from
+    origin_id by a Cruiser that either bombards from right where it is, or
+    repositions ONE sea hop first -- never both, and that one hop must be a
+    legal, non-combative move (open water, or a sea zone holding only enemy
+    Transports, exactly like an ordinary PASS-type combat-move hop) -- a
+    Cruiser can bombard or fight a naval battle this turn, never both, so
+    the repositioning hop itself can never legally BE an attack. The
+    notional final hop onto the land target is never actually taken (see
+    movement.trace_combat_move's BombardmentTrace and engine.engine.
+    GameEngine._execute_combat_moves, which leave the unit at the path's
+    last REAL, i.e. sea, entry). A target reachable both directly and via
+    one hop keeps its direct (shorter) path."""
+    unit_defs = data_module.units()
+    territories = data_module.territories()
+    adjacency = data_module.adjacency()
+
+    def enemy_occupied_land_neighbors(sea_id):
+        out = []
+        for n in adjacency.get(sea_id, []):
+            if territories[n]['type'] != 'land' or _is_neutral(n, game_state):
+                continue
+            if any(not _is_ally_or_self(game_state, owner, u.owner) for u in game_state.territories[n].units):
+                out.append(n)
+        return out
+
+    targets = {}
+    for t in enemy_occupied_land_neighbors(origin_id):
+        targets[t] = [origin_id, t]
+    for sea_id in adjacency.get(origin_id, []):
+        if territories[sea_id]['type'] != 'sea':
+            continue
+        hop = _classify_combat_hop(sea_id, owner, 'Cruiser', False, game_state, territories, unit_defs)
+        if not hop.pass_through:
+            continue  # would be a naval attack, not a repositioning move -- illegal while bombarding
+        for t in enemy_occupied_land_neighbors(sea_id):
+            if t not in targets:
+                targets[t] = [origin_id, sea_id, t]
+    return targets
+
+
 def legal_combat_move_destinations(unit_type, owner, origin_id, game_state, data_module):
     """Territories/sea zones `owner`'s `unit_type` unit, currently at
     `origin_id`, could legally end a combat move at. Air units should
     use legal_air_move_destinations instead (they ignore occupation
     entirely and aren't subject to the land/sea pass-through rules
-    here)."""
-    return _reachable_destinations(origin_id, owner, unit_type, 'combat', game_state, data_module)
+    here). For a Cruiser, also includes every legal bombardment target
+    (_legal_bombardment_targets) -- a land destination it can declare, but
+    never actually enters."""
+    dest = _reachable_destinations(origin_id, owner, unit_type, 'combat', game_state, data_module)
+    if unit_type == 'Cruiser':
+        dest = dest | set(_legal_bombardment_targets(owner, origin_id, game_state, data_module))
+    return dest
 
 
 def legal_combat_move_paths(unit_type, owner, origin_id, game_state, data_module):
@@ -393,8 +440,12 @@ def legal_combat_move_paths(unit_type, owner, origin_id, game_state, data_module
     caller must actually construct a move (CombatMoveOrder.path requires
     the full route, not just an endpoint) rather than only check
     legality -- a bot choosing among its options, or a future interactive
-    UI drawing the route a unit would take."""
+    UI drawing the route a unit would take. For a Cruiser, also includes
+    every legal bombardment target's path (_legal_bombardment_targets)."""
     _, paths = _reachable_destinations(origin_id, owner, unit_type, 'combat', game_state, data_module, with_paths=True)
+    if unit_type == 'Cruiser':
+        paths = dict(paths)
+        paths.update(_legal_bombardment_targets(owner, origin_id, game_state, data_module))
     return paths
 
 
@@ -493,6 +544,63 @@ class CombatMoveTrace:
         self.crossed_water = crossed_water
 
 
+class BombardmentTrace:
+    """Result of trace_combat_move for a Cruiser's bombardment declaration
+    (rules.json's combat.cruiser_bombardment): the Cruiser never enters
+    target_id (a land territory) -- it stays at final_sea_id, the last
+    REAL position in its path (its origin, or the one sea zone it
+    repositioned to). engine.engine.GameEngine._execute_combat_moves reads
+    this instead of relocating the unit onto land; GameEngine._resolve_
+    bombardments (at the start of Combat Resolution) is what actually
+    rolls the attack -- this only validates the declaration itself."""
+    __slots__ = ('final_sea_id', 'target_id')
+
+    def __init__(self, final_sea_id, target_id):
+        self.final_sea_id = final_sea_id
+        self.target_id = target_id
+
+
+def _trace_bombardment(owner, path, game_state, data_module):
+    """A Cruiser's combat move whose final hop targets enemy-occupied land:
+    rules.json's combat.cruiser_bombardment. It may reposition ONE sea hop
+    first -- open, non-combative water only, exactly like
+    _legal_bombardment_targets computes -- before its final, notional hop
+    onto the target; it never actually enters, and stays at whichever sea
+    zone its real movement (if any) left it in. Raises ValueError if the
+    path isn't exactly this shape, the sea leg isn't legal, or the target
+    has no enemy units to bombard."""
+    if len(path) > 3:
+        raise ValueError('a Cruiser may reposition at most one sea zone before bombarding')
+    territories = data_module.territories()
+    adjacency = data_module.adjacency()
+    unit_defs = data_module.units()
+    target_id = path[-1]
+
+    if len(path) == 3:
+        origin_id, sea_id = path[0], path[1]
+        if sea_id not in adjacency.get(origin_id, []):
+            raise ValueError(f'{origin_id} and {sea_id} are not adjacent')
+        if territories[sea_id]['type'] != 'sea':
+            raise ValueError(f'{sea_id} is not a sea zone')
+        hop = _classify_combat_hop(sea_id, owner, 'Cruiser', False, game_state, territories, unit_defs)
+        if not hop.pass_through:
+            raise ValueError(f'{sea_id} is not a legal repositioning move (it would be a naval attack, not a bombardment)')
+    else:
+        sea_id = path[0]
+
+    if target_id not in adjacency.get(sea_id, []):
+        raise ValueError(f'{sea_id} and {target_id} are not adjacent')
+    if territories[target_id]['type'] != 'land':
+        raise ValueError(f'{target_id} is not a land territory')
+    if _is_neutral(target_id, game_state):
+        raise ValueError(f'{target_id} is neutral territory and cannot be bombarded')
+    defenders = game_state.territories[target_id].units
+    if not any(not _is_ally_or_self(game_state, owner, u.owner) for u in defenders):
+        raise ValueError(f'{target_id} has no enemy units to bombard')
+
+    return BombardmentTrace(final_sea_id=sea_id, target_id=target_id)
+
+
 def trace_combat_move(unit_type, owner, path, game_state, data_module):
     """Validates `path` (a list of territory_ids: path[0] is where the
     unit currently is, path[-1] the chosen final destination, every
@@ -511,13 +619,20 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
     Raises ValueError with a specific reason if any hop is illegal or
     the path exceeds the unit's combat-move budget (including the
     dynamic water-crossing bonus, applied the same way
-    _reachable_destinations does). Returns a CombatMoveTrace on success.
+    _reachable_destinations does). Returns a CombatMoveTrace on success --
+    or, for a Cruiser whose path's final entry is land, a BombardmentTrace
+    instead (delegated to _trace_bombardment, an entirely different, much
+    narrower set of rules -- see that function and rules.json's
+    combat.cruiser_bombardment).
     """
     if len(path) < 2:
         raise ValueError('a combat move path needs at least an origin and a destination')
 
-    unit_defs = data_module.units()
     territories = data_module.territories()
+    if unit_type == 'Cruiser' and territories[path[-1]]['type'] == 'land':
+        return _trace_bombardment(owner, path, game_state, data_module)
+
+    unit_defs = data_module.units()
     adjacency = data_module.adjacency()
     is_land_unit = unit_defs[unit_type]['category'] == 'Land'
     is_sea_unit = unit_defs[unit_type]['category'] == 'Sea'

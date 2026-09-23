@@ -73,10 +73,10 @@ import random
 from dataclasses import dataclass
 
 from . import data as _default_data
-from .combat import BattleResult, EventKind, resolve_battle, unit_stat_rows
+from .combat import BattleResult, EventKind, resolve_battle, resolve_bombardment, unit_stat_rows
 from .economy import compute_income
 from .movement import (
-    _is_ally_or_self, find_emergency_landing, legal_air_move_destinations,
+    BombardmentTrace, _is_ally_or_self, find_emergency_landing, legal_air_move_destinations,
     legal_combat_move_continuations, legal_combat_move_paths, legal_noncombat_move_destinations, trace_combat_move,
 )
 from .state import Phase, FactionMode, UnitInstance, is_amphibious
@@ -715,42 +715,56 @@ class GameEngine:
                 self._mark_contested_by_attack(dest_state, faction, game_state)  # air alone can't capture, only attack
             else:
                 trace = trace_combat_move(unit.unit_type, faction, order.path, game_state, self.data)
-                if category == 'Land':
-                    # combat.first_round_bonuses' amphibious-landing check
-                    # (resolve_combat) -- stamped fresh on every land
-                    # unit's own combat move, overwriting whatever was
-                    # left from an earlier turn either way.
-                    unit.arrived_amphibiously = trace.crossed_water
-                riders = []
-                if unit.unit_type == 'Aircraft Carrier':
-                    riders = [
-                        u for u in origin_state.units
-                        if u.owner == faction and u.unit_id not in units_with_own_order
-                        and unit_defs[u.unit_type]['category'] == 'Air'
-                    ]
-                origin_state.units.remove(unit)
-                # Every foreign territory entered or passed through this
-                # way is marked contested -- never captured outright,
-                # even an entirely undefended Mechanized Infantry blitz
-                # (confirmed this session). Actual ownership is resolved
-                # later, in the Capture Territory phase, from whatever
-                # the board looks like by then.
-                for entered_tid in trace.entered_en_route:
-                    self._mark_contested_by_attack(game_state.territories[entered_tid], faction, game_state)
-                if trace.final_kind in ('capture', 'attack', 'join_contest'):
-                    self._mark_contested_by_attack(dest_state, faction, game_state)
-                # 'safe_landing': already friendly -- no contested change
-                dest_state.units.append(unit)
+                if isinstance(trace, BombardmentTrace):
+                    # rules.json's combat.cruiser_bombardment: the Cruiser never
+                    # enters trace.target_id -- it stays at trace.final_sea_id
+                    # (which may just be where it already was, if it didn't
+                    # reposition). No contested_by change (a pure naval potshot
+                    # never contests the territory on its own), no capture, no
+                    # carrier riders (a Cruiser never carries any). The attack
+                    # itself is rolled later, by _resolve_bombardments, at the
+                    # very start of Combat Resolution -- not here.
+                    unit.bombard_target = trace.target_id
+                    if trace.final_sea_id != origin_id:
+                        origin_state.units.remove(unit)
+                        game_state.territories[trace.final_sea_id].units.append(unit)
+                else:
+                    if category == 'Land':
+                        # combat.first_round_bonuses' amphibious-landing check
+                        # (resolve_combat) -- stamped fresh on every land
+                        # unit's own combat move, overwriting whatever was
+                        # left from an earlier turn either way.
+                        unit.arrived_amphibiously = trace.crossed_water
+                    riders = []
+                    if unit.unit_type == 'Aircraft Carrier':
+                        riders = [
+                            u for u in origin_state.units
+                            if u.owner == faction and u.unit_id not in units_with_own_order
+                            and unit_defs[u.unit_type]['category'] == 'Air'
+                        ]
+                    origin_state.units.remove(unit)
+                    # Every foreign territory entered or passed through this
+                    # way is marked contested -- never captured outright,
+                    # even an entirely undefended Mechanized Infantry blitz
+                    # (confirmed this session). Actual ownership is resolved
+                    # later, in the Capture Territory phase, from whatever
+                    # the board looks like by then.
+                    for entered_tid in trace.entered_en_route:
+                        self._mark_contested_by_attack(game_state.territories[entered_tid], faction, game_state)
+                    if trace.final_kind in ('capture', 'attack', 'join_contest'):
+                        self._mark_contested_by_attack(dest_state, faction, game_state)
+                    # 'safe_landing': already friendly -- no contested change
+                    dest_state.units.append(unit)
 
-                for rider in riders:
-                    # Same return-to-base bookkeeping an air unit's own
-                    # combat move gets -- a swept rider is just as
-                    # eligible to snap back to this carrier afterward.
-                    rider.combat_move_origin = origin_id
-                    rider.based_on_carrier = unit.unit_id
-                    origin_state.units.remove(rider)
-                    dest_state.units.append(rider)
-                    rider.has_moved_combat = True
+                    for rider in riders:
+                        # Same return-to-base bookkeeping an air unit's own
+                        # combat move gets -- a swept rider is just as
+                        # eligible to snap back to this carrier afterward.
+                        rider.combat_move_origin = origin_id
+                        rider.based_on_carrier = unit.unit_id
+                        origin_state.units.remove(rider)
+                        dest_state.units.append(rider)
+                        rider.has_moved_combat = True
 
             unit.has_moved_combat = True
 
@@ -1036,18 +1050,24 @@ class GameEngine:
         `rng` overrides self._combat_rng for just this one call (tests
         use this with a ScriptedRNG); leave it out to draw from the
         engine's own persistent combat_rng stream instead."""
-        self.begin_combat_resolution(faction)
+        self.begin_combat_resolution(faction, rng)
         return [
             self.resolve_one_battle(faction, territory_id, battle_type, rng)
             for territory_id, battle_type in self.declared_battles(faction)
         ]
 
-    def begin_combat_resolution(self, faction):
+    def begin_combat_resolution(self, faction, rng=None):
         """The once-per-turn gate resolve_combat goes through first (and what
         a caller resolving battles one at a time via resolve_one_battle --
         the watch-mode stepper -- calls before the first one): validates the
-        phase and marks `faction`'s Combat Resolution as started, so a second
-        resolve_combat this turn is refused."""
+        phase, marks `faction`'s Combat Resolution as started (so a second
+        resolve_combat this turn is refused), and resolves every one of
+        `faction`'s pending Cruiser bombardments (_resolve_bombardments) --
+        rules.json's combat.cruiser_bombardment happens at the very start of
+        Combat Resolution, before any of the turn's actual battles, whether
+        the caller drains resolve_combat all at once or paces resolve_one_battle
+        one at a time. `rng` overrides self._combat_rng for just this call,
+        same convention as resolve_combat's own rng parameter."""
         if faction not in self.game_state.active_factions():
             raise ValueError(f'{faction} is not an active faction')
         if self.game_state.phase != Phase.COMBAT_RESOLUTION:
@@ -1055,6 +1075,39 @@ class GameEngine:
         if faction in self._combat_resolved:
             raise ValueError(f'{faction} has already resolved combat this turn')
         self._combat_resolved.add(faction)
+        self._resolve_bombardments(faction, rng or self._combat_rng)
+
+    def _resolve_bombardments(self, faction, rng):
+        """rules.json's combat.cruiser_bombardment: every Cruiser of
+        `faction`'s that declared a bombardment this turn
+        (UnitInstance.bombard_target, set by _execute_combat_moves) fires
+        its one attack roll (combat.resolve_bombardment) against the live
+        non-allied units currently in its target territory -- no return
+        fire, no XP for the Cruiser -- applied immediately, one Cruiser at
+        a time (a later Cruiser bombarding the same territory sees the
+        damage an earlier one already did this same call). A wholly
+        separate tally from the battles resolve_one_battle fights right
+        after: never touches contested_by, never feeds combat.
+        first_round_bonuses or _record_combat_stats' own event-stream-based
+        kill/death/promotion accounting -- recorded here directly instead."""
+        unit_defs = self.data.units()
+        target_cfg = self.data.rules()['combat']['target_selection']
+        bombarding = [u for t in self.game_state.territories.values() for u in t.units
+                      if u.owner == faction and u.bombard_target is not None]
+        for cruiser in bombarding:
+            target_id = cruiser.bombard_target
+            target_state = self.game_state.territories[target_id]
+            defenders = [u for u in target_state.units if not _is_ally_or_self(self.game_state, faction, u.owner)]
+            result = resolve_bombardment(rng, cruiser, defenders, unit_defs, target_cfg)
+            target_owner = next((u.owner for u in defenders if u.unit_id == result.target_unit_id), None)
+            if result.eliminated:
+                target_state.units = [u for u in target_state.units if u.current_hp > 0]
+                if self.stats is not None:
+                    self.stats.record_kill(faction, cruiser.unit_type)
+                    self.stats.record_death(target_owner, result.target_unit_type)
+            cruiser.bombard_target = None
+            if self.turn_log is not None:
+                self.turn_log.record_bombardment(faction, target_id, cruiser, result)
 
     def round1_bonus(self, faction, territory_id, battle_type, attacker_units, defender_units):
         """(side, reason) for combat.first_round_bonuses in the battle `faction`
@@ -2115,6 +2168,7 @@ class GameEngine:
                         u.has_moved_combat = False
                         u.has_moved_noncombat = False
                         u.arrived_amphibiously = False
+                        u.bombard_target = None  # defensive: _resolve_bombardments always consumes this already
             self._purchases_confirmed.discard(finishing)
             self._combat_moves_confirmed.discard(finishing)
             self._combat_resolved.discard(finishing)

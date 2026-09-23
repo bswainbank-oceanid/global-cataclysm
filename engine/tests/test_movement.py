@@ -3,7 +3,7 @@ import unittest
 
 from engine.state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode
 from engine.movement import (
-    legal_combat_move_continuations, legal_combat_move_destinations, legal_combat_move_paths,
+    BombardmentTrace, legal_combat_move_continuations, legal_combat_move_destinations, legal_combat_move_paths,
     legal_noncombat_move_destinations, legal_air_move_destinations, find_emergency_landing, trace_combat_move,
 )
 
@@ -22,6 +22,7 @@ LAND_UNITS = {
     'Bomber': {'category': 'Air', 'combat_move': 3, 'non_combat_move': 3},
     'Submarine': {'category': 'Sea', 'combat_move': 2, 'non_combat_move': 2},
     'Aircraft Carrier': {'category': 'Sea', 'combat_move': 2, 'non_combat_move': 2},
+    'Cruiser': {'category': 'Sea', 'combat_move': 2, 'non_combat_move': 2},
 }
 
 
@@ -595,6 +596,127 @@ class TestSeaUnitsStayAtSea(unittest.TestCase):
             units_by_territory={2: [enemy_unit(1, 'Infantry', 'AAC')]},
         )
         self.assertIn(2, legal_combat_move_destinations('Infantry', 'NAA', 1, gs, data))
+
+
+class TestCruiserBombardment(unittest.TestCase):
+    """rules.json's combat.cruiser_bombardment: the sole exception to
+    sea_units_stay_at_sea -- a Cruiser may declare a combat move against
+    enemy-occupied land, but never actually enters it."""
+
+    def test_direct_bombardment_of_an_adjacent_enemy_territory(self):
+        # 1 (sea, origin) -- 2 (land, AAC, occupied).
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        gs = make_state(
+            data, territory_owners={2: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Infantry', 'AAC')]},
+        )
+        self.assertIn(2, legal_combat_move_destinations('Cruiser', 'NAA', 1, gs, data))
+        self.assertEqual(legal_combat_move_paths('Cruiser', 'NAA', 1, gs, data)[2], [1, 2])
+        trace = trace_combat_move('Cruiser', 'NAA', [1, 2], gs, data)
+        self.assertIsInstance(trace, BombardmentTrace)
+        self.assertEqual((trace.final_sea_id, trace.target_id), (1, 2))
+
+    def test_one_sea_hop_then_bombard(self):
+        # 1 (sea, origin) -- 2 (sea, open) -- 3 (land, AAC, occupied): not
+        # adjacent to 1 directly, only reachable by repositioning through 2 first.
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'sea'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={3: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={3: [enemy_unit(1, 'Infantry', 'AAC')]},
+        )
+        self.assertEqual(legal_combat_move_paths('Cruiser', 'NAA', 1, gs, data)[3], [1, 2, 3])
+        trace = trace_combat_move('Cruiser', 'NAA', [1, 2, 3], gs, data)
+        self.assertIsInstance(trace, BombardmentTrace)
+        self.assertEqual((trace.final_sea_id, trace.target_id), (2, 3))
+
+    def test_cannot_reposition_through_a_naval_battle_to_bombard(self):
+        # 1 (sea, origin) -- 2 (sea, enemy Cruiser present) -- 3 (land, AAC, occupied):
+        # reaching 2 would be a naval attack, not a repositioning move -- a Cruiser
+        # can bombard or fight a naval battle this turn, never both.
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'sea'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={3: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')], 3: [enemy_unit(2, 'Infantry', 'AAC')]},
+        )
+        self.assertNotIn(3, legal_combat_move_destinations('Cruiser', 'NAA', 1, gs, data))
+        with self.assertRaises(ValueError):
+            trace_combat_move('Cruiser', 'NAA', [1, 2, 3], gs, data)
+
+    def test_more_than_one_sea_hop_is_illegal(self):
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'sea'}, 3: {'type': 'sea'}, 4: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2, 4], 4: [3]},
+        )
+        gs = make_state(
+            data, territory_owners={4: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={4: [enemy_unit(1, 'Infantry', 'AAC')]},
+        )
+        self.assertNotIn(4, legal_combat_move_destinations('Cruiser', 'NAA', 1, gs, data))
+        with self.assertRaises(ValueError):
+            trace_combat_move('Cruiser', 'NAA', [1, 2, 3, 4], gs, data)
+
+    def test_an_empty_enemy_territory_is_not_a_legal_bombardment_target(self):
+        # Nothing to bombard -- no enemy units physically present, even though AAC owns it.
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        gs = make_state(data, territory_owners={2: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN})
+        self.assertNotIn(2, legal_combat_move_destinations('Cruiser', 'NAA', 1, gs, data))
+        with self.assertRaises(ValueError):
+            trace_combat_move('Cruiser', 'NAA', [1, 2], gs, data)
+
+    def test_cannot_bombard_an_allys_territory(self):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        gs = make_state(
+            data, territory_owners={2: 'UE'}, faction_modes={'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Infantry', 'UE')]},
+        )
+        gs.factions['NAA'].alliance = 'x'
+        gs.factions['UE'].alliance = 'x'
+        self.assertNotIn(2, legal_combat_move_destinations('Cruiser', 'NAA', 1, gs, data))
+
+    def test_neutral_territory_cannot_be_bombarded(self):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        gs = make_state(
+            data, territory_owners={2: 'NEUTRAL_FACTION'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'NEUTRAL_FACTION': FactionMode.NEUTRAL},
+            units_by_territory={2: [enemy_unit(1, 'Infantry', 'NEUTRAL_FACTION')]},
+        )
+        self.assertNotIn(2, legal_combat_move_destinations('Cruiser', 'NAA', 1, gs, data))
+
+    def test_ordinary_sea_destinations_are_unaffected(self):
+        # A Cruiser still has its normal combat-move options alongside any
+        # bombardment targets -- this is additive, not a replacement.
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'sea'}, 3: {'type': 'land'}},
+            adjacency={1: [2, 3], 2: [1], 3: [1]},
+        )
+        gs = make_state(
+            data, territory_owners={3: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')], 3: [enemy_unit(2, 'Infantry', 'AAC')]},
+        )
+        dest = legal_combat_move_destinations('Cruiser', 'NAA', 1, gs, data)
+        self.assertIn(2, dest, 'an ordinary naval attack target is still there')
+        self.assertIn(3, dest, 'alongside the bombardment target')
+        trace = trace_combat_move('Cruiser', 'NAA', [1, 3], gs, data)
+        self.assertIsInstance(trace, BombardmentTrace)
+
+    def test_direct_route_is_preferred_over_a_one_hop_route_to_the_same_target(self):
+        # 1 (sea, origin) -- 2 (land, AAC, occupied) directly, AND 1 -- 3 (sea) -- 2:
+        # the same target reachable two ways. The direct path wins.
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land'}, 3: {'type': 'sea'}},
+            adjacency={1: [2, 3], 2: [1, 3], 3: [1, 2]},
+        )
+        gs = make_state(
+            data, territory_owners={2: 'AAC'}, faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Infantry', 'AAC')]},
+        )
+        self.assertEqual(legal_combat_move_paths('Cruiser', 'NAA', 1, gs, data)[2], [1, 2])
 
 
 class TestNonCombatMoveDestinations(unittest.TestCase):

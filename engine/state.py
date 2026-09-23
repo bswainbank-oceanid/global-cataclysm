@@ -111,6 +111,15 @@ class UnitInstance:
     # there's no carrier to track, or that carrier didn't survive.
     # Cleared once process_return_to_base consumes it.
     combat_move_origin: Optional[int] = None
+    # rules.json's cruiser_bombardment: the LAND territory id this Cruiser
+    # declared a bombardment against this turn (GameEngine._execute_combat_moves
+    # sets this instead of relocating the unit onto land, which it never
+    # actually enters -- see movement.trace_combat_move's BombardmentTrace).
+    # Consumed and cleared by GameEngine._resolve_bombardments, at the very
+    # start of Combat Resolution; also defensively cleared, like has_moved_combat,
+    # at the end of this unit's owner's turn (GameEngine.advance_turn), though in
+    # normal play it's never still set by then.
+    bombard_target: Optional[int] = None
     # The LAND territory whose deploy capacity/cost actually paid for
     # this unit (engine.GameEngine.confirm_purchases sets this) -- for a
     # direct land purchase this is just the deploy target itself, but
@@ -242,6 +251,7 @@ class UnitInstance:
             'combat_move_origin': self.combat_move_origin,
             'purchased_at': self.purchased_at,
             'arrived_amphibiously': self.arrived_amphibiously,
+            'bombard_target': self.bombard_target,
         }
 
     @staticmethod

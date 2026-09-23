@@ -3,7 +3,10 @@ import unittest
 
 from engine import data
 from engine.state import UnitInstance, max_promotions
-from engine.combat import _apply_xp_and_check_promotions as _apply_xp, unit_stat_rows, resolve_battle, BattleResult, EventKind, _select_target, _resolution_sequence, _fight_one_round
+from engine.combat import (
+    _apply_xp_and_check_promotions as _apply_xp, unit_stat_rows, resolve_battle, resolve_bombardment,
+    BattleResult, EventKind, _select_target, _resolution_sequence, _fight_one_round,
+)
 
 UNIT_DEFS = data.units()
 RULES = data.rules()
@@ -768,3 +771,68 @@ class TestDigInStacksBeyondTheCap(unittest.TestCase):
     def test_the_battle_rows_flag_dig_in_and_the_type_cap(self):
         rows = unit_stat_rows('defender', [make(1, 'Infantry', 'AAC', promoted=5), make(2, 'Armor', 'AAC')], UNIT_DEFS)
         self.assertEqual([(r['defense'], r['dig_in'], r['max_promotions']) for r in rows], [(11, True, 5), (7, False, 3)])
+
+
+class TestResolveBombardment(unittest.TestCase):
+    """combat.resolve_bombardment: rules.json's combat.cruiser_bombardment
+    -- a Cruiser's single, immediate attack roll, no counter-attack, no XP."""
+
+    def target_cfg(self):
+        return RULES['combat']['target_selection']
+
+    def test_a_clean_hit_deals_full_damage_and_can_eliminate(self):
+        cruiser = make(1, 'Cruiser', 'NAA')  # D10, damage 3
+        infantry = make(2, 'Infantry', 'AAC')  # defense 5 (6 defending -- Dig In), hp 2
+        result = resolve_bombardment(ScriptedRNG([6]), cruiser, [infantry], UNIT_DEFS, self.target_cfg())
+        self.assertTrue(result.hit)
+        self.assertFalse(result.bypass_hit)
+        self.assertEqual(result.damage, 3)
+        self.assertEqual(result.target_unit_id, 2)
+        self.assertEqual(infantry.current_hp, -1)
+        self.assertEqual(result.target_hp_after, -1)
+        self.assertTrue(result.eliminated)
+
+    def test_dig_in_applies_to_the_defender(self):
+        # Infantry's Dig In (+1 defense when defending) applies here -- effective
+        # defense 6, not the base 5 -- so a roll of 5 is NOT a clean hit.
+        cruiser = make(1, 'Cruiser', 'NAA')
+        infantry = make(2, 'Infantry', 'AAC')
+        result = resolve_bombardment(ScriptedRNG([5]), cruiser, [infantry], UNIT_DEFS, self.target_cfg())
+        self.assertFalse(result.hit)
+        self.assertEqual(result.damage, 0)
+        self.assertEqual(infantry.current_hp, UNIT_DEFS['Infantry']['hp'], 'a miss does no damage')
+
+    def test_a_miss_deals_no_damage(self):
+        cruiser = make(1, 'Cruiser', 'NAA')
+        armor = make(2, 'Armor', 'AAC')  # defense 7
+        result = resolve_bombardment(ScriptedRNG([3]), cruiser, [armor], UNIT_DEFS, self.target_cfg())
+        self.assertFalse(result.hit)
+        self.assertFalse(result.bypass_hit)
+        self.assertEqual(result.damage, 0)
+        self.assertFalse(result.eliminated)
+        self.assertEqual(armor.current_hp, UNIT_DEFS['Armor']['hp'])
+
+    def test_a_max_roll_bypass_hit_deals_half_damage(self):
+        # Cruiser's die is D10 (max 10) -- reaching a defense above that at all
+        # requires the bypass. A fully-promoted, defending Infantry (Dig In stacks
+        # past the usual +10 cap -- TestDigInStacksBeyondTheCap) defends at 11.
+        cruiser = make(1, 'Cruiser', 'NAA')  # damage 3
+        infantry = make(2, 'Infantry', 'AAC', promoted=5)
+        result = resolve_bombardment(ScriptedRNG([10]), cruiser, [infantry], UNIT_DEFS, self.target_cfg())
+        self.assertTrue(result.hit)
+        self.assertTrue(result.bypass_hit)
+        self.assertEqual(result.damage, 1)  # 3 // 2
+
+    def test_no_counter_attack_and_no_xp_for_the_cruiser(self):
+        cruiser = make(1, 'Cruiser', 'NAA')
+        infantry = make(2, 'Infantry', 'AAC')
+        resolve_bombardment(ScriptedRNG([6]), cruiser, [infantry], UNIT_DEFS, self.target_cfg())
+        self.assertEqual(cruiser.current_hp, UNIT_DEFS['Cruiser']['hp'], 'the cruiser is never hit back')
+        self.assertEqual(cruiser.xp, 0, 'a bombardment earns the cruiser no XP')
+
+    def test_no_legal_target_is_a_clean_miss(self):
+        cruiser = make(1, 'Cruiser', 'NAA')
+        submarine = make(2, 'Submarine', 'AAC', hp=0)  # already dead, not standing
+        result = resolve_bombardment(ScriptedRNG([10]), cruiser, [submarine], UNIT_DEFS, self.target_cfg())
+        self.assertFalse(result.hit)
+        self.assertIsNone(result.target_unit_id)
