@@ -46,6 +46,19 @@ A faction that has been eliminated (surrendered) leaves its territory and Strate
 They stay in the set of Strategic Centers the bots try to capture (`Planner.capturable`), in the capture, pursue and
 expand objectives alike.
 
+**Control oceans** (secondary): finds enemy sea stacks within 3 hops of the bot's own land, biggest cost first, and
+assaults each with whatever Sea/Air units could reach it (buying toward the ones it could not yet beat, same as
+expand territory). A Cruiser left with nothing to show for that pass -- no stack in reach, or its stack had spares
+left over once `assault` stopped adding units at the style's max-odds bar (`Planner._bombard_idle_cruisers`) --
+looks instead for the highest-value occupied enemy land space among its own legal bombardment targets
+(rules.json's `combat.cruiser_bombardment`) and bombards it: a free attack roll at the very start of Combat
+Resolution, since the engine never actually moves it there and it takes no counter-fire. Skipped for a sea zone
+threatened enough that its fleet would rather retreat (the same check the next step, below, uses) -- bombarding
+still claims the unit's whole turn, same as any other combat move. Any idle Submarine/Aircraft Carrier sharing
+that Cruiser's sea zone escorts it along for free rather than sitting out the turn. Last, any fleet a stronger
+enemy could destroy withdraws to safety (an adjacent friendly-land sea zone, preferring one beside a Strategic
+Center) rather than standing and losing everything.
+
 **Empty land grab** (secondary; its weight in the settings sheet): finds enemy or eliminated-faction land nobody defends
 or contests, nearest to the bot's own land first and then by value, and sends the nearest Mechanized Infantry that can get
 there by combat move (never the last defender of a territory an enemy land unit could walk into). Where none can, it buys a

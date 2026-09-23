@@ -168,7 +168,7 @@ the same JSON, not a parallel editing path.
   (`tools/compute_adjacency.py`).
 - ✅ Territory shape/polygon extraction (`tools/extract_territory_shapes.py`
   → `data/territory_shapes.json`).
-- ✅ Rules engine (standalone module, `engine/`, 645 tests) — Purchase
+- ✅ Rules engine (standalone module, `engine/`, 650 tests) — Purchase
   (including the carrierless-air and contested-purchase-lost deploy
   fallbacks), Deploy + Income, Combat Move, Combat Resolution, Non-Combat
   Move, Capture Territory, surrender demands (faction elimination), game-end detection, and
@@ -195,8 +195,8 @@ the same JSON, not a parallel editing path.
   human-facing decision UI for alliance actions (the engine API is
   complete — invite_to_alliance/withdraw_from_alliance take a decision as
   input, same as every other order; a UI just needs to call them).
-  **Cruiser Bombardment** (`rules.json`'s `combat.cruiser_bombardment`, 3-phase
-  plan: engine, UI, bots): a Cruiser's combat move may target enemy-occupied
+  **Cruiser Bombardment** (`rules.json`'s `combat.cruiser_bombardment`, a
+  3-phase plan -- engine, UI, bots -- now all done): a Cruiser's combat move may target enemy-occupied
   LAND instead of a sea zone -- it never enters, staying in whichever sea zone
   its move (at most one non-combative repositioning hop) left it in; a pure
   potshot with nothing else attacking that turn does not, on its own, contest
@@ -218,6 +218,15 @@ the same JSON, not a parallel editing path.
   mirror `declared_battles`/`battle_preview`/`resolve_one_battle`), and always
   fully drain, server-side, before any real battle is ever queued that same
   Combat Resolution phase (`server/stepper.py`'s `_commit_one_bombardment`).
+  **Bots** (`docs/BOT_STRATEGY.md`'s Control Oceans): a Cruiser the ordinary
+  enemy-sea-stack assault pass leaves unclaimed -- no stack in reach, or its
+  stack had spares left over once `assault` hit its style's max-odds bar --
+  seeks the highest-value occupied enemy land space among its own legal
+  bombardment targets and bombards it, skipped only for a sea zone threatened
+  enough that its fleet would rather retreat; an idle Submarine/Aircraft
+  Carrier sharing that sea zone escorts along for free rather than sitting out
+  the turn (`Planner._bombard_idle_cruisers`, called from
+  `objective_control_oceans` right before its existing retreat-to-safety pass).
 - ⬜ WebSocket server (`server/`, 199 tests) — first vertical slice,
   proving the client-server architecture end to end: one hardcoded game
   (NAA and GPC both BOTs watched by a spectator client -- see the watch

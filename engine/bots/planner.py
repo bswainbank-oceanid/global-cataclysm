@@ -809,7 +809,54 @@ class Planner:
             if self.out_of_time():
                 break
             self._build_up(tid, ('Sea', 'Air'), 'control_oceans', limits)
+        self._bombard_idle_cruisers('control_oceans', limits)
         self._second_pass_fleets(limits)
+
+    def _bombard_idle_cruisers(self, name, limits):
+        """rules.json's combat.cruiser_bombardment: a Cruiser left with no worthwhile enemy fleet
+        to attack above (no stack in reach, or one not worth the risk) seeks an occupied enemy
+        land space to bombard instead -- a free attack roll at the very start of Combat
+        Resolution, since it never actually enters the land and takes no counter-fire. Skipped
+        for a fleet threatened badly enough that it would rather retreat to safety
+        (_second_pass_fleets, right after this) -- bombarding is still a combat move, and claims
+        the unit's one move for the whole turn same as any other. Any idle Submarine/Aircraft
+        Carrier sharing that sea zone -- the rest of the stack -- rides along as an escort
+        (GameEngine._execute_combat_moves' bombarded_this_batch mechanism): it sails to the
+        Cruiser's own final position without attacking anything itself, rather than being left
+        behind doing nothing."""
+        if not self.allow_combat:
+            return
+        by_zone = {}
+        for uid, (u, origin) in self.my_units.items():
+            if self.category(u) == 'Sea' and not self.is_land(origin) and self.free_for(u, 'combat'):
+                by_zone.setdefault(origin, []).append(u)
+        for origin in sorted(by_zone):
+            if self.out_of_time():
+                return
+            fleet = by_zone[origin]
+            cruisers = [u for u in fleet if u.unit_type == 'Cruiser']
+            if not cruisers:
+                continue
+            if self.threats(origin) and self.hold_chance(origin, self.defenders_at(origin, claimed_only=False)) < limits[0]:
+                continue  # this fleet would rather try to retreat to safety than stick around to bombard
+            for cruiser in cruisers:
+                if self.out_of_time():
+                    return
+                paths = self.combat_paths(cruiser, origin)
+                targets = sorted((d for d in paths if self.is_land(d)),
+                                  key=lambda d: -sum(self.cost(e) for e in self.enemies_at(d)))
+                if not targets:
+                    continue
+                target = targets[0]
+                path = paths[target]
+                self.claim(cruiser, name)
+                self.moves_combat[cruiser.unit_id] = path
+                self.note(f'{name}: the Cruiser at {self.terrs[origin]["name"]} bombards {self.terrs[target]["name"]}')
+                for escort in fleet:
+                    if escort.unit_type == 'Cruiser' or not self.free_for(escort, 'combat'):
+                        continue
+                    self.claim(escort, name)
+                    self.moves_combat[escort.unit_id] = path
 
     def _second_pass_fleets(self, limits):
         """Fleets of mine that a stronger enemy could destroy move to safety: an adjacent-to-friendly-land sea

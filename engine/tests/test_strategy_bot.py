@@ -16,7 +16,7 @@ from engine.bots.strategy_settings import (
 from engine.engine import GameEngine
 from engine.setup import build_game_state
 from engine.state import FactionMode, Phase, UnitInstance
-from engine.tests.test_engine import FakeData, make_state
+from engine.tests.test_engine import FakeData, make_state, make_unit
 
 FACTIONS = ('NAA', 'AAC', 'UE', 'GPC', 'PAF', 'UER')
 UNITS = ('Infantry', 'Mechanized Infantry', 'Armor', 'Aircraft Carrier', 'Cruiser', 'Submarine', 'Bomber', 'Fighter')
@@ -412,6 +412,79 @@ class TestEmptyLandGrabSeaDeploy(unittest.TestCase):
         p.objective_empty_land_grab()
         self.assertEqual(list(p.purchases.keys()), [('Mechanized Infantry', 3)])
         engine._resolve_and_cost(p.purchase_orders(), 'NAA')
+
+
+class TestControlOceansBombardment(unittest.TestCase):
+    """rules.json's combat.cruiser_bombardment, from the Controlling-style bot's side: a Cruiser
+    with no worthwhile enemy fleet in reach seeks an occupied enemy land space to bombard
+    instead. A small hand-built map (real territory ids are too crowded with the starting
+    scenario's own fleets and threats to isolate this cleanly): 1 (NAA land, "home", needed only
+    so _my_land_within finds it) -- 2 (Near Sea, where NAA's Cruiser(s) sit) -- 3 (Target Land,
+    GPC) and 4 (Far Sea, for a real enemy fleet when a test wants one)."""
+
+    def _game(self, units_by_territory):
+        territories = {
+            1: {'type': 'land', 'value': 5, 'name': 'NAA Home'},
+            2: {'type': 'sea', 'name': 'Near Sea'},
+            3: {'type': 'land', 'value': 3, 'name': 'Target Land'},
+            4: {'type': 'sea', 'name': 'Far Sea'},
+        }
+        adjacency = {1: [2], 2: [1, 3, 4], 3: [2], 4: [2]}
+        data = FakeData(territories=territories, adjacency=adjacency)
+        gs = make_state(data, {1: 'NAA', 3: 'GPC'}, {'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT},
+                        units_by_territory=units_by_territory)
+        gs.active_faction = 'NAA'
+        return GameEngine(gs, data), gs
+
+    def test_bombards_the_occupied_land_next_door(self):
+        cruiser = make_unit('Cruiser', 'NAA')
+        engine, gs = self._game({2: [cruiser], 3: [make_unit('Infantry', 'GPC')]})
+        p = planner_for(engine)
+        p.objective_control_oceans()
+        self.assertEqual(p.moves_combat.get(cruiser.unit_id), [2, 3])
+        self.assertEqual(p.claimed.get(cruiser.unit_id), 'control_oceans')
+        self.assertTrue(any('bombards' in n for n in p.notes))
+        gs.phase = Phase.COMBAT_MOVE
+        engine.submit_combat_moves('NAA', p.combat_orders())  # and it is a legal move
+
+    def test_an_idle_submarine_in_the_same_zone_escorts_it(self):
+        cruiser, sub = make_unit('Cruiser', 'NAA'), make_unit('Submarine', 'NAA')
+        engine, gs = self._game({2: [cruiser, sub], 3: [make_unit('Infantry', 'GPC')]})
+        p = planner_for(engine)
+        p.objective_control_oceans()
+        self.assertEqual(p.moves_combat.get(sub.unit_id), p.moves_combat.get(cruiser.unit_id))
+        self.assertEqual(p.moves_combat.get(cruiser.unit_id), [2, 3])
+        gs.phase = Phase.COMBAT_MOVE
+        engine.submit_combat_moves('NAA', p.combat_orders())  # the escort's own order is legal too
+
+    def test_with_no_enemy_occupied_land_in_reach_nothing_happens(self):
+        cruiser = make_unit('Cruiser', 'NAA')
+        engine, gs = self._game({2: [cruiser]})  # Target Land (3) stays empty
+        p = planner_for(engine)
+        p.objective_control_oceans()
+        self.assertNotIn(cruiser.unit_id, p.moves_combat)
+        self.assertNotIn(cruiser.unit_id, p.claimed)
+
+    def test_a_cruiser_with_a_real_sea_target_attacks_it_instead_of_bombarding(self):
+        cruiser = make_unit('Cruiser', 'NAA')  # exactly one: nothing spare left to bombard with either way
+        engine, gs = self._game({
+            2: [cruiser],
+            3: [make_unit('Infantry', 'GPC')],    # Target Land is also in reach...
+            4: [make_unit('Submarine', 'GPC')],   # ...but Far Sea is a real, easily-won naval target
+        })
+        p = planner_for(engine)
+        p.objective_control_oceans()
+        self.assertEqual(p.moves_combat.get(cruiser.unit_id), [2, 4])
+
+    def test_a_surplus_cruiser_not_needed_for_the_sea_win_bombards_instead(self):
+        # assault() only claims as many cruisers as it takes to clear its style's max-odds bar; any
+        # left over are otherwise idle, and this is exactly the case the new behavior is for.
+        cruisers = [make_unit('Cruiser', 'NAA') for _ in range(3)]
+        engine, gs = self._game({2: cruisers, 3: [make_unit('Infantry', 'GPC')], 4: [make_unit('Submarine', 'GPC')]})
+        p = planner_for(engine)
+        p.objective_control_oceans()
+        self.assertTrue(any(p.moves_combat.get(u.unit_id) == [2, 4] for u in cruisers))
+        self.assertTrue(any(p.moves_combat.get(u.unit_id) == [2, 3] for u in cruisers))
 
 
 class TestStrategyBotPlaysTurns(unittest.TestCase):
