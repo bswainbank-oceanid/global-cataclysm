@@ -25,10 +25,11 @@ var resolve_defender := BattleModel.Resolve.UNIT_TYPE
 
 func _ready() -> void:
 	if Dbg.args.has("shot"):
-		# Scripted runs: defaults, unless overridden (--pause=never|turn|phase, --pause_battle).
+		# Scripted runs: defaults, unless overridden (--pause=never|turn|phase, --pause_battle, --your_pause_battle).
 		if Dbg.args.has("pause"):
 			opp_pause = OppPause[str(Dbg.args["pause"]).to_upper()]
 		opp_pause_battle = Dbg.args.has("pause_battle")
+		your_pause_battle = Dbg.args.has("your_pause_battle")
 		if Dbg.args.has("resolve"):  # --resolve=entire|round|side|type|unit, for both sides
 			var mode: int = {"entire": 0, "round": 1, "side": 2, "type": 3, "unit": 4}[str(Dbg.args["resolve"])]
 			resolve_attacker = mode

@@ -337,6 +337,20 @@ func set_queued_attack(event: Dictionary) -> void:
 	state_changed.emit()
 
 
+## A bombardment just rolled, paused for the player to see: mark its target's
+## tile (1 = hit but alive "/", 2 = eliminated "X") the way the battle board would.
+func set_bombardment_mark(unit_id: int, mark: int) -> void:
+	bombardment_mark = {"unit_id": unit_id, "mark": mark}
+	state_changed.emit()
+
+
+## The player acknowledged a shown bombardment result: clear its mark.
+func clear_bombardment_mark() -> void:
+	if not bombardment_mark.is_empty():
+		bombardment_mark = {}
+		state_changed.emit()
+
+
 # ---- the human's move phases ---------------------------------------------------
 
 ## The server's move options and staged moves for the human's Combat/Non-Combat

@@ -647,3 +647,77 @@ class TestBombardmentPacing(unittest.TestCase):
         self.assertIn('battle_summary', [e['kind'] for e in result['events']])
         queue = _by_type(messages, 'phase_queue')[0]
         self.assertNotEqual(queue['phase'], 'COMBAT_RESOLUTION', 'both are now done')
+
+    def test_a_bombardment_declared_only_after_an_earlier_bombardment_free_combat_resolution_still_fires(self):
+        # PhaseStepper caches self._bombardments per Combat Resolution and only ever
+        # recomputes it while it's still None (see _plan_current_phase) -- a turn with
+        # NO bombardment declared at all leaves it [] (falsy, but not None), and only
+        # _commit_one_bombardment's own exhaustion path used to reset it back to None;
+        # _commit_one_battle's own "phase is now done" branch never did, on the theory
+        # that _commit's gate always drains any real bombardments before battles are
+        # ever reached THAT SAME phase. True within one phase, but this same stepper
+        # instance is reused turn after turn -- so a battle-only Combat Resolution
+        # (nothing ever calls _commit_one_bombardment at all) left self._bombardments
+        # stuck at [] forever, silently skipping declared_bombardments for every
+        # faction's every later turn: a Cruiser could legally declare and confirm a
+        # bombardment, but Combat Resolution would never see it, log it, or resolve it
+        # -- the exact bug report this test is named for.
+        #   1 (sea, NAA's Cruiser, held back turn 1) -- 2 (land AAC, Infantry --
+        #   bombarded turn 2) -- 3 (land AAC, Infantry, battled turn 1, no Cruiser
+        #   involved) -- 4 (land NAA, Infantry attacker, turn 1 only).
+        data = FakeData(
+            territories={1: {'type': 'sea'}, 2: {'type': 'land', 'value': 1}, 3: {'type': 'land', 'value': 1},
+                         4: {'type': 'land', 'value': 1}},
+            adjacency={1: [2], 2: [1, 3], 3: [2, 4], 4: [3]},
+        )
+        cruiser = make_unit('Cruiser', 'NAA')
+        bombarded = make_unit('Infantry', 'AAC')
+        attacker = make_unit('Infantry', 'NAA')
+        battled = make_unit('Infantry', 'AAC')
+        gs = make_state(
+            data, {2: 'AAC', 3: 'AAC', 4: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+            units_by_territory={1: [cruiser], 2: [bombarded], 3: [battled], 4: [attacker]},
+        )
+        gs.active_faction = 'NAA'
+        turn_log = TurnLog()
+        engine = GameEngine(gs, data, turn_log=turn_log, combat_rng=random.Random(1))
+        session = GameSession(engine, turn_log, {})
+        session.handle_message({'type': 'watch'})
+
+        # Turn 1: NAA's Infantry attacks alone -- no Cruiser order at all, so this
+        # Combat Resolution never declares a single bombardment.
+        session.handle_message({'type': 'stage_moves', 'faction': 'NAA', 'orders': [
+            {'unit_id': attacker.unit_id, 'path': [4, 3]},
+        ]})
+        messages = session.handle_message({'type': 'next'})  # queues Combat Resolution
+        queue = _by_type(messages, 'phase_queue')[0]
+        self.assertNotIn('bombardment', queue, 'nothing declared this turn')
+        self.assertEqual(queue['events'][0]['kind'], 'battle_preview')
+
+        # Press through the rest of NAA's turn 1, all of AAC's turn, and into NAA's
+        # own Combat Move again -- neither faction has anything left to stage.
+        for _ in range(20):
+            messages = session.handle_message({'type': 'next'})
+            queue = _by_type(messages, 'phase_queue')[0]
+            if queue['faction'] == 'NAA' and queue['phase'] == 'COMBAT_MOVE':
+                break
+        else:
+            self.fail('never reached NAA\'s second Combat Move')
+
+        # Turn 2: the same Cruiser, never moved since, now bombards -- and Combat
+        # Resolution must still recognize and queue it, not silently skip it.
+        session.handle_message({'type': 'stage_moves', 'faction': 'NAA', 'orders': [
+            {'unit_id': cruiser.unit_id, 'path': [1, 2]},
+        ]})
+        messages = session.handle_message({'type': 'next'})  # queues Combat Resolution
+        queue = _by_type(messages, 'phase_queue')[0]
+        self.assertEqual(queue['phase'], 'COMBAT_RESOLUTION')
+        self.assertEqual(queue.get('bombardment'), {'index': 0, 'count': 1},
+                          'the second turn\'s bombardment must still be declared and queued')
+        self.assertEqual(queue['events'][0]['kind'], 'bombardment_preview')
+
+        messages = session.handle_message({'type': 'next'})  # fires it
+        result = _by_type(messages, 'phase_result')[0]
+        self.assertEqual([e['kind'] for e in result['events']], ['bombardment'],
+                          'the bombardment must actually resolve, not vanish as "nothing happened"')
+        self.assertEqual(result['events'][0]['territory_id'], 2)

@@ -240,6 +240,15 @@ func _start_view() -> void:
 					await _battle_panel.debug_press(1)
 				else:
 					await get_tree().create_timer(0.3).timeout
+		if Dbg.args.has("bombardment_rolls"):
+			# Scripted play: n presses, each either firing a paused bombardment
+			# (the player's go-ahead) or acknowledging its result ("Next >
+			# Continue") -- there's no separate board to open, unlike a battle's,
+			# so both are just Stepper.button_pressed() at whichever stage it's in.
+			for i in int(Dbg.args["bombardment_rolls"]):
+				if Stepper.has_pending_bombardment() or Stepper.has_open_bombardment():
+					Stepper.button_pressed()
+				await get_tree().create_timer(0.3).timeout
 	if Dbg.args.has("announce_test"):  # --announce_test: show one of each announcement (for screenshots)
 		Stepper.announced.emit([
 			{"title": "UE eliminated", "color": Color(0.9, 0.75, 0.3), "body": "[b]United Europe[/b] (UE) has been eliminated. It held one Strategic Center or fewer, so it is out of the game and all of its units are removed from the board."},

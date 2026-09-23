@@ -454,9 +454,17 @@ class PhaseStepper:
         while more battles remain in the phase. With none declared, the phase
         is simply done -- begin_combat_resolution, and every declared
         bombardment, already ran via _commit's own gate and
-        _commit_one_bombardment before this is ever reached."""
+        _commit_one_bombardment before this is ever reached, EXCEPT when this
+        turn declared none at all: _commit_one_bombardment is then never
+        called, so self._bombardments is still [] (falsy, but not None) --
+        left alone, `self._bombardments is None` (_plan_current_phase's own
+        gate for recomputing it) would stay permanently False from here on,
+        forever skipping declared_bombardments for every faction's every
+        future turn this same PhaseStepper instance runs. Reset it here too,
+        same as self._battles, whichever branch actually ends the phase."""
         engine = self.engine
         if not self._battles:
+            self._bombardments = None
             self._battles = None
             self._combat_resolution_begun = False  # Combat Resolution is now fully done, bombardments and battles alike
             return False
@@ -465,6 +473,7 @@ class PhaseStepper:
         self._battle_index += 1
         if self._battle_index < len(self._battles):
             return True
+        self._bombardments = None
         self._battles = None
         self._combat_resolution_begun = False
         return False

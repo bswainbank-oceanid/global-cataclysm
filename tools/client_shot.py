@@ -42,6 +42,7 @@ def main():
     ap.add_argument('--steps')
     ap.add_argument('--pause')
     ap.add_argument('--battle_rolls')
+    ap.add_argument('--bombardment_rolls')
     ap.add_argument('--buy')
     ap.add_argument('--hold')
     ap.add_argument('--alliance')
@@ -53,12 +54,16 @@ def main():
     ap.add_argument('--launch', nargs='?', const='true')
     ap.add_argument('--fixed_order', action='store_true')
     ap.add_argument('--combat_first_turn', action='store_true')
+    ap.add_argument('--seed')
+    ap.add_argument('--bot_ai')
+    ap.add_argument('--max_alliance')
     ap.add_argument('--drag_hold', action='store_true')
     ap.add_argument('--move_to')
     ap.add_argument('--recall')
     ap.add_argument('--select2')
     ap.add_argument('--resolve')
     ap.add_argument('--pause_battle', action='store_true')
+    ap.add_argument('--your_pause_battle', action='store_true')
     ap.add_argument('--badges')
     ap.add_argument('--wait', default='8')
     ap.add_argument('--size', default='1600x900')
@@ -66,7 +71,7 @@ def main():
 
     subprocess.run([sys.executable, str(ROOT / 'tools' / 'sync_client_data.py')], check=True)
     user_args = [f'--shot={Path(a.out).resolve()}', f'--wait={a.wait}']
-    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click', 'state', 'badges', 'server', 'steps', 'pause', 'pause_battle', 'battle_rolls', 'resolve', 'buy', 'hold', 'move_to', 'recall', 'select2', 'drag_hold', 'launch', 'fixed_order', 'combat_first_turn', 'alliance', 'invite_answer', 'after_steps', 'start_allied', 'no_withdraw', 'rejoin'):
+    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click', 'state', 'badges', 'server', 'steps', 'pause', 'pause_battle', 'your_pause_battle', 'battle_rolls', 'bombardment_rolls', 'resolve', 'buy', 'hold', 'move_to', 'recall', 'select2', 'drag_hold', 'launch', 'fixed_order', 'combat_first_turn', 'seed', 'bot_ai', 'max_alliance', 'alliance', 'invite_answer', 'after_steps', 'start_allied', 'no_withdraw', 'rejoin'):
         if getattr(a, key):
             val = getattr(a, key)
             user_args.append(f'--{key}={Path(val).resolve() if key == "state" else val}')

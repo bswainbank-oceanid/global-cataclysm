@@ -447,6 +447,13 @@ func has_pending_bombardment() -> bool:
 	return not _bombardment_pending.is_empty()
 
 
+## Dev/scripted: has a bombardment been fired and is its result showing, awaiting
+## the player's "Next > Continue" (release_bombardment)? No board to check
+## .visible on, unlike a battle's -- this is the equivalent for --bombardment_rolls.
+func has_open_bombardment() -> bool:
+	return _bombardment_open
+
+
 ## Next was pressed on a paused bombardment: fire it -- no separate board to
 ## open first, the one roll IS the reveal, so this goes straight to the real
 ## server round trip (its phase_result/state/next queue arrive held, same as
