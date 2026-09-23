@@ -12,14 +12,14 @@
       "Fighter": 5
     },
     "AAC": {
-      "Infantry": 4,
+      "Infantry": 2,
       "Mechanized Infantry": 4,
-      "Armor": 3,
+      "Armor": 4,
       "Aircraft Carrier": 3,
       "Cruiser": 3,
       "Submarine": 2,
-      "Bomber": 7,
-      "Fighter": 4
+      "Bomber": 5,
+      "Fighter": 3
     },
     "UE": {
       "Infantry": 3,
@@ -42,9 +42,9 @@
       "Fighter": 4
     },
     "PAF": {
-      "Infantry": 8,
+      "Infantry": 4,
       "Mechanized Infantry": 3,
-      "Armor": 4,
+      "Armor": 5,
       "Aircraft Carrier": 2,
       "Cruiser": 2,
       "Submarine": 4,
@@ -71,11 +71,11 @@
       "Variable": 4
     },
     "AAC": {
-      "Strategic": 3,
-      "Defensive": 3,
-      "Expansive": 3,
-      "Controlling": 3,
-      "Variable": 7
+      "Strategic": 2,
+      "Defensive": 5,
+      "Expansive": 4,
+      "Controlling": 2,
+      "Variable": 3
     },
     "UE": {
       "Strategic": 5,

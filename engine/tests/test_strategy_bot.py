@@ -83,7 +83,7 @@ class TestSettings(unittest.TestCase):
 
     def test_purchase_odds_come_from_the_factions_unit_weights(self):
         odds = self.s.unit_odds('PAF', ['Infantry', 'Aircraft Carrier', 'Fighter'])
-        self.assertEqual(odds, [8, 2, 2])
+        self.assertEqual(odds, [4, 2, 2])
 
     def test_the_json_matches_the_spreadsheet_builder(self):
         path = os.path.join(os.path.dirname(strategy_settings.__file__), '..', '..', 'data', 'bot_settings.json')

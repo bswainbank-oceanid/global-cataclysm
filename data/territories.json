@@ -569,7 +569,7 @@
       "bbox_w": 249,
       "bbox_h": 201,
       "faction": "NAA",
-      "value": 5,
+      "value": 4,
       "strategic_center": true
     },
     {
@@ -683,7 +683,7 @@
       "bbox_w": 152,
       "bbox_h": 261,
       "faction": "NAA",
-      "value": 3,
+      "value": 4,
       "strategic_center": false
     },
     {
