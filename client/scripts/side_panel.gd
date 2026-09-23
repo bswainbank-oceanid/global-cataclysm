@@ -307,6 +307,12 @@ func _tiles_for(tid: int, units: Array, mine: bool) -> Control:
 			tile.committed = true
 			tile.tooltip_text += "\nQueued to move - click to recall"
 			tile.pressed.connect(func(): move_recall.emit([uid]))
+			# Its one-hop combat move didn't trigger a battle and it has move budget
+			# left over: offer a second, explicit hop (GameStore.move_extend) without
+			# losing the "already queued" look -- stays grey, drag (not click) to extend.
+			if GameStore.move_extend_active() and int(GameStore.move_extend["unit_id"]) == uid:
+				tile.tooltip_text += "\nDrag to move one space further"
+				tile.drag_payload = {"kind": "extend_move"}
 		elif mine and movable.has(uid):
 			tile.button_pressed = GameStore.move_selected.has(uid) or GameStore.ride_along_ids().has(uid)
 			if GameStore.ride_along_ids().has(uid):

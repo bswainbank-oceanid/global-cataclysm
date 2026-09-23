@@ -12,10 +12,23 @@ signal purchase_changed  # the human player's purchase queue/options changed
 signal armistice_changed  # a Propose Armistice proposal (in flight, or awaiting this human's own answer) changed
 signal game_over_report_changed  # the Game Over report arrived, or its minimize/restore state was toggled
 
-var human_move := {}      # the human's Combat/Non-Combat Move in progress: {kind, faction, options{uid: {unit_type, origin, dests{dest: path}}}, orders[{unit_id, unit_type, from, dest, path?}]}
+var human_move := {}      # the human's Combat/Non-Combat Move in progress: {kind, faction, options{uid: {unit_type, origin, dests{dest: path}, continuations{first_hop: {dest: path}}}}, orders[{unit_id, unit_type, from, dest, path?}]}
 var tile_drag_armed := false  # a selected unit tile was pressed: a move drag may follow (see main.gd)
 var move_origin := -1     # the space whose units are being picked to move
 var move_selected := {}   # unit_id -> true: the units picked (all uncommitted ones by default)
+## Offered right after committing a SINGLE unit's one-hop combat move that didn't
+## itself trigger a battle (a Mechanized Infantry pass-through capture, typically):
+## {unit_id, unit_type, first_hop, origin, targets{dest: path}} -- the further
+## destinations it could still reach with whatever move budget is left over. {} =
+## no such offer right now. Lets the player pick a route hop by hop -- see
+## engine.movement.legal_combat_move_continuations' own docstring for why a
+## single-shot search can't just offer every such route up front. Set by
+## turn_stepper.move_commit right after a qualifying commit; cleared by the next
+## commit of any kind, by recalling the offered unit's own move, or the phase
+## ending. Deliberately NOT cleared by an ordinary refreshed queue arriving (the
+## server's own options no longer include the now-staged unit at all, but this is
+## purely a client-remembered affordance, independent of that).
+var move_extend := {}
 var _unit_index := {}     # unit_id -> unit dict, rebuilt with every state
 var human_alliance := {}  # the human's Diplomacy phase: {faction, members, options{eligible_invite_targets, can_withdraw, alliance_action_used}, surrender[{target, reasons, allied, income{yours, theirs}}], game_would_end}
 var invitation := {}      # a bot's invitation awaiting the human's answer: {from, to, members, answered, accepts}
@@ -327,6 +340,7 @@ func set_human_move(faction: String, block: Dictionary) -> void:
 			human_move = {}
 			move_origin = -1
 			move_selected.clear()
+			move_extend = {}
 			move_changed.emit()
 		return
 	var combat: bool = block["kind"] == "combat"
@@ -343,7 +357,17 @@ func set_human_move(faction: String, block: Dictionary) -> void:
 				dests[int(d)] = path
 			else:
 				dests[int(d)] = [origin, int(d)]
-		options[int(k)] = {"unit_type": o["unit_type"], "origin": origin, "dests": dests}
+		var continuations := {}
+		for first_hop in o.get("continuations", {}):
+			var group: Dictionary = o["continuations"][first_hop]
+			var norm := {}
+			for d in group:
+				var path := []
+				for x in group[d]:
+					path.append(int(x))
+				norm[int(d)] = path
+			continuations[int(first_hop)] = norm
+		options[int(k)] = {"unit_type": o["unit_type"], "origin": origin, "dests": dests, "continuations": continuations}
 	var orders := []
 	for o in block["orders"]:
 		var order := {"unit_id": int(o["unit_id"]), "unit_type": str(o["unit_type"]), "from": int(o["from"])}
@@ -529,6 +553,20 @@ func move_targets() -> Dictionary:
 						orders.append(_order_for(kind, uid, opts[uid]["dests"][zone]))
 		out[d] = {"orders": orders, "count": orders.size() + riders.size()}
 	return out
+
+
+## See move_extend's own comment.
+func move_extend_active() -> bool:
+	return not move_extend.is_empty()
+
+
+func move_extend_targets() -> Dictionary:
+	return move_extend.get("targets", {})
+
+
+func set_move_extend(info: Dictionary) -> void:
+	move_extend = info
+	move_changed.emit()
 
 
 ## The staged moves in the shape stage_moves wants (unit id + path/destination).

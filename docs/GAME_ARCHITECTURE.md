@@ -655,3 +655,64 @@ the same JSON, not a parallel editing path.
   `requirements.txt` gained its second dependency, `anthropic`, for this alone --
   `engine/`/`tools/` otherwise stay pure stdlib, and a game with no Claude seat
   never imports it beyond the class definition itself.
+- ⬜ **Picking a Mechanized Infantry's combat-move route hop by hop** (reported:
+  a human player wanted to choose BETWEEN two equally legal routes to the same
+  destination, not just the one `legal_combat_move_paths`' own single-shot
+  search happens to settle on -- see that function and `_reachable_destinations`'
+  docstrings in `engine/movement.py` on why only one path per destination ever
+  came back before this). New engine query, `movement.legal_combat_move_
+  continuations(unit_type, owner, origin_id, game_state, data_module)`:
+  `{first_hop_id: {destination_id: full_path}}` for every one-hop neighbor of
+  `origin_id` that's a legal PASS-THROUGH stop (`_classify_combat_hop`'s
+  `STOP_AND_PASS` -- an empty, capturable foreign land territory for a
+  Mechanized Infantry, or an open/enemy-Transport-only sea zone for a ship;
+  never `STOP_AND_PASS_LAND_ONLY`, the hostile-water-escape landing, which is
+  always a move's final stop and never continuable), the further destinations
+  reachable by continuing from there with whatever move budget is left over.
+  Reuses `_reachable_destinations` unchanged via a new `budget_override`
+  parameter (`None` preserves every existing caller's behaviour exactly) rather
+  than touching its tie-breaking pruning at all -- the safer, additive way to
+  let a route be chosen hop by hop instead of trying to make the shared BFS
+  enumerate every alternate path to a single far-away destination up front.
+  `GameEngine.legal_combat_move_options` embeds this as a `'continuations'`
+  field alongside `'destinations'` for every non-Air unit (always `{}` for
+  Air -- no hop-by-hop legality there at all), cheaply: non-empty only for a
+  unit with an actual pass-through-capable first hop, in practice just
+  Mechanized Infantry and the rare Transport-only-sea-zone case.
+
+  Client side (`GameStore.move_extend`, `turn_stepper.move_commit`/
+  `move_extend_commit`/`move_recall`, `main.gd`'s drag handling,
+  `side_panel.gd`'s committed-tile wiring): committing a SINGLE unit's combat
+  move to a destination with continuations offers a second, explicit hop --
+  the unit's side-panel tile stays visually "committed" (grey, arrow badge)
+  but is ALSO made draggable again (a new `drag_payload` kind alongside its
+  existing click-to-recall), and the map highlights the further destinations
+  reachable from there. Dragging it onto one of them replaces its already-
+  staged one-hop order with the full two-hop path in one `stage_moves` round
+  trip (`GameStore.staged_orders_plain([unit_id])` drops the old order, the
+  new one is appended) and clears the offer; recalling the unit's move,
+  committing anything else, or the phase ending all clear it too. The offer
+  is deliberately NOT cleared by an ordinary refreshed queue arriving after
+  the first commit -- the server's own options no longer list the now-staged
+  unit at all (`has_moved_combat`), so this is purely client-remembered state,
+  independent of that. Scoped to a single committed unit on purpose (a
+  multi-unit group's members could have different continuations, or none at
+  all) and to exactly one further hop (matching Mechanized Infantry's 2-move
+  budget in the base ruleset -- after 2 hops there's nothing left to offer
+  regardless).
+
+  `MapArrows.from_events` was also generalised while here: a combat move's
+  queued/playback arrow now draws one segment per hop in its path instead of
+  a single arrow straight from origin to final destination -- so an ordinary
+  uncontested Mechanized Infantry blitz shows the territory it actually
+  passed through too, not just skips over it; this was a pre-existing, more
+  general clarity gap, not specific to the new interactive flow, and fixing
+  it there covers both. Tests: `engine/tests/test_movement.py`'s
+  `TestLegalCombatMoveContinuations` (the pass-through/attack/budget/
+  no-further-destinations distinctions, and the two-different-first-hops-to-
+  the-same-destination case this was built for), `engine/tests/test_engine.py`'s
+  `TestLegalCombatMoveOptions` (the field's shape as embedded for a client);
+  `client/tests/move_extend_test.gd` (the offer's full lifecycle, driven
+  directly through `GameStore`/`Stepper` the way `move_targets_test.gd`
+  already does, plus `MapArrows.from_events`' multi-segment output) --
+  `godot --headless --path client -s res://tests/move_extend_test.gd`.

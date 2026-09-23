@@ -77,7 +77,7 @@ from .combat import BattleResult, EventKind, resolve_battle, unit_stat_rows
 from .economy import compute_income
 from .movement import (
     _is_ally_or_self, find_emergency_landing, legal_air_move_destinations,
-    legal_combat_move_paths, legal_noncombat_move_destinations, trace_combat_move,
+    legal_combat_move_continuations, legal_combat_move_paths, legal_noncombat_move_destinations, trace_combat_move,
 )
 from .state import Phase, FactionMode, UnitInstance, is_amphibious
 from .turn_log import TurnLog
@@ -545,26 +545,38 @@ class GameEngine:
 
     def legal_combat_move_options(self, faction, game_state=None):
         """{unit_id: {'unit_type': ..., 'territory_id': origin_id,
-        'destinations': {destination_id: path, ...}}} for every one of
-        `faction`'s own units, anywhere on the board, that hasn't already
-        combat-moved this turn (UnitInstance.has_moved_combat) -- known
-        at the start of Combat Move, before any order is submitted (a
-        later order in the same submission CAN change what's legal for a
-        unit considered after it -- _execute_combat_moves' own docstring
-        -- so this is a snapshot as of right now, not a guarantee that
-        stays valid after the caller's own earlier picks; submit_combat_
-        moves is still the authority). `path` always includes both
-        endpoints (`[origin_id, destination_id]` at minimum), same shape
-        CombatMoveOrder.path expects -- for an Air unit that's always
-        exactly 2 entries (no hop-by-hop legality for air), for a Land or
-        Sea unit it may be longer (an uncontested Mechanized Infantry
-        blitz, or a multi-hop path generally). A pure query -- takes no
-        action; a unit with zero legal destinations (nothing to attack,
-        nowhere to go) is simply omitted, not included with an empty
-        dict. No bot-only policy exclusions applied here (e.g. RandomBot
-        never moves an SC-garrisoning Infantry) -- those are strategy
-        choices, not engine-level illegality; see engine.bots.random_bot
-        for that layer."""
+        'destinations': {destination_id: path, ...}, 'continuations':
+        {first_hop_id: {destination_id: path, ...}, ...}}} for every one
+        of `faction`'s own units, anywhere on the board, that hasn't
+        already combat-moved this turn (UnitInstance.has_moved_combat) --
+        known at the start of Combat Move, before any order is submitted
+        (a later order in the same submission CAN change what's legal for
+        a unit considered after it -- _execute_combat_moves' own
+        docstring -- so this is a snapshot as of right now, not a
+        guarantee that stays valid after the caller's own earlier picks;
+        submit_combat_moves is still the authority). `path` always
+        includes both endpoints (`[origin_id, destination_id]` at
+        minimum), same shape CombatMoveOrder.path expects -- for an Air
+        unit that's always exactly 2 entries (no hop-by-hop legality for
+        air), for a Land or Sea unit it may be longer (an uncontested
+        Mechanized Infantry blitz, or a multi-hop path generally). A pure
+        query -- takes no action; a unit with zero legal destinations
+        (nothing to attack, nowhere to go) is simply omitted, not
+        included with an empty dict. No bot-only policy exclusions
+        applied here (e.g. RandomBot never moves an SC-garrisoning
+        Infantry) -- those are strategy choices, not engine-level
+        illegality; see engine.bots.random_bot for that layer.
+
+        'continuations' (movement.legal_combat_move_continuations, always
+        {} for an Air unit) is what lets a human client offer a route
+        hop-by-hop rather than only the single canonical path
+        'destinations' happens to settle on for a given final destination
+        -- see that function's own docstring. Cheap to include
+        unconditionally: it's non-empty only for a unit with an actual
+        pass-through-capable first hop (in practice, just Mechanized
+        Infantry and a sea unit passing an enemy-Transport-only zone),
+        and even then it's one extra bounded search per such hop, not per
+        unit in general."""
         gs = game_state or self.game_state  # a working copy, e.g. with staged moves applied
         terrs = self.data.territories()
         unit_defs = self.data.units()
@@ -577,11 +589,14 @@ class GameEngine:
                 if category == 'Air':
                     legal = legal_air_move_destinations(u.unit_type, faction, tid, 'combat', gs, self.data)
                     destinations = {dest: [tid, dest] for dest in legal}
+                    continuations = {}
                 else:
                     destinations = legal_combat_move_paths(u.unit_type, faction, tid, gs, self.data)
+                    continuations = legal_combat_move_continuations(u.unit_type, faction, tid, gs, self.data)
                 if not destinations:
                     continue
-                options[u.unit_id] = {'unit_type': u.unit_type, 'territory_id': tid, 'destinations': destinations}
+                options[u.unit_id] = {'unit_type': u.unit_type, 'territory_id': tid,
+                                       'destinations': destinations, 'continuations': continuations}
         return options
 
     def legal_noncombat_move_options(self, faction, game_state=None):

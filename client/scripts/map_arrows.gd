@@ -32,7 +32,11 @@ func set_zoom(z: float) -> void:
 	queue_redraw()
 
 
-## Arrows for the moves in a phase's events: [{from, to, faction, count}].
+## Arrows for the moves in a phase's events: [{from, to, faction, count}]. A
+## combat move's real route -- one arrow per hop, not one that skips straight
+## from origin to final destination -- so an uncontested Mechanized Infantry
+## blitz (or a human's own interactively-extended one, see game_store.gd's
+## move_extend) is drawn passing through every territory it actually entered.
 static func from_events(events: Array) -> Array:
 	var groups := {}
 	for e in events:
@@ -41,21 +45,25 @@ static func from_events(events: Array) -> Array:
 		for o in e["orders"]:
 			if not o.has("from"):
 				continue  # e.g. a ride-along the engine didn't attribute an origin to
-			var dest: int
+			var hops := []  # [[src, dest], ...]
 			match str(e["kind"]):
 				"combat_move":
-					dest = int(o["path"][o["path"].size() - 1])
+					var path: Array = o["path"]
+					for i in range(path.size() - 1):
+						hops.append([int(path[i]), int(path[i + 1])])
 				"noncombat_move":
-					dest = int(o["destination"])
+					hops.append([int(o["from"]), int(o["destination"])])
 				_:
-					dest = int(o["to"])
-			var src := int(o["from"])
-			if src == dest:
-				continue
-			var key := "%s|%d|%d" % [e["faction"], src, dest]
-			if not groups.has(key):
-				groups[key] = {"from": src, "to": dest, "faction": str(e["faction"]), "count": 0}
-			groups[key]["count"] += 1
+					hops.append([int(o["from"]), int(o["to"])])
+			for hop in hops:
+				var src: int = hop[0]
+				var dest: int = hop[1]
+				if src == dest:
+					continue
+				var key := "%s|%d|%d" % [e["faction"], src, dest]
+				if not groups.has(key):
+					groups[key] = {"from": src, "to": dest, "faction": str(e["faction"]), "count": 0}
+				groups[key]["count"] += 1
 	return groups.values()
 
 

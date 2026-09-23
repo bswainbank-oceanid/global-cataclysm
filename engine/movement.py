@@ -256,7 +256,8 @@ def _classify_noncombat_hop(dest_id, mover_faction, game_state, territories, uni
     return STOP_AND_PASS
 
 
-def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game_state, data_module, with_paths=False):
+def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game_state, data_module,
+                             with_paths=False, budget_override=None):
     """Core BFS shared by combat/noncombat reachability. Tracks, per
     territory, the best (largest) remaining-budget-on-arrival seen so
     far, and only explores a neighbor when arriving with a strictly
@@ -277,14 +278,21 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
     (more than one equal-length legal route) resolve to whichever path
     the traversal happened to accept last -- any one of them is an
     equally legal route, since _classify_combat_hop/_classify_noncombat_hop
-    were satisfied at every hop along it."""
+    were satisfied at every hop along it.
+
+    budget_override: search with this many moves available instead of
+    unit_type's own move stat -- for legal_combat_move_continuations,
+    which resumes a search from a point already reached, with whatever
+    budget is left over from the hop(s) already spent getting there. None
+    (the default) means "the unit's full move stat," as if starting a
+    fresh move from origin_id, unchanged for every other caller."""
     unit_defs = data_module.units()
     territories = data_module.territories()
     adjacency = data_module.adjacency()
     is_land_unit = unit_defs[unit_type]['category'] == 'Land'
     is_sea_unit = unit_defs[unit_type]['category'] == 'Sea'
 
-    base_budget = _base_move(unit_type, move_type, unit_defs)
+    base_budget = _base_move(unit_type, move_type, unit_defs) if budget_override is None else budget_override
     started_in_water = is_land_unit and territories[origin_id]['type'] == 'sea'
     can_swim = is_land_unit and is_amphibious(unit_defs[unit_type])
 
@@ -388,6 +396,59 @@ def legal_combat_move_paths(unit_type, owner, origin_id, game_state, data_module
     UI drawing the route a unit would take."""
     _, paths = _reachable_destinations(origin_id, owner, unit_type, 'combat', game_state, data_module, with_paths=True)
     return paths
+
+
+def legal_combat_move_continuations(unit_type, owner, origin_id, game_state, data_module):
+    """{first_hop_id: {destination_id: [origin_id, first_hop_id, ...,
+    destination_id]}} -- for every one-hop neighbor of origin_id that's a
+    legal PASS-THROUGH stop (_classify_combat_hop's STOP_AND_PASS: an
+    empty, capturable foreign land territory for a Mechanized Infantry,
+    or an open/enemy-Transport-only sea zone -- never STOP_AND_PASS_LAND_
+    ONLY, the hostile-water-escape landing, which is always the final
+    stop of a move and never continuable), the further destinations
+    reachable by continuing on from there with whatever move budget is
+    left over after that first hop, each with its own full path back to
+    origin_id. {} for a first hop that isn't pass-through-capable, that
+    has no budget left afterward, or that has nowhere further to go.
+
+    legal_combat_move_paths' own single BFS from origin_id already picks
+    ONE canonical path to each reachable destination (the one its
+    traversal order happened to settle on -- see _reachable_destinations'
+    own docstring on how ties resolve) -- it doesn't surface that a
+    different, equally legal route existed through a different first
+    hop. This is what lets a human client offer that choice explicitly:
+    stage a one-hop combat move that didn't itself trigger a battle, then
+    -- knowing the specific further destinations reachable from exactly
+    that stop -- offer a second, explicit hop from there, picking a route
+    hop by hop rather than only the one path the single-shot search
+    happens to return for a given final destination."""
+    unit_defs = data_module.units()
+    territories = data_module.territories()
+    adjacency = data_module.adjacency()
+    is_land_unit = unit_defs[unit_type]['category'] == 'Land'
+    is_sea_unit = unit_defs[unit_type]['category'] == 'Sea'
+    can_swim = is_land_unit and is_amphibious(unit_defs[unit_type])
+    base_budget = _base_move(unit_type, 'combat', unit_defs)
+    if base_budget < 2:
+        return {}
+
+    out = {}
+    for first_hop_id in adjacency.get(origin_id, []):
+        neighbor_is_land = territories[first_hop_id]['type'] == 'land'
+        if is_sea_unit and neighbor_is_land:
+            continue  # movement.sea_units_stay_at_sea
+        if is_land_unit and not neighbor_is_land and not can_swim:
+            continue  # only an amphibious land unit may enter water at all
+        hop = _classify_combat_hop(first_hop_id, owner, unit_type, is_land_unit, game_state, territories, unit_defs)
+        if not (hop.stop and hop.pass_through == 'any'):
+            continue  # not a legal stop here at all, or one that's always the final stop (an attack, or a hostile-water-escape landing)
+        destinations, paths = _reachable_destinations(
+            first_hop_id, owner, unit_type, 'combat', game_state, data_module,
+            with_paths=True, budget_override=base_budget - 1)
+        if not destinations:
+            continue
+        out[first_hop_id] = {dest: [origin_id] + paths[dest] for dest in destinations}
+    return out
 
 
 class CombatMoveTrace:

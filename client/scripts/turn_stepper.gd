@@ -563,9 +563,44 @@ func move_commit(dest: int) -> void:
 	var targets := GameStore.move_targets()
 	if not targets.has(dest):
 		return
+	var committed: Array = targets[dest]["orders"]
+	GameStore.set_move_extend(_extend_offer_for(committed, dest))
 	var orders := GameStore.staged_orders_plain()
-	orders.append_array(targets[dest]["orders"])
+	orders.append_array(committed)
 	GameStore.move_selected.clear()  # they are committed; the rest stay available
+	_send_moves(orders)
+
+
+## Whether the just-committed order(s) qualify to offer a second, explicit hop
+## (see game_store.gd's move_extend): exactly one unit, whose own continuations
+## (still visible in human_move's PRE-commit options -- gone from the server's
+## own options the moment this unit is actually staged) list `dest` as a
+## pass-through-capable first hop with further destinations of its own.
+func _extend_offer_for(committed: Array, dest: int) -> Dictionary:
+	if committed.size() != 1 or GameStore.human_move.get("kind", "") != "combat":
+		return {}
+	var uid := int(committed[0]["unit_id"])
+	var opt: Dictionary = GameStore.human_move["options"].get(uid, {})
+	var continuations: Dictionary = opt.get("continuations", {})
+	if not continuations.has(dest):
+		return {}
+	return {"unit_id": uid, "unit_type": str(opt.get("unit_type", "")), "first_hop": dest,
+		"origin": int(opt.get("origin", -1)), "targets": continuations[dest]}
+
+
+## The extend offer's unit was dropped on `dest`: replace its already-queued
+## one-hop order with the full route, and clear the offer.
+func move_extend_commit(dest: int) -> void:
+	var targets: Dictionary = GameStore.move_extend_targets()
+	if not targets.has(dest):
+		return
+	var uid := int(GameStore.move_extend["unit_id"])
+	var path := []
+	for x in targets[dest]:
+		path.append(int(x))
+	var orders: Array = GameStore.staged_orders_plain([uid])  # drop the old one-hop order for this unit
+	orders.append({"unit_id": uid, "path": path})
+	GameStore.set_move_extend({})
 	_send_moves(orders)
 
 
@@ -573,6 +608,8 @@ func move_commit(dest: int) -> void:
 func move_recall(unit_ids: Array) -> void:
 	if not GameStore.human_move_active():
 		return
+	if GameStore.move_extend_active() and unit_ids.has(int(GameStore.move_extend["unit_id"])):
+		GameStore.set_move_extend({})
 	_send_moves(GameStore.staged_orders_plain(unit_ids))
 
 

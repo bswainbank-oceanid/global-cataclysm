@@ -180,6 +180,29 @@ class TestLegalCombatMoveOptions(unittest.TestCase):
         options = engine.legal_combat_move_options('NAA')
         self.assertEqual(options[flyer.unit_id]['destinations'], {2: [1, 2]})
 
+    def test_air_unit_continuations_are_always_empty(self):
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
+        flyer = make_unit('Fighter', 'NAA')
+        defender = make_unit('Infantry', 'AAC')
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+                         units_by_territory={1: [flyer], 2: [defender]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_combat_move_options('NAA')
+        self.assertEqual(options[flyer.unit_id]['continuations'], {})
+
+    def test_mech_inf_continuations_surface_a_second_hop_after_a_pass_through_capture(self):
+        # 1 (origin) -- 2 (empty enemy) -- 3 (empty enemy, beyond 2): the
+        # server-facing shape of movement.legal_combat_move_continuations,
+        # embedded right alongside 'destinations' for the client to use.
+        data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+                         adjacency={1: [2], 2: [1, 3], 3: [2]})
+        mover = make_unit('Mechanized Infantry', 'NAA')
+        gs = make_state(data, {1: 'NAA', 2: 'AAC', 3: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+                         units_by_territory={1: [mover]})
+        engine = GameEngine(gs, data)
+        options = engine.legal_combat_move_options('NAA')
+        self.assertEqual(options[mover.unit_id]['continuations'], {2: {3: [1, 2, 3]}})
+
 
 class TestSeaUnitsCannotBeOrderedOntoLand(unittest.TestCase):
     """The engine-level face of movement.sea_units_stay_at_sea: neither the

@@ -3,8 +3,8 @@ import unittest
 
 from engine.state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode
 from engine.movement import (
-    legal_combat_move_destinations, legal_combat_move_paths, legal_noncombat_move_destinations,
-    legal_air_move_destinations, find_emergency_landing, trace_combat_move,
+    legal_combat_move_continuations, legal_combat_move_destinations, legal_combat_move_paths,
+    legal_noncombat_move_destinations, legal_air_move_destinations, find_emergency_landing, trace_combat_move,
 )
 
 # Minimal unit_defs -- movement.py only ever reads combat_move/
@@ -146,6 +146,80 @@ class TestMechInfEmptyTerritoryPassThrough(unittest.TestCase):
         dest = legal_combat_move_destinations('Armor', 'NAA', 1, gs, data)
         self.assertIn(2, dest)  # can still capture the first one
         self.assertNotIn(3, dest, 'only Mechanized Infantry may pass through an empty foreign territory')
+
+
+class TestLegalCombatMoveContinuations(unittest.TestCase):
+    """movement.legal_combat_move_continuations -- the further destinations
+    reachable by continuing a combat move one more hop past a Mechanized
+    Infantry's pass-through capture, keyed by which first hop was taken.
+    Lets a human client offer a route hop-by-hop instead of only the
+    single canonical path legal_combat_move_paths' own search settles on."""
+
+    def test_continuation_offered_after_a_pass_through_capture(self):
+        data, gs = TestMechInfEmptyTerritoryPassThrough()._setup()  # 1 -- 2 (empty enemy) -- 3 (empty enemy)
+        cont = legal_combat_move_continuations('Mechanized Infantry', 'NAA', 1, gs, data)
+        self.assertEqual(cont, {2: {3: [1, 2, 3]}})
+
+    def test_no_continuation_when_the_first_hop_is_an_attack_not_a_capture(self):
+        # 1 -- 2 (enemy-OCCUPIED, so a combat move there is an attack, not a
+        # pass-through) -- 3 (empty, beyond 2). Same fixture as
+        # TestOccupiedTerritoryStopsMovement, with Mech Inf's ordinary 2-move budget.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(99, 'Infantry', 'AAC')]},
+        )
+        cont = legal_combat_move_continuations('Mechanized Infantry', 'NAA', 1, gs, data)
+        self.assertEqual(cont, {}, 'a combat move that results in an attack must stop there -- never continuable')
+
+    def test_no_continuation_for_a_non_mech_inf_unit(self):
+        # Same empty-territory chain, but a unit type without the pass-
+        # through-capture ability, even given the same 2-move budget.
+        custom = dict(LAND_UNITS, Armor={'category': 'Land', 'combat_move': 2, 'non_combat_move': 2})
+        data, gs = TestMechInfEmptyTerritoryPassThrough()._setup(unit_defs=custom)
+        cont = legal_combat_move_continuations('Armor', 'NAA', 1, gs, data)
+        self.assertEqual(cont, {}, 'only Mechanized Infantry may pass through and keep going')
+
+    def test_no_continuation_with_insufficient_budget(self):
+        custom = dict(LAND_UNITS, **{'Mechanized Infantry': dict(LAND_UNITS['Mechanized Infantry'], combat_move=1)})
+        data, gs = TestMechInfEmptyTerritoryPassThrough()._setup(unit_defs=custom)
+        cont = legal_combat_move_continuations('Mechanized Infantry', 'NAA', 1, gs, data)
+        self.assertEqual(cont, {}, 'one move total leaves nothing left over after the first hop')
+
+    def test_no_continuation_when_there_is_nowhere_further_to_go(self):
+        # 1 -- 2 (empty enemy), and nothing beyond 2 at all.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}},
+            adjacency={1: [2], 2: [1]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 2: 'AAC'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+        )
+        cont = legal_combat_move_continuations('Mechanized Infantry', 'NAA', 1, gs, data)
+        self.assertEqual(cont, {}, '2 is still a legal single-hop destination on its own -- just not a continuable one')
+
+    def test_two_different_first_hops_can_reach_the_same_further_destination(self):
+        # 1 has two separate empty-enemy neighbors, 2 and 3, which both
+        # in turn border the SAME further territory 4 -- the "multiple
+        # legal paths to a location" case: legal_combat_move_paths' own
+        # single-path search would only ever report one canonical route
+        # to 4, but continuations exposes both, keyed by first hop.
+        data = FakeData(
+            territories={i: {'type': 'land'} for i in range(1, 5)},
+            adjacency={1: [2, 3], 2: [1, 4], 3: [1, 4], 4: [2, 3]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC', 4: 'AAC'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+        )
+        cont = legal_combat_move_continuations('Mechanized Infantry', 'NAA', 1, gs, data)
+        self.assertEqual(cont, {2: {4: [1, 2, 4]}, 3: {4: [1, 3, 4]}})
 
 
 class TestOccupiedTerritoryStopsMovement(unittest.TestCase):

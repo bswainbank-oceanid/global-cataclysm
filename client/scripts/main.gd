@@ -404,7 +404,8 @@ func _input(event: InputEvent) -> void:
 			return
 		_tile_dragging = true
 		_tile_drag_label.visible = true
-		(_tile_drag_label.get_child(0) as Label).text = "%d unit(s)" % GameStore.move_selected.size()
+		var dragged_count := 1 if GameStore.move_extend_active() else GameStore.move_selected.size()
+		(_tile_drag_label.get_child(0) as Label).text = "%d unit(s)" % dragged_count
 		_tile_drag_label.position = mm.position + Vector2(14, 10)
 		if _container.get_global_rect().has_point(mm.position):
 			_drag_hover(mm.position - _container.get_global_rect().position)
@@ -432,15 +433,29 @@ func _on_move_drag(phase: String, p: Vector2) -> void:
 
 
 func _refresh_move_targets() -> void:
-	_world.set_move_targets(GameStore.move_targets().keys(), -1)
+	if GameStore.move_extend_active():
+		_world.set_move_targets(GameStore.move_extend_targets().keys(), -1)
+	else:
+		_world.set_move_targets(GameStore.move_targets().keys(), -1)
 
 
 ## While dragging: highlight the target under the cursor and draw the arrow the
 ## move will get (snapped to the target, else following the cursor). True if the
-## cursor is over a viable target.
+## cursor is over a viable target. While GameStore.move_extend is active (a unit
+## already committed to a one-hop pass-through capture, offered a second, explicit
+## hop -- see turn_stepper.move_commit), this drags FROM that first hop instead
+## of the normal move_origin, over the offer's own further destinations.
 func _drag_hover(screen_pos: Vector2) -> bool:
 	var world := _cam.screen_to_world(screen_pos)
 	var tid := _world.space_at_world(world)
+	if GameStore.move_extend_active():
+		var targets: Dictionary = GameStore.move_extend_targets()
+		var over := targets.has(tid)
+		_world.arrows.set_preview({
+			"from": int(GameStore.move_extend["first_hop"]), "to": tid if over else -1, "to_pos": world,
+			"faction": GameStore.move_faction(), "count": 1})
+		_world.set_move_targets(targets.keys(), tid if over else -1)
+		return over
 	var targets := GameStore.move_targets()
 	var over := targets.has(tid)
 	_world.arrows.set_preview({
@@ -453,7 +468,10 @@ func _drag_hover(screen_pos: Vector2) -> bool:
 
 func _drag_release(screen_pos: Vector2) -> void:
 	var tid := _world.space_at_world(_cam.screen_to_world(screen_pos))
-	if GameStore.move_targets().has(tid):
+	if GameStore.move_extend_active():
+		if GameStore.move_extend_targets().has(tid):
+			Stepper.move_extend_commit(tid)
+	elif GameStore.move_targets().has(tid):
 		Stepper.move_commit(tid)
 	_clear_drag_preview()
 
