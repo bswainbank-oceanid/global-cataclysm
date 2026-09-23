@@ -13,6 +13,7 @@ signal remove_requested(unit_type: String, tid: int)
 const UNIT_ORDER := ["Infantry", "Mechanized Infantry", "Armor", "Fighter", "Bomber", "Submarine", "Cruiser", "Aircraft Carrier"]
 
 var button: HoldButton
+var resolve_button: Button  # only shown while a battle is paused waiting to open its board: fight it without opening one
 var _content: VBoxContainer
 var _target := -1
 
@@ -26,8 +27,13 @@ func _ready() -> void:
 	_content.add_theme_constant_override("separation", 1)
 	v.add_child(_content)
 
+	var button_row := HBoxContainer.new()
+	button_row.add_theme_constant_override("separation", 4)
+	v.add_child(button_row)
+
 	button = HoldButton.new()
 	button.custom_minimum_size = Vector2(0, 46)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.focus_mode = Control.FOCUS_NONE
 	button.add_theme_font_size_override("font_size", 15)
 	button.add_theme_color_override("font_color", HudStyle.GOLD)
@@ -37,7 +43,24 @@ func _ready() -> void:
 	button.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.24, 0.2, 0.06), 2))
 	button.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, Color(0.3, 0.25, 0.08), 2))
 	button.add_theme_stylebox_override("disabled", HudStyle.box(HudStyle.EDGE, HudStyle.BG, 1))
-	v.add_child(button)
+	button_row.add_child(button)
+
+	resolve_button = Button.new()
+	resolve_button.text = "Resolve"
+	resolve_button.tooltip_text = "Fight this battle without opening the battle board"
+	resolve_button.visible = false
+	resolve_button.custom_minimum_size = Vector2(90, 46)
+	resolve_button.focus_mode = Control.FOCUS_NONE
+	resolve_button.add_theme_font_size_override("font_size", 15)
+	resolve_button.add_theme_color_override("font_color", HudStyle.GOLD)
+	resolve_button.add_theme_color_override("font_hover_color", Color.WHITE)
+	resolve_button.add_theme_color_override("font_disabled_color", HudStyle.TEXT_DIM)
+	resolve_button.add_theme_stylebox_override("normal", HudStyle.box(HudStyle.GOLD, Color(0.16, 0.14, 0.05), 2))
+	resolve_button.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.24, 0.2, 0.06), 2))
+	resolve_button.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, Color(0.3, 0.25, 0.08), 2))
+	resolve_button.add_theme_stylebox_override("disabled", HudStyle.box(HudStyle.EDGE, HudStyle.BG, 1))
+	resolve_button.pressed.connect(Stepper.resolve_pending_battle)
+	button_row.add_child(resolve_button)
 
 	GameStore.purchase_changed.connect(_rebuild)
 	GameStore.move_changed.connect(_rebuild)

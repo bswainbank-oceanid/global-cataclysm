@@ -94,6 +94,8 @@ func _sync_next() -> void:
 	_next.disabled = not Stepper.button_active
 	_next.hold_seconds = 1.0 if Stepper.needs_hold else 0.0
 	_next.tooltip_text = "Hold for 1 second to submit (mouse or Space)" if Stepper.needs_hold else "Step to the next phase (Space)"
+	_orders.resolve_button.visible = Stepper.has_pending_battle()
+	_orders.resolve_button.disabled = not Stepper.button_active
 
 
 func _rich_text() -> RichTextLabel:

@@ -419,6 +419,18 @@ func has_pending_battle() -> bool:
 	return not _battle_pending.is_empty()
 
 
+## "Resolve" instead of "Open battle board": fight the paused battle the same
+## way an unpaused one would -- the whole result logged at once (battle_summary
+## in the Events box), no board, no per-roll reveal. _battle_open is
+## deliberately left false, so the ordinary phase_result handling in
+## _on_message applies (the else branch), not the held-messages board path.
+func resolve_pending_battle() -> void:
+	if _battle_pending.is_empty():
+		return
+	_battle_pending = {}
+	_do_advance()
+
+
 ## The board asked for the battle to be fought (its first Next Roll).
 func execute_open_battle() -> void:
 	if _battle_open:
