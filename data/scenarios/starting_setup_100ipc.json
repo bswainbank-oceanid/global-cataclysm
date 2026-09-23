@@ -43,7 +43,7 @@
         ]
       },
       {
-        "territory_id": 56,
+        "territory_id": 54,
         "units": [
           {
             "unit": "Infantry",
@@ -52,7 +52,7 @@
         ]
       },
       {
-        "territory_id": 69,
+        "territory_id": 67,
         "units": [
           {
             "unit": "Infantry",
@@ -61,7 +61,7 @@
         ]
       },
       {
-        "territory_id": 83,
+        "territory_id": 81,
         "units": [
           {
             "unit": "Bomber",
@@ -163,7 +163,7 @@
         ]
       },
       {
-        "territory_id": 74,
+        "territory_id": 72,
         "units": [
           {
             "unit": "Armor",
@@ -180,7 +180,7 @@
         ]
       },
       {
-        "territory_id": 138,
+        "territory_id": 133,
         "units": [
           {
             "unit": "Infantry",
@@ -289,7 +289,7 @@
         ]
       },
       {
-        "territory_id": 81,
+        "territory_id": 79,
         "units": [
           {
             "unit": "Cruiser",
@@ -302,7 +302,7 @@
         ]
       },
       {
-        "territory_id": 95,
+        "territory_id": 91,
         "units": [
           {
             "unit": "Infantry",
@@ -311,7 +311,7 @@
         ]
       },
       {
-        "territory_id": 104,
+        "territory_id": 100,
         "units": [
           {
             "unit": "Cruiser",
@@ -324,7 +324,7 @@
         ]
       },
       {
-        "territory_id": 129,
+        "territory_id": 124,
         "units": [
           {
             "unit": "Infantry",
@@ -333,7 +333,7 @@
         ]
       },
       {
-        "territory_id": 143,
+        "territory_id": 138,
         "units": [
           {
             "unit": "Infantry",
@@ -342,7 +342,7 @@
         ]
       },
       {
-        "territory_id": 145,
+        "territory_id": 139,
         "units": [
           {
             "unit": "Infantry",
@@ -362,35 +362,35 @@
         ]
       },
       {
+        "territory_id": 51,
+        "units": [
+          {
+            "unit": "Infantry",
+            "qty": 1
+          }
+        ]
+      },
+      {
+        "territory_id": 52,
+        "units": [
+          {
+            "unit": "Bomber",
+            "qty": 1
+          },
+          {
+            "unit": "Fighter",
+            "qty": 1
+          },
+          {
+            "unit": "Infantry",
+            "qty": 1
+          }
+        ]
+      },
+      {
         "territory_id": 53,
         "units": [
           {
-            "unit": "Infantry",
-            "qty": 1
-          }
-        ]
-      },
-      {
-        "territory_id": 54,
-        "units": [
-          {
-            "unit": "Bomber",
-            "qty": 1
-          },
-          {
-            "unit": "Fighter",
-            "qty": 1
-          },
-          {
-            "unit": "Infantry",
-            "qty": 1
-          }
-        ]
-      },
-      {
-        "territory_id": 55,
-        "units": [
-          {
             "unit": "Bomber",
             "qty": 1
           },
@@ -409,7 +409,7 @@
         ]
       },
       {
-        "territory_id": 65,
+        "territory_id": 63,
         "units": [
           {
             "unit": "Cruiser",
@@ -422,7 +422,7 @@
         ]
       },
       {
-        "territory_id": 98,
+        "territory_id": 94,
         "units": [
           {
             "unit": "Infantry",
@@ -431,7 +431,7 @@
         ]
       },
       {
-        "territory_id": 107,
+        "territory_id": 103,
         "units": [
           {
             "unit": "Submarine",
@@ -440,7 +440,7 @@
         ]
       },
       {
-        "territory_id": 126,
+        "territory_id": 121,
         "units": [
           {
             "unit": "Infantry",
@@ -451,7 +451,7 @@
     ],
     "PAF": [
       {
-        "territory_id": 51,
+        "territory_id": 49,
         "units": [
           {
             "unit": "Cruiser",
@@ -464,7 +464,7 @@
         ]
       },
       {
-        "territory_id": 64,
+        "territory_id": 62,
         "units": [
           {
             "unit": "Armor",
@@ -485,7 +485,7 @@
         ]
       },
       {
-        "territory_id": 73,
+        "territory_id": 71,
         "units": [
           {
             "unit": "Armor",
@@ -502,7 +502,7 @@
         ]
       },
       {
-        "territory_id": 82,
+        "territory_id": 80,
         "units": [
           {
             "unit": "Infantry",
@@ -515,7 +515,16 @@
         ]
       },
       {
-        "territory_id": 90,
+        "territory_id": 87,
+        "units": [
+          {
+            "unit": "Infantry",
+            "qty": 2
+          }
+        ]
+      },
+      {
+        "territory_id": 88,
         "units": [
           {
             "unit": "Infantry",
@@ -524,16 +533,7 @@
         ]
       },
       {
-        "territory_id": 91,
-        "units": [
-          {
-            "unit": "Infantry",
-            "qty": 1
-          }
-        ]
-      },
-      {
-        "territory_id": 97,
+        "territory_id": 93,
         "units": [
           {
             "unit": "Infantry",
@@ -546,7 +546,7 @@
         ]
       },
       {
-        "territory_id": 105,
+        "territory_id": 101,
         "units": [
           {
             "unit": "Infantry",
@@ -555,7 +555,7 @@
         ]
       },
       {
-        "territory_id": 119,
+        "territory_id": 117,
         "units": [
           {
             "unit": "Infantry",
@@ -564,16 +564,7 @@
         ]
       },
       {
-        "territory_id": 122,
-        "units": [
-          {
-            "unit": "Infantry",
-            "qty": 1
-          }
-        ]
-      },
-      {
-        "territory_id": 128,
+        "territory_id": 123,
         "units": [
           {
             "unit": "Infantry",
@@ -605,7 +596,7 @@
         ]
       },
       {
-        "territory_id": 78,
+        "territory_id": 76,
         "units": [
           {
             "unit": "Fighter",
@@ -618,7 +609,7 @@
         ]
       },
       {
-        "territory_id": 94,
+        "territory_id": 90,
         "units": [
           {
             "unit": "Infantry",
@@ -627,7 +618,7 @@
         ]
       },
       {
-        "territory_id": 102,
+        "territory_id": 98,
         "units": [
           {
             "unit": "Infantry",
@@ -636,7 +627,7 @@
         ]
       },
       {
-        "territory_id": 103,
+        "territory_id": 99,
         "units": [
           {
             "unit": "Bomber",
@@ -653,7 +644,7 @@
         ]
       },
       {
-        "territory_id": 112,
+        "territory_id": 108,
         "units": [
           {
             "unit": "Infantry",
@@ -662,7 +653,7 @@
         ]
       },
       {
-        "territory_id": 118,
+        "territory_id": 114,
         "units": [
           {
             "unit": "Infantry",
@@ -671,7 +662,7 @@
         ]
       },
       {
-        "territory_id": 121,
+        "territory_id": 116,
         "units": [
           {
             "unit": "Infantry",
@@ -680,7 +671,7 @@
         ]
       },
       {
-        "territory_id": 146,
+        "territory_id": 140,
         "units": [
           {
             "unit": "Infantry",

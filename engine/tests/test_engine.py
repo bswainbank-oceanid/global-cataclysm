@@ -710,7 +710,9 @@ class TestLostContestedPurchaseOverAWholeTurn(unittest.TestCase):
         self.assertIn(tid, real_data.adjacency()[10])
 
     def test_with_no_adjacent_land_left_they_are_lost(self):
-        placed = self.play(hand_over_to_gpc=(20, 46, 56, 69, 6))
+        # Every one of territory 10's (Western Canada's) own land neighbors: Eastern Canada (20),
+        # Western United States (54), Rocky Mountain States (67), Alaska (6).
+        placed = self.play(hand_over_to_gpc=(20, 54, 67, 6))
         self.assertEqual(placed, {})
 
 

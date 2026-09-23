@@ -574,19 +574,6 @@
     },
     {
       "id": 48,
-      "type": "land",
-      "name": "Gibraltar",
-      "x": 792,
-      "y": 750,
-      "area_px": 2078,
-      "bbox_w": 60,
-      "bbox_h": 65,
-      "faction": "PAF",
-      "value": 0,
-      "strategic_center": false
-    },
-    {
-      "id": 49,
       "type": "sea",
       "name": "Western Mediterranean Sea",
       "x": 927,
@@ -596,20 +583,7 @@
       "bbox_h": 181
     },
     {
-      "id": 50,
-      "type": "land",
-      "name": "Corsica",
-      "x": 991,
-      "y": 684,
-      "area_px": 553,
-      "bbox_w": 37,
-      "bbox_h": 30,
-      "faction": "PAF",
-      "value": 0,
-      "strategic_center": false
-    },
-    {
-      "id": 51,
+      "id": 49,
       "type": "land",
       "name": "Turkey",
       "x": 1362,
@@ -622,7 +596,7 @@
       "strategic_center": false
     },
     {
-      "id": 52,
+      "id": 50,
       "type": "land",
       "name": "Afghanistan",
       "x": 1722,
@@ -635,7 +609,7 @@
       "strategic_center": false
     },
     {
-      "id": 53,
+      "id": 51,
       "type": "land",
       "name": "Western China",
       "x": 1927,
@@ -648,7 +622,7 @@
       "strategic_center": false
     },
     {
-      "id": 54,
+      "id": 52,
       "type": "land",
       "name": "Central China",
       "x": 2094,
@@ -661,7 +635,7 @@
       "strategic_center": true
     },
     {
-      "id": 55,
+      "id": 53,
       "type": "land",
       "name": "Southern Japan",
       "x": 2555,
@@ -674,7 +648,7 @@
       "strategic_center": true
     },
     {
-      "id": 56,
+      "id": 54,
       "type": "land",
       "name": "Western United States",
       "x": 3209,
@@ -687,7 +661,7 @@
       "strategic_center": false
     },
     {
-      "id": 57,
+      "id": 55,
       "type": "land",
       "name": "Southern United States",
       "x": 118,
@@ -700,7 +674,7 @@
       "strategic_center": false
     },
     {
-      "id": 58,
+      "id": 56,
       "type": "sea",
       "name": "Labrador Sea",
       "x": 304,
@@ -710,7 +684,7 @@
       "bbox_h": 278
     },
     {
-      "id": 59,
+      "id": 57,
       "type": "sea",
       "name": "North Atlantic",
       "x": 482,
@@ -720,7 +694,7 @@
       "bbox_h": 344
     },
     {
-      "id": 60,
+      "id": 58,
       "type": "sea",
       "name": "Sargasso Sea",
       "x": 656,
@@ -730,7 +704,7 @@
       "bbox_h": 409
     },
     {
-      "id": 61,
+      "id": 59,
       "type": "sea",
       "name": "Central Mediterranean Sea",
       "x": 1059,
@@ -740,7 +714,7 @@
       "bbox_h": 90
     },
     {
-      "id": 62,
+      "id": 60,
       "type": "sea",
       "name": "Eastern Mediterranean Sea",
       "x": 1144,
@@ -750,7 +724,7 @@
       "bbox_h": 201
     },
     {
-      "id": 63,
+      "id": 61,
       "type": "sea",
       "name": "Aegean Sea",
       "x": 1265,
@@ -760,7 +734,7 @@
       "bbox_h": 108
     },
     {
-      "id": 64,
+      "id": 62,
       "type": "land",
       "name": "Middle East",
       "x": 1410,
@@ -773,7 +747,7 @@
       "strategic_center": true
     },
     {
-      "id": 65,
+      "id": 63,
       "type": "land",
       "name": "Eastern China",
       "x": 2237,
@@ -786,7 +760,7 @@
       "strategic_center": false
     },
     {
-      "id": 66,
+      "id": 64,
       "type": "sea",
       "name": "East China Sea",
       "x": 2353,
@@ -796,7 +770,7 @@
       "bbox_h": 357
     },
     {
-      "id": 67,
+      "id": 65,
       "type": "sea",
       "name": "Northwest Pacific",
       "x": 2633,
@@ -806,7 +780,7 @@
       "bbox_h": 381
     },
     {
-      "id": 68,
+      "id": 66,
       "type": "sea",
       "name": "North-Central Pacific",
       "x": 3089,
@@ -816,7 +790,7 @@
       "bbox_h": 380
     },
     {
-      "id": 69,
+      "id": 67,
       "type": "land",
       "name": "Rocky Mountain States",
       "x": 3443,
@@ -829,7 +803,7 @@
       "strategic_center": false
     },
     {
-      "id": 70,
+      "id": 68,
       "type": "sea",
       "name": "Gulf of Mexico",
       "x": 45,
@@ -839,7 +813,7 @@
       "bbox_h": 90
     },
     {
-      "id": 71,
+      "id": 69,
       "type": "land",
       "name": "Algeria",
       "x": 921,
@@ -852,7 +826,7 @@
       "strategic_center": false
     },
     {
-      "id": 72,
+      "id": 70,
       "type": "land",
       "name": "Libya",
       "x": 1067,
@@ -865,7 +839,7 @@
       "strategic_center": false
     },
     {
-      "id": 73,
+      "id": 71,
       "type": "land",
       "name": "India",
       "x": 1831,
@@ -878,7 +852,7 @@
       "strategic_center": true
     },
     {
-      "id": 74,
+      "id": 72,
       "type": "land",
       "name": "Indochina",
       "x": 2067,
@@ -891,7 +865,7 @@
       "strategic_center": false
     },
     {
-      "id": 75,
+      "id": 73,
       "type": "sea",
       "name": "Philippine Sea",
       "x": 2531,
@@ -901,7 +875,7 @@
       "bbox_h": 376
     },
     {
-      "id": 76,
+      "id": 74,
       "type": "sea",
       "name": "West Pacific",
       "x": 2754,
@@ -911,7 +885,7 @@
       "bbox_h": 260
     },
     {
-      "id": 77,
+      "id": 75,
       "type": "land",
       "name": "Hawaii",
       "x": 2929,
@@ -924,7 +898,7 @@
       "strategic_center": true
     },
     {
-      "id": 78,
+      "id": 76,
       "type": "land",
       "name": "Mexico",
       "x": 3340,
@@ -937,7 +911,7 @@
       "strategic_center": true
     },
     {
-      "id": 79,
+      "id": 77,
       "type": "sea",
       "name": "Northeast Pacific",
       "x": 3461,
@@ -947,7 +921,7 @@
       "bbox_h": 163
     },
     {
-      "id": 80,
+      "id": 78,
       "type": "land",
       "name": "Panama",
       "x": 62,
@@ -960,7 +934,7 @@
       "strategic_center": false
     },
     {
-      "id": 81,
+      "id": 79,
       "type": "land",
       "name": "Cuba",
       "x": 258,
@@ -973,7 +947,7 @@
       "strategic_center": true
     },
     {
-      "id": 82,
+      "id": 80,
       "type": "land",
       "name": "Egypt",
       "x": 1207,
@@ -986,7 +960,7 @@
       "strategic_center": false
     },
     {
-      "id": 83,
+      "id": 81,
       "type": "land",
       "name": "Saudi Arabia",
       "x": 1499,
@@ -999,7 +973,7 @@
       "strategic_center": false
     },
     {
-      "id": 84,
+      "id": 82,
       "type": "sea",
       "name": "South China Sea",
       "x": 2337,
@@ -1009,7 +983,7 @@
       "bbox_h": 322
     },
     {
-      "id": 85,
+      "id": 83,
       "type": "sea",
       "name": "North Pacific",
       "x": 3070,
@@ -1019,7 +993,7 @@
       "bbox_h": 260
     },
     {
-      "id": 86,
+      "id": 84,
       "type": "sea",
       "name": "Western Caribbean Sea",
       "x": 55,
@@ -1029,7 +1003,7 @@
       "bbox_h": 223
     },
     {
-      "id": 87,
+      "id": 85,
       "type": "sea",
       "name": "Caribbean Sea",
       "x": 322,
@@ -1039,7 +1013,7 @@
       "bbox_h": 254
     },
     {
-      "id": 88,
+      "id": 86,
       "type": "sea",
       "name": "Eastern Caribbean Sea",
       "x": 482,
@@ -1049,20 +1023,7 @@
       "bbox_h": 235
     },
     {
-      "id": 89,
-      "type": "land",
-      "name": "Senegal",
-      "x": 710,
-      "y": 1103,
-      "area_px": 5542,
-      "bbox_w": 70,
-      "bbox_h": 161,
-      "faction": "AAC",
-      "value": 0,
-      "strategic_center": false
-    },
-    {
-      "id": 90,
+      "id": 87,
       "type": "land",
       "name": "West Africa",
       "x": 833,
@@ -1075,7 +1036,7 @@
       "strategic_center": false
     },
     {
-      "id": 91,
+      "id": 88,
       "type": "land",
       "name": "Sudan",
       "x": 1277,
@@ -1088,7 +1049,7 @@
       "strategic_center": false
     },
     {
-      "id": 93,
+      "id": 89,
       "type": "sea",
       "name": "Southeast Pacific",
       "x": 3321,
@@ -1098,7 +1059,7 @@
       "bbox_h": 452
     },
     {
-      "id": 94,
+      "id": 90,
       "type": "land",
       "name": "Colombia",
       "x": 154,
@@ -1111,7 +1072,7 @@
       "strategic_center": false
     },
     {
-      "id": 95,
+      "id": 91,
       "type": "land",
       "name": "Venezuela",
       "x": 263,
@@ -1124,7 +1085,7 @@
       "strategic_center": false
     },
     {
-      "id": 96,
+      "id": 92,
       "type": "sea",
       "name": "Gulf of Guinea",
       "x": 639,
@@ -1134,7 +1095,7 @@
       "bbox_h": 445
     },
     {
-      "id": 97,
+      "id": 93,
       "type": "land",
       "name": "Nigeria",
       "x": 1050,
@@ -1147,7 +1108,7 @@
       "strategic_center": true
     },
     {
-      "id": 98,
+      "id": 94,
       "type": "land",
       "name": "Ethiopia",
       "x": 1423,
@@ -1160,7 +1121,7 @@
       "strategic_center": false
     },
     {
-      "id": 99,
+      "id": 95,
       "type": "sea",
       "name": "Arabian Sea",
       "x": 1709,
@@ -1170,7 +1131,7 @@
       "bbox_h": 346
     },
     {
-      "id": 100,
+      "id": 96,
       "type": "sea",
       "name": "Gulf of Tonkin",
       "x": 2166,
@@ -1180,7 +1141,7 @@
       "bbox_h": 319
     },
     {
-      "id": 101,
+      "id": 97,
       "type": "land",
       "name": "Philippines",
       "x": 2242,
@@ -1193,7 +1154,7 @@
       "strategic_center": false
     },
     {
-      "id": 102,
+      "id": 98,
       "type": "land",
       "name": "Amazon Basin",
       "x": 277,
@@ -1206,7 +1167,7 @@
       "strategic_center": false
     },
     {
-      "id": 103,
+      "id": 99,
       "type": "land",
       "name": "Eastern Brazil",
       "x": 414,
@@ -1219,7 +1180,7 @@
       "strategic_center": true
     },
     {
-      "id": 104,
+      "id": 100,
       "type": "land",
       "name": "Congo",
       "x": 1097,
@@ -1232,7 +1193,7 @@
       "strategic_center": false
     },
     {
-      "id": 105,
+      "id": 101,
       "type": "land",
       "name": "Kenya",
       "x": 1315,
@@ -1245,7 +1206,7 @@
       "strategic_center": false
     },
     {
-      "id": 106,
+      "id": 102,
       "type": "sea",
       "name": "Western Indian Ocean",
       "x": 1571,
@@ -1255,7 +1216,7 @@
       "bbox_h": 491
     },
     {
-      "id": 107,
+      "id": 103,
       "type": "land",
       "name": "Indonesia",
       "x": 2061,
@@ -1268,7 +1229,7 @@
       "strategic_center": false
     },
     {
-      "id": 108,
+      "id": 104,
       "type": "sea",
       "name": "Java Sea",
       "x": 2325,
@@ -1278,7 +1239,7 @@
       "bbox_h": 243
     },
     {
-      "id": 109,
+      "id": 105,
       "type": "land",
       "name": "New Guinea",
       "x": 2486,
@@ -1291,7 +1252,7 @@
       "strategic_center": false
     },
     {
-      "id": 110,
+      "id": 106,
       "type": "sea",
       "name": "West-Central Pacific",
       "x": 2765,
@@ -1301,7 +1262,7 @@
       "bbox_h": 353
     },
     {
-      "id": 111,
+      "id": 107,
       "type": "sea",
       "name": "Central Pacific",
       "x": 3039,
@@ -1311,7 +1272,7 @@
       "bbox_h": 354
     },
     {
-      "id": 112,
+      "id": 108,
       "type": "land",
       "name": "Peru",
       "x": 246,
@@ -1324,7 +1285,7 @@
       "strategic_center": false
     },
     {
-      "id": 113,
+      "id": 109,
       "type": "sea",
       "name": "Brazil Basin",
       "x": 759,
@@ -1334,7 +1295,7 @@
       "bbox_h": 295
     },
     {
-      "id": 114,
+      "id": 110,
       "type": "sea",
       "name": "Eastern Indian Ocean",
       "x": 2004,
@@ -1344,7 +1305,7 @@
       "bbox_h": 298
     },
     {
-      "id": 115,
+      "id": 111,
       "type": "sea",
       "name": "Celebes Sea",
       "x": 2512,
@@ -1354,7 +1315,7 @@
       "bbox_h": 198
     },
     {
-      "id": 116,
+      "id": 112,
       "type": "sea",
       "name": "East-Central Pacific",
       "x": 3295,
@@ -1364,7 +1325,7 @@
       "bbox_h": 197
     },
     {
-      "id": 117,
+      "id": 113,
       "type": "sea",
       "name": "South Pacific",
       "x": 102,
@@ -1374,7 +1335,7 @@
       "bbox_h": 454
     },
     {
-      "id": 118,
+      "id": 114,
       "type": "land",
       "name": "Argentina",
       "x": 308,
@@ -1387,20 +1348,7 @@
       "strategic_center": false
     },
     {
-      "id": 119,
-      "type": "land",
-      "name": "Southeast Brazil",
-      "x": 408,
-      "y": 1459,
-      "area_px": 3689,
-      "bbox_w": 121,
-      "bbox_h": 93,
-      "faction": "PAF",
-      "value": 1,
-      "strategic_center": false
-    },
-    {
-      "id": 120,
+      "id": 115,
       "type": "sea",
       "name": "Northern South Atlantic",
       "x": 577,
@@ -1410,7 +1358,7 @@
       "bbox_h": 265
     },
     {
-      "id": 121,
+      "id": 116,
       "type": "land",
       "name": "Angola",
       "x": 1131,
@@ -1423,7 +1371,7 @@
       "strategic_center": false
     },
     {
-      "id": 122,
+      "id": 117,
       "type": "land",
       "name": "Zambia",
       "x": 1247,
@@ -1436,7 +1384,7 @@
       "strategic_center": false
     },
     {
-      "id": 123,
+      "id": 118,
       "type": "sea",
       "name": "South-Western Indian Ocean",
       "x": 1630,
@@ -1446,7 +1394,7 @@
       "bbox_h": 565
     },
     {
-      "id": 124,
+      "id": 119,
       "type": "sea",
       "name": "South-Eastern Indian Ocean",
       "x": 2082,
@@ -1456,7 +1404,7 @@
       "bbox_h": 415
     },
     {
-      "id": 125,
+      "id": 120,
       "type": "sea",
       "name": "Coral Sea",
       "x": 2588,
@@ -1466,7 +1414,7 @@
       "bbox_h": 381
     },
     {
-      "id": 126,
+      "id": 121,
       "type": "land",
       "name": "Chile",
       "x": 220,
@@ -1479,7 +1427,7 @@
       "strategic_center": true
     },
     {
-      "id": 127,
+      "id": 122,
       "type": "sea",
       "name": "Drake Passage",
       "x": 439,
@@ -1489,7 +1437,7 @@
       "bbox_h": 237
     },
     {
-      "id": 128,
+      "id": 123,
       "type": "land",
       "name": "Namibia",
       "x": 1183,
@@ -1502,7 +1450,7 @@
       "strategic_center": false
     },
     {
-      "id": 129,
+      "id": 124,
       "type": "land",
       "name": "Mozambique",
       "x": 1327,
@@ -1515,7 +1463,7 @@
       "strategic_center": false
     },
     {
-      "id": 130,
+      "id": 125,
       "type": "sea",
       "name": "Central Indian Ocean",
       "x": 1893,
@@ -1525,7 +1473,7 @@
       "bbox_h": 564
     },
     {
-      "id": 131,
+      "id": 126,
       "type": "land",
       "name": "Western Australia",
       "x": 2275,
@@ -1538,7 +1486,7 @@
       "strategic_center": false
     },
     {
-      "id": 132,
+      "id": 127,
       "type": "sea",
       "name": "Argentine Basin",
       "x": 746,
@@ -1548,7 +1496,7 @@
       "bbox_h": 397
     },
     {
-      "id": 133,
+      "id": 128,
       "type": "land",
       "name": "Madagascar",
       "x": 1437,
@@ -1557,11 +1505,11 @@
       "bbox_w": 118,
       "bbox_h": 247,
       "faction": "PAF",
-      "value": 0,
+      "value": 1,
       "strategic_center": false
     },
     {
-      "id": 134,
+      "id": 129,
       "type": "land",
       "name": "Eastern Australia",
       "x": 2486,
@@ -1574,7 +1522,7 @@
       "strategic_center": false
     },
     {
-      "id": 135,
+      "id": 130,
       "type": "sea",
       "name": "Tasman Sea",
       "x": 2861,
@@ -1584,7 +1532,7 @@
       "bbox_h": 477
     },
     {
-      "id": 136,
+      "id": 131,
       "type": "sea",
       "name": "Weddell Sea",
       "x": 380,
@@ -1594,7 +1542,7 @@
       "bbox_h": 219
     },
     {
-      "id": 137,
+      "id": 132,
       "type": "sea",
       "name": "South Atlantic",
       "x": 1028,
@@ -1604,7 +1552,7 @@
       "bbox_h": 466
     },
     {
-      "id": 138,
+      "id": 133,
       "type": "land",
       "name": "South Africa",
       "x": 1185,
@@ -1617,7 +1565,7 @@
       "strategic_center": true
     },
     {
-      "id": 139,
+      "id": 134,
       "type": "land",
       "name": "New Zealand",
       "x": 2743,
@@ -1630,7 +1578,7 @@
       "strategic_center": false
     },
     {
-      "id": 140,
+      "id": 135,
       "type": "sea",
       "name": "Southern Ocean",
       "x": 1323,
@@ -1640,7 +1588,7 @@
       "bbox_h": 331
     },
     {
-      "id": 141,
+      "id": 136,
       "type": "sea",
       "name": "Crozet Basin",
       "x": 1612,
@@ -1650,7 +1598,7 @@
       "bbox_h": 134
     },
     {
-      "id": 142,
+      "id": 137,
       "type": "sea",
       "name": "Great Australian Bight",
       "x": 2299,
@@ -1660,7 +1608,7 @@
       "bbox_h": 167
     },
     {
-      "id": 143,
+      "id": 138,
       "type": "land",
       "name": "Finland",
       "x": 1149,
@@ -1673,20 +1621,7 @@
       "strategic_center": false
     },
     {
-      "id": 144,
-      "type": "land",
-      "name": "Falkland Islands",
-      "x": 428,
-      "y": 1665,
-      "area_px": 774,
-      "bbox_w": 83,
-      "bbox_h": 41,
-      "faction": "PAF",
-      "value": 0,
-      "strategic_center": false
-    },
-    {
-      "id": 145,
+      "id": 139,
       "type": "land",
       "name": "Persia",
       "x": 1641,
@@ -1699,7 +1634,7 @@
       "strategic_center": false
     },
     {
-      "id": 146,
+      "id": 140,
       "type": "land",
       "name": "Himalayan Bengal",
       "x": 1949,
@@ -1712,7 +1647,7 @@
       "strategic_center": false
     },
     {
-      "id": 147,
+      "id": 141,
       "type": "sea",
       "name": "Mozambique Channel",
       "x": 1445,
@@ -1722,17 +1657,7 @@
       "bbox_h": 170
     },
     {
-      "id": 149,
-      "type": "sea",
-      "name": "Southwest Pacific",
-      "x": 3279,
-      "y": 1715,
-      "area_px": 208886,
-      "bbox_w": 448,
-      "bbox_h": 478
-    },
-    {
-      "id": 148,
+      "id": 142,
       "type": "land",
       "name": "Polynesia",
       "x": 3080,
@@ -1745,7 +1670,17 @@
       "strategic_center": false
     },
     {
-      "id": 150,
+      "id": 143,
+      "type": "sea",
+      "name": "Southwest Pacific",
+      "x": 3279,
+      "y": 1715,
+      "area_px": 208886,
+      "bbox_w": 448,
+      "bbox_h": 478
+    },
+    {
+      "id": 144,
       "type": "sea",
       "name": "Bering Strait",
       "x": 3156,

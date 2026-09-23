@@ -12,48 +12,48 @@
    "Arctic Ocean / Norway"
   ],
   [
-   62,
+   60,
    41,
    "Eastern Mediterranean Sea / Romania"
   ],
   [
    28,
-   49,
+   48,
    "France / Western Mediterranean Sea"
   ],
   [
-   96,
-   97,
+   92,
+   93,
    "Gulf of Guinea / Nigeria"
   ],
   [
-   104,
-   137,
+   100,
+   132,
    "Congo / South Atlantic"
   ],
   [
-   127,
-   126,
+   122,
+   121,
    "Drake Passage / Chile"
   ],
   [
-   94,
-   117,
+   90,
+   113,
    "Colombia / South Pacific"
   ],
   [
-   86,
-   78,
+   84,
+   76,
    "Western Caribbean Sea / Mexico"
   ],
   [
-   80,
-   93,
+   78,
+   89,
    "Panama / Southeast Pacific"
   ],
   [
-   68,
-   78,
+   66,
+   76,
    "North-Central Pacific / Mexico"
   ],
   [
@@ -62,18 +62,18 @@
    "Western Canada / Hudson Bay"
   ],
   [
-   99,
-   74,
+   95,
+   72,
    "Arabian Sea / Indochina"
   ],
   [
-   124,
-   134,
+   119,
+   129,
    "South-Eastern Indian Ocean / Eastern Australia"
   ],
   [
    20,
-   69,
+   67,
    "Eastern Canada / Rocky Mountain States"
   ],
   [
@@ -82,28 +82,28 @@
    "West Germany / Romania"
   ],
   [
-   84,
+   82,
    45,
    "South China Sea / Sea of Japan"
   ],
   [
    20,
-   150,
+   144,
    "Eastern Canada / Bering Strait"
   ],
   [
-   107,
-   100,
+   103,
+   96,
    "Indonesia / Gulf of Tonkin"
   ],
   [
-   125,
-   131,
+   120,
+   126,
    "Coral Sea / Western Australia"
   ],
   [
-   61,
-   82,
+   59,
+   80,
    "Central Mediterranean Sea / Egypt"
   ],
   [
@@ -112,43 +112,38 @@
    "Baffin Bay / Benelux"
   ],
   [
-   90,
-   113,
+   87,
+   109,
    "West Africa / Brazil Basin"
   ],
   [
-   127,
-   119,
-   "Drake Passage / Southeast Brazil"
-  ],
-  [
-   136,
-   118,
+   131,
+   114,
    "Weddell Sea / Argentina"
   ],
   [
-   86,
-   112,
+   84,
+   108,
    "Western Caribbean Sea / Peru"
   ],
   [
-   80,
-   79,
+   78,
+   77,
    "Panama / Northeast Pacific"
   ],
   [
-   57,
-   79,
+   55,
+   77,
    "Southern United States / Northeast Pacific"
   ],
   [
-   146,
-   100,
+   140,
+   96,
    "Himalayan Bengal / Gulf of Tonkin"
   ],
   [
    45,
-   65,
+   63,
    "Sea of Japan / Eastern China"
   ],
   [
@@ -162,8 +157,8 @@
    "Sea of Okhotsk / Manchuria"
   ],
   [
-   73,
-   106,
+   71,
+   102,
    "India / Western Indian Ocean"
   ],
   [
@@ -174,13 +169,13 @@
  ],
  "add": [
   [
-   94,
-   80,
+   90,
+   78,
    "Colombia / Panama"
   ],
   [
-   82,
-   64,
+   80,
+   62,
    "Egypt / Middle East"
   ]
  ]

@@ -17,13 +17,12 @@ from scipy import ndimage
 # territory's own seed) whose centroid falls in this faction gets pulled
 # in too. See territory_labels().
 MULTI_SEED_BOX = {
-    81: (140, 940, 360, 1080),      # Cuba -- main island + Isle of Youth
-    144: (340, 1600, 540, 1740),    # Falkland Islands
-    101: (2170, 1150, 2410, 1370),  # Philippines
-    109: (2370, 1140, 2660, 1460),  # New Guinea
-    77: (2820, 900, 3020, 1040),    # Hawaii
-    148: (2930, 1270, 3160, 1420),  # Polynesia
-    90: (585, 920, 750, 1020),      # West Africa -- coastal strip cut off near the Algeria border
+    79: (140, 940, 360, 1080),      # Cuba -- main island + Isle of Youth
+    97: (2170, 1150, 2410, 1370),   # Philippines
+    105: (2370, 1140, 2660, 1460),  # New Guinea
+    75: (2820, 900, 3020, 1040),    # Hawaii
+    142: (2930, 1270, 3160, 1420),  # Polynesia
+    87: (585, 920, 750, 1020),      # West Africa -- coastal strip cut off near the Algeria border
 }
 
 
@@ -124,7 +123,7 @@ def label_sea(img):
 # territory) whose centroid falls in this box is folded into the named
 # SEA territory's mask instead. See absorb_unclaimed_land().
 SEA_ABSORBS_UNCLAIMED_LAND_BOX = {
-    114: (1970, 1240, 2000, 1340),  # small islet chain west of Indonesia (107)
+    110: (1970, 1240, 2000, 1340),  # small islet chain west of Indonesia (103)
 }
 
 
