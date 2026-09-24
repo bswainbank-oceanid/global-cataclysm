@@ -14,6 +14,14 @@ signal game_over_report_changed  # the Game Over report arrived, or its minimize
 
 var human_move := {}      # the human's Combat/Non-Combat Move in progress: {kind, faction, options{uid: {unit_type, origin, dests{dest: path}, continuations{first_hop: {dest: path}}}}, orders[{unit_id, unit_type, from, dest, path?}]}
 var tile_drag_armed := false  # a selected unit tile was pressed: a move drag may follow (see main.gd)
+## Which tile armed the drag currently in progress ("move_units" | "extend_move" |
+## "" for a drag that didn't start on a tile at all, e.g. from the origin space on
+## the map) -- main.gd's _drag_hover/_drag_release read this to know whether THIS
+## drag is the move_extend offer's own tile, rather than re-deriving it from
+## move_extend_active() alone, which stays true regardless of what's actually being
+## dragged and used to hijack every drag (and the whole map's highlight) the moment
+## an offer was pending -- see unit_tile._arm_drag.
+var tile_drag_kind := ""
 var move_origin := -1     # the space whose units are being picked to move
 var move_selected := {}   # unit_id -> true: the units picked (all uncommitted ones by default)
 ## Offered right after committing a SINGLE unit's one-hop combat move that didn't
@@ -145,6 +153,7 @@ func reset() -> void:
 	queued_purchase = {}
 	queued_attack = {}
 	tile_drag_armed = false
+	tile_drag_kind = ""
 	state_changed.emit()
 	purchase_changed.emit()
 	move_changed.emit()

@@ -424,7 +424,7 @@ func _input(event: InputEvent) -> void:
 			return
 		_tile_dragging = true
 		_tile_drag_label.visible = true
-		var dragged_count := 1 if GameStore.move_extend_active() else GameStore.move_selected.size()
+		var dragged_count := 1 if _dragging_extend() else GameStore.move_selected.size()
 		(_tile_drag_label.get_child(0) as Label).text = "%d unit(s)" % dragged_count
 		_tile_drag_label.position = mm.position + Vector2(14, 10)
 		if _container.get_global_rect().has_point(mm.position):
@@ -438,6 +438,7 @@ func _input(event: InputEvent) -> void:
 		else:
 			_clear_drag_preview()
 		GameStore.tile_drag_armed = false
+		GameStore.tile_drag_kind = ""
 		_tile_dragging = false
 		_tile_drag_travel = 0.0
 		_tile_drag_label.visible = false
@@ -452,8 +453,25 @@ func _on_move_drag(phase: String, p: Vector2) -> void:
 		_clear_drag_preview()
 
 
+## True only while the drag actually in progress started on the move_extend
+## offer's own tile (GameStore.tile_drag_kind, set by unit_tile._arm_drag) --
+## NOT just "an offer happens to be pending" (GameStore.move_extend_active()
+## alone), which stays true regardless of what is actually being dragged and
+## used to wrongly hijack every other unit's drag, and the map's whole
+## highlight, for as long as the offer sat unanswered. A drag that didn't
+## start on a tile at all (dragging from the origin space on the map) is
+## never the extend offer either -- tile_drag_kind is only ever set by a
+## tile's own _arm_drag.
+func _dragging_extend() -> bool:
+	return GameStore.tile_drag_armed and GameStore.tile_drag_kind == "extend_move"
+
+
+## The persistent (non-drag) highlight: the move_extend offer's own targets
+## only while it's the sole actionable thing (nothing else selected) -- the
+## moment the player selects any other unit, ITS targets take over, so
+## picking a different unit's move is never blocked by an unanswered offer.
 func _refresh_move_targets() -> void:
-	if GameStore.move_extend_active():
+	if GameStore.move_extend_active() and GameStore.move_selected.is_empty():
 		_world.set_move_targets(GameStore.move_extend_targets().keys(), -1)
 	else:
 		_world.set_move_targets(GameStore.move_targets().keys(), -1)
@@ -461,14 +479,17 @@ func _refresh_move_targets() -> void:
 
 ## While dragging: highlight the target under the cursor and draw the arrow the
 ## move will get (snapped to the target, else following the cursor). True if the
-## cursor is over a viable target. While GameStore.move_extend is active (a unit
-## already committed to a one-hop pass-through capture, offered a second, explicit
-## hop -- see turn_stepper.move_commit), this drags FROM that first hop instead
-## of the normal move_origin, over the offer's own further destinations.
+## cursor is over a viable target. While THIS drag is the move_extend offer's own
+## tile (_dragging_extend; a unit already committed to a one-hop pass-through
+## capture, offered a second, explicit hop -- see turn_stepper.move_commit), it
+## drags FROM that first hop instead of the normal move_origin, over the offer's
+## own further destinations -- any OTHER drag (a normal selection, or straight off
+## the origin space on the map) uses the ordinary move_targets() the whole time,
+## even while that offer sits unanswered.
 func _drag_hover(screen_pos: Vector2) -> bool:
 	var world := _cam.screen_to_world(screen_pos)
 	var tid := _world.space_at_world(world)
-	if GameStore.move_extend_active():
+	if _dragging_extend():
 		var targets: Dictionary = GameStore.move_extend_targets()
 		var over := targets.has(tid)
 		_world.arrows.set_preview({
@@ -488,7 +509,7 @@ func _drag_hover(screen_pos: Vector2) -> bool:
 
 func _drag_release(screen_pos: Vector2) -> void:
 	var tid := _world.space_at_world(_cam.screen_to_world(screen_pos))
-	if GameStore.move_extend_active():
+	if _dragging_extend():
 		if GameStore.move_extend_targets().has(tid):
 			Stepper.move_extend_commit(tid)
 	elif GameStore.move_targets().has(tid):

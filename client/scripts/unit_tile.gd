@@ -173,6 +173,7 @@ func _draw() -> void:
 func _arm_drag() -> void:
 	if not drag_payload.is_empty():
 		GameStore.tile_drag_armed = true
+		GameStore.tile_drag_kind = str(drag_payload.get("kind", ""))
 
 
 ## Battle marks: "/" through a unit that was hit but lives, "X" through an
