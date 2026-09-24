@@ -222,6 +222,29 @@ class TestLegalCombatMoveContinuations(unittest.TestCase):
         cont = legal_combat_move_continuations('Mechanized Infantry', 'NAA', 1, gs, data)
         self.assertEqual(cont, {2: {4: [1, 2, 4]}, 3: {4: [1, 3, 4]}})
 
+    def test_still_offered_when_the_pass_through_territory_is_already_self_marked_contested(self):
+        # A bug found and fixed this session: GameEngine._mark_contested_by_attack
+        # adds an empty land territory's registered (non-allied) owner to
+        # contested_by on ANY entry, even an undefended Mechanized Infantry
+        # blitz through -- so a SECOND Mechanized Infantry's own reachability
+        # (computed against a scratch copy with the FIRST one's move already
+        # applied -- see GameEngine.move_options_with_staged) used to see
+        # territory 2 as genuinely contested and wrongly stop offering a
+        # continuation past it, even though nobody was ever actually there to
+        # fight or dispute the claim -- exactly the state a first Mechanized
+        # Infantry's own already-confirmed blitz through 2 leaves behind.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3], 3: [2]},
+        )
+        gs = make_state(
+            data, territory_owners={1: 'NAA', 2: 'AAC', 3: 'AAC'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            contested={2: {'NAA', 'AAC'}},  # territory 2 is empty but already self-marked, as if just blitzed through
+        )
+        cont = legal_combat_move_continuations('Mechanized Infantry', 'NAA', 1, gs, data)
+        self.assertEqual(cont, {2: {3: [1, 2, 3]}})
+
 
 class TestOccupiedTerritoryStopsMovement(unittest.TestCase):
     def test_occupied_foreign_territory_blocks_further_chaining_even_for_mech_inf(self):
@@ -841,6 +864,27 @@ class TestAirMovement(unittest.TestCase):
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', gs, data)
         self.assertNotIn(2, dest, 'own territory is not an attack target')
         self.assertNotIn(3, dest, "air can't capture, so empty foreign territory isn't a legal combat-move target")
+
+    def test_air_combat_move_still_cannot_attack_an_empty_territory_self_marked_contested(self):
+        # A bug found and fixed this session: GameEngine._mark_contested_by_attack
+        # adds an empty land territory's registered (non-allied) owner to
+        # contested_by on ANY entry -- including a friendly Mechanized
+        # Infantry's own undefended blitz through it earlier the same batch --
+        # so a Fighter considering that same still-empty territory 3 used to
+        # see it as a legal "already contested, joining the fight" attack
+        # target even though nobody is actually there.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 3: {'type': 'land'}},
+            adjacency={1: [3]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={1: 'NAA', 3: 'AAC'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            contested={3: {'NAA', 'AAC'}},  # empty, but self-marked as if just blitzed through
+        )
+        dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', gs, data)
+        self.assertNotIn(3, dest, "still nobody there to attack, regardless of the self-marked contested flag")
 
     def test_noncombat_air_landing_on_own_land_allowed_even_if_contested(self):
         data = FakeData(

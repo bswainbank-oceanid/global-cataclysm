@@ -1173,6 +1173,42 @@ class TestCombatMoveExecution(unittest.TestCase):
         self.assertIn(mover, gs.territories[3].units)
         self.assertEqual(gs.territories[3].contested_by, {'NAA', 'AAC'})
 
+    def test_two_mech_inf_can_both_blitz_through_the_same_empty_territory_to_different_targets(self):
+        # A bug found and fixed this session: GameEngine._mark_contested_by_attack
+        # adds an EMPTY land territory's registered (non-allied) owner to
+        # contested_by on the first Mechanized Infantry's pass-through, even
+        # though nobody defended it -- and _classify_combat_hop's own contested
+        # check used to treat that exactly like a real fight in progress,
+        # wrongly refusing a SECOND Mechanized Infantry of the SAME faction, in
+        # the same submitted batch, that also wants to blitz through that same
+        # now-marked-but-still-empty territory 2 on its way to a DIFFERENT
+        # final destination (4, not 3) -- "Mechanized Infantry cannot continue
+        # past 2", even though there was never anyone there to stop either of
+        # them.
+        #   1 (origin, NAA, 2 Mech Inf) -- 2 (empty, AAC-owned, shared
+        #   pass-through) -- 3 and 4 (both empty, AAC-owned, separate further
+        #   destinations).
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}, 4: {'type': 'land'}},
+            adjacency={1: [2], 2: [1, 3, 4], 3: [2], 4: [2]},
+        )
+        first = make_unit('Mechanized Infantry', 'NAA')
+        second = make_unit('Mechanized Infantry', 'NAA')
+        gs = make_state(
+            data, {1: 'NAA', 2: 'AAC', 3: 'AAC', 4: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.COMBAT_MOVE, units_by_territory={1: [first, second]},
+        )
+        engine = GameEngine(gs, data)
+        engine.submit_combat_moves('NAA', [
+            CombatMoveOrder(first.unit_id, [1, 2, 3]),
+            CombatMoveOrder(second.unit_id, [1, 2, 4]),
+        ])
+        engine.confirm_combat_moves('NAA')
+        self.assertEqual(gs.territories[1].units, [])
+        self.assertIn(first, gs.territories[3].units)
+        self.assertIn(second, gs.territories[4].units)
+        self.assertEqual(gs.territories[2].contested_by, {'NAA', 'AAC'}, 'still marked contested, just not blocking')
+
     def test_air_combat_move_never_captures_only_marks_contested(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
         mover = make_unit('Fighter', 'NAA')

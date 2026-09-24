@@ -209,20 +209,33 @@ def _classify_combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_s
         # join that fight -- and still pass on through, like any own land.
         return STOP_AND_PASS if contested else PASS_ONLY
 
-    if contested:
-        # Joining or continuing a fight already in progress -- a legal
-        # place to end a combat move, but combat move must result in an
-        # attack, not walk past one; never a pass-through.
-        return STOP_ONLY
-
     if _enemies_present(dest_id, mover_faction, game_state, territories, unit_defs):
+        # Joining or continuing a fight already in progress (or a fresh
+        # attack on an occupied foreign territory) -- a legal place to
+        # end a combat move, but combat move must result in an attack,
+        # not walk past one; never a pass-through. Deliberately NOT the
+        # plain `contested` flag on its own (a bug found and fixed this
+        # session): GameEngine._mark_contested_by_attack adds a LAND
+        # territory's registered owner to contested_by on ANY entry,
+        # even an entirely undefended Mechanized Infantry blitz through
+        # empty land -- so `contested` alone stayed true (and wrongly
+        # forced a stop) for a SECOND Mechanized Infantry of the SAME
+        # faction, same batch, wanting to blitz through that same
+        # now-self-marked-but-still-EMPTY territory to a different
+        # further destination, with nobody actually there to fight or
+        # dispute the claim. Physical presence is the real signal here;
+        # a genuine multi-round stalemate (rules.json's 3-round cap)
+        # only ever leaves a territory contested WITH both sides' units
+        # still on it, so this never misses an actual fight.
         return STOP_ONLY  # occupied foreign territory (or occupied sea for a non-land unit): attack, stop here
 
-    # Empty (no defenders, not contested). For sea zones this is just
-    # ordinary open water -- always pass-through, no ownership/capture
-    # concept applies to sea. For land, it's a foreign territory nobody
-    # is defending: capturable, and only Mechanized Infantry may
-    # continue past it in the same move.
+    # Empty (no defenders currently present -- contested_by may still
+    # name this land territory's owner from an earlier entry this same
+    # batch, but nobody is actually here to fight or dispute it). For
+    # sea zones this is just ordinary open water -- always pass-through,
+    # no ownership/capture concept applies to sea. For land, it's a
+    # foreign territory nobody is defending: capturable, and only
+    # Mechanized Infantry may continue past it in the same move.
     if not is_land:
         # Open sea, or sea holding only enemy Transports: never blocks, but the
         # Transports can be attacked by ending the move here.
@@ -865,14 +878,19 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
         return {tid for tid in reachable if legal_landing(tid)}
 
     # combat: must result in an attack, same as any other combat move --
-    # a non-ally-occupied territory (a real attack) or one already
-    # contested (joining the fight). Own/allied/empty-foreign territory
-    # is excluded: landing there isn't an attack, and air alone can't
+    # a non-ally-occupied territory (a real attack), or occupied sea (an
+    # enemy Transport, even alone). Own/allied/empty-foreign territory is
+    # excluded: landing there isn't an attack, and air alone can't
     # capture (per the turn-order rule), so an undefended foreign
     # territory isn't a legal air combat-move destination either.
+    # Deliberately not the plain `contested` flag on its own (see
+    # _classify_combat_hop's matching fix, same session): a friendly
+    # Mechanized Infantry blitzing through tid earlier this same batch
+    # also sets contested_by even though nobody defended it, and that's
+    # not a real attack target for an air unit either -- only actual
+    # physical presence is.
     def is_attack_target(tid):
-        # (enemy Transports don't block a flight, but a plane may still attack them)
-        return (_is_contested(tid, game_state) or _enemies_present(tid, owner, game_state, territories, unit_defs)
+        return (_enemies_present(tid, owner, game_state, territories, unit_defs)
                 or _enemy_transports_present(tid, owner, game_state, territories, unit_defs))
     return {tid for tid in reachable if is_attack_target(tid)}
 
