@@ -52,9 +52,9 @@ class TestHitAndDamageMath(unittest.TestCase):
         # hits it cleanly without being Armor's die-max (8), so damage
         # isn't halved. Infantry (hp 2) dies to the hit, ending the
         # battle after round 1 -- attacker's roll, then defender's (a
-        # guaranteed miss: D6 can't reach Armor's defense of 7), 2
-        # scripted rolls is enough.
-        attacker = make(1, 'Armor', 'NAA')  # D8, damage 3, defense 7
+        # scripted 1, a guaranteed miss regardless of Armor's defense),
+        # 2 scripted rolls is enough.
+        attacker = make(1, 'Armor', 'NAA')  # D8, damage 3, defense 5
         defender = make(2, 'Infantry', 'AAC')  # defense 5 (+1 Dig In while defending = 6), hp 2
         events = drain([attacker], [defender], 'land', ScriptedRNG([6, 1]))
         roll_events = [e for e in events if e.kind == EventKind.UNIT_ROLL]
@@ -66,16 +66,18 @@ class TestHitAndDamageMath(unittest.TestCase):
         self.assertEqual(e.target_hp_after, -1)
 
     def test_max_die_roll_always_hits_regardless_of_defense_and_halves_damage(self):
-        # Infantry: D6 (max 6), damage 2. Armor's defense (7) is HIGHER
+        # Infantry: D6 (max 6), damage 2. Fighter's defense (7) is HIGHER
         # than Infantry's max possible roll, so under the plain roll >=
         # defense rule, a 6 would normally miss (6 < 7) -- this is the
         # case that actually isolates the bypass, unlike a big-die
         # attacker whose max roll would already beat any real unit's
         # defense on its own. Because 6 is Infantry's die max, it still
         # forces a hit, with damage halved (2 // 2 = 1), enough to kill
-        # this hp-1 Armor.
+        # this hp-1 Fighter (an Air unit still fights, as a defender, in
+        # a land battle -- Land defenders alone all sit at defense 5 now,
+        # too low to isolate the bypass at all).
         attacker = make(1, 'Infantry', 'NAA')  # D6, damage 2, defense 5
-        defender = make(2, 'Armor', 'AAC', hp=1)  # defense 7 -- unreachable by a plain D6 roll
+        defender = make(2, 'Fighter', 'AAC', hp=1)  # defense 7 -- unreachable by a plain D6 roll
         events = drain([attacker], [defender], 'land', ScriptedRNG([6, 1]))
         e = [ev for ev in events if ev.kind == EventKind.UNIT_ROLL][0]
         self.assertTrue(e.hit)
@@ -84,9 +86,10 @@ class TestHitAndDamageMath(unittest.TestCase):
 
     def test_below_defense_roll_misses_but_still_shows_a_target(self):
         attacker = make(1, 'Infantry', 'NAA')  # D6, can't reach a defense of 7
-        defender = make(2, 'Armor', 'AAC')  # defense 7 -- unreachable by a D6
+        defender = make(2, 'Fighter', 'AAC')  # defense 7 -- unreachable by a D6
         # Neither side can hit the other (attacker's D6 tops out at 6,
-        # defender's D8 rolls scripted low) -- goes all 3 rounds, 6 rolls.
+        # defender's D6 air-superiority-round die isn't in play here, and
+        # its rolls are scripted low too) -- goes all 3 rounds, 6 rolls.
         events = drain([attacker], [defender], 'land', ScriptedRNG([3, 1, 3, 1, 3, 1]))
         e = [ev for ev in events if ev.kind == EventKind.UNIT_ROLL][0]
         self.assertFalse(e.hit)
@@ -117,7 +120,7 @@ class TestTargetSelectionWeighting(unittest.TestCase):
     def test_same_type_weighted_2to1_except_for_bomber_attacker(self):
         rng = random.Random(123)
         infantry = make(1, 'Infantry', 'AAC')  # defense 5
-        armor = make(2, 'Armor', 'AAC')  # defense 7
+        armor = make(2, 'Armor', 'AAC')  # defense 5
         # roll=7 (below a die max of 8, so this is an ordinary clean-hit
         # pool, not the bypass path) reaches both defenders' defense --
         # needed so both are actually in the eligible pool to weight
@@ -131,8 +134,8 @@ class TestTargetSelectionWeighting(unittest.TestCase):
         self.assertTrue(1.6 < ratio < 2.4, f'expected ~2:1 same-type weighting, got {counts}')
 
         # Attacker is a Bomber: uniform weighting even against a same-type target.
-        bomber_defender = make(3, 'Bomber', 'AAC')  # defense 7
-        other = make(4, 'Fighter', 'AAC')  # defense 8
+        bomber_defender = make(3, 'Bomber', 'AAC')  # defense 6
+        other = make(4, 'Fighter', 'AAC')  # defense 7
         counts2 = {3: 0, 4: 0}
         for _ in range(2000):
             t, _, _ = _select_target(rng, 8, 10, 'Bomber', [bomber_defender, other], UNIT_DEFS, 2, 1, {})
@@ -150,11 +153,11 @@ class TestTargetSelectionWeighting(unittest.TestCase):
         self.assertEqual(target.unit_id, 2)
 
     def test_clean_hit_preferred_over_bypass_when_both_available(self):
-        # roll = die_max (6), so the bypass *could* reach Armor (defense
+        # roll = die_max (6), so the bypass *could* reach Fighter (defense
         # 7 > 6), but Infantry (defense 5 <= 6) is a clean hit -- must
         # take the clean hit, at full damage, not the bypass.
         clean = make(1, 'Infantry', 'AAC')  # defense 5
-        needs_bypass = make(2, 'Armor', 'AAC')  # defense 7
+        needs_bypass = make(2, 'Fighter', 'AAC')  # defense 7
         for _ in range(200):
             target, is_hit, is_bypass = _select_target(
                 random.Random(), 6, 6, 'Mechanized Infantry', [clean, needs_bypass], UNIT_DEFS, 2, 1, {})
@@ -163,7 +166,7 @@ class TestTargetSelectionWeighting(unittest.TestCase):
             self.assertEqual(target.unit_id, 1)
 
     def test_bypass_only_used_once_all_clean_targets_are_gone(self):
-        needs_bypass = make(1, 'Armor', 'AAC')  # defense 7, only reachable via bypass at roll 6
+        needs_bypass = make(1, 'Fighter', 'AAC')  # defense 7, only reachable via bypass at roll 6
         target, is_hit, is_bypass = _select_target(
             random.Random(1), 6, 6, 'Infantry', [needs_bypass], UNIT_DEFS, 2, 1, {})
         self.assertTrue(is_hit)
@@ -172,25 +175,26 @@ class TestTargetSelectionWeighting(unittest.TestCase):
 
     def test_bypass_pool_restricted_to_next_highest_defense_tier(self):
         # Mech Inf attacker (D6, max roll 6): no clean target exists (all
-        # defenses > 6). Armor (defense 7) and a *promoted* Mech Inf
-        # (base defense 6 + 1 = 7 -- a plain one would be defense 6 and
-        # wrongly land in the clean pool at roll 6) both sit at defense
-        # 7, the tier immediately above the roll, and are the only
-        # bypass candidates, weighted 2:1 toward the same-type (Mech
-        # Inf) one. A defense-8 Fighter is a tougher tier still and must
-        # be excluded from the bypass pool entirely, not just deprioritized.
-        armor = make(1, 'Armor', 'AAC')  # defense 7
-        mech_inf = make(2, 'Mechanized Infantry', 'AAC', promoted=True)  # defense 7
-        fighter = make(3, 'Fighter', 'AAC')  # defense 8
+        # defenses > 6). Fighter (defense 7) and a *twice-promoted* Mech
+        # Inf (base defense 5 + 2 = 7 -- a plain one would be defense 5
+        # and wrongly land in the clean pool at roll 6) both sit at
+        # defense 7, the tier immediately above the roll, and are the
+        # only bypass candidates, weighted 2:1 toward the same-type
+        # (Mech Inf) one. A defense-8 Armor (thrice-promoted: 5 + 3 = 8)
+        # is a tougher tier still and must be excluded from the bypass
+        # pool entirely, not just deprioritized.
+        fighter = make(1, 'Fighter', 'AAC')  # defense 7
+        mech_inf = make(2, 'Mechanized Infantry', 'AAC', promoted=2)  # defense 7
+        armor = make(3, 'Armor', 'AAC', promoted=3)  # defense 8
         counts = {1: 0, 2: 0, 3: 0}
         rng = random.Random(5)
         for _ in range(2000):
             target, is_hit, is_bypass = _select_target(
-                rng, 6, 6, 'Mechanized Infantry', [armor, mech_inf, fighter], UNIT_DEFS, 2, 1, {})
+                rng, 6, 6, 'Mechanized Infantry', [fighter, mech_inf, armor], UNIT_DEFS, 2, 1, {})
             self.assertTrue(is_hit)
             self.assertTrue(is_bypass)
             counts[target.unit_id] += 1
-        self.assertEqual(counts[3], 0, 'defense-8 Fighter should never be in the bypass pool')
+        self.assertEqual(counts[3], 0, 'defense-8 Armor should never be in the bypass pool')
         ratio = counts[2] / counts[1]
         self.assertTrue(1.6 < ratio < 2.4, f'expected ~2:1 toward same-type Mech Inf, got {counts}')
 
@@ -220,9 +224,9 @@ class TestBattleOutcomes(unittest.TestCase):
 
 class TestPromotion(unittest.TestCase):
     def test_unit_promotes_after_crossing_xp_threshold_and_heals_bonus_hp_immediately(self):
-        attacker = make(1, 'Armor', 'NAA', hp=4)  # D8, damage 4, defense 7
+        attacker = make(1, 'Armor', 'NAA', hp=4)  # D8, damage 4, defense 5
         # High HP so it survives all 3 rounds of the attacker's hits;
-        # its own D6 roll (defense needed: 7) always misses back.
+        # its own D6 roll (scripted to 1 below) always misses back.
         defender = make(2, 'Infantry', 'AAC', hp=20)
         # Attacker: roll 6 each round -- hits Infantry's defense (5)
         # without being Armor's die-max (8), so it lands a hit (survive
@@ -302,20 +306,20 @@ class TestFirstRoundCombatBonus(unittest.TestCase):
     def test_defender_bonus_raises_defense_and_can_turn_a_hit_into_a_miss(self):
         # Armor (no Dig In, unlike Infantry -- kept out of this pair
         # specifically to isolate the round-1 bonus from that unrelated,
-        # always-on rule) has defense 7 normally; a roll of 7 would hit.
+        # always-on rule) has defense 5 normally; a roll of 5 would hit.
         # With the round-1 defender bonus (+1 defense, capped at 10) it
-        # becomes 8, and 7 is neither >= 8 nor the attacker's die-max
+        # becomes 6, and 5 is neither >= 6 nor the attacker's die-max
         # (8), so this is a genuine miss, not even a bypass.
         attacker = make(1, 'Armor', 'NAA')
         defender = make(2, 'Armor', 'AAC')
-        events = self._run_round(1, attacker, defender, rolls=[7, 1], round1_bonus_side='defender')
+        events = self._run_round(1, attacker, defender, rolls=[5, 1], round1_bonus_side='defender')
         attacker_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
         self.assertFalse(attacker_roll.hit, 'the round-1 defender bonus should have turned this into a miss')
 
     def test_bonus_does_not_apply_outside_round_1(self):
         attacker = make(1, 'Armor', 'NAA')
         defender = make(2, 'Armor', 'AAC')
-        events = self._run_round(2, attacker, defender, rolls=[7, 1], round1_bonus_side='defender')
+        events = self._run_round(2, attacker, defender, rolls=[5, 1], round1_bonus_side='defender')
         attacker_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
         self.assertTrue(attacker_roll.hit, 'round 2 should see the defender back at its normal, unboosted defense')
 
@@ -371,7 +375,7 @@ class TestDigIn(unittest.TestCase):
 
     def test_non_infantry_unaffected_by_the_defending_flag(self):
         armor = make(1, 'Armor', 'NAA')
-        self.assertEqual(armor.effective_stats(UNIT_DEFS, defending=True)['defense'], 7, "Armor has no Dig In trait")
+        self.assertEqual(armor.effective_stats(UNIT_DEFS, defending=True)['defense'], 5, "Armor has no Dig In trait")
 
     def test_stacks_with_promotion_and_the_round1_bonus(self):
         # base 5, +1 promotion, +1 round1_bonus, +1 Dig In = 8.
@@ -435,7 +439,7 @@ class TestAirSuperiorityDieAdjustments(unittest.TestCase):
 
     def test_fighter_rolls_a_d10_for_three_damage(self):
         attacker = make(1, 'Fighter', 'NAA')  # base D6, damage 2
-        defender = make(2, 'Cruiser', 'AAC', hp=10)  # defense 7
+        defender = make(2, 'Cruiser', 'AAC', hp=10)  # defense 5
         events = self._run_round(0, attacker, defender, rolls=[8, 1], air_superiority=True)
         roll = self._attacker_roll(events)
         self.assertEqual(roll.die, 'D10', "Fighter's air-superiority die is D10")
@@ -450,7 +454,7 @@ class TestAirSuperiorityDieAdjustments(unittest.TestCase):
 
     def test_bomber_drops_to_a_d6_and_one_damage(self):
         attacker = make(1, 'Bomber', 'NAA')  # base D8, damage 3
-        defender = make(2, 'Aircraft Carrier', 'AAC', hp=10)  # defense 6 -- a roll of 6 hits it cleanly
+        defender = make(2, 'Aircraft Carrier', 'AAC', hp=10)  # defense 5 -- a roll of 6 hits it cleanly
         events = self._run_round(0, attacker, defender, rolls=[6, 1], air_superiority=True)
         roll = self._attacker_roll(events)
         self.assertEqual(roll.die, 'D6', "Bomber's air-superiority die is a D6")
@@ -493,17 +497,17 @@ class TestSubmarineAirInvisibility(unittest.TestCase):
 
     def test_submarine_never_targets_a_fighter_even_at_die_max(self):
         # roll == die_max (8): without the exclusion, Fighter's defense
-        # (8) would be a clean hit target. With it, Fighter must never
+        # (7) would be a clean hit target. With it, Fighter must never
         # be selectable at all.
-        fighter = make(1, 'Fighter', 'AAC')  # defense 8
+        fighter = make(1, 'Fighter', 'AAC')  # defense 7
         for _ in range(200):
             target, is_hit, is_bypass = _select_target(random.Random(), 8, 8, 'Submarine', [fighter], UNIT_DEFS, 2, 1, {})
             self.assertIsNone(target, 'a lone Fighter must never be targetable by a Submarine')
             self.assertFalse(is_hit)
 
     def test_submarine_targets_the_non_air_unit_when_a_fighter_is_also_present(self):
-        fighter = make(1, 'Fighter', 'AAC')  # defense 8 -- would clean-hit at roll 8 if not excluded
-        cruiser = make(2, 'Cruiser', 'AAC')  # defense 7
+        fighter = make(1, 'Fighter', 'AAC')  # defense 7 -- would clean-hit at roll 8 if not excluded
+        cruiser = make(2, 'Cruiser', 'AAC')  # defense 5
         for _ in range(200):
             target, is_hit, is_bypass = _select_target(random.Random(), 8, 8, 'Submarine', [fighter, cruiser], UNIT_DEFS, 2, 1, {})
             self.assertEqual(target.unit_id, 2, 'the Fighter must be excluded from the pool entirely, leaving only the Cruiser')
@@ -518,7 +522,7 @@ class TestSubmarineAirInvisibility(unittest.TestCase):
 
     def test_bomber_never_targets_a_submarine_either(self):
         sub = make(1, 'Submarine', 'AAC')  # defense 6
-        cruiser = make(2, 'Cruiser', 'AAC')  # defense 7
+        cruiser = make(2, 'Cruiser', 'AAC')  # defense 5
         for _ in range(200):
             target, is_hit, is_bypass = _select_target(random.Random(), 8, 8, 'Bomber', [sub, cruiser], UNIT_DEFS, 2, 1, {})
             self.assertEqual(target.unit_id, 2, 'the Submarine must be excluded from a Bomber attacker\'s pool too')
@@ -531,7 +535,7 @@ class TestSubmarineAirInvisibility(unittest.TestCase):
 
 class TestTransportFormInSeaBattles(unittest.TestCase):
     """rules.json combat.transport_form_in_sea_battles: a Land-category unit in
-    a SEA battle is Transport cargo -- no attack, defense 6, 1 HP, no XP, and
+    a SEA battle is Transport cargo -- no attack, defense 5, 1 HP, no XP, and
     it dies with one hit; a survivor gets its real HP back."""
 
     def test_cargo_never_rolls(self):
@@ -549,10 +553,10 @@ class TestTransportFormInSeaBattles(unittest.TestCase):
         self.assertEqual(events[-1].eliminated_attacker_ids, [1])
         self.assertLessEqual(cargo.current_hp, 0)
 
-    def test_cargo_has_defense_6_so_a_roll_of_5_misses_it(self):
+    def test_cargo_has_defense_5_so_a_roll_of_4_misses_it(self):
         cargo = make(1, 'Infantry', 'NAA')  # its land defense (5, +1 Dig In) is not what counts
         foe = make(2, 'Submarine', 'AAC')  # D8
-        events = drain([cargo], [foe], 'sea', ScriptedRNG([5, 5, 5]))
+        events = drain([cargo], [foe], 'sea', ScriptedRNG([4, 4, 4]))
         rolls = [e for e in events if e.kind == EventKind.UNIT_ROLL]
         self.assertTrue(rolls and all(not r.hit for r in rolls))
 
@@ -592,10 +596,10 @@ class TestUnitStatsEvents(unittest.TestCase):
         self.assertGreater(events.index(ends[0]), kinds.index((EventKind.ROUND_CASUALTIES, 1)))
 
     def test_snapshot_has_the_die_and_defense_each_unit_fights_with(self):
-        # Infantry defending: base defense 5, +1 Dig In = 6; Armor attacking: D8, defense 7
+        # Infantry defending: base defense 5, +1 Dig In = 6; Armor attacking: D8, defense 5
         events = drain([make(1, 'Armor', 'NAA')], [make(2, 'Infantry', 'AAC')], 'land', ScriptedRNG([1] * 20))
         rows = {r['unit_id']: r for r in self.stats_events(events, 'start')[0].unit_stats}
-        self.assertEqual((rows[1]['side'], rows[1]['die'], rows[1]['defense']), ('attacker', 'D8', 7))
+        self.assertEqual((rows[1]['side'], rows[1]['die'], rows[1]['defense']), ('attacker', 'D8', 5))
         self.assertEqual((rows[2]['side'], rows[2]['die'], rows[2]['defense']), ('defender', 'D6', 6))
 
     def test_round_one_bonus_shows_up_in_the_round_one_snapshot_only(self):
@@ -770,7 +774,7 @@ class TestDigInStacksBeyondTheCap(unittest.TestCase):
 
     def test_the_battle_rows_flag_dig_in_and_the_type_cap(self):
         rows = unit_stat_rows('defender', [make(1, 'Infantry', 'AAC', promoted=5), make(2, 'Armor', 'AAC')], UNIT_DEFS)
-        self.assertEqual([(r['defense'], r['dig_in'], r['max_promotions']) for r in rows], [(11, True, 5), (7, False, 3)])
+        self.assertEqual([(r['defense'], r['dig_in'], r['max_promotions']) for r in rows], [(11, True, 5), (5, False, 3)])
 
 
 class TestResolveBombardment(unittest.TestCase):
@@ -804,7 +808,7 @@ class TestResolveBombardment(unittest.TestCase):
 
     def test_a_miss_deals_no_damage(self):
         cruiser = make(1, 'Cruiser', 'NAA')
-        armor = make(2, 'Armor', 'AAC')  # defense 7
+        armor = make(2, 'Armor', 'AAC')  # defense 5
         result = resolve_bombardment(ScriptedRNG([3]), cruiser, [armor], UNIT_DEFS, self.target_cfg())
         self.assertFalse(result.hit)
         self.assertFalse(result.bypass_hit)

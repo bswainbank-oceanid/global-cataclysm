@@ -4,7 +4,7 @@ extends Control
 ## of the screen when a battle pauses, and plays it out with Next Roll.
 ##
 ## Both sides' units sit in a chart of rows, one per defense value. Every unit
-## stays in the row of its DEFENSE (Transports have defense 6 like the rest) and
+## stays in the row of its DEFENSE (Transports have defense 5 like most of the rest) and
 ## only moves if its defense changes -- a unit promoted mid-battle steps up a row.
 ## Each roll shows a top-down die in the Roll column; hit units get a "/" (or an
 ## "X" when eliminated). The Resolve options on each side choose how much one press

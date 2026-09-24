@@ -210,7 +210,7 @@ class TestWatch(unittest.TestCase):
                 for key in ('unit_id', 'unit_type', 'owner', 'side', 'die', 'defense', 'hp', 'max_hp', 'xp', 'promoted', 'promotions', 'cargo'):
                     self.assertIn(key, row)
                 if row['cargo']:
-                    self.assertEqual((row['die'], row['defense'], row['max_hp']), (None, 6, 1))
+                    self.assertEqual((row['die'], row['defense'], row['max_hp']), (None, 5, 1))
             # and the executed battle carries per-round UNIT_STATS events
             result = _by_type(session.handle_message({'type': 'next'}), 'phase_result')[0]
             stats = [e for e in result['events'] if e.get('event_kind') == 'UNIT_STATS']

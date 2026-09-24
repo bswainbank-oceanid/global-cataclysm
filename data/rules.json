@@ -251,7 +251,7 @@
       "status": "implemented -- see engine.engine.GameEngine._resolve_stranded_defender_aircraft, called once per sea battle after _apply_battle_outcome removes the dead."
     },
     "transport_form_in_sea_battles": {
-      "rule": "in a SEA battle every Land-category unit present (either side) is Transport cargo for that battle -- only Mechanized Infantry, the one amphibious land unit, can be at sea at all: it cannot attack (no attack die), has the Transport's stats from units.json (defense 6, 1 HP), earns no XP and cannot be promoted, and is eliminated by any single hit -- the cargo is lost with its ship. A cargo unit that survives gets its own HP back afterwards (transport damage never carries over to the land unit).",
+      "rule": "in a SEA battle every Land-category unit present (either side) is Transport cargo for that battle -- only Mechanized Infantry, the one amphibious land unit, can be at sea at all: it cannot attack (no attack die), has the Transport's stats from units.json (defense 5, 1 HP), earns no XP and cannot be promoted, and is eliminated by any single hit -- the cargo is lost with its ship. A cargo unit that survives gets its own HP back afterwards (transport damage never carries over to the land unit).",
       "scope": "sea battles only; the same unit fights normally in a land battle. A round-1 combat bonus still adds +1 to its (Transport) defense; Dig In and promotion do not apply while in transport form.",
       "status": "implemented -- see UnitInstance.in_transport_form / effective_stats and combat.resolve_battle. Before this the engine let land units fight at sea with their own dice, defense and HP, contradicting movement.transport_amphibious and this file's own transport notes."
     }

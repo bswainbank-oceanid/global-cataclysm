@@ -504,7 +504,7 @@ the same JSON, not a parallel editing path.
   server fight the battle, and the client holds back the resulting state and log
   until End Battle. The engine supports it with per-round `UNIT_STATS` events, `SIDE_START` (a side with armed units is about to roll), `NO_TARGETS` (a unit with no legal target -- a Submarine against only aircraft, an aircraft against only Submarines -- does not roll and spends no die; the check is made as each unit's turn comes) and a `BATTLE_END` `end_reason` (`eliminated` / `no_targets` / `rounds`): a round is not fought at all when neither side has a legal target, which ends the battle; and
   richer `battle_preview` rows; Mechanized Infantry afloat are Transports (the only land unit that can enter the water; Infantry and Armor cannot, and a Transport gives no move bonus), and enemy Transports never block a move (combat or non-combat) or force a stop, though they can still be attacked (`movement._is_transport`); in a sea battle land units are Transport cargo
-  (defense 6, 1 HP, no attack, no XP; sunk = lost). `BattleModel`
+  (defense 5, 1 HP, no attack, no XP; sunk = lost). `BattleModel`
   (`client/scripts/battle_model.gd`) holds the stepping logic and is checked
   headlessly: `godot --headless --path client -s res://tests/battle_model_test.gd`. Saved in `user://settings.cfg`; `client_shot.py` takes
   `--pause never|turn|phase` and `--pause_battle`. Layout checks: `godot --headless --path client -s res://tests/battle_layout_test.gd`.
