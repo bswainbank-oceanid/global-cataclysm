@@ -63,6 +63,11 @@ def sc_bonus():
     return config().sc_bonus()
 
 
+def naval_deploy_excluded():
+    """Sea zones that never host a naval deployment (landlocked)."""
+    return config().naval_deploy_excluded()
+
+
 def initial_setup(kind):
     """(InitialSetup, UnitPromotions) module documents for the 'standard' or 'defensive' setup."""
     return config().initial_setup(kind)

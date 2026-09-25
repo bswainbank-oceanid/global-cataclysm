@@ -11,6 +11,9 @@ class FakeData:
     def territories(self):
         return self._territories
 
+    def sc_bonus(self):
+        return 2
+
 
 class TestComputeIncome(unittest.TestCase):
     def test_sums_value_across_owned_land_territories(self):

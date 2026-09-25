@@ -87,6 +87,7 @@ strategy/behavior's fixed rule.
 import copy
 import random
 
+from .. import abilities
 from ..engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from ..movement import (
     _is_ally_or_self, graph_distances, legal_air_move_destinations,
@@ -200,11 +201,11 @@ class RandomBot:
         it got there) it just stays, permanently -- checked fresh every
         phase from the unit's CURRENT position, so no separate
         "has arrived" state is needed; it's already implied by being
-        there. Scoped to Infantry specifically -- the ruleset's
-        designated defensive garrison unit type (see purchase.
-        contested_land_deploy_restriction, the only unit type ever
-        allowed into a contested territory) -- not other land units."""
-        if unit.unit_type != 'Infantry':
+        there. Scoped to units with the mustering ability (Infantry) --
+        the ruleset's designated defensive garrison (see purchase.
+        contested_land_deploy_restriction, the only units ever allowed
+        into a contested territory) -- not other land units."""
+        if not abilities.has(self.engine.data.units(), unit.unit_type, abilities.MUSTERING):
             return False
         terr = self.engine.data.territories().get(origin_id)
         if terr is None or terr['type'] != 'land' or not game_state.is_strategic_center(origin_id, terr):

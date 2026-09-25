@@ -7,8 +7,8 @@ no mutation, no side effects.
 
 
 def compute_income(faction, game_state, data_module):
-    """MPC income for `faction`: the sum of (value + 2 if
-    strategic_center) over every LAND territory it currently controls
+    """MPC income for `faction`: the sum of (value + the SC assignment's
+    sc_bonus if strategic_center) over every LAND territory it currently controls
     that ISN'T contested -- see data/rules.json's production.
     income_formula. A contested territory contributes to neither side
     (combat.contested_territory_rule); sea zones carry no value field
@@ -16,6 +16,7 @@ def compute_income(faction, game_state, data_module):
     starting treasury_mpc at setup (engine/setup.py) and, once engine.py
     exists, by the Deploy + Income phase every turn."""
     terrs = data_module.territories()
+    bonus = data_module.sc_bonus()
     total = 0
     for tid, t in game_state.territories.items():
         if t.owner != faction or t.contested_by:
@@ -23,5 +24,5 @@ def compute_income(faction, game_state, data_module):
         terr = terrs[tid]
         if terr['type'] != 'land':
             continue
-        total += terr['value'] + (2 if game_state.is_strategic_center(tid, terr) else 0)
+        total += terr['value'] + (bonus if game_state.is_strategic_center(tid, terr) else 0)
     return total

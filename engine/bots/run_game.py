@@ -36,9 +36,11 @@ def main():
     parser.add_argument('--no-noncombat-moves-first-turn', dest='allow_noncombat_moves_first_turn', action='store_false')
     args = parser.parse_args()
 
-    modes = {code: FactionMode.NEUTRAL for code in data.factions()}
-    modes['NAA'] = FactionMode.BOT
-    modes['AAC'] = FactionMode.BOT
+    codes = list(data.factions())
+    pair = ('NAA', 'AAC') if {'NAA', 'AAC'} <= set(codes) else tuple(codes[:2])
+    modes = {code: FactionMode.NEUTRAL for code in codes}
+    for code in pair:
+        modes[code] = FactionMode.BOT
 
     gs = build_game_state(
         modes,
@@ -55,10 +57,7 @@ def main():
     # --seed doesn't actually make the game reproducible (a real bug
     # this session -- see GameEngine.__init__'s own docstring comment).
     engine = GameEngine(gs, stats=stats, combat_rng=random.Random(seed_rng.random()))
-    bots = {
-        'NAA': RandomBot(engine, 'NAA', rng=random.Random(seed_rng.random())),
-        'AAC': RandomBot(engine, 'AAC', rng=random.Random(seed_rng.random())),
-    }
+    bots = {code: RandomBot(engine, code, rng=random.Random(seed_rng.random())) for code in pair}
 
     turns_played = play_to_completion(engine, bots, max_turns=args.max_turns)
 

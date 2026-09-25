@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from . import abilities
 from .state import _has_dig_in, max_promotions
 
 DIE_MAX = {'D6': 6, 'D8': 8, 'D10': 10, 'D12': 12}
@@ -118,14 +119,14 @@ def _alive(units):
 def _legal_targets(attacker_type, enemies, unit_defs, pending_damage=None):
     """The enemies a unit of `attacker_type` could hit at all, at any roll: still
     standing (counting damage already dealt earlier in this side's roll-through), and
-    -- per the Submerge trait (combat.submarine_air_invisibility) -- never an aircraft
-    for a Submarine, never a Submarine for an aircraft."""
+    -- per the submerge ability (combat.submarine_air_invisibility) -- never an aircraft
+    for a submerging unit (a Submarine), never a submerging unit for an aircraft."""
     pending_damage = pending_damage or {}
     standing = [e for e in enemies if e.current_hp - pending_damage.get(e.unit_id, 0) > 0]
-    if attacker_type == 'Submarine':
+    if abilities.has(unit_defs, attacker_type, abilities.SUBMERGE):
         return [e for e in standing if unit_defs[e.unit_type]['category'] != 'Air']
     if unit_defs[attacker_type]['category'] == 'Air':
-        return [e for e in standing if e.unit_type != 'Submarine']
+        return [e for e in standing if not abilities.has(unit_defs, e.unit_type, abilities.SUBMERGE)]
     return standing
 
 
@@ -172,8 +173,8 @@ def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_t
     damage) or a miss (0 damage, targeted for display only) depends
     purely on whether roll == die_max.
 
-    Submarine/aircraft mutual invisibility (units.json's 'Submerge'
-    trait -- see combat.submarine_air_invisibility): a Submarine
+    Submarine/aircraft mutual invisibility (the submerge ability -- see
+    combat.submarine_air_invisibility): a Submarine
     attacker never sees Air-category units in its target pool, and an
     Air attacker never sees a Submarine, at any roll -- filtered out of
     `standing` before the clean/bypass pool logic even runs, so neither
@@ -197,7 +198,8 @@ def _select_target(rng, roll, die_max, attacker_type, enemies, unit_defs, same_t
         else:
             is_hit, is_bypass = False, False
 
-    weights = [same_type_weight if (attacker_type != 'Bomber' and e.unit_type == attacker_type) else 1 for e in pool]
+    indiscriminate = abilities.has(unit_defs, attacker_type, abilities.INDISCRIMINATE)  # a Bomber: no same-type preference
+    weights = [same_type_weight if (not indiscriminate and e.unit_type == attacker_type) else 1 for e in pool]
     target = rng.choices(pool, weights=weights, k=1)[0]
     return target, is_hit, is_bypass
 
@@ -325,7 +327,7 @@ def _apply_xp_and_check_promotions(round_number, attackers_before, defenders_bef
             unit.xp = 0  # nothing left to earn at the top rank
 
 
-def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_cfg, resolution_order, current_global_turn,
+def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_cfg, type_order, current_global_turn,
                       round1_bonus_side=None, air_superiority=False):
     """One full round (or the air-superiority round): attacker's whole
     ordered roll sequence, then defender's, then both sides' casualties
@@ -349,8 +351,8 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
     target_cfg = combat_cfg['target_selection']
     attacker_bonus = round1_bonus_side == 'attacker' and round_number == 1
     defender_bonus = round1_bonus_side == 'defender' and round_number == 1
-    attacker_order = _resolution_sequence(attackers, unit_defs, resolution_order, round1_bonus=attacker_bonus, air_superiority=air_superiority)
-    defender_order = _resolution_sequence(defenders, unit_defs, resolution_order, round1_bonus=defender_bonus, air_superiority=air_superiority)
+    attacker_order = _resolution_sequence(attackers, unit_defs, type_order, round1_bonus=attacker_bonus, air_superiority=air_superiority)
+    defender_order = _resolution_sequence(defenders, unit_defs, type_order, round1_bonus=defender_bonus, air_superiority=air_superiority)
 
     yield BattleEvent(
         kind=EventKind.UNIT_STATS, round_number=round_number, stats_phase='start',
@@ -406,8 +408,17 @@ def _has_air(units, unit_defs):
     return any(unit_defs[u.unit_type]['category'] == 'Air' for u in units)
 
 
-def _has_fighter(units):
-    return any(u.unit_type == 'Fighter' for u in units)
+def _triggers_air_superiority(units, unit_defs):
+    """True if a unit whose air_superiority ability triggers the round (a Fighter) is among `units`."""
+    return any(abilities.triggers_air_superiority(unit_defs, u.unit_type) for u in units)
+
+
+def resolution_order(unit_defs, battle_type):
+    """The unit types that fight in a 'land' or 'sea' battle, in resolution order: each unit
+    type's land_order/sea_order."""
+    key = f'{battle_type}_order'
+    return [t for t in sorted((t for t in unit_defs if unit_defs[t].get(key) is not None),
+                              key=lambda t: unit_defs[t][key])]
 
 
 @dataclass
@@ -480,7 +491,7 @@ def resolve_battle(attacker_units, defender_units, battle_type, rng, current_glo
     (seed it for deterministic tests/replays). current_global_turn: the
     GameState.global_turn this battle is happening on, stamped onto every
     participating unit's last_combat_global_turn. unit_defs: engine.data.units().
-    rules: engine.data.rules() (reads combat.resolution_order,
+    rules: engine.data.rules() (reads
     combat.target_selection, combat.air_superiority_trigger, promotion.*).
 
     round1_bonus_side: None | 'attacker' | 'defender' -- see
@@ -497,16 +508,17 @@ def resolve_battle(attacker_units, defender_units, battle_type, rng, current_glo
     it with next() for an interactive reveal. The final event is always
     BATTLE_END."""
     # Transport form: in a SEA battle every Land-category unit present is just
-    # Transport cargo (rules.json combat.transport_form_in_sea_battles) -- it
-    # cannot attack, has the Transport's defense (6) and 1 HP, earns no XP, and
-    # dies with its ship. Its real HP is put back afterwards if it survives.
+    # cargo in its transport unit (the amphibious ability's transport_unit;
+    # combat.transport_form_in_sea_battles) -- it cannot attack, has the
+    # transport's defense and HP, earns no XP, and dies with its ship. Its real
+    # HP is put back afterwards if it survives.
     cargo_hp = {}
     if battle_type == 'sea':
         for unit in list(attacker_units) + list(defender_units):
             if unit_defs[unit.unit_type]['category'] == 'Land':
                 cargo_hp[unit.unit_id] = unit.current_hp
                 unit.in_transport_form = True
-                unit.current_hp = unit_defs['Transport']['hp']
+                unit.current_hp = unit_defs[abilities.transport_unit(unit_defs, unit.unit_type)]['hp']
     try:
         yield from _resolve_battle_inner(attacker_units, defender_units, battle_type, rng, current_global_turn,
                                          unit_defs, rules, round1_bonus_side=round1_bonus_side)
@@ -523,16 +535,17 @@ def _resolve_battle_inner(attacker_units, defender_units, battle_type, rng, curr
     """The battle itself; see resolve_battle."""
     combat_cfg = dict(rules['combat'])
     combat_cfg['_promotion_cfg'] = rules['promotion']
-    resolution_order = combat_cfg['resolution_order'][battle_type]
+    type_order = resolution_order(unit_defs, battle_type)
 
     attackers = list(attacker_units)
     defenders = list(defender_units)
 
-    if _has_air(attackers, unit_defs) and _has_air(defenders, unit_defs) and (_has_fighter(attackers) or _has_fighter(defenders)):
+    if (_has_air(attackers, unit_defs) and _has_air(defenders, unit_defs)
+            and (_triggers_air_superiority(attackers, unit_defs) or _triggers_air_superiority(defenders, unit_defs))):
         yield BattleEvent(kind=EventKind.AIR_SUPERIORITY_START, round_number=0)
         air_attackers = [u for u in attackers if unit_defs[u.unit_type]['category'] == 'Air']
         air_defenders = [u for u in defenders if unit_defs[u.unit_type]['category'] == 'Air']
-        yield from _fight_one_round(rng, 0, air_attackers, air_defenders, unit_defs, combat_cfg, resolution_order, current_global_turn,
+        yield from _fight_one_round(rng, 0, air_attackers, air_defenders, unit_defs, combat_cfg, type_order, current_global_turn,
                                      air_superiority=True)
         attackers = _alive(attackers)
         defenders = _alive(defenders)
@@ -546,7 +559,7 @@ def _resolve_battle_inner(attacker_units, defender_units, battle_type, rng, curr
             no_targets = True  # e.g. only Submarines left against only aircraft: nobody can hit anybody
             break
         yield BattleEvent(kind=EventKind.ROUND_START, round_number=round_number)
-        yield from _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_cfg, resolution_order, current_global_turn,
+        yield from _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_cfg, type_order, current_global_turn,
                                      round1_bonus_side=round1_bonus_side)
         attackers = _alive(attackers)
         defenders = _alive(defenders)

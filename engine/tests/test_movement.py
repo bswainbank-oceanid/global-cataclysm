@@ -2,6 +2,7 @@ import random
 import unittest
 
 from engine.state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode
+from engine.tests.test_engine import with_real_abilities
 from engine.movement import (
     BombardmentTrace, legal_combat_move_continuations, legal_combat_move_destinations, legal_combat_move_paths,
     legal_noncombat_move_destinations, legal_air_move_destinations, find_emergency_landing, trace_combat_move,
@@ -23,7 +24,9 @@ LAND_UNITS = {
     'Submarine': {'category': 'Sea', 'combat_move': 2, 'non_combat_move': 2},
     'Aircraft Carrier': {'category': 'Sea', 'combat_move': 2, 'non_combat_move': 2},
     'Cruiser': {'category': 'Sea', 'combat_move': 2, 'non_combat_move': 2},
+    'Transport': {'category': 'Sea', 'combat_move': 2, 'non_combat_move': 2},
 }
+with_real_abilities(LAND_UNITS)
 
 
 class FakeData:
@@ -33,7 +36,7 @@ class FakeData:
     def __init__(self, territories, adjacency, unit_defs=None):
         self._territories = territories  # {id: {'type': 'land'|'sea'}}
         self._adjacency = adjacency  # {id: [neighbor ids]}
-        self._units = unit_defs or LAND_UNITS
+        self._units = with_real_abilities(unit_defs) if unit_defs else LAND_UNITS
 
     def units(self):
         return self._units

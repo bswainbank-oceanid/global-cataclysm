@@ -24,7 +24,8 @@ real resolver.
 import copy
 import random
 
-from ..combat import DIE_MAX
+from .. import abilities
+from ..combat import DIE_MAX, resolution_order
 from ..state import max_promotions
 
 MAX_ROUNDS = 100
@@ -59,9 +60,11 @@ class _Side:
         self.caps = [max_promotions(u.unit_type, unit_defs, promotion_cfg) for u in units]
         self.type = [u.unit_type for u in units]
         self.is_air = [unit_defs[u.unit_type]['category'] == 'Air' for u in units]
-        self.is_sub = [t == 'Submarine' for t in self.type]
+        self.is_sub = [abilities.has(unit_defs, t, abilities.SUBMERGE) for t in self.type]
         self.cargo = [battle_type == 'sea' and unit_defs[u.unit_type]['category'] == 'Land' for u in units]
-        self.hp0 = [unit_defs['Transport']['hp'] if c else u.current_hp for u, c in zip(units, self.cargo)]
+        self.hp0 = [unit_defs[abilities.transport_unit(unit_defs, u.unit_type)]['hp'] if c else u.current_hp
+                    for u, c in zip(units, self.cargo)]
+        self.indiscriminate = [abilities.has(unit_defs, t, abilities.INDISCRIMINATE) for t in self.type]
         self.xp0 = [0 if c else u.xp for u, c in zip(units, self.cargo)]
         self.promotions0 = [u.promotions for u in units]
         self._unit_cache = {}
@@ -136,7 +139,7 @@ def _roll_side(rng, side, enemies, my_table, enemy_defs, enemy_hp, alive):
             pool, bypass = [j for j in visible if enemy_defs[j] == low], True
         if len(pool) == 1:
             target = pool[0]
-        elif side.type[i] == 'Bomber':
+        elif side.indiscriminate[i]:
             target = pool[int(rand() * len(pool))]
         else:
             my_type = side.type[i]
@@ -277,11 +280,12 @@ def estimate(attackers, defenders, battle_type, unit_defs, rules, rng=None, samp
         return BattleOdds(0.0, 1.0 if defenders else 0.0, 0.0 if defenders else 1.0, 0)
     if not defenders:
         return BattleOdds(1.0, 0.0, 0.0, 0)
-    type_order = rules['combat']['resolution_order'][battle_type]
+    type_order = resolution_order(unit_defs, battle_type)
     xp_required = rules['promotion']['xp_required']
     att = _Side(list(attackers), False, round1_bonus_side == 'attacker', battle_type, unit_defs, type_order, xp_required, rules['promotion'])
     dfn = _Side(list(defenders), True, round1_bonus_side == 'defender', battle_type, unit_defs, type_order, xp_required, rules['promotion'])
-    air_round = any(att.is_air) and any(dfn.is_air) and ('Fighter' in att.type or 'Fighter' in dfn.type)
+    air_round = any(att.is_air) and any(dfn.is_air) and any(abilities.triggers_air_superiority(unit_defs, t)
+                                                           for t in att.type + dfn.type)
     counts = {'attacker': 0, 'defender': 0, 'neither': 0, 'contested': 0}
     rounds = max_rounds or MAX_ROUNDS
     done = 0

@@ -18,8 +18,8 @@ class FakeDataWithExcludedZones(FakeData):
         super().__init__(*args, **kwargs)
         self._excluded_naval_zones = excluded_naval_zones
 
-    def rules(self):
-        return {'setup': {'excluded_naval_zones': self._excluded_naval_zones}}
+    def naval_deploy_excluded(self):
+        return self._excluded_naval_zones
 
 
 class TestPurchaseTargetPools(unittest.TestCase):

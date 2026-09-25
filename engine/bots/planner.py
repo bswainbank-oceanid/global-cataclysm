@@ -21,6 +21,7 @@ a 'noncombat' plan is made again after combat resolves, from the board as combat
 import heapq
 import time
 
+from .. import abilities
 from ..engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from ..movement import (
     _is_ally_or_self, graph_distances, legal_air_move_destinations, legal_combat_move_paths,
@@ -35,10 +36,6 @@ SC_BIAS = 8  # how much closer (in path-cost points) a Strategic Center purchase
 
 DEFAULT_BUDGET = 3500  # simulated battles per planning pass: about 2-3 seconds in a busy mid-game
 
-LAND_POOL = ('Infantry', 'Mechanized Infantry', 'Armor')
-AIR_POOL = ('Bomber', 'Fighter')
-SEA_POOL = ('Aircraft Carrier', 'Cruiser', 'Submarine')
-CATEGORY_POOL = {'Land': LAND_POOL, 'Air': AIR_POOL, 'Sea': SEA_POOL}
 
 
 class Plan:
@@ -79,6 +76,15 @@ class Planner:
         self._cut = None  # the (min, max) an objective is comparing chances against, so the simulator can stop early
 
         self.unit_defs = self.data.units()
+        # The unit types a purchase draws among, per category, in the faction weight set's order.
+        weights = settings.unit_weights.get(faction) or {}
+        self.category_pool = {cat: tuple(t for t in weights if t in self.unit_defs and self.unit_defs[t]['category'] == cat)
+                              for cat in ('Land', 'Air', 'Sea')}
+        # The unit types that may deploy into contested land (mustering: Infantry) -- also the ones used
+        # to garrison -- and those that may blitz through empty land (Mechanized Infantry).
+        self.mustering = tuple(t for t in self.unit_defs if abilities.has(self.unit_defs, t, abilities.MUSTERING))
+        self.blitzers = tuple(t for t in self.unit_defs if abilities.has(self.unit_defs, t, abilities.BLITZ)
+                              and self.unit_defs[t].get('purchasable'))
         self.terrs = self.data.territories()
         self.adjacency = self.data.adjacency()
         self.rules = self.data.rules()
@@ -355,11 +361,11 @@ class Planner:
         sea_ok = sea_target and self.sea_zone_safe(tid)
         candidates = []
         for cat in categories:
-            for t in CATEGORY_POOL[cat]:
+            for t in self.category_pool[cat]:
                 d = self.unit_defs[t]
                 if not d.get('purchasable'):
                     continue
-                if contested and t != 'Infantry':
+                if contested and t not in self.mustering:
                     continue
                 if sea_target and d['category'] == 'Land' and not (sea_ok and is_amphibious(d)):
                     continue
@@ -666,7 +672,7 @@ class Planner:
                     continue
                 if tid in self.nc_dests(u, origin):
                     remaining_at_origin = [v for v in self.defenders_at(origin, claimed_only=False) if v.unit_id != u.unit_id]
-                    movers.append((0 if u.unit_type == 'Infantry' else 1, 0 if remaining_at_origin else 1, self.cost(u), u.unit_id, u, origin))
+                    movers.append((0 if u.unit_type in self.mustering else 1, 0 if remaining_at_origin else 1, self.cost(u), u.unit_id, u, origin))
             movers.sort(key=lambda m: m[:4])
             filled = False
             # (units are moved only if that leaves nobody's territory empty behind them; else prefer buying)
@@ -679,7 +685,7 @@ class Planner:
                 self.note(f'fill_gap: {self.terrs[tid]["name"]} garrisoned by a {u.unit_type}')
                 break
             if not filled and self.allow_purchase:
-                stub = self.buy(tid, ('Land',), 'fill_gap', prefer='Infantry')
+                stub = self.buy(tid, ('Land',), 'fill_gap', prefer=self.mustering[0] if self.mustering else None)
                 if stub is not None:
                     self.note(f'fill_gap: {self.terrs[tid]["name"]} garrisoned by a purchased {stub.unit_type}')
 
@@ -834,7 +840,7 @@ class Planner:
             if self.out_of_time():
                 return
             fleet = by_zone[origin]
-            cruisers = [u for u in fleet if u.unit_type == 'Cruiser']
+            cruisers = [u for u in fleet if abilities.has(self.unit_defs, u.unit_type, abilities.BOMBARDMENT)]
             if not cruisers:
                 continue
             if self.threats(origin) and self.hold_chance(origin, self.defenders_at(origin, claimed_only=False)) < limits[0]:
@@ -853,7 +859,7 @@ class Planner:
                 self.moves_combat[cruiser.unit_id] = path
                 self.note(f'{name}: the Cruiser at {self.terrs[origin]["name"]} bombards {self.terrs[target]["name"]}')
                 for escort in fleet:
-                    if escort.unit_type == 'Cruiser' or not self.free_for(escort, 'combat'):
+                    if abilities.has(self.unit_defs, escort.unit_type, abilities.BOMBARDMENT) or not self.free_for(escort, 'combat'):
                         continue
                     self.claim(escort, name)
                     self.moves_combat[escort.unit_id] = path
@@ -1128,7 +1134,7 @@ class Planner:
             best = None
             if self.allow_combat:
                 for uid, (u, origin) in sorted(self.my_units.items()):
-                    if u.unit_type != 'Mechanized Infantry' or not self.free_for(u, 'combat') or origin == tid:
+                    if not abilities.has(self.unit_defs, u.unit_type, abilities.BLITZ) or not self.free_for(u, 'combat') or origin == tid:
                         continue
                     path = self.combat_paths(u, origin).get(tid)
                     if path is None:
@@ -1146,7 +1152,7 @@ class Planner:
                 sent += 1
                 self.note(f'empty_land_grab: a Mech Inf takes {self.terrs[tid]["name"]}')
             elif self.allow_purchase and bought < self.GRAB_PURCHASES and hops <= self.GRAB_REACH:
-                stub = self.buy_toward(self.costs_from(tid)[0], ('Land',), 'empty_land_grab', only=('Mechanized Infantry',))
+                stub = self.buy_toward(self.costs_from(tid)[0], ('Land',), 'empty_land_grab', only=self.blitzers)
                 if stub is not None:
                     bought += 1
                     self.note(f'empty_land_grab: a Mech Inf bought toward {self.terrs[tid]["name"]}')

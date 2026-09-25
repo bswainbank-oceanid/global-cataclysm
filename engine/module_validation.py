@@ -154,8 +154,8 @@ class _Checker:
                 params = dict(abilities[a['id']].get('params', {}), **a.get('params', {}))
                 if a['id'] == 'amphibious' and params.get('transport_unit') not in ids:
                     self.err(tw, f'amphibious transport_unit {params.get("transport_unit")!r} is not a unit type')
-                if a['id'] == 'air_superiority' and params.get('attack_die') not in DIE_SIZES:
-                    self.err(tw, 'air_superiority attack_die must be a die size')
+                if a['id'] == 'air_superiority' and params.get('attack_die') not in DIE_SIZES + (None,):
+                    self.err(tw, 'air_superiority attack_die must be a die size (or null: its normal die)')
         for side in ('land_order', 'sea_order'):
             self.unique(where, [t[side] for t in types if t.get(side) is not None], side)
         for cat, unit in (u.get('category_icons') or {}).items():

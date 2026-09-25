@@ -124,7 +124,9 @@ ABILITIES = [
      'params': {}},
     {'id': 'air_superiority', 'name': 'Air Superiority',
      'description': 'Air Superiority: {attack_die} attack, {damage} damage in the pre-combat air superiority round',
-     'params': {'attack_die': 'D6', 'damage': 1, 'triggers_round': False}},
+     '_note': 'attack_die/damage null: the unit rolls its normal die and damage in that round. triggers_round: '
+              'the round happens when both sides have aircraft and one of them has a unit that triggers it.',
+     'params': {'attack_die': None, 'damage': None, 'triggers_round': False}},
     {'id': 'interception', 'name': 'Interception',
      'description': 'Interception: enemy aircraft cannot fly over a space it holds',
      'params': {}, 'listed': False},

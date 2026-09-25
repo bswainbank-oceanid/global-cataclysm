@@ -86,9 +86,9 @@ not list is a validation error: a new ability needs engine code.
 | `amphibious` | `transport_unit` (`Transport`) | may enter sea spaces, becoming that transport unit |
 | `blitz` | | a two-step combat move may pass through an empty enemy territory, capturing it |
 | `transport` | | the sea form of an amphibious unit: no attack, carries its unit |
-| `air_superiority` | `attack_die`, `damage`, `triggers_round` | rolls this die/damage in the air superiority round; a `triggers_round` unit on either side makes the round happen |
+| `air_superiority` | `attack_die`, `damage` (null: its normal ones), `triggers_round` | rolls this die/damage in the air superiority round; a `triggers_round` unit on either side makes the round happen |
 | `interception` | | enemy aircraft may not fly over a space it holds |
-| `carrier_air_wing` | `capacity` (3) | carries air units; they may take off from and land on it |
+| `carrier_air_wing` | `capacity` (3) | carries air units; they may take off from and land on it (the capacity is shown, not enforced -- as before) |
 | `submerge` | | cannot hit or be hit by air units |
 | `bombardment` | | may bombard an adjacent land space from the sea as its combat move |
 | `indiscriminate` | | picks targets without the same-type preference |
