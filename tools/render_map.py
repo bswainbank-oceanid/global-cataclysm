@@ -1,22 +1,21 @@
 import argparse
-import json
 import cv2
 import numpy as np
+import tool_data
 from map_geometry import label_land, territory_labels
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--base', default='assets/base_map.png', help='source base map image')
+parser.add_argument('--scenario', default=tool_data.DEFAULT_SCENARIO_ID)
+parser.add_argument('--base', default=None, help="source base map image (default: the map's own image)")
 parser.add_argument('--out', default='exports/map.png', help='output rendered map path')
 args = parser.parse_args()
 
-json_path = 'data/territories.json'
+tool_data.use_scenario(args.scenario)
 out_path = args.out
-base_path = args.base
+base_path = args.base or tool_data.root_path(tool_data.map_meta()['image'])
 
-with open(json_path) as f:
-    data = json.load(f)
-spaces = data['spaces']
-faction_colors_hex = {k: v['color'] for k, v in json.load(open('data/factions.json'))['factions'].items()}
+spaces = tool_data.spaces()
+faction_colors_hex = {k: v['color'] for k, v in tool_data.factions().items()}
 
 def hex_to_bgr(h):
     h = h.lstrip('#')

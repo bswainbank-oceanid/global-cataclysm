@@ -372,7 +372,7 @@ func _launch_scripted() -> void:
 		seats.append({"mode": parts[0], "faction": parts[1] if parts.size() > 1 else "random", "alliance": 0,
 			"strategy": parts[2] if parts.size() > 2 else "random", "behavior": "random",
 			"ai": str(Dbg.args.get("bot_ai", "strategy"))})  # --bot_ai=random|strategy for every bot
-	while seats.size() < LaunchScreen.SEATS:
+	while seats.size() < GameData.faction_order.size():  # one seat per faction
 		seats.append({"mode": "NEUTRAL", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "random"})
 	if Dbg.args.has("start_allied"):  # the first two seats start in Alliance 1
 		seats[0]["alliance"] = 1

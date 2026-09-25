@@ -13,7 +13,7 @@ extends Control
 signal start_requested(settings: Dictionary)
 signal resume_requested
 
-const SEATS := 6
+var SEATS := 6  # one seat per faction: set from GameData's faction set in _ready
 const MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Defense", "DEFENSIVE"], ["Neutral", "NEUTRAL"]]
 const ALLIANCES := ["None", "Alliance 1", "Alliance 2", "Alliance 3"]
 const STRATEGIES := ["random", "aggressive", "passive", "counterweight", "independent", "variable"]
@@ -39,6 +39,7 @@ var remember := true  # keep the last setup in user://launch.cfg (off for script
 
 
 func _ready() -> void:
+	SEATS = GameData.faction_order.size()
 	z_index = 500
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	visible = false

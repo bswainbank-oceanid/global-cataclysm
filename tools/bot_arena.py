@@ -5,7 +5,7 @@ strategy bots (engine/bots/strategy_bot.py) against the random bots.
     python tools/bot_arena.py --games 10 --mix strategy=1,random=5
     python tools/bot_arena.py --games 6 --mix strategy=3,random=3 --budget 1500 --seed 100
 
---mix says how many of the six seats each AI gets (they must add up to at most six; the rest are empty
+--mix says how many of the seats (one per faction: six) each AI gets (they must add up to at most that; the rest are empty
 seats' worth of Neutral). Factions are dealt to the seats at random each game. A faction 'survives' if it
 is not eliminated when the game ends (it ended by an alliance of the survivors, by one faction left, or
 by the turn cap).
@@ -20,7 +20,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engine.bots.driver import play_to_completion  # noqa: E402
-from server.lobby import build_session  # noqa: E402
+from server.lobby import build_session, seat_count  # noqa: E402
 
 
 def parse_mix(text):
@@ -28,8 +28,8 @@ def parse_mix(text):
     for part in text.split(','):
         name, count = part.split('=')
         mix[name.strip()] = int(count)
-    if sum(mix.values()) > 6 or sum(mix.values()) < 2:
-        raise SystemExit('the mix must fill between 2 and 6 seats')
+    if sum(mix.values()) > seat_count() or sum(mix.values()) < 2:
+        raise SystemExit(f'the mix must fill between 2 and {seat_count()} seats')
     return mix
 
 
@@ -38,7 +38,7 @@ def play(seed, mix, max_turns, budget):
     for ai, n in mix.items():
         for _ in range(n):
             seats.append({'mode': 'BOT', 'faction': 'random', 'alliance': 0, 'strategy': 'random', 'behavior': 'random', 'ai': ai})
-    while len(seats) < 6:
+    while len(seats) < seat_count():
         seats.append({'mode': 'NEUTRAL', 'faction': 'random', 'alliance': 0, 'strategy': 'random', 'behavior': 'random'})
     session, assigned = build_session({'seats': seats, 'seed': seed, 'dev': {'bot_budget': budget}})
     engine, gs = session.engine, session.engine.game_state

@@ -47,8 +47,8 @@ app would.
 
 ## Rules engine: one module, two deployment modes
 
-Promotion is repeatable (`UnitInstance.promotions`, up to `promotion.max_promotions` = 3 in rules.json, or a unit type's own `max_promotions` in units.json -- Infantry 5; a top-rank unit earns no more XP and its surplus is dropped; XP is only +1 for surviving a round and +1 for dealing damage, with no bonus for eliminating a promoted unit -- the fast bot simulator and the client's XP pips follow suit; Infantry's Dig In is added after the defense cap of 10, so a defending Infantry with 5 promotions has defense 11, which the battle board marks with a row of its own and a shimmering golden defense box): every 5 XP after a round is a promotion -- die up one size (max D12), +1 defense (max 10), +1 HP -- and surplus XP carries over; see `data/rules.json` promotion. The combat/production/promotion rules (already specified in
-`data/rules.json` and `data/units.json`) should be implemented as a single
+Promotion is repeatable (`UnitInstance.promotions`, up to `promotion.max_promotions` = 3 in the rule set, or a unit type's heroic ability's `max_promotions` -- Infantry 5; a top-rank unit earns no more XP and its surplus is dropped; XP is only +1 for surviving a round and +1 for dealing damage, with no bonus for eliminating a promoted unit -- the fast bot simulator and the client's XP pips follow suit; Infantry's Dig In is added after the defense cap of 10, so a defending Infantry with 5 promotions has defense 11, which the battle board marks with a row of its own and a shimmering golden defense box): every 5 XP after a round is a promotion -- die up one size (max D12), +1 defense (max 10), +1 HP -- and surplus XP carries over; see `data/rules.json` promotion. The combat/production/promotion rules (already specified in
+the RuleSet and UnitSet modules) should be implemented as a single
 standalone, testable module — not duplicated per-platform:
 - **Single player vs. bots**: runs locally (embedded/local process),
   talking to nothing.
@@ -98,19 +98,24 @@ the continental US** in the current layout. "Scroll and see the US
 centered" only works once Layer 1 exists; it isn't achievable by camera
 positioning alone on the raw data.
 
-## Data layer: how `data/` maps onto the game
+## Data layer: how the modules map onto the game
 
-| File | Runtime role |
+All reference data is module JSON under `data/modules/`, resolved per game from
+a Scenario module (`docs/DATA_MODEL.md`); the engine reads it through
+`engine/data.py` / `engine/game_config.py`, the client through the files
+`tools/sync_client_data.py` writes into `client/data/`.
+
+| Module | Runtime role |
 |---|---|
-| `territories.json` | Drives territory node instancing at load time — position, ownership, value, SC flag. |
-| `territory_shapes.json` | Per-territory polygon(s) for `Polygon2D`/`CollisionPolygon2D` — see below. |
-| `adjacency.json` | Not visual. Loaded as a plain graph inside the rules engine for movement/adjacency validation. No nodes represent edges on screen. |
-| `factions.json` | Lookup table (color, name, doctrine) for territory fill-coloring and UI. |
-| `units.json`, `rules.json` | Core config the rules engine reads at startup — not represented as scene nodes. |
-| `scenarios/*.json` | Directly becomes "New Game" initial state — already shaped as exactly the per-territory purchase/promotion/escort data a game-start routine needs. |
+| Map | Location positions and polygons (`Polygon2D`/`CollisionPolygon2D` -- see below), and the adjacency graph the rules engine validates movement against. |
+| MapValues, FactionAssignment, SCAssignment | Each territory's value, starting owner and Strategic Center flag. |
+| FactionSet | Lookup table (name, colour, icon) for territory fill-colouring and UI. |
+| UnitSet, AbilityCatalog, RuleSet | Core config the rules engine reads at startup -- unit stats, each unit type's abilities (the engine's fixed ability library), the rules. |
+| InitialSetup, UnitPromotions | "New Game" initial state: where each faction's units start, and which start promoted. |
+| FactionWeightSet, StrategyThresholdSet, Objectives, PrimaryObjectiveOrder | The strategy bots' weights, thresholds and planning order. |
 
-**`data/territory_shapes.json` — done, land and sea.** `territories.json`
-only has a center point and bounding box per territory; the actual
+**Map boundaries — done, land and sea.** A location otherwise has only an
+anchor point and bounding box; the actual
 outline existed only implicitly in `assets/base_map.png`'s art.
 Classification logic (shared with `tools/render_map.py`'s land color
 fill, so the preview map and the game's real shapes can't silently drift
@@ -132,11 +137,10 @@ seam literally cuts through the continental US
 (confirmed visually) — so stitching polygons across the wrap at render
 time is entirely a Layer 1 job, not something baked into this data.
 
-**Authoring workflow stays as-is.** `data/` + the Excel round-trip +
-the Python pipeline remain the design-time source of truth, unchanged.
-Godot loads the JSON read-only; nobody hand-edits territory data inside
-the Godot editor. The game becomes one more thing that regenerates from
-the same JSON, not a parallel editing path.
+**Authoring workflow.** The module JSON is the source of truth; people edit
+the module spreadsheets (`sheets/`) and import them, and the map tools
+regenerate boundaries and adjacency (`docs/PIPELINE.md`). Godot loads the
+synced JSON read-only; nobody hand-edits game data inside the Godot editor.
 
 ## Build order
 

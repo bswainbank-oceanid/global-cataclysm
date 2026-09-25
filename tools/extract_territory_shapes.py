@@ -1,5 +1,5 @@
 """
-Extract data/territory_shapes.json: real vertex polygons for every land
+Extract the Map module's boundary polygons: real vertex polygons for every land
 territory AND sea zone, for the eventual Godot client (Polygon2D fill +
 CollisionPolygon2D hit-testing) -- territories.json only has a center
 point and bounding box today, not an outline.
@@ -38,15 +38,18 @@ import argparse
 import json
 import cv2
 import numpy as np
+import tool_data
 from map_geometry import label_land, territory_labels, label_sea, sea_territory_masks, absorb_unclaimed_land
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--base', default='assets/base_map.png', help='source base map image')
-parser.add_argument('--out', default='data/territory_shapes.json', help='output shapes JSON path')
+parser.add_argument('--scenario', default=tool_data.DEFAULT_SCENARIO_ID, help="the scenario whose map to extract")
+parser.add_argument('--base', default=None, help="source base map image (default: the map's own image)")
+parser.add_argument('--out', default=None,
+                    help="write the shapes to this JSON file instead of into the Map module (for a preview)")
 args = parser.parse_args()
 
-json_path = 'data/territories.json'
-base_path = args.base
+tool_data.use_scenario(args.scenario)
+base_path = args.base or tool_data.root_path(tool_data.map_meta()['image'])
 out_path = args.out
 
 # Vertex simplification tolerance (px), passed to cv2.approxPolyDP. Larger
@@ -83,9 +86,8 @@ def polygons_from_mask(mask):
     return polygons
 
 
-data = json.load(open(json_path))
-spaces = data['spaces']
-width = data['reference_image_width_px']
+spaces = tool_data.spaces()
+width = tool_data.map_meta()['reference_image_width_px']
 
 img = cv2.imread(base_path)
 
@@ -145,7 +147,15 @@ out = {
     'territory_count': len(shapes),
     'shapes': shapes,
 }
-json.dump(out, open(out_path, 'w'), indent=2)
+if out_path:
+    json.dump(out, open(out_path, 'w'), indent=2)
+else:
+    def _store(m):
+        for loc in m['locations']:
+            if str(loc['id']) in shapes:
+                loc['boundary'] = shapes[str(loc['id'])]
+        m['boundary_epsilon_px'] = APPROX_EPSILON
+    out_path = tool_data.save_map(_store)
 
 vertex_counts = [len(poly) for polys in shapes.values() for poly in polys]
 print(f'wrote {out_path}: {len(shapes)} territories, '

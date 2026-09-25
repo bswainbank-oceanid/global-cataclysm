@@ -1,8 +1,10 @@
 # Strategy bots
 
 The heuristic bot (`engine/bots/strategy_bot.py`, planner in `engine/bots/planner.py`) follows
-`reference/GC Bot Strategy.rtf` with the numbers in `reference/GC Bot Settings.ods`
-(built into `data/bot_settings.json` by `tools/build_bot_settings.py`). The random bot
+`reference/GC Bot Strategy.rtf`. Its numbers are the scenario's bot modules -- FactionWeightSet (unit
+and strategy weights), StrategyThresholdSet (per-strategy objective risk limits and weights, distance
+weights), Objectives and PrimaryObjectiveOrder (the planning order) -- edited in `sheets/` (see
+`docs/DATA_MODEL.md`). The random bot
 (`RandomBot`) stays as the baseline; a bot seat picks one in the launch screen ("Bot AI") or in the
 `new_game` seat settings (`"ai": "strategy" | "random"`, default `strategy`).
 

@@ -20,19 +20,23 @@ Run from the repo root, after compute_foreign_neighbors.py:
     python3 tools/compute_faction_profile.py
 """
 import json
-import math
 
-territories = json.load(open('data/territories.json'))['spaces']
-adjacency = json.load(open('data/adjacency.json'))
-foreign = json.load(open('derived/adjacency_foreign.json'))['foreign']
-rules = json.load(open('data/rules.json'))['setup']
+import argparse
+
+import tool_data
+
+_parser = argparse.ArgumentParser()
+_parser.add_argument('--scenario', default=tool_data.DEFAULT_SCENARIO_ID)
+tool_data.use_scenario(_parser.parse_args().scenario)
+
+territories = tool_data.spaces()
+adjacency = tool_data.adjacency()
+foreign = json.load(open(tool_data.root_path('derived/adjacency_foreign.json')))['foreign']
 
 by_id = {s['id']: s for s in territories}
 neighbors_ordered = {int(k): v for k, v in adjacency['neighbors_ordered'].items()}
-SC_BONUS = rules['strategic_center_value_bonus']
-
-def dist(a, b):
-    return math.hypot(a['x'] - b['x'], a['y'] - b['y'])
+SC_BONUS = tool_data.config().sc_bonus()
+SEA_DEPLOYMENT = tool_data.sea_deployment()
 
 land = [s for s in territories if s['type'] == 'land']
 factions = sorted({s['faction'] for s in land if s['faction']})
@@ -45,10 +49,10 @@ for terr in land:
     value = terr['value']
     sc = terr['strategic_center']
     cap = value + 3 + (SC_BONUS if sc else 0)
-    # coastal / default sea zone: nearest sea-type neighbor by distance
+    # coastal / its starting sea zone: the faction assignment's sea_deployment_location_id
     sea_neighbors = [n for n in neighbors_ordered.get(tid, []) if by_id[n]['type'] == 'sea']
     coastal = len(sea_neighbors) > 0
-    sea_zone = min(sea_neighbors, key=lambda n: dist(terr, by_id[n])) if coastal else None
+    sea_zone = SEA_DEPLOYMENT.get(tid) if coastal else None
     sea_zone_name = by_id[sea_zone]['name'] if coastal else None
     profile[terr['faction']].append({
         'id': tid,
@@ -62,5 +66,5 @@ for terr in land:
         'has_foreign_neighbor': len(foreign.get(str(tid), [])) > 0,
     })
 
-json.dump(profile, open('derived/faction_territory_profile.json', 'w'), indent=2)
+json.dump(profile, open(tool_data.root_path('derived/faction_territory_profile.json'), 'w'), indent=2)
 print('wrote derived/faction_territory_profile.json:', {k: len(v) for k, v in profile.items()})

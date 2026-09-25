@@ -140,9 +140,13 @@ factions, units with abilities and icons, adjacency) plus the map image.
 |---|---|
 | `tools/validate_modules.py` | schema and cross-reference checks for every module |
 | `tools/export_sheets.py` | module JSON -> `sheets/*.ods` |
-| `tools/import_sheets.py` | `sheets/*.ods` -> module JSON (editable fields only; `--check` shows the diff) |
+| `tools/import_sheets.py` | `sheets/*.ods` -> module JSON (`--check --diff` shows what would change; writes only if everything still validates) |
 | `tools/extract_territory_shapes.py` | map image -> the Map's boundary polygons |
 | `tools/compute_adjacency.py` | boundaries + overrides -> the Map's adjacency |
-| `tools/generate_scenario*.py` | writes an InitialSetup + UnitPromotions |
-| `tools/validate_setup.py` | checks a setup against the rules |
+| `tools/generate_setup.py` | writes an InitialSetup + UnitPromotions from the setup's `generation` parameters |
+| `tools/validate_setup.py` | checks the starting setups against the setup rules |
+| `tools/sync_client_data.py` | the scenario's modules -> `client/data` |
 | `tools/golden_games.py` | seeded full-game digests, to prove a refactor changed nothing |
+
+Tools find the modules through `tools/tool_data.py` and take `--scenario`
+(default `GC72_Scenario`). See `docs/PIPELINE.md` for the editing workflow.

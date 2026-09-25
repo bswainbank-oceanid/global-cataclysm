@@ -20,8 +20,8 @@
    "id": "heroic",
    "name": "Heroic",
    "description": "Heroic: eligible for {max_promotions} promotions",
-   "params": {"max_promotions": 5},
-   "listed": false
+   "listed": false,
+   "params": {"max_promotions": 5}
   },
   {
    "id": "amphibious",
@@ -33,8 +33,8 @@
    "id": "blitz",
    "name": "Blitz",
    "description": "Blitz: a combat move may pass through an undefended enemy territory, capturing it",
-   "params": {},
-   "listed": false
+   "listed": false,
+   "params": {}
   },
   {
    "id": "transport",
@@ -46,15 +46,15 @@
    "id": "air_superiority",
    "name": "Air Superiority",
    "description": "Air Superiority: {attack_die} attack, {damage} damage in the pre-combat air superiority round",
-   "_note": "attack_die/damage null: the unit rolls its normal die and damage in that round. triggers_round: the round happens when both sides have aircraft and one of them has a unit that triggers it.",
-   "params": {"attack_die": null, "damage": null, "triggers_round": false}
+   "params": {"attack_die": null, "damage": null, "triggers_round": false},
+   "_note": "attack_die/damage null: the unit rolls its normal die and damage in that round. triggers_round: the round happens when both sides have aircraft and one of them has a unit that triggers it."
   },
   {
    "id": "interception",
    "name": "Interception",
    "description": "Interception: enemy aircraft cannot fly over a space it holds",
-   "params": {},
-   "listed": false
+   "listed": false,
+   "params": {}
   },
   {
    "id": "carrier_air_wing",
@@ -78,8 +78,8 @@
    "id": "indiscriminate",
    "name": "Indiscriminate",
    "description": "Indiscriminate: picks targets without the same-type preference",
-   "params": {},
-   "listed": false
+   "listed": false,
+   "params": {}
   }
  ]
 }

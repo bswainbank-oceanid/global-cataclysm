@@ -29,19 +29,22 @@ import numpy as np
 
 sys.path.insert(0, __import__('os').path.dirname(__file__))
 from outline_adjacency import label_image, touching_pairs  # noqa: E402
+import tool_data  # noqa: E402
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--scenario', default=tool_data.DEFAULT_SCENARIO_ID)
 parser.add_argument('--touch-px', type=int, default=6, help='max gap (px) between outlines that still counts as touching')
 parser.add_argument('--out', default='exports/adjacency_all.png')
 parser.add_argument('--diff', action='store_true', help='colour by agreement with the outlines instead of one colour')
 parser.add_argument('--only', choices=['land-land', 'land-sea', 'sea-sea'], help='draw only this kind of pair (the report still lists all)')
 args = parser.parse_args()
 
-meta = json.load(open('data/territories.json'))
-spaces = {s['id']: s for s in meta['spaces']}
+tool_data.use_scenario(args.scenario)
+meta = tool_data.map_meta()
+spaces = {s['id']: s for s in tool_data.spaces()}
 W, H = int(meta['reference_image_width_px']), int(meta['reference_image_height_px'])
-shapes = json.load(open('data/territory_shapes.json'))['shapes']
-adj = json.load(open('data/adjacency.json'))
+shapes = tool_data.shapes()
+adj = tool_data.adjacency()
 edges = {tuple(sorted(e)) for e in adj['edges']}
 
 # ---- what the outlines say -------------------------------------------------
@@ -65,7 +68,7 @@ for tid in spaces:
 touching = touching_pairs(labels, args.touch_px)
 # data/adjacency_overrides.json's hand corrections are intended differences from the
 # outlines, so --diff expects them rather than flagging them.
-_ov = json.load(open('data/adjacency_overrides.json'))
+_ov = tool_data.adjacency_overrides()
 touching -= {(min(a, b), max(a, b)) for a, b, *_ in _ov['remove']}
 touching |= {(min(a, b), max(a, b)) for a, b, *_ in _ov['add']}
 R = args.touch_px
