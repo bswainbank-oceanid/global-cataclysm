@@ -278,7 +278,7 @@ class TestSeaUnitsCannotBeOrderedOntoLand(unittest.TestCase):
 
 
 class TestCruiserBombardmentEndToEnd(unittest.TestCase):
-    """rules.json's combat.cruiser_bombardment, the full turn: Combat Move
+    """the rule set's combat.cruiser_bombardment, the full turn: Combat Move
     (declaring it) through Combat Resolution (it actually firing)."""
 
     def _setup(self, stats=None, turn_log=None):

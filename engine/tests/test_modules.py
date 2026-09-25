@@ -72,9 +72,10 @@ class TestGameConfig(unittest.TestCase):
         self.assertEqual(text, ['Mustering: can be deployed in contested territory', 'Dig In: +1 defense when defending'])
 
     def test_resolution_order_comes_from_the_unit_types(self):
-        order = self.c.rules()['combat']['resolution_order']
-        self.assertEqual(order['land'], ['Infantry', 'Mechanized Infantry', 'Armor', 'Fighter', 'Bomber'])
-        self.assertEqual(order['sea'], ['Submarine', 'Fighter', 'Bomber', 'Cruiser', 'Aircraft Carrier'])
+        from engine.combat import resolution_order
+        self.assertEqual(resolution_order(self.c.units(), 'land'), ['Infantry', 'Mechanized Infantry', 'Armor', 'Fighter', 'Bomber'])
+        self.assertEqual(resolution_order(self.c.units(), 'sea'), ['Submarine', 'Fighter', 'Bomber', 'Cruiser', 'Aircraft Carrier'])
+        self.assertNotIn('resolution_order', self.c.rules()['combat'])
 
     def test_every_standard_setup_faction_has_three_promotions(self):
         _, promotions = self.c.initial_setup('standard')

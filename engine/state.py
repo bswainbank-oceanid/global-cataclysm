@@ -89,7 +89,7 @@ class UnitInstance:
     owner: str
     current_hp: int
     xp: int = 0
-    # How many promotions the unit has earned (up to rules.json promotion.max_promotions): each steps the attack die up one
+    # How many promotions the unit has earned (up to the rule set promotion.max_promotions): each steps the attack die up one
     # size (max D12), adds +1 defense (max 10) and +1 max HP. XP toward the next one is `xp`.
     promotions: int = 0
     has_moved_combat: bool = False
@@ -107,7 +107,7 @@ class UnitInstance:
     # carrier, not a fixed location, to find it "wherever it is" after
     # combat) -- NOT a fully general "current home carrier" tracker for
     # every move a plane makes; see combat_move_origin below and
-    # rules.json's movement.carrier_air_operations for what's covered
+    # the rule set's movement.carrier_air_operations for what's covered
     # and what (ride-along outside this specific return trip, chaining)
     # still isn't. Cleared once process_return_to_base consumes it.
     based_on_carrier: Optional[int] = None
@@ -117,7 +117,7 @@ class UnitInstance:
     # there's no carrier to track, or that carrier didn't survive.
     # Cleared once process_return_to_base consumes it.
     combat_move_origin: Optional[int] = None
-    # rules.json's cruiser_bombardment: the LAND territory id this Cruiser
+    # the rule set's cruiser_bombardment: the LAND territory id this Cruiser
     # declared a bombardment against this turn (GameEngine._execute_combat_moves
     # sets this instead of relocating the unit onto land, which it never
     # actually enters -- see movement.trace_combat_move's BombardmentTrace).
@@ -301,7 +301,7 @@ class TerritoryState:
     ambush_bonus_for: set = field(default_factory=set)
     # True for a territory that started out in a DEFENSIVE power's hands: it is never a
     # Strategic Center in this game, whoever holds it -- capturing it doesn't turn it
-    # into one. (territories.json's strategic_center is only the map's starting fact;
+    # into one. (the SC assignment's Strategic Centers are only the map's starting fact;
     # GameState.is_strategic_center is the answer the rules use.)
     sc_disabled: bool = False
 
@@ -508,7 +508,7 @@ class GameState:
 
     def is_strategic_center(self, territory_id, terr):
         """Whether the territory counts as a Strategic Center in this game: it is one on the
-        map (`terr` is its territories.json entry) and hasn't been switched off -- a territory
+        map (`terr` is its engine.data.territories() entry) and hasn't been switched off -- a territory
         that started out in a DEFENSIVE power's hands never is one (TerritoryState.sc_disabled),
         even after another faction captures it."""
         return bool(terr.get('strategic_center')) and not self.territories[territory_id].sc_disabled

@@ -530,7 +530,7 @@ def _bombardment_session():
 
 
 class TestBombardmentPacing(unittest.TestCase):
-    """rules.json's combat.cruiser_bombardment, over the wire: declaring it
+    """the rule set's combat.cruiser_bombardment, over the wire: declaring it
     is an ordinary human combat move; it queues and fires as Combat
     Resolution's own first paced step, strictly before any real battle."""
 

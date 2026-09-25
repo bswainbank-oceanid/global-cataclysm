@@ -4,7 +4,7 @@ sea zones can it legally reach this turn? Answers reachability queries
 only -- it does not execute a move or apply consequences (capture,
 becoming Transport cargo, the sea-battle-before-land-battle dependency
 for an amphibious landing), which is engine.py's job. Every rule here
-matches data/rules.json's movement section exactly; see that file for
+matches the rule set's movement section exactly; see that file for
 the prose version of each rule this implements.
 
 Alongside the destination-set queries (legal_combat_move_destinations,
@@ -20,7 +20,7 @@ picking a general direction to advance in.
 
 Sea units (category 'Sea') never leave the water at all: every search and
 path validator here refuses a land hop for one, in both move phases -- it
-can't end a move on land, pass over it, or attack it (see rules.json's
+can't end a move on land, pass over it, or attack it (see the rule set's
 movement.sea_units_stay_at_sea).
 
 Two move types, with different destination rules:
@@ -35,7 +35,7 @@ Two move types, with different destination rules:
   combat move instead.
 
 Alliances: FactionState.alliance is a plain membership tag (see
-data/rules.json's alliances.status) that this module actively consults
+the rule set's alliances.status) that this module actively consults
 throughout -- own-or-allied territory/units are treated as friendly
 everywhere above, even though the alliance MECHANICS (joining/
 withdrawing, betrayal) are still out of scope. Air's landing rule is the
@@ -115,7 +115,7 @@ def _is_ally_or_self(game_state, mover_faction, other_faction):
 
 def _is_transport(unit, territory_id, territories, unit_defs):
     """A land unit in a sea zone IS a Transport (one per unit -- see
-    rules.json water_movement_bonus_rule); there is no separate
+    the rule set water_movement_bonus_rule); there is no separate
     transport unit type on the board."""
     if abilities.has(unit_defs, unit.unit_type, abilities.TRANSPORT):
         return True
@@ -144,7 +144,7 @@ def _enemy_fighter_present(territory_id, mover_faction, game_state, unit_defs):
     """True if `territory_id` holds a unit with the interception ability (a
     Fighter) belonging to a faction that's neither `mover_faction` nor one of
     its allies -- the one thing that disrupts air's otherwise-unconstrained
-    overflight of enemy and neutral territory (rules.json's
+    overflight of enemy and neutral territory (the rule set's
     air_interception_rule). Bombers, every other unit type, and simple
     non-ally/neutral presence alone never trigger this."""
     return any(abilities.has(unit_defs, u.unit_type, abilities.INTERCEPTION)
@@ -226,7 +226,7 @@ def _classify_combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_s
         # now-self-marked-but-still-EMPTY territory to a different
         # further destination, with nobody actually there to fight or
         # dispute the claim. Physical presence is the real signal here;
-        # a genuine multi-round stalemate (rules.json's 3-round cap)
+        # a genuine multi-round stalemate (the rule set's 3-round cap)
         # only ever leaves a territory contested WITH both sides' units
         # still on it, so this never misses an actual fight.
         return STOP_ONLY  # occupied foreign territory (or occupied sea for a non-land unit): attack, stop here
@@ -393,7 +393,7 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
 
 
 def _legal_bombardment_targets(unit_type, owner, origin_id, game_state, data_module):
-    """{target_land_id: [origin_id, (sea_hop,) target_land_id]} -- rules.json's
+    """{target_land_id: [origin_id, (sea_hop,) target_land_id]} -- the rule set's
     cruiser_bombardment: every enemy-occupied land territory reachable from
     origin_id by a Cruiser that either bombards from right where it is, or
     repositions ONE sea hop first -- never both, and that one hop must be a
@@ -534,7 +534,7 @@ class CombatMoveTrace:
     immediate ownership: even an entirely undefended Mechanized Infantry
     blitz doesn't capture outright the moment it passes through. Actual
     ownership is resolved later, in the Capture Territory phase, from
-    whatever the board looks like by then (see rules.json's
+    whatever the board looks like by then (see the rule set's
     movement.combat_move_destination and turn_order's Capture Territory
     entry) -- 'capture' here is just a label distinguishing "nobody was
     defending it" from 'attack', not a claim that ownership already
@@ -561,7 +561,7 @@ class CombatMoveTrace:
 
 class BombardmentTrace:
     """Result of trace_combat_move for a Cruiser's bombardment declaration
-    (rules.json's combat.cruiser_bombardment): the Cruiser never enters
+    (the rule set's combat.cruiser_bombardment): the Cruiser never enters
     target_id (a land territory) -- it stays at final_sea_id, the last
     REAL position in its path (its origin, or the one sea zone it
     repositioned to). engine.engine.GameEngine._execute_combat_moves reads
@@ -585,7 +585,7 @@ def _trace_bombardment_movement(unit_type, owner, path, game_state, data_module)
 
     Validates ONLY the movement -- not whether `owner`'s `unit_type` unit is
     actually allowed to end up bombarding/escorting at target_id, which is a
-    different rule for a Cruiser declaring a fresh bombardment (rules.json's
+    different rule for a Cruiser declaring a fresh bombardment (the rule set's
     combat.cruiser_bombardment: enemy units must actually be present) than
     for another Sea unit riding along a sibling Cruiser's bombardment this
     same turn (engine.engine.GameEngine._execute_combat_moves: legal only
@@ -624,7 +624,7 @@ def _trace_bombardment_movement(unit_type, owner, path, game_state, data_module)
 
 def _trace_bombardment(unit_type, owner, path, game_state, data_module):
     """A Cruiser's own combat move whose final hop targets enemy-occupied
-    land: rules.json's combat.cruiser_bombardment -- see
+    land: the rule set's combat.cruiser_bombardment -- see
     _trace_bombardment_movement for the shared repositioning rules. Adds
     the Cruiser-specific eligibility check on top: there must actually be
     enemy units present to bombard. Raises ValueError if either check
@@ -657,7 +657,7 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
     _reachable_destinations does). Returns a CombatMoveTrace on success --
     or, for a Cruiser whose path's final entry is land, a BombardmentTrace
     instead (delegated to _trace_bombardment, an entirely different, much
-    narrower set of rules -- see that function and rules.json's
+    narrower set of rules -- see that function and the rule set's
     combat.cruiser_bombardment).
     """
     if len(path) < 2:
@@ -803,7 +803,7 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
       one unit's move in isolation and can't see, and per this rule
       shouldn't guess at, another unit's not-yet-submitted move.
 
-    Enemy Fighter interception (rules.json's air_interception_rule):
+    Enemy Fighter interception (the rule set's air_interception_rule):
     Bombers, ground/sea units, and simple non-ally/neutral presence
     never disrupt overflight -- ONLY an enemy Fighter (belonging to a
     faction that's neither `owner` nor one of its allies) does, in
@@ -902,7 +902,7 @@ def find_emergency_landing(origin_id, owner, game_state, data_module, rng):
     down. A ONE-HOP adjacent-territory search -- not an ordinary move, and
     not gated by the aircraft's own move budget. This is a pure spatial
     query; WHEN and for WHOM it's appropriate to call it is entirely
-    engine.py's job (not yet built) to enforce, per rules.json's
+    engine.py's job (not yet built) to enforce, per the rule set's
     emergency_landing rule:
     - only resolved once the whole battle has concluded, never mid-battle
       -- an aircraft whose carrier dies in round 1 of a 3-round battle

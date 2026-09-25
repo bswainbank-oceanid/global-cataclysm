@@ -5,7 +5,7 @@ from engine import data
 from engine.state import UnitInstance, max_promotions
 from engine.combat import (
     _apply_xp_and_check_promotions as _apply_xp, unit_stat_rows, resolve_battle, resolve_bombardment,
-    BattleResult, EventKind, _select_target, _resolution_sequence, _fight_one_round,
+    BattleResult, EventKind, _select_target, _resolution_sequence, _fight_one_round, resolution_order,
 )
 
 UNIT_DEFS = data.units()
@@ -300,7 +300,7 @@ class TestFirstRoundCombatBonus(unittest.TestCase):
         rng = ScriptedRNG(rolls)
         return list(_fight_one_round(
             rng, round_number, [attacker], [defender], UNIT_DEFS, combat_cfg(),
-            RULES['combat']['resolution_order']['land'], 0, round1_bonus_side=round1_bonus_side,
+            resolution_order(UNIT_DEFS, 'land'), 0, round1_bonus_side=round1_bonus_side,
         ))
 
     def test_defender_bonus_raises_defense_and_can_turn_a_hit_into_a_miss(self):
@@ -361,7 +361,7 @@ class TestFirstRoundCombatBonus(unittest.TestCase):
 
 
 class TestDigIn(unittest.TestCase):
-    """Infantry's 'Dig In' trait (units.json's special_abilities): +1
+    """Infantry's 'Dig In' trait (the unit set's special_abilities): +1
     defense while defending, every round -- not just round 1, and unlike
     combat.first_round_bonuses, unconditional and entirely intrinsic to
     combat.py (no engine.py trigger determination needed). Driven by
@@ -392,7 +392,7 @@ class TestDigIn(unittest.TestCase):
         for round_number in (1, 2, 3):
             events = list(_fight_one_round(
                 ScriptedRNG([5, 1]), round_number, [attacker], [defender], UNIT_DEFS, combat_cfg(),
-                RULES['combat']['resolution_order']['land'], 0,
+                resolution_order(UNIT_DEFS, 'land'), 0,
             ))
             attacker_roll = next(e for e in events if e.kind == EventKind.UNIT_ROLL and e.side == 'attacker')
             self.assertFalse(attacker_roll.hit, f'round {round_number}: Dig In should apply regardless of round number')
@@ -420,7 +420,7 @@ class TestDigIn(unittest.TestCase):
 class TestAirSuperiorityDieAdjustments(unittest.TestCase):
     """combat.air_superiority_die_adjustments: during the pre-combat
     air-superiority round only, Fighter rolls a D10 for 3 damage and Bomber
-    a D6 for 1 damage (units.json's air_superiority blocks: the die replaces
+    a D6 for 1 damage (the unit set's air_superiority blocks: the die replaces
     the base die, promotion still steps it up; the damage is an absolute
     override) -- see UnitInstance.effective_stats' `air_superiority`
     parameter. Driven directly via
@@ -431,7 +431,7 @@ class TestAirSuperiorityDieAdjustments(unittest.TestCase):
         rng = ScriptedRNG(rolls)
         return list(_fight_one_round(
             rng, round_number, [attacker], [defender], UNIT_DEFS, combat_cfg(),
-            RULES['combat']['resolution_order']['sea'], 0, air_superiority=air_superiority,
+            resolution_order(UNIT_DEFS, 'sea'), 0, air_superiority=air_superiority,
         ))
 
     def _attacker_roll(self, events):
@@ -488,7 +488,7 @@ class TestAirSuperiorityDieAdjustments(unittest.TestCase):
 
 
 class TestSubmarineAirInvisibility(unittest.TestCase):
-    """combat.submarine_air_invisibility (units.json's 'Submerge' trait):
+    """combat.submarine_air_invisibility (the unit set's 'Submerge' trait):
     a Submarine attacker never sees an Air-category unit in its target
     pool, and an Air attacker never sees a Submarine, regardless of the
     roll -- filtered out before the clean/bypass pool logic even runs,
@@ -534,7 +534,7 @@ class TestSubmarineAirInvisibility(unittest.TestCase):
 
 
 class TestTransportFormInSeaBattles(unittest.TestCase):
-    """rules.json combat.transport_form_in_sea_battles: a Land-category unit in
+    """the rule set combat.transport_form_in_sea_battles: a Land-category unit in
     a SEA battle is Transport cargo -- no attack, defense 5, 1 HP, no XP, and
     it dies with one hit; a survivor gets its real HP back."""
 
@@ -778,7 +778,7 @@ class TestDigInStacksBeyondTheCap(unittest.TestCase):
 
 
 class TestResolveBombardment(unittest.TestCase):
-    """combat.resolve_bombardment: rules.json's combat.cruiser_bombardment
+    """combat.resolve_bombardment: the rule set's combat.cruiser_bombardment
     -- a Cruiser's single, immediate attack roll, no counter-attack, no XP."""
 
     def target_cfg(self):

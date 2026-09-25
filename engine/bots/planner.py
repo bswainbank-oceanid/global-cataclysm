@@ -819,7 +819,7 @@ class Planner:
         self._second_pass_fleets(limits)
 
     def _bombard_idle_cruisers(self, name, limits):
-        """rules.json's combat.cruiser_bombardment: a Cruiser left with no worthwhile enemy fleet
+        """the rule set's combat.cruiser_bombardment: a Cruiser left with no worthwhile enemy fleet
         to attack above (no stack in reach, or one not worth the risk) seeks an occupied enemy
         land space to bombard instead -- a free attack roll at the very start of Combat
         Resolution, since it never actually enters the land and takes no counter-fire. Skipped

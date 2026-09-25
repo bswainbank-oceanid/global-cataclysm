@@ -299,7 +299,7 @@ def _apply_xp_and_check_promotions(round_number, attackers_before, defenders_bef
     least one hit), then promotes any unit with XP at the threshold: each
     promotion costs `xp_required` XP (the surplus rolls over toward the next
     rank), healing +1 HP into it immediately. A unit can be promoted again and
-    again up to its cap (`max_promotions`: the type's own in units.json, else the
+    again up to its cap (`max_promotions`: the type's own in the unit set, else the
     rules' default); at that rank it earns no more XP (and any surplus is
     dropped). Yields a PROMOTION event per promotion."""
     xp_required = promotion_cfg['xp_required']
@@ -337,7 +337,7 @@ def _fight_one_round(rng, round_number, attackers, defenders, unit_defs, combat_
     round1_bonus_side: None | 'attacker' | 'defender' -- which side (if
     any) qualifies for one of combat.first_round_bonuses in THIS battle
     (amphibious landing favors the defender; a sea-deploy surprise favors
-    the attacker; see rules.json -- determining which case applies, if
+    the attacker; see the rule set -- determining which case applies, if
     any, is the caller's job, not this module's). It only ever actually
     applies when round_number == 1 -- passing it in for the air-
     superiority round (round_number 0) or a later round (2, 3) is
@@ -423,7 +423,7 @@ def resolution_order(unit_defs, battle_type):
 
 @dataclass
 class BombardmentResult:
-    """One Cruiser's single bombardment attack roll (rules.json's
+    """One Cruiser's single bombardment attack roll (the rule set's
     cruiser_bombardment) -- see resolve_bombardment. Its own shape,
     deliberately not a BattleEvent: this never belongs to any round, side,
     or battle -- see engine.engine.GameEngine._resolve_bombardments, which
@@ -440,7 +440,7 @@ class BombardmentResult:
 
 
 def resolve_bombardment(rng, cruiser, defenders, unit_defs, target_cfg):
-    """rules.json's cruiser_bombardment: `cruiser` (a Cruiser UnitInstance
+    """the rule set's cruiser_bombardment: `cruiser` (a Cruiser UnitInstance
     that declared a bombardment -- see movement.trace_combat_move's
     BombardmentTrace) fires ONE attack roll against `defenders` (the live
     units currently in its target territory), using its own normal attack
@@ -448,7 +448,7 @@ def resolve_bombardment(rng, cruiser, defenders, unit_defs, target_cfg):
     combat uses (_select_target: a clean defense<=roll hit preferred, the
     max-die half-damage bypass otherwise) -- but there is no return fire
     (defenders never roll back) and the Cruiser earns no XP for this,
-    unlike an ordinary attack. `target_cfg`: data/rules.json's
+    unlike an ordinary attack. `target_cfg`: the rule set's
     combat.target_selection (same_type_weight/bomber_attacker_weight),
     exactly as _roll_side is given it.
 
@@ -495,7 +495,7 @@ def resolve_battle(attacker_units, defender_units, battle_type, rng, current_glo
     combat.target_selection, combat.air_superiority_trigger, promotion.*).
 
     round1_bonus_side: None | 'attacker' | 'defender' -- see
-    combat.first_round_bonuses in rules.json for the three cases this
+    combat.first_round_bonuses in the rule set for the three cases this
     covers (amphibious landing, sea-deploy surprise, former-ally
     reclaim). Whether this battle actually qualifies for one, and for
     which side, is decided by the caller (engine.py, not yet built) from

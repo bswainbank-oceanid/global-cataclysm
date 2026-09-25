@@ -88,7 +88,7 @@ class TestSetup(unittest.TestCase):
     def test_starting_treasury_is_31_mpc_for_every_faction(self):
         # setup.territory_ipc_per_faction (25) + strategic_centers_per_faction
         # (3) x strategic_center_value_bonus (2) = 31 -- confirmed against
-        # every faction's real territories.json data, not just the formula.
+        # every faction's real territory data, not just the formula.
         modes = {c: FactionMode.HUMAN for c in data.factions()}
         gs = build_game_state(modes)
         for fac in data.factions():

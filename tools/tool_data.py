@@ -79,11 +79,6 @@ def rules():
     return config().rules()
 
 
-def setup_rules():
-    """The rule set's setup section, with the SC bonus and naval exclusions it used to hold."""
-    return config().rules()['setup']
-
-
 def unit_weights():
     """{faction: {unit type: weight}} from the scenario's faction weight set."""
     return config().bot_settings()['unit_weights']

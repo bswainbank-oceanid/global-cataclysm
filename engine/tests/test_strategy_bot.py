@@ -416,7 +416,7 @@ class TestEmptyLandGrabSeaDeploy(unittest.TestCase):
 
 
 class TestControlOceansBombardment(unittest.TestCase):
-    """rules.json's combat.cruiser_bombardment, from the Controlling-style bot's side: a Cruiser
+    """the rule set's combat.cruiser_bombardment, from the Controlling-style bot's side: a Cruiser
     with no worthwhile enemy fleet in reach seeks an occupied enemy land space to bombard
     instead. A small hand-built map (real territory ids are too crowded with the starting
     scenario's own fleets and threats to isolate this cleanly): 1 (NAA land, "home", needed only

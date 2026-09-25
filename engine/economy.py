@@ -9,7 +9,7 @@ no mutation, no side effects.
 def compute_income(faction, game_state, data_module):
     """MPC income for `faction`: the sum of (value + the SC assignment's
     sc_bonus if strategic_center) over every LAND territory it currently controls
-    that ISN'T contested -- see data/rules.json's production.
+    that ISN'T contested -- see the rule set's production.
     income_formula. A contested territory contributes to neither side
     (combat.contested_territory_rule); sea zones carry no value field
     and are never an income source. Used both to seed each faction's

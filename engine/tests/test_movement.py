@@ -625,7 +625,7 @@ class TestSeaUnitsStayAtSea(unittest.TestCase):
 
 
 class TestCruiserBombardment(unittest.TestCase):
-    """rules.json's combat.cruiser_bombardment: the sole exception to
+    """the rule set's combat.cruiser_bombardment: the sole exception to
     sea_units_stay_at_sea -- a Cruiser may declare a combat move against
     enemy-occupied land, but never actually enters it."""
 

@@ -23,7 +23,7 @@ Settings (the "new_game" message's "settings"):
 Every faction is in exactly one seat: explicit picks are honoured first (and must
 be distinct), "random" seats then take the factions left over, in random order.
 "Players" are the HUMAN and BOT seats; DEFENSIVE seats' units defend but take no
-turns, and NEUTRAL seats are impassable (see data/rules.json power_modes).
+turns, and NEUTRAL seats are impassable (see the rule set power_modes).
 
 The rules the screen enforces (and the server re-checks, being the authority):
 at least two players, at most one human, distinct explicit factions, and each

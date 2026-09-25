@@ -161,26 +161,11 @@ class GameConfig:
         return self._view('units', build)
 
     def rules(self):
-        """The rule set, plus (for code that still looks there) the pieces that moved into other modules:
-        combat.resolution_order, setup.strategic_center_value_bonus, setup.excluded_naval_zones, map."""
-        def build():
-            r = {k: v for k, v in self.rule_set.items() if k not in ('module_type', 'id', 'name', '_moved')}
-            units = self.unit_set['unit_types']
-            combat = dict(r['combat'])
-            combat['resolution_order'] = {
-                side: [u['id'] for u in sorted((u for u in units if u.get(f'{side}_order') is not None),
-                                               key=lambda u: u[f'{side}_order'])]
-                for side in ('land', 'sea')}
-            r['combat'] = combat
-            setup = dict(r['setup'])
-            setup['strategic_center_value_bonus'] = self.sc_bonus()
-            setup['excluded_naval_zones'] = self.naval_deploy_excluded()
-            r['setup'] = setup
-            info = self.map_info()
-            r['map'] = {'reference_image_width_px': info['width_px'], 'reference_image_height_px': info['height_px'],
-                        'wraps_east_west': info['wraps_east_west']}
-            return r
-        return self._view('rules', build)
+        """The rule set (without its module id/name). Battle order, the Strategic Center bonus, naval
+        exclusions and the map's size and topology live in their own modules: see resolution order
+        (engine.combat.resolution_order), sc_bonus(), naval_deploy_excluded() and map_info()."""
+        return self._view('rules', lambda: {k: v for k, v in self.rule_set.items()
+                                            if k not in ('module_type', 'id', 'name', '_moved')})
 
     def bot_settings(self):
         """The strategy bots' settings in engine/bots/strategy_settings.py's shape: unit_weights,
