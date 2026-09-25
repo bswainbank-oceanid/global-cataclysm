@@ -890,7 +890,7 @@ class TestLostContestedPurchaseOverAWholeTurn(unittest.TestCase):
     def play(self, hand_over_to_gpc=()):
         from engine.setup import build_game_state
         modes = {f: FactionMode.BOT for f in real_data.factions()}
-        gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False)
+        gs = build_game_state(modes, randomize_play_order=False)
         engine = GameEngine(gs, real_data, combat_rng=random.Random(1))
         T = 10  # Western Canada, NAA's, with one NAA Infantry in it
         for i in range(4):  # GPC's promoted Armor holds it against that lone defender

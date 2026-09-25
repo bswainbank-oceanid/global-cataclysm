@@ -16,7 +16,7 @@ def _watch_session(seed=1):
     modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.BOT
     modes['AAC'] = FactionMode.BOT
-    gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False)
+    gs = build_game_state(modes, randomize_play_order=False)
     turn_log = TurnLog()
     engine = GameEngine(gs, None, turn_log=turn_log, combat_rng=random.Random(seed))
     bots = {code: RandomBot(engine, code, rng=random.Random(seed)) for code in ('NAA', 'AAC')}
@@ -160,7 +160,7 @@ class TestWatch(unittest.TestCase):
         modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
         modes['NAA'] = FactionMode.BOT  # a BOT with no RandomBot attached
         modes['AAC'] = FactionMode.BOT
-        gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False)
+        gs = build_game_state(modes, randomize_play_order=False)
         turn_log = TurnLog()
         engine = GameEngine(gs, None, turn_log=turn_log)
         session = GameSession(engine, turn_log, {'AAC': RandomBot(engine, 'AAC', rng=random.Random(1))})
@@ -298,7 +298,7 @@ def _human_session(seed=1):
     modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.HUMAN
     modes['GPC'] = FactionMode.BOT
-    gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False)
+    gs = build_game_state(modes, randomize_play_order=False)
     turn_log = TurnLog()
     engine = GameEngine(gs, None, turn_log=turn_log, combat_rng=random.Random(seed))
     return GameSession(engine, turn_log, {'GPC': RandomBot(engine, 'GPC', rng=random.Random(seed))})
@@ -413,7 +413,7 @@ def _human_moves_session(seed=1):
     modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.HUMAN
     modes['GPC'] = FactionMode.BOT
-    gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False, allow_combat_moves_first_turn=True)
+    gs = build_game_state(modes, randomize_play_order=False, allow_combat_moves_first_turn=True)
     turn_log = TurnLog()
     engine = GameEngine(gs, None, turn_log=turn_log, combat_rng=random.Random(seed))
     session = GameSession(engine, turn_log, {'GPC': RandomBot(engine, 'GPC', rng=random.Random(seed))})
