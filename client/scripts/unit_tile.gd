@@ -100,7 +100,7 @@ func _describe() -> String:
 	var line := "%s #%d\nHP %d/%d   XP %d/%d%s" % [
 		unit["unit_type"], int(unit["unit_id"]), int(unit["current_hp"]), max_hp(),
 		mini(int(unit.get("xp", 0)), XP_PIPS), XP_PIPS, "   (%d promotion%s%s)" % [int(unit.get("promotions", 0)), "" if int(unit.get("promotions", 0)) == 1 else "s", ", top rank" if int(unit.get("promotions", 0)) >= max_rank() else ""] if int(unit.get("promotions", 0)) > 0 else ""]
-	return "Transport carrying " + line if in_transport else line
+	return GameData.transport_unit(str(unit["unit_type"])) + " carrying " + line if in_transport else line
 
 
 ## A quick side-to-side shake, after `delay` seconds: this unit is rolling.
@@ -149,7 +149,7 @@ func _draw() -> void:
 		_draw_package(Vector2.ZERO, owner_col)
 	else:
 		# The transport itself: a regular-size icon, with no XP or HP of its own.
-		_draw_icon("Transport", Vector2.ZERO, owner_col)
+		_draw_icon(GameData.transport_unit(str(unit["unit_type"])), Vector2.ZERO, owner_col)
 		draw_rect(CARGO_BOX, owner_col.darkened(0.6))
 		draw_rect(CARGO_BOX, Color(1, 1, 1, 0.9), false, 1.5)
 		_draw_package(CARGO_OFFSET, owner_col)

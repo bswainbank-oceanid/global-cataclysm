@@ -10,7 +10,6 @@ extends Node2D
 enum Style { FLAG, STRIP, CATEGORY }
 
 const FONT_SIZE := 12
-const CATEGORY_ICON := {"Land": "Infantry", "Sea": "Cruiser", "Air": "Fighter"}
 
 const STRIP_MIN_ZOOM := 1.0
 const STRIP_SCALE := 2.0   # zoomed-in badges are drawn at this multiple of the Flag size
@@ -281,7 +280,7 @@ func _draw_group(pos: Vector2, owner: String, by_type: Dictionary, size: Vector2
 			var x := pos.x + 3
 			for cat in ["Land", "Sea", "Air"]:
 				if cats.has(cat):
-					_glyph(CATEGORY_ICON[cat], Vector2(x, pos.y + 3), 14)
+					_glyph(GameData.category_icon(cat), Vector2(x, pos.y + 3), 14)
 					_count(str(cats[cat]), Vector2(x + 15, pos.y + 15), 10)
 					x += 27
 

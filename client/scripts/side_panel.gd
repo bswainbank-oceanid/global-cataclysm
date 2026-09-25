@@ -340,13 +340,13 @@ func _tiles_for(tid: int, units: Array, mine: bool) -> Control:
 	return flow
 
 
-## An air unit left behind at `tid` while an Aircraft Carrier there is queued to
-## move: the engine carries the air units along with the carrier.
+## An air unit left behind at `tid` while a carrier (an Aircraft Carrier) there is
+## queued to move: the engine carries the air units along with the carrier.
 func _rides_with_queued_carrier(tid: int, u: Dictionary) -> bool:
 	if str(GameData.units["units"][GameStore.base_type(str(u["unit_type"]))]["category"]) != "Air":
 		return false
 	for o in GameStore.committed_from(tid):
-		if o["unit_type"] == "Aircraft Carrier":
+		if GameData.has_ability(str(o["unit_type"]), "carrier_air_wing"):
 			return true
 	return false
 
@@ -389,11 +389,11 @@ func _add_incoming_section(tid: int) -> void:
 	_detail.add_child(flow)
 
 
-## Display order within a faction: by unit type, most promoted first, most XP first.
+## Display order within a faction: by unit type (the unit set's display_order), most promoted
+## first, most XP first.
 func _unit_before(a: Dictionary, b: Dictionary) -> bool:
-	var types: Array = UnitIcons.FILES.keys()
-	var ta := types.find(a["unit_type"])
-	var tb := types.find(b["unit_type"])
+	var ta := int(GameData.unit_def(str(a["unit_type"])).get("display_order", 999))
+	var tb := int(GameData.unit_def(str(b["unit_type"])).get("display_order", 999))
 	if ta != tb:
 		return ta < tb
 	if int(a.get("promotions", 0)) != int(b.get("promotions", 0)):

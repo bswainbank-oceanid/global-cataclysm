@@ -102,7 +102,8 @@ ability with `listed: false` works but is not shown there (as today).
 `damage`, `defense`, `hp`, `combat_move`, `non_combat_move`, `purchasable`,
 `land_order` / `sea_order` (the position in a land or sea battle's resolution
 order; null for a unit that doesn't fight there), `display_order` (the purchase
-panel), `icon` (an `assets/icons` file), `abilities` (`[{"id", "params"}]`).
+panel), `icon` (an `assets/icons` file), `plural` (the name for several;
+default: name + "s"), `abilities` (`[{"id", "params"}]`).
 
 ### Strategic Centers
 

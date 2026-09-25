@@ -10,8 +10,6 @@ extends PanelContainer
 signal add_requested(unit_type: String, tid: int)
 signal remove_requested(unit_type: String, tid: int)
 
-const UNIT_ORDER := ["Infantry", "Mechanized Infantry", "Armor", "Fighter", "Bomber", "Submarine", "Cruiser", "Aircraft Carrier"]
-
 var button: HoldButton
 var resolve_button: Button  # only shown while a battle is paused waiting to open its board: fight it without opening one
 var _content: VBoxContainer
@@ -250,7 +248,7 @@ func _add_site(info: Dictionary) -> void:
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_content.add_child(lbl)
 	var left := GameStore.purchase_budget_left()
-	for unit_type in UNIT_ORDER:
+	for unit_type in GameData.purchase_order():
 		_content.add_child(_unit_row(unit_type, info, is_sea, left))
 
 
@@ -263,12 +261,12 @@ func _unit_row(unit_type: String, info: Dictionary, is_sea: bool, budget_left: i
 	if not is_sea and str(def["category"]) == "Sea":
 		allowed = false
 		why = "Ships deploy into a sea zone: select an adjacent sea zone."
-	elif is_sea and str(def["category"]) == "Land" and not _is_amphibious(def):
+	elif is_sea and str(def["category"]) == "Land" and not GameData.has_ability(unit_type, "amphibious"):
 		allowed = false
-		why = "Only Mechanized Infantry can deploy into a sea zone."
-	elif GameStore.human_purchase["contested"].has(_target) and unit_type != "Infantry":
+		why = "Only %s can deploy into a sea zone." % GameData.names_with("amphibious")
+	elif GameStore.human_purchase["contested"].has(_target) and not GameData.has_ability(unit_type, "mustering"):
 		allowed = false
-		why = "Only Infantry may deploy into a contested territory."
+		why = "Only %s may deploy into a contested territory." % GameData.names_with("mustering")
 	var can_add := allowed and int(info["remaining"]) > 0 and cost <= budget_left
 	if allowed and int(info["remaining"]) <= 0:
 		why = "No deployment capacity left here."
@@ -295,14 +293,6 @@ func _unit_row(unit_type: String, info: Dictionary, is_sea: bool, budget_left: i
 	row.add_child(qty)
 	row.add_child(_step_button("+", can_add, func(): add_requested.emit(unit_type, _target)))
 	return row
-
-
-## Only amphibious land units (units.json's "Amphibious" ability: Mechanized Infantry) can enter the water.
-static func _is_amphibious(def: Dictionary) -> bool:
-	for a in def.get("special_abilities", []):
-		if str(a).begins_with("Amphibious"):
-			return true
-	return false
 
 
 func _step_button(text: String, enabled: bool, action: Callable) -> Button:

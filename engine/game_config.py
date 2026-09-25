@@ -153,7 +153,8 @@ class GameConfig:
                 stats['max_promotions'] = abilities['heroic']['max_promotions'] if 'heroic' in abilities else default_cap
                 stats.update({
                     'name': u['name'], 'land_order': u.get('land_order'), 'sea_order': u.get('sea_order'),
-                    'display_order': u.get('display_order'), 'icon': u.get('icon'), 'abilities': abilities,
+                    'display_order': u.get('display_order'), 'icon': u.get('icon'),
+                    'plural': u.get('plural') or u['name'] + 's', 'abilities': abilities,
                 })
                 out[u['id']] = stats
             return out

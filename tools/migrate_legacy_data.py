@@ -157,6 +157,7 @@ ICONS = {
     'Fighter': 'jet-fighter.svg', 'Bomber': 'bomber.svg', 'Aircraft Carrier': 'carrier.svg',
     'Cruiser': 'cruiser.svg', 'Submarine': 'submarine.svg', 'Transport': 'cargo-ship.svg',
 }
+PLURALS = {'Infantry': 'Infantry', 'Mechanized Infantry': 'Mechanized Infantry', 'Armor': 'Armor'}
 DISPLAY_ORDER = ['Infantry', 'Mechanized Infantry', 'Armor', 'Fighter', 'Bomber', 'Submarine', 'Cruiser',
                  'Aircraft Carrier']
 
@@ -197,12 +198,13 @@ def build_units(units, rules):
             'sea_order': order['sea'].index(name) + 1 if name in order['sea'] else None,
             'display_order': DISPLAY_ORDER.index(name) + 1 if name in DISPLAY_ORDER else None,
             'icon': ICONS[name],
+            'plural': PLURALS.get(name, name + 's'),
             'abilities': abilities,
         })
     unit_set = doc('UnitSet', 'GC72_UnitSet', 'GC72 units',
                    _note=('Stats from the design doc. land_order/sea_order: position in a land/sea battle\'s '
                           'resolution order (null: does not fight there). display_order: the purchase panel. '
-                          'icon: a file in assets/icons. Promotion steps the attack die up one size (max D12), '
+                          'icon: a file in assets/icons. plural: the name for several. Promotion steps the attack die up one size (max D12), '
                           '+1 defense (max 10), +1 HP; the default promotion cap is the rule set\'s, the heroic '
                           'ability raises it.'),
                    ability_catalog_id='GC72_Abilities',

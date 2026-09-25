@@ -380,9 +380,12 @@ func _side_name(side: String) -> String:
 
 
 static func _plural(unit_type: String, n: int) -> String:
-	if n == 1 or ["Infantry", "Mechanized Infantry", "Armor"].has(unit_type):
+	if n == 1:
 		return unit_type
-	return unit_type + "s"
+	# The GameData autoload, looked up at run time: a headless test script compiles this
+	# class before the autoloads exist, so it can't be named directly here.
+	var game_data := (Engine.get_main_loop() as SceneTree).root.get_node_or_null("GameData")
+	return game_data.unit_plural(unit_type) if game_data != null else unit_type + "s"
 
 
 ## "2 Cruisers, 1 Submarine" for unit rows / roll events (anything with a "unit_type").

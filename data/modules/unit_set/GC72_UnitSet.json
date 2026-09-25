@@ -2,7 +2,7 @@
  "module_type": "UnitSet",
  "id": "GC72_UnitSet",
  "name": "GC72 units",
- "_note": "Stats from the design doc. land_order/sea_order: position in a land/sea battle's resolution order (null: does not fight there). display_order: the purchase panel. icon: a file in assets/icons. Promotion steps the attack die up one size (max D12), +1 defense (max 10), +1 HP; the default promotion cap is the rule set's, the heroic ability raises it.",
+ "_note": "Stats from the design doc. land_order/sea_order: position in a land/sea battle's resolution order (null: does not fight there). display_order: the purchase panel. icon: a file in assets/icons. plural: the name for several. Promotion steps the attack die up one size (max D12), +1 defense (max 10), +1 HP; the default promotion cap is the rule set's, the heroic ability raises it.",
  "ability_catalog_id": "GC72_Abilities",
  "category_icons": {"Land": "Infantry", "Sea": "Cruiser", "Air": "Fighter"},
  "unit_types": [
@@ -23,6 +23,7 @@
    "sea_order": null,
    "display_order": 1,
    "icon": "person.svg",
+   "plural": "Infantry",
    "abilities": [
     {"id": "mustering"},
     {"id": "dig_in"},
@@ -46,6 +47,7 @@
    "sea_order": null,
    "display_order": 2,
    "icon": "apc.svg",
+   "plural": "Mechanized Infantry",
    "abilities": [
     {"id": "amphibious", "params": {"transport_unit": "Transport"}},
     {"id": "blitz"}
@@ -68,6 +70,7 @@
    "sea_order": null,
    "display_order": 3,
    "icon": "battle-tank.svg",
+   "plural": "Armor",
    "abilities": []
   },
   {
@@ -87,6 +90,7 @@
    "sea_order": 2,
    "display_order": 4,
    "icon": "jet-fighter.svg",
+   "plural": "Fighters",
    "abilities": [
     {"id": "air_superiority", "params": {"attack_die": "D10", "damage": 3, "triggers_round": true}},
     {"id": "interception"}
@@ -109,6 +113,7 @@
    "sea_order": 3,
    "display_order": 5,
    "icon": "bomber.svg",
+   "plural": "Bombers",
    "abilities": [
     {"id": "air_superiority", "params": {"attack_die": "D6", "damage": 1, "triggers_round": false}},
     {"id": "indiscriminate"}
@@ -131,6 +136,7 @@
    "sea_order": 5,
    "display_order": 8,
    "icon": "carrier.svg",
+   "plural": "Aircraft Carriers",
    "abilities": [
     {"id": "carrier_air_wing", "params": {"capacity": 3}}
    ]
@@ -152,6 +158,7 @@
    "sea_order": 1,
    "display_order": 6,
    "icon": "submarine.svg",
+   "plural": "Submarines",
    "abilities": [
     {"id": "submerge"}
    ]
@@ -173,6 +180,7 @@
    "sea_order": 4,
    "display_order": 7,
    "icon": "cruiser.svg",
+   "plural": "Cruisers",
    "abilities": [
     {"id": "bombardment"}
    ]
@@ -194,6 +202,7 @@
    "sea_order": null,
    "display_order": null,
    "icon": "cargo-ship.svg",
+   "plural": "Transports",
    "abilities": [
     {"id": "transport"}
    ]

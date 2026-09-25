@@ -144,6 +144,7 @@ class _Checker:
             for k in ('land_order', 'sea_order', 'display_order'):
                 self.field(tw, t, k, INT, optional=True, nullable=True)
             self.field(tw, t, 'icon', STR, optional=True, nullable=True)
+            self.field(tw, t, 'plural', STR, optional=True, nullable=True)
             for a in t.get('abilities', []):
                 if a.get('id') not in abilities:
                     self.err(tw, f'unknown ability {a.get("id")!r} (not in the ability catalog)')
