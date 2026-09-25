@@ -1,0 +1,19 @@
+{
+ "module_type": "PrimaryObjectiveOrder",
+ "id": "GC72_PrimaryOrder",
+ "name": "Strategy bot planning order",
+ "_note": "The planner works through `steps` in order, each after taking `budget_share` of its planning budget; treasonous_capture only runs when the bot means to betray its alliance this turn. The secondary objectives come next (each taking secondary_budget_share, in an order drawn by the strategy weights), then `final`.",
+ "objectives_id": "GC72_Objectives",
+ "steps": [
+  {"objective_id": "hold_sc", "budget_share": 0.35},
+  {"objective_id": "capture_sc", "budget_share": 0.15},
+  {"objective_id": "reinforce_contested", "budget_share": 0.1},
+  {"objective_id": "punish_betrayers", "budget_share": 0.05},
+  {"objective_id": "fill_gaps", "budget_share": 0.05},
+  {"objective_id": "treasonous_capture", "budget_share": 0.1, "when": "treasonous"}
+ ],
+ "secondary_budget_share": 0.12,
+ "final": [
+  {"objective_id": "pursue_leftovers", "budget_share": 0.25}
+ ]
+}

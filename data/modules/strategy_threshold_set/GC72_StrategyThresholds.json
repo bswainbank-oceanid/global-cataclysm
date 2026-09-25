@@ -1,0 +1,84 @@
+{
+ "module_type": "StrategyThresholdSet",
+ "id": "GC72_StrategyThresholds",
+ "name": "Strategy bot thresholds",
+ "_note": "min_risk/max_risk: the success probability (percent) an objective needs; weight: the odds of a secondary objective being considered early. A variable strategy re-draws one of the others every turn by the faction's strategy weights. distance_weights: the cost of a square by kind, for the planner's travel estimates.",
+ "objectives_id": "GC72_Objectives",
+ "strategies": [
+  {
+   "id": "Strategic",
+   "name": "Strategic",
+   "objectives": [
+    {"objective_id": "hold_sc", "min_risk": 0.001, "max_risk": 75, "weight": null},
+    {"objective_id": "capture_sc", "min_risk": 60, "max_risk": 95, "weight": null},
+    {"objective_id": "reinforce_contested", "min_risk": 1, "max_risk": 95, "weight": null},
+    {"objective_id": "punish_betrayers", "min_risk": 1, "max_risk": 80, "weight": null},
+    {"objective_id": "expand_territory", "min_risk": 60, "max_risk": 90, "weight": 5},
+    {"objective_id": "hold_frontier", "min_risk": 5, "max_risk": 80, "weight": 3},
+    {"objective_id": "control_oceans", "min_risk": 60, "max_risk": 80, "weight": 5},
+    {"objective_id": "pursue_sc_1", "min_risk": 60, "max_risk": 90, "weight": 10},
+    {"objective_id": "pursue_sc_2", "min_risk": 60, "max_risk": 90, "weight": 3},
+    {"objective_id": "pursue_sc_3", "min_risk": 60, "max_risk": 90, "weight": 2},
+    {"objective_id": "empty_land_grab", "min_risk": null, "max_risk": null, "weight": 8}
+   ]
+  },
+  {
+   "id": "Defensive",
+   "name": "Defensive",
+   "objectives": [
+    {"objective_id": "hold_sc", "min_risk": 0.001, "max_risk": 75, "weight": null},
+    {"objective_id": "capture_sc", "min_risk": 60, "max_risk": 95, "weight": null},
+    {"objective_id": "reinforce_contested", "min_risk": 1, "max_risk": 95, "weight": null},
+    {"objective_id": "punish_betrayers", "min_risk": 1, "max_risk": 80, "weight": null},
+    {"objective_id": "expand_territory", "min_risk": 60, "max_risk": 90, "weight": 5},
+    {"objective_id": "hold_frontier", "min_risk": 5, "max_risk": 95, "weight": 10},
+    {"objective_id": "control_oceans", "min_risk": 60, "max_risk": 80, "weight": 2},
+    {"objective_id": "pursue_sc_1", "min_risk": 60, "max_risk": 90, "weight": 5},
+    {"objective_id": "pursue_sc_2", "min_risk": 60, "max_risk": 90, "weight": 0},
+    {"objective_id": "pursue_sc_3", "min_risk": 60, "max_risk": 90, "weight": 0},
+    {"objective_id": "empty_land_grab", "min_risk": null, "max_risk": null, "weight": 5}
+   ]
+  },
+  {
+   "id": "Expansive",
+   "name": "Expansive",
+   "objectives": [
+    {"objective_id": "hold_sc", "min_risk": 0.001, "max_risk": 75, "weight": null},
+    {"objective_id": "capture_sc", "min_risk": 60, "max_risk": 95, "weight": null},
+    {"objective_id": "reinforce_contested", "min_risk": 1, "max_risk": 95, "weight": null},
+    {"objective_id": "punish_betrayers", "min_risk": 1, "max_risk": 80, "weight": null},
+    {"objective_id": "expand_territory", "min_risk": 60, "max_risk": 95, "weight": 12},
+    {"objective_id": "hold_frontier", "min_risk": 5, "max_risk": 95, "weight": 8},
+    {"objective_id": "control_oceans", "min_risk": 60, "max_risk": 80, "weight": 3},
+    {"objective_id": "pursue_sc_1", "min_risk": 60, "max_risk": 90, "weight": 7},
+    {"objective_id": "pursue_sc_2", "min_risk": 60, "max_risk": 90, "weight": 2},
+    {"objective_id": "pursue_sc_3", "min_risk": 60, "max_risk": 90, "weight": 0},
+    {"objective_id": "empty_land_grab", "min_risk": null, "max_risk": null, "weight": 10}
+   ]
+  },
+  {
+   "id": "Controlling",
+   "name": "Controlling",
+   "objectives": [
+    {"objective_id": "hold_sc", "min_risk": 0.001, "max_risk": 75, "weight": null},
+    {"objective_id": "capture_sc", "min_risk": 60, "max_risk": 95, "weight": null},
+    {"objective_id": "reinforce_contested", "min_risk": 1, "max_risk": 95, "weight": null},
+    {"objective_id": "punish_betrayers", "min_risk": 1, "max_risk": 80, "weight": null},
+    {"objective_id": "expand_territory", "min_risk": 60, "max_risk": 90, "weight": 7},
+    {"objective_id": "hold_frontier", "min_risk": 1, "max_risk": 80, "weight": 3},
+    {"objective_id": "control_oceans", "min_risk": 65, "max_risk": 95, "weight": 10},
+    {"objective_id": "pursue_sc_1", "min_risk": 60, "max_risk": 90, "weight": 7},
+    {"objective_id": "pursue_sc_2", "min_risk": 60, "max_risk": 90, "weight": 3},
+    {"objective_id": "pursue_sc_3", "min_risk": 60, "max_risk": 90, "weight": 2},
+    {"objective_id": "empty_land_grab", "min_risk": null, "max_risk": null, "weight": 8}
+   ]
+  },
+  {
+   "id": "Variable",
+   "name": "Variable",
+   "variable": true,
+   "objectives": []
+  }
+ ],
+ "distance_weights": {"friendly": 2, "sea": 3, "enemy": 5, "allied": 3}
+}

@@ -331,7 +331,7 @@ class TestPlayToCompletion(unittest.TestCase):
         modes = {code: FactionMode.NEUTRAL for code in real_data.factions()}
         modes['NAA'] = FactionMode.BOT
         modes['AAC'] = FactionMode.BOT
-        gs = build_game_state('starting_setup_125ipc', modes)
+        gs = build_game_state(modes)
         stats = GameStats()
         engine = GameEngine(gs, stats=stats)
         bots = {
@@ -367,7 +367,7 @@ class TestPlayToCompletion(unittest.TestCase):
         modes = {code: FactionMode.NEUTRAL for code in real_data.factions()}
         modes['NAA'] = FactionMode.BOT
         modes['AAC'] = FactionMode.BOT
-        gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False)
+        gs = build_game_state(modes, randomize_play_order=False)
         self.assertFalse(gs.allow_combat_moves_first_turn)
         stats = GameStats()
         engine = GameEngine(gs, stats=stats)
@@ -402,7 +402,7 @@ class TestPlayToCompletion(unittest.TestCase):
         def play_once():
             modes = {code: FactionMode.BOT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
             gs = build_game_state(
-                'starting_setup_125ipc', modes, max_alliance_size=3,
+                modes, max_alliance_size=3,
                 alliance_strategies={c: 'random' for c in modes},
                 alliance_behaviors={c: 'random' for c in modes},
                 rng=__import__('random').Random(99),

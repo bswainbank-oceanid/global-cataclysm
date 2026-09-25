@@ -1,0 +1,7 @@
+{
+ "module_type": "UnitPromotions",
+ "id": "GC72_DefensivePromotions",
+ "name": "Defensive setup (100 MPC): promotions",
+ "initial_setup_id": "GC72_DefensiveSetup",
+ "units": []
+}

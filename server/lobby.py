@@ -171,7 +171,7 @@ def build_session(settings, rng=None):
     assignments, groups, randomize = resolve_settings(settings, rng)
     modes = {a['faction']: FactionMode[a['mode']] for a in assignments}
     gs = build_game_state(
-        'starting_setup_125ipc', modes, randomize_play_order=randomize, rng=rng,
+        modes, randomize_play_order=randomize, rng=rng,
         max_alliance_size=int(settings.get('max_alliance_size', DEFAULT_MAX_ALLIANCE_SIZE)),
         alliance_strategies={a['faction']: a['strategy'] for a in assignments if a['mode'] == 'BOT'},
         alliance_behaviors={a['faction']: a['behavior'] for a in assignments if a['mode'] == 'BOT'},

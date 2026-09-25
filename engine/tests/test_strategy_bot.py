@@ -1,18 +1,13 @@
 """The strategy bots: their settings and weighted draws, the planner's objectives, and whole turns."""
 import collections
-import json
-import os
 import random
 import unittest
 
 from engine import data
-from engine.bots import strategy_settings
 from engine.bots.planner import Planner
 from engine.bots.random_bot import RandomBot
 from engine.bots.strategy_bot import StrategyBot
-from engine.bots.strategy_settings import (
-    ALL_STYLES, SECONDARY, STYLES, load_settings, weighted_choice, weighted_order,
-)
+from engine.bots.strategy_settings import load_settings, weighted_choice, weighted_order
 from engine.engine import GameEngine
 from engine.setup import build_game_state
 from engine.state import FactionMode, Phase, UnitInstance
@@ -20,6 +15,9 @@ from engine.tests.test_engine import FakeData, make_state, make_unit
 
 FACTIONS = ('NAA', 'AAC', 'UE', 'GPC', 'PAF', 'UER')
 UNITS = ('Infantry', 'Mechanized Infantry', 'Armor', 'Aircraft Carrier', 'Cruiser', 'Submarine', 'Bomber', 'Fighter')
+STYLES = ('Strategic', 'Defensive', 'Expansive', 'Controlling')
+ALL_STYLES = STYLES + ('Variable',)
+SECONDARY = ('expand_territory', 'hold_frontier', 'control_oceans', 'pursue_sc_1', 'pursue_sc_2', 'pursue_sc_3', 'empty_land_grab')
 
 
 class TestSettings(unittest.TestCase):
@@ -85,18 +83,21 @@ class TestSettings(unittest.TestCase):
         odds = self.s.unit_odds('PAF', ['Infantry', 'Aircraft Carrier', 'Fighter'])
         self.assertEqual(odds, [4, 2, 2])
 
-    def test_the_json_matches_the_spreadsheet_builder(self):
-        path = os.path.join(os.path.dirname(strategy_settings.__file__), '..', '..', 'data', 'bot_settings.json')
-        with open(path, encoding='utf-8') as f:
-            raw = json.load(f)
-        self.assertEqual(raw['unit_weights']['UER']['Infantry'], 5)
+    def test_the_styles_and_objectives_come_from_the_modules_in_order(self):
+        self.assertEqual(self.s.styles, STYLES)
+        self.assertEqual(self.s.all_styles, ALL_STYLES)
+        self.assertEqual(self.s.variable_styles, ('Variable',))
+        self.assertEqual(self.s.secondary, SECONDARY)
+        self.assertEqual([step['objective_id'] for step in self.s.primary_order],
+                         ['hold_sc', 'capture_sc', 'reinforce_contested', 'punish_betrayers', 'fill_gaps', 'treasonous_capture'])
+        self.assertEqual(self.s.unit_weights['UER']['Infantry'], 5)
 
 
 def make_game(modes=None, seed=1, first_turn_combat=True):
     modes = modes or {f: FactionMode.NEUTRAL for f in FACTIONS}
     modes = dict(modes)
     rng = random.Random(seed)
-    gs = build_game_state('starting_setup_125ipc', {f: modes.get(f, FactionMode.NEUTRAL) for f in FACTIONS},
+    gs = build_game_state({f: modes.get(f, FactionMode.NEUTRAL) for f in FACTIONS},
                           randomize_play_order=False, allow_combat_moves_first_turn=first_turn_combat, rng=rng)
     engine = GameEngine(gs, data, combat_rng=random.Random(seed + 1))
     return engine, gs
@@ -491,7 +492,7 @@ class TestStrategyBotPlaysTurns(unittest.TestCase):
     def game(self, seed=3, budget=250):
         modes = {f: FactionMode.BOT for f in FACTIONS}
         rng = random.Random(seed)
-        gs = build_game_state('starting_setup_125ipc', modes, rng=rng)
+        gs = build_game_state(modes, rng=rng)
         engine = GameEngine(gs, data, combat_rng=random.Random(rng.random()))
         bots = {f: StrategyBot(engine, f, rng=random.Random(rng.random()), budget=budget) for f in modes}
         return engine, gs, bots

@@ -1,0 +1,131 @@
+{
+ "module_type": "FactionWeightSet",
+ "id": "GC72_FactionWeights",
+ "name": "Strategy bot faction weights",
+ "_note": "Odds for weighted random draws; 0 is never drawn.",
+ "faction_set_id": "GC72_FactionSet",
+ "unit_set_id": "GC72_UnitSet",
+ "strategy_threshold_set_id": "GC72_StrategyThresholds",
+ "factions": [
+  {
+   "faction_id": "NAA",
+   "unit_weights": [
+    {"unit_type_id": "Infantry", "weight": 2},
+    {"unit_type_id": "Mechanized Infantry", "weight": 6},
+    {"unit_type_id": "Armor", "weight": 4},
+    {"unit_type_id": "Aircraft Carrier", "weight": 3},
+    {"unit_type_id": "Cruiser", "weight": 3},
+    {"unit_type_id": "Submarine", "weight": 2},
+    {"unit_type_id": "Bomber", "weight": 3},
+    {"unit_type_id": "Fighter", "weight": 5}
+   ],
+   "strategy_weights": [
+    {"strategy_id": "Strategic", "weight": 7},
+    {"strategy_id": "Defensive", "weight": 2},
+    {"strategy_id": "Expansive", "weight": 3},
+    {"strategy_id": "Controlling", "weight": 4},
+    {"strategy_id": "Variable", "weight": 0}
+   ]
+  },
+  {
+   "faction_id": "AAC",
+   "unit_weights": [
+    {"unit_type_id": "Infantry", "weight": 2},
+    {"unit_type_id": "Mechanized Infantry", "weight": 4},
+    {"unit_type_id": "Armor", "weight": 4},
+    {"unit_type_id": "Aircraft Carrier", "weight": 3},
+    {"unit_type_id": "Cruiser", "weight": 3},
+    {"unit_type_id": "Submarine", "weight": 2},
+    {"unit_type_id": "Bomber", "weight": 5},
+    {"unit_type_id": "Fighter", "weight": 3}
+   ],
+   "strategy_weights": [
+    {"strategy_id": "Strategic", "weight": 2},
+    {"strategy_id": "Defensive", "weight": 5},
+    {"strategy_id": "Expansive", "weight": 4},
+    {"strategy_id": "Controlling", "weight": 2},
+    {"strategy_id": "Variable", "weight": 0}
+   ]
+  },
+  {
+   "faction_id": "UE",
+   "unit_weights": [
+    {"unit_type_id": "Infantry", "weight": 3},
+    {"unit_type_id": "Mechanized Infantry", "weight": 3},
+    {"unit_type_id": "Armor", "weight": 4},
+    {"unit_type_id": "Aircraft Carrier", "weight": 2},
+    {"unit_type_id": "Cruiser", "weight": 2},
+    {"unit_type_id": "Submarine", "weight": 2},
+    {"unit_type_id": "Bomber", "weight": 3},
+    {"unit_type_id": "Fighter", "weight": 3}
+   ],
+   "strategy_weights": [
+    {"strategy_id": "Strategic", "weight": 5},
+    {"strategy_id": "Defensive", "weight": 4},
+    {"strategy_id": "Expansive", "weight": 5},
+    {"strategy_id": "Controlling", "weight": 2},
+    {"strategy_id": "Variable", "weight": 0}
+   ]
+  },
+  {
+   "faction_id": "GPC",
+   "unit_weights": [
+    {"unit_type_id": "Infantry", "weight": 4},
+    {"unit_type_id": "Mechanized Infantry", "weight": 5},
+    {"unit_type_id": "Armor", "weight": 2},
+    {"unit_type_id": "Aircraft Carrier", "weight": 5},
+    {"unit_type_id": "Cruiser", "weight": 4},
+    {"unit_type_id": "Submarine", "weight": 4},
+    {"unit_type_id": "Bomber", "weight": 4},
+    {"unit_type_id": "Fighter", "weight": 4}
+   ],
+   "strategy_weights": [
+    {"strategy_id": "Strategic", "weight": 5},
+    {"strategy_id": "Defensive", "weight": 4},
+    {"strategy_id": "Expansive", "weight": 5},
+    {"strategy_id": "Controlling", "weight": 7},
+    {"strategy_id": "Variable", "weight": 0}
+   ]
+  },
+  {
+   "faction_id": "PAF",
+   "unit_weights": [
+    {"unit_type_id": "Infantry", "weight": 4},
+    {"unit_type_id": "Mechanized Infantry", "weight": 3},
+    {"unit_type_id": "Armor", "weight": 5},
+    {"unit_type_id": "Aircraft Carrier", "weight": 2},
+    {"unit_type_id": "Cruiser", "weight": 2},
+    {"unit_type_id": "Submarine", "weight": 4},
+    {"unit_type_id": "Bomber", "weight": 2},
+    {"unit_type_id": "Fighter", "weight": 2}
+   ],
+   "strategy_weights": [
+    {"strategy_id": "Strategic", "weight": 2},
+    {"strategy_id": "Defensive", "weight": 5},
+    {"strategy_id": "Expansive", "weight": 4},
+    {"strategy_id": "Controlling", "weight": 2},
+    {"strategy_id": "Variable", "weight": 0}
+   ]
+  },
+  {
+   "faction_id": "UER",
+   "unit_weights": [
+    {"unit_type_id": "Infantry", "weight": 5},
+    {"unit_type_id": "Mechanized Infantry", "weight": 2},
+    {"unit_type_id": "Armor", "weight": 7},
+    {"unit_type_id": "Aircraft Carrier", "weight": 1},
+    {"unit_type_id": "Cruiser", "weight": 2},
+    {"unit_type_id": "Submarine", "weight": 3},
+    {"unit_type_id": "Bomber", "weight": 2},
+    {"unit_type_id": "Fighter", "weight": 2}
+   ],
+   "strategy_weights": [
+    {"strategy_id": "Strategic", "weight": 3},
+    {"strategy_id": "Defensive", "weight": 4},
+    {"strategy_id": "Expansive", "weight": 7},
+    {"strategy_id": "Controlling", "weight": 2},
+    {"strategy_id": "Variable", "weight": 0}
+   ]
+  }
+ ]
+}

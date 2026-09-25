@@ -1,0 +1,84 @@
+{
+ "module_type": "AbilityCatalog",
+ "id": "GC72_Abilities",
+ "name": "Engine ability library",
+ "_note": "The special abilities the engine implements. A unit type opts into one by id and may set its params (anything left out takes the default here). listed: false -- works, but is not shown in the unit's ability list. A new ability needs engine code.",
+ "abilities": [
+  {
+   "id": "mustering",
+   "name": "Mustering",
+   "description": "Mustering: can be deployed in contested territory",
+   "params": {}
+  },
+  {
+   "id": "dig_in",
+   "name": "Dig In",
+   "description": "Dig In: +{defense_bonus} defense when defending",
+   "params": {"defense_bonus": 1}
+  },
+  {
+   "id": "heroic",
+   "name": "Heroic",
+   "description": "Heroic: eligible for {max_promotions} promotions",
+   "params": {"max_promotions": 5},
+   "listed": false
+  },
+  {
+   "id": "amphibious",
+   "name": "Amphibious",
+   "description": "Amphibious: becomes a transport in sea spaces (the only land unit that can enter the water)",
+   "params": {"transport_unit": "Transport"}
+  },
+  {
+   "id": "blitz",
+   "name": "Blitz",
+   "description": "Blitz: a combat move may pass through an undefended enemy territory, capturing it",
+   "params": {},
+   "listed": false
+  },
+  {
+   "id": "transport",
+   "name": "Transport",
+   "description": "See transport & amphibious operations rules; a Mechanized Infantry unit becomes a transport in a sea space, one transport per unit, with no move bonus",
+   "params": {}
+  },
+  {
+   "id": "air_superiority",
+   "name": "Air Superiority",
+   "description": "Air Superiority: {attack_die} attack, {damage} damage in the pre-combat air superiority round",
+   "params": {"attack_die": "D6", "damage": 1, "triggers_round": false}
+  },
+  {
+   "id": "interception",
+   "name": "Interception",
+   "description": "Interception: enemy aircraft cannot fly over a space it holds",
+   "params": {},
+   "listed": false
+  },
+  {
+   "id": "carrier_air_wing",
+   "name": "Carrier Air Wing",
+   "description": "Carrier Air Wing: carries up to {capacity} air units",
+   "params": {"capacity": 3}
+  },
+  {
+   "id": "submerge",
+   "name": "Submerge",
+   "description": "Submerge: can't engage or be attacked by aircraft",
+   "params": {}
+  },
+  {
+   "id": "bombardment",
+   "name": "Bombardment",
+   "description": "Bombardment: can do 1 bombardment round against land as Combat Move",
+   "params": {}
+  },
+  {
+   "id": "indiscriminate",
+   "name": "Indiscriminate",
+   "description": "Indiscriminate: picks targets without the same-type preference",
+   "params": {},
+   "listed": false
+  }
+ ]
+}

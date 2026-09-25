@@ -1,0 +1,9 @@
+{
+ "module_type": "SCAssignment",
+ "id": "GC72_SCAssignment",
+ "name": "GC72 Strategic Centers",
+ "_note": "sc_bonus is added to a Strategic Center's value (income and per-turn deploy cap).",
+ "map_values_id": "GC72_MapValues",
+ "sc_bonus": 2,
+ "locations": [7, 19, 21, 23, 37, 39, 47, 52, 53, 62, 71, 75, 76, 79, 93, 99, 121, 133]
+}

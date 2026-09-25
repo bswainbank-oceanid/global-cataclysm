@@ -1,0 +1,32 @@
+{
+  "random_6bot": {
+    "setup": "3516e2d9c04aaec5b6ed80acc29fc8f27daf2e2d",
+    "log": "892841c7384010b0548180000f005ba55c9606b0",
+    "final": "ffeafaa83a3a871146b0abc4820964ace71f6f00",
+    "events": 5305
+  },
+  "strategy_6bot": {
+    "setup": "8520fb7f6953d2324bfa8ad9c020e2afc3408b98",
+    "log": "f0c782dd9d66f007b364428354092d502cef0868",
+    "final": "d36d514cd8d4618e92f01846ba26af72a2c7836d",
+    "events": 733
+  },
+  "strategy_3bot_defensive": {
+    "setup": "495b20d69ce1d4f901f3fecefed3cadb55588935",
+    "log": "a16f484dbc2723ff65f8bcc26745ffbf2c13af18",
+    "final": "7aa384bd9dd85e9bdd17713d3807c2c49d7ac930",
+    "events": 1058
+  },
+  "mixed_alliances": {
+    "setup": "4396d6b892e341b2ebd7a2922c1158fb79b43c2e",
+    "log": "f720d7da4c891e54032d8570369172aa8d6aeba2",
+    "final": "43739c8f3d37581d6ac1f1dd66fb155cd1fafe17",
+    "events": 2155
+  },
+  "fixed_order_2bot": {
+    "setup": "8322063ddd614e891f998085fef370bb4ee2c9d5",
+    "log": "4ae10cade7a46671fc2375bcaea6a3bc134a813a",
+    "final": "f5f86d7cd3659b5a02d10ac444373ae5b3ea97df",
+    "events": 2870
+  }
+}

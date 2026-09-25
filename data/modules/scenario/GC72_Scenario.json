@@ -1,0 +1,23 @@
+{
+ "module_type": "Scenario",
+ "id": "GC72_Scenario",
+ "name": "Global Cataclysm: 1972",
+ "map_id": "GC72_Map",
+ "ability_catalog_id": "GC72_Abilities",
+ "unit_set_id": "GC72_UnitSet",
+ "faction_set_id": "GC72_FactionSet",
+ "map_values_id": "GC72_MapValues",
+ "faction_assignment_id": "GC72_FactionAssignment",
+ "sc_assignment_id": "GC72_SCAssignment",
+ "rule_set_id": "GC72_Rules",
+ "setups": {
+  "standard": {"initial_setup_id": "GC72_StandardSetup", "unit_promotions_id": "GC72_StandardPromotions"},
+  "defensive": {"initial_setup_id": "GC72_DefensiveSetup", "unit_promotions_id": "GC72_DefensivePromotions"}
+ },
+ "bots": {
+  "faction_weight_set_id": "GC72_FactionWeights",
+  "strategy_threshold_set_id": "GC72_StrategyThresholds",
+  "objectives_id": "GC72_Objectives",
+  "primary_objective_order_id": "GC72_PrimaryOrder"
+ }
+}

@@ -1188,23 +1188,27 @@ class Planner:
     # ==== the whole plan =========================================================================
 
     def run(self, treasonous=False):
-        self.give(0.35)
-        self.objective_hold_scs()
-        self.give(0.15)
-        self.objective_capture_scs()
-        self.give(0.10)
-        self.objective_reinforce_contested()
-        self.give(0.05)
-        self.objective_punish_betrayers()
-        self.give(0.05)
-        self.objective_fill_gaps()
-        if treasonous:
-            self.give(0.10)
-            self.objective_treasonous_capture()
+        """Works through the scenario's planning order (its PrimaryObjectiveOrder module): the primary
+        objectives, the secondary ones in this turn's drawn order, then the final ones -- each after
+        taking its share of the planning budget."""
+        steps = {
+            'hold_sc': self.objective_hold_scs,
+            'capture_sc': self.objective_capture_scs,
+            'reinforce_contested': self.objective_reinforce_contested,
+            'punish_betrayers': self.objective_punish_betrayers,
+            'fill_gaps': self.objective_fill_gaps,
+            'treasonous_capture': self.objective_treasonous_capture,
+            'pursue_leftovers': self.objective_pursue_leftovers,
+        }
+        for step in self.settings.primary_order:
+            if step.get('when') == 'treasonous' and not treasonous:
+                continue
+            self.give(step['budget_share'])
+            steps[step['objective_id']]()
         order = self.settings.secondary_order(self.style, self.rng)
         active = [int(n[-1]) - 1 for n in order if n.startswith('pursue_sc_')]
         for name in order:
-            self.give(0.12)
+            self.give(self.settings.secondary_budget_share)
             if self.out_of_time():
                 break
             if name == 'expand_territory':
@@ -1217,6 +1221,7 @@ class Planner:
                 self.objective_pursue_sc(int(name[-1]) - 1, active)
             elif name == 'empty_land_grab':
                 self.objective_empty_land_grab()
-        self.give(0.25)
-        self.objective_pursue_leftovers()
+        for step in self.settings.final_order:
+            self.give(step['budget_share'])
+            steps[step['objective_id']]()
         return Plan(self)

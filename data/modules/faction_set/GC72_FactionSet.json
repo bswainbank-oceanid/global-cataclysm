@@ -1,0 +1,13 @@
+{
+ "module_type": "FactionSet",
+ "id": "GC72_FactionSet",
+ "name": "GC72 factions",
+ "factions": [
+  {"id": "NAA", "name": "North Atlantic Alliance", "color": "#1E4C7C", "icon": null},
+  {"id": "UE", "name": "United Europe", "color": "#A5822F", "icon": null},
+  {"id": "UER", "name": "Union of Eurasian Republics", "color": "#8C2A2A", "icon": null},
+  {"id": "GPC", "name": "Greater Pacific Commonwealth", "color": "#5B3466", "icon": null},
+  {"id": "PAF", "name": "Pan-African Federation", "color": "#3F6B35", "icon": null},
+  {"id": "AAC", "name": "Andean-Atlantic Confederation", "color": "#C1621F", "icon": null}
+ ]
+}

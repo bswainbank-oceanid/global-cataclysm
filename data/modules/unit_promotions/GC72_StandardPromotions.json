@@ -1,0 +1,26 @@
+{
+ "module_type": "UnitPromotions",
+ "id": "GC72_StandardPromotions",
+ "name": "Standard setup (125 MPC): promotions",
+ "initial_setup_id": "GC72_StandardSetup",
+ "units": [
+  {"unit_id": "NAA-019", "num_promotions": 1},
+  {"unit_id": "NAA-013", "num_promotions": 1},
+  {"unit_id": "NAA-015", "num_promotions": 1},
+  {"unit_id": "UE-004", "num_promotions": 1},
+  {"unit_id": "UE-013", "num_promotions": 1},
+  {"unit_id": "UE-011", "num_promotions": 1},
+  {"unit_id": "UER-012", "num_promotions": 1},
+  {"unit_id": "UER-030", "num_promotions": 1},
+  {"unit_id": "UER-023", "num_promotions": 1},
+  {"unit_id": "GPC-001", "num_promotions": 1},
+  {"unit_id": "GPC-009", "num_promotions": 1},
+  {"unit_id": "GPC-019", "num_promotions": 1},
+  {"unit_id": "PAF-006", "num_promotions": 1},
+  {"unit_id": "PAF-017", "num_promotions": 1},
+  {"unit_id": "PAF-025", "num_promotions": 1},
+  {"unit_id": "AAC-002", "num_promotions": 1},
+  {"unit_id": "AAC-011", "num_promotions": 1},
+  {"unit_id": "AAC-007", "num_promotions": 1}
+ ]
+}
