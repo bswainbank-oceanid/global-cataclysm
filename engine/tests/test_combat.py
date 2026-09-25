@@ -515,20 +515,20 @@ class TestSubmarineAirInvisibility(unittest.TestCase):
             self.assertFalse(is_bypass, 'Cruiser is reached via a clean hit, not the bypass')
 
     def test_fighter_never_targets_a_submarine(self):
-        sub = make(1, 'Submarine', 'AAC')  # defense 6
+        sub = make(1, 'Submarine', 'AAC')  # defense 7
         for _ in range(200):
             target, is_hit, is_bypass = _select_target(random.Random(), 8, 8, 'Fighter', [sub], UNIT_DEFS, 2, 1, {})
             self.assertIsNone(target, 'a lone Submarine must never be targetable by a Fighter')
 
     def test_bomber_never_targets_a_submarine_either(self):
-        sub = make(1, 'Submarine', 'AAC')  # defense 6
+        sub = make(1, 'Submarine', 'AAC')  # defense 7
         cruiser = make(2, 'Cruiser', 'AAC')  # defense 5
         for _ in range(200):
             target, is_hit, is_bypass = _select_target(random.Random(), 8, 8, 'Bomber', [sub, cruiser], UNIT_DEFS, 2, 1, {})
             self.assertEqual(target.unit_id, 2, 'the Submarine must be excluded from a Bomber attacker\'s pool too')
 
     def test_non_air_non_submarine_attackers_are_unaffected(self):
-        sub = make(1, 'Submarine', 'AAC')  # defense 6
+        sub = make(1, 'Submarine', 'AAC')  # defense 7
         target, is_hit, is_bypass = _select_target(random.Random(1), 6, 6, 'Cruiser', [sub], UNIT_DEFS, 2, 1, {})
         self.assertEqual(target.unit_id, 1, 'a Cruiser (not Submarine or Air) can target a Submarine normally')
 

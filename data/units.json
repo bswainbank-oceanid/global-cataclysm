@@ -110,7 +110,7 @@
       "sc_cost": 5,
       "attack_die": "D8",
       "damage": 3,
-      "defense": 6,
+      "defense": 7,
       "hp": 2,
       "combat_move": 2,
       "non_combat_move": 2,

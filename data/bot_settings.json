@@ -68,42 +68,42 @@
       "Defensive": 2,
       "Expansive": 3,
       "Controlling": 4,
-      "Variable": 4
+      "Variable": 0
     },
     "AAC": {
       "Strategic": 2,
       "Defensive": 5,
       "Expansive": 4,
       "Controlling": 2,
-      "Variable": 3
+      "Variable": 0
     },
     "UE": {
       "Strategic": 5,
       "Defensive": 4,
       "Expansive": 5,
       "Controlling": 2,
-      "Variable": 3
+      "Variable": 0
     },
     "GPC": {
       "Strategic": 5,
       "Defensive": 4,
       "Expansive": 5,
       "Controlling": 7,
-      "Variable": 5
+      "Variable": 0
     },
     "PAF": {
       "Strategic": 2,
       "Defensive": 5,
       "Expansive": 4,
       "Controlling": 2,
-      "Variable": 2
+      "Variable": 0
     },
     "UER": {
       "Strategic": 3,
       "Defensive": 4,
       "Expansive": 7,
       "Controlling": 2,
-      "Variable": 3
+      "Variable": 0
     }
   },
   "thresholds": {
