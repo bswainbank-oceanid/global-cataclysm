@@ -9,7 +9,7 @@ files the client reads:
   territories.json       map size and topology, every location (name, land/sea, anchor,
                          and for land: faction, value, Strategic Center)
   territory_shapes.json  each location's boundary polygons
-  factions.json          faction name, color, icon, in faction-set order
+  factions.json          faction name, color, icon, in faction-set order; the Neutral colour/faction
   units.json             unit types with stats, abilities, icon, display and battle order
 plus the map image (as assets/base_map.png) and the unit icons.
 
@@ -43,7 +43,7 @@ def client_files(config):
         'reference_image_width_px': info['width_px'],
         'shapes': {str(tid): polys for tid, polys in config.boundaries().items()},
     }
-    factions = {'factions': config.factions()}
+    factions = {'factions': config.factions(), 'neutral': config.neutral_faction()}
     units = {
         'category_icons': config.unit_set.get('category_icons', {}),
         'units': {t: {k: v for k, v in d.items()} for t, d in config.units().items()},

@@ -149,8 +149,16 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
         can_rejoin_alliances=can_rejoin_alliances,
     )
 
+    # Land the faction assignment leaves unassigned belongs to the built-in Neutral faction, which
+    # plays exactly like a NEUTRAL seat (and is only in the game when it owns something).
+    faction_modes = dict(faction_modes)
+    neutral_id = data.neutral_faction()['id']
+    unassigned = set(data.unassigned_land())
+    if unassigned:
+        faction_modes[neutral_id] = FactionMode.NEUTRAL
+
     for tid, t in data.territories().items():
-        owner = t.get('faction') if t['type'] == 'land' else None
+        owner = (t.get('faction') or (neutral_id if tid in unassigned else None)) if t['type'] == 'land' else None
         # A Neutral power has no Strategic Centers, and its territory keeps that status
         # for good -- even once someone else captures it.
         neutral_home = owner is not None and faction_modes.get(owner) == FactionMode.NEUTRAL
@@ -159,6 +167,8 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
     faction_codes = list(data.factions())
     if randomize_play_order:
         rng.shuffle(faction_codes)
+    if unassigned:
+        faction_codes.append(neutral_id)  # after the shuffle: never a seat, never in turn order
     for code in faction_codes:
         gs.factions[code] = FactionState(code=code, mode=faction_modes[code], treasury_mpc=0)
 

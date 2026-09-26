@@ -124,9 +124,21 @@ class GameConfig:
                                                      for r in self.faction_assignment['locations']})
 
     def factions(self):
-        """{faction_id: {name, color, icon}} in faction-set order."""
+        """{faction_id: {name, color, icon}} in faction-set order -- the factions seats can play (not the
+        built-in Neutral faction: see neutral_faction())."""
         return self._view('factions', lambda: {f['id']: {'name': f['name'], 'color': f['color'], 'icon': f.get('icon')}
                                                for f in self.faction_set['factions']})
+
+    def neutral_faction(self):
+        """{id, name, color}: the colour every Neutral faction is drawn in, and the faction that owns land
+        the faction assignment leaves unassigned."""
+        n = self.faction_set.get('neutral') or {}
+        return {'id': n.get('id', 'NEU'), 'name': n.get('name', 'Neutral'), 'color': n.get('color', '#7E8378')}
+
+    def unassigned_land(self):
+        """Land locations the faction assignment gives no faction: the Neutral faction's."""
+        return self._view('unassigned_land', lambda: [tid for tid, t in self.territories().items()
+                                                      if t['type'] == 'land' and not t.get('faction')])
 
     def abilities(self):
         """{ability_id: catalog entry}"""

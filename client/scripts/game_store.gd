@@ -173,6 +173,12 @@ func is_noncombatant(code: String) -> bool:
 	return faction_state(code).get("mode", "") == "NONCOMBATANT"
 
 
+## Neutral powers (seats, or the built-in faction owning unassigned land) take no turns
+## but defend; they are all drawn in the one Neutral colour.
+func is_neutral(code: String) -> bool:
+	return code == GameData.neutral_id or faction_state(code).get("mode", "") == "NEUTRAL"
+
+
 ## A "player" faction is one in HUMAN mode; in a bot-vs-bot game there is none.
 func is_player(code: String) -> bool:
 	return faction_state(code).get("mode", "") == "HUMAN"
@@ -246,9 +252,14 @@ func game_ended_by_armistice() -> bool:
 const NONCOMBATANT_COLOR := Color(0.93, 0.87, 0.68)
 
 
-## The colour a faction's land and markers are drawn in.
+## The colour a faction's land, units and markers are drawn in: cream for a Noncombatant,
+## the shared Neutral colour for any Neutral faction, else the faction's own.
 func display_color(code: String) -> Color:
-	return NONCOMBATANT_COLOR if is_noncombatant(code) else GameData.factions[code].color
+	if is_noncombatant(code):
+		return NONCOMBATANT_COLOR
+	if is_neutral(code):
+		return GameData.neutral_color
+	return GameData.factions[code].color
 
 
 func owner_of(tid: int) -> String:

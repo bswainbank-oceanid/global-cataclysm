@@ -446,7 +446,7 @@ func _show_dice() -> void:
 			for i in list.size():
 				var e: Dictionary = list[i]
 				var die := DieView.make(str(e["die"]), int(e["roll"]), bool(e["hit"]), bool(e.get("bypass_hit", false)) if e.get("bypass_hit") != null else false,
-					GameData.factions[str(e["owner"])].color)
+					GameStore.display_color(str(e["owner"])))
 				die.scale = Vector2.ONE * sc
 				die.position = Vector2(x0 + float(i % cols) * step_x, float(block["top"]) + float(i / cols) * step_y)
 				die.tooltip_text = _describe_roll(e)

@@ -14,7 +14,9 @@ var fill_shapes := {}   # int id -> Array[PackedVector2Array], cleaned so draw_c
 var bboxes := {}        # int id -> Rect2 covering every polygon of that territory
 var label_points := {}  # int id -> Vector2, a point guaranteed inside the largest polygon
 var factions := {}      # code -> {name, color: Color}
-var faction_order: Array[String] = []
+var faction_order: Array[String] = []  # the factions seats can play (not the built-in Neutral one)
+var neutral_id := "NEU"  # the faction that owns land no faction is assigned to
+var neutral_color := Color("#7E8378")  # every Neutral faction's land and units are drawn in this
 var units := {}         # {"units": {unit type -> stats, incl. abilities {id: params}}, "category_icons": {...}}
 var map_wraps := true   # the map is a cylinder (east-west wrap) rather than flat
 
@@ -105,6 +107,10 @@ func _load_factions() -> void:
 			"color": Color(d["factions"][code]["color"]),
 		}
 		faction_order.append(code)
+	var n: Dictionary = d.get("neutral", {})
+	neutral_id = str(n.get("id", neutral_id))
+	neutral_color = Color(str(n.get("color", neutral_color.to_html())))
+	factions[neutral_id] = {"name": str(n.get("name", "Neutral")), "color": neutral_color}
 
 
 func _polygon_area_centroid(poly: PackedVector2Array) -> Array:

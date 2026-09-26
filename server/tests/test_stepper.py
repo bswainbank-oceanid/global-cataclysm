@@ -200,12 +200,13 @@ class TestWatch(unittest.TestCase):
             messages = _watch(session)[1:]
             for _ in range(80):
                 queue = _by_type(messages, 'phase_queue')[0]
-                if queue['phase'] == 'COMBAT_RESOLUTION' and queue['events']:
+                # (a Cruiser's bombardment preview can come first; this is about the battle board)
+                if queue['phase'] == 'COMBAT_RESOLUTION' and any(e['kind'] == 'battle_preview' for e in queue['events']):
                     break
                 messages = session.handle_message({'type': 'next'})
             else:
                 continue
-            preview = queue['events'][0]
+            preview = next(e for e in queue['events'] if e['kind'] == 'battle_preview')
             for row in preview['attackers'] + preview['defenders']:
                 for key in ('unit_id', 'unit_type', 'owner', 'side', 'die', 'defense', 'hp', 'max_hp', 'xp', 'promoted', 'promotions', 'cargo'):
                     self.assertIn(key, row)

@@ -135,7 +135,7 @@ func bounce(delay := 0.0) -> void:
 
 func _draw() -> void:
 	draw_set_transform(Vector2(_shake_x, _bounce_y), 0.0, Vector2.ONE)
-	var owner_col: Color = GameData.factions[unit["owner"]].color
+	var owner_col: Color = GameStore.display_color(str(unit["owner"]))
 	if button_pressed:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(1.0, 0.82, 0.25, 0.14))
 		draw_rect(Rect2(Vector2.ZERO, size), Color(1.0, 0.82, 0.25), false, 2.0)

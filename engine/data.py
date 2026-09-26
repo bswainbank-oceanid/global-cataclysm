@@ -58,6 +58,16 @@ def factions():
     return config().factions()
 
 
+def neutral_faction():
+    """{id, name, color}: the Neutral colour, and the faction that owns unassigned land."""
+    return config().neutral_faction()
+
+
+def unassigned_land():
+    """Land locations no faction is assigned to (they belong to the Neutral faction)."""
+    return config().unassigned_land()
+
+
 def sc_bonus():
     """What a Strategic Center adds to its territory's value (income and deploy cap)."""
     return config().sc_bonus()

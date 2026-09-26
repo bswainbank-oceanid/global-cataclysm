@@ -177,7 +177,17 @@ class _Checker:
 
     def _check_faction_set(self, where, f):
         facs = f.get('factions') or []
-        self.unique(where, [x.get('id') for x in facs], 'faction id')
+        ids = self.unique(where, [x.get('id') for x in facs], 'faction id')
+        neutral = f.get('neutral')
+        if neutral is not None:
+            nw = f'{where} neutral'
+            nid = self.field(nw, neutral, 'id', STR)
+            self.field(nw, neutral, 'name', STR)
+            color = self.field(nw, neutral, 'color', STR)
+            if color and not (color.startswith('#') and len(color) in (7, 9)):
+                self.err(nw, f'color {color!r} should be #RRGGBB')
+            if nid in ids:
+                self.err(nw, f'id {nid!r} is also a faction id')
         for x in facs:
             fw = f'{where} faction {x.get("id")}'
             self.field(fw, x, 'id', STR)
@@ -195,6 +205,7 @@ class _Checker:
         values, m = self._map_of_values(where, self.field(where, a, 'map_values_id', STR))
         fset = self.ref(where, 'FactionSet', self.field(where, a, 'faction_set_id', STR))
         facs = {x['id'] for x in (fset or {}).get('factions', [])}
+        facs.add(((fset or {}).get('neutral') or {}).get('id', 'NEU'))
         locs = {loc['id']: loc for loc in (m or {}).get('locations', [])}
         rows = a.get('locations') or []
         self.unique(where, [r.get('location_id') for r in rows], 'location')
@@ -204,8 +215,8 @@ class _Checker:
             if m and (loc is None or loc['type'] != 'land'):
                 self.err(rw, 'is not a land location of the map')
                 continue
-            if fset and r.get('faction_id') not in facs:
-                self.err(rw, f'unknown faction {r.get("faction_id")!r}')
+            if fset and r.get('faction_id') is not None and r.get('faction_id') not in facs:
+                self.err(rw, f'unknown faction {r.get("faction_id")!r} (leave it empty for Neutral land)')
             sea = r.get('sea_deployment_location_id')
             if sea is not None and loc is not None:
                 if sea not in loc.get('adjacency', []) or locs.get(sea, {}).get('type') != 'sea':
@@ -227,7 +238,10 @@ class _Checker:
         if sc:
             _, m = self._map_of_values(where, sc['map_values_id'])
         types = {t['id']: t for t in (units or {}).get('unit_types', [])}
-        facs = {r['faction_id'] for r in (fa or {}).get('locations', [])}
+        facs = {r['faction_id'] for r in (fa or {}).get('locations', []) if r.get('faction_id')}
+        if fa and any(not r.get('faction_id') for r in fa.get('locations', [])):
+            fset = self.ref(where, 'FactionSet', fa.get('faction_set_id'))
+            facs.add(((fset or {}).get('neutral') or {}).get('id', 'NEU'))
         locs = {loc['id']: loc for loc in (m or {}).get('locations', [])}
         self.unique(where, [loc.get('location_id') for loc in s.get('locations', [])], 'location')
         self.unique(where, [u.get('id') for loc in s.get('locations', []) for u in loc.get('units', [])], 'unit id')
