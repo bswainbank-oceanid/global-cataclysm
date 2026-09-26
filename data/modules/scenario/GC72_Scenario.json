@@ -12,7 +12,7 @@
  "rule_set_id": "GC72_Rules",
  "setups": {
   "standard": {"initial_setup_id": "GC72_StandardSetup", "unit_promotions_id": "GC72_StandardPromotions"},
-  "defensive": {"initial_setup_id": "GC72_DefensiveSetup", "unit_promotions_id": "GC72_DefensivePromotions"}
+  "neutral": {"initial_setup_id": "GC72_NeutralSetup", "unit_promotions_id": "GC72_NeutralPromotions"}
  },
  "bots": {
   "faction_weight_set_id": "GC72_FactionWeights",

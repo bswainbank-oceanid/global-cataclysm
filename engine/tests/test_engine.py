@@ -810,9 +810,9 @@ class TestRollbackAndConfirmation(unittest.TestCase):
         engine.confirm_purchases('NAA')
         self.assertEqual(gs.factions['NAA'].treasury_mpc, 1000)
 
-    def test_defensive_faction_cannot_submit_purchases(self):
+    def test_neutral_faction_cannot_submit_purchases(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.DEFENSIVE})
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.NEUTRAL})
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_purchases('NAA', [PurchaseOrder('Infantry', 1, 1)])
@@ -1506,9 +1506,9 @@ class TestCombatMoveRollback(unittest.TestCase):
         with self.assertRaises(ValueError):
             engine.submit_combat_moves('NAA', [CombatMoveOrder(1, [1, 2])])
 
-    def test_defensive_faction_cannot_submit_combat_moves(self):
+    def test_neutral_faction_cannot_submit_combat_moves(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
-        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.DEFENSIVE, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE)
+        gs = make_state(data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_combat_moves('NAA', [CombatMoveOrder(1, [1, 2])])
@@ -1741,7 +1741,7 @@ class TestResolveCombatEndToEnd(unittest.TestCase):
 
     def test_non_active_faction_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.NEUTRAL}, phase=Phase.COMBAT_RESOLUTION)
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.NONCOMBATANT}, phase=Phase.COMBAT_RESOLUTION)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.resolve_combat('NAA')
@@ -1842,7 +1842,7 @@ class TestCombatResolutionThenCaptureTerritory(unittest.TestCase):
             engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(reinforcement.unit_id, 2)])
 
     def test_rounds_contested_counts_battle_resolutions_up_to_the_capture(self):
-        # AAC is DEFENSIVE (has units, defends normally, but never takes
+        # AAC is NEUTRAL (has units, defends normally, but never takes
         # its own active turn) so NAA is the only active faction and
         # simply keeps cycling back to itself -- lets this test drive
         # two separate Combat Resolution calls against the SAME
@@ -1856,7 +1856,7 @@ class TestCombatResolutionThenCaptureTerritory(unittest.TestCase):
         defender = make_unit('Armor', 'AAC')
         defender.current_hp = 3  # one hit from Armor's 3 damage finishes it, later on
         gs = make_state(
-            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.DEFENSIVE},
+            data, {1: 'NAA', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.NEUTRAL},
             phase=Phase.COMBAT_MOVE, units_by_territory={1: [mover], 2: [defender]},
         )
         gs.active_faction = 'NAA'
@@ -1881,7 +1881,7 @@ class TestCombatResolutionThenCaptureTerritory(unittest.TestCase):
         gs.phase = Phase.DEPLOY_INCOME
         engine.deploy_and_collect_income('NAA')
         gs.phase = Phase.DIPLOMACY
-        # Not calling process_game_end_check here -- AAC being DEFENSIVE
+        # Not calling process_game_end_check here -- AAC being NEUTRAL
         # (not HUMAN/BOT) means it's the only active faction, and
         # would_game_end() treats "1 active faction left" as game over,
         # which isn't what this test is about.
@@ -2328,9 +2328,9 @@ class TestNonCombatMoveRollback(unittest.TestCase):
         with self.assertRaises(ValueError):
             engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(1, 2)])
 
-    def test_defensive_faction_cannot_submit_noncombat_moves(self):
+    def test_neutral_faction_cannot_submit_noncombat_moves(self):
         data = FakeData(territories={1: {'type': 'land'}, 2: {'type': 'land'}}, adjacency={1: [2]})
-        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.DEFENSIVE}, phase=Phase.NONCOMBAT_MOVE)
+        gs = make_state(data, {1: 'NAA', 2: 'NAA'}, {'NAA': FactionMode.NEUTRAL}, phase=Phase.NONCOMBAT_MOVE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.submit_noncombat_moves('NAA', [NonCombatMoveOrder(1, 2)])
@@ -2439,7 +2439,7 @@ class TestReturnToBase(unittest.TestCase):
 
     def test_non_active_faction_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.NEUTRAL}, phase=Phase.NONCOMBAT_MOVE)
+        gs = make_state(data, {1: 'NAA'}, {'NAA': FactionMode.NONCOMBATANT}, phase=Phase.NONCOMBAT_MOVE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.process_return_to_base('NAA')
@@ -2755,7 +2755,7 @@ class TestCaptureTerritory(unittest.TestCase):
 
     def test_non_active_faction_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})
-        gs = make_state(data, {1: 'AAC'}, {'NAA': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE)
+        gs = make_state(data, {1: 'AAC'}, {'NAA': FactionMode.NONCOMBATANT, 'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.process_capture_territory('NAA')
@@ -2874,10 +2874,10 @@ class TestSurrender(unittest.TestCase):
         with self.assertRaises(ValueError):
             engine.demand_surrender('NAA', 'AAC')
 
-    def test_neutral_and_defensive_factions_are_never_targets(self):
+    def test_noncombatant_and_neutral_factions_are_never_targets(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 1}, 3: {'type': 'land', 'value': 1}}, adjacency={})
         gs = make_state(data, {1: 'NAA', 2: 'PAF', 3: 'UE'},
-                        {'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL, 'UE': FactionMode.DEFENSIVE}, phase=Phase.DIPLOMACY)
+                        {'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NONCOMBATANT, 'UE': FactionMode.NEUTRAL}, phase=Phase.DIPLOMACY)
         gs.active_faction = 'NAA'
         engine = GameEngine(gs, data)
         self.assertEqual(engine.legal_surrender_targets('NAA'), [])
@@ -2945,13 +2945,13 @@ class TestGameEndCheck(unittest.TestCase):
         engine = GameEngine(gs, data)
         self.assertFalse(engine.would_game_end())
 
-    def test_eliminated_and_neutral_factions_dont_count(self):
-        # AAC is eliminated, PAF is Neutral -- neither ever takes turns,
+    def test_eliminated_and_noncombatant_factions_dont_count(self):
+        # AAC is eliminated, PAF is Noncombatant -- neither ever takes turns,
         # so with NAA and UE (allied) as the only ACTIVE factions left,
         # the game should still be considered over.
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
-            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL},
+            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN, 'PAF': FactionMode.NONCOMBATANT},
             phase=Phase.DIPLOMACY,
         )
         gs.factions['NAA'].alliance = 'pact'
@@ -3012,7 +3012,7 @@ class TestGameEndCheck(unittest.TestCase):
 
     def test_non_active_faction_is_rejected(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.NEUTRAL}, phase=Phase.DIPLOMACY)
+        gs = make_state(data, {}, {'NAA': FactionMode.NONCOMBATANT}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.process_game_end_check('NAA')
@@ -3176,16 +3176,16 @@ class TestInviteToAlliance(unittest.TestCase):
         with self.assertRaises(ValueError):
             engine.invite_to_alliance('NAA', 'NAA', target_accepts=True)
 
-    def test_cannot_invite_a_neutral_faction(self):
+    def test_cannot_invite_a_noncombatant_faction(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.NEUTRAL}, phase=Phase.DIPLOMACY)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.NONCOMBATANT}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.invite_to_alliance('NAA', 'UE', target_accepts=True)
 
-    def test_cannot_invite_a_defensive_faction(self):
+    def test_cannot_invite_a_neutral_faction(self):
         data = FakeData(territories={}, adjacency={})
-        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.DEFENSIVE}, phase=Phase.DIPLOMACY)
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.NEUTRAL}, phase=Phase.DIPLOMACY)
         engine = GameEngine(gs, data)
         with self.assertRaises(ValueError):
             engine.invite_to_alliance('NAA', 'UE', target_accepts=True)

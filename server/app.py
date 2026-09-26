@@ -12,7 +12,7 @@ ONE game at a time, held by a GameHost (server/host.py): the server starts idle
 and the client's launch screen builds the game ({"type": "new_game"}, see
 server/lobby.py), replacing any running one. `--demo` instead starts the old
 hardcoded game (NAA a HUMAN player by default, GPC a BOT, every other faction
-NEUTRAL, NAA first -- see _build_demo_session; `--human none` makes both bots),
+NONCOMBATANT, NAA first -- see _build_demo_session; `--human none` makes both bots),
 for scripted runs. Clients watch ({"type": "watch"}) and step the game a phase
 at a time with {"type": "next"}; a human faction's orders arrive as
 "stage_purchase" etc. -- see server/stepper.py. Not yet: multiple
@@ -53,11 +53,11 @@ def demo_factions():
 
 
 def _build_demo_session(human='NAA', combat_first_turn=False, seed=None):
-    """The two demo_factions() against each other, everyone else NEUTRAL. `human`: the faction a
+    """The two demo_factions() against each other, everyone else NONCOMBATANT. `human`: the faction a
     player controls (its phases wait for the client's orders); None makes both bots, for
     watching."""
     pair = demo_factions()
-    modes = {code: FactionMode.NEUTRAL for code in data_module.factions()}
+    modes = {code: FactionMode.NONCOMBATANT for code in data_module.factions()}
     for code in pair:
         modes[code] = FactionMode.HUMAN if human == code else FactionMode.BOT
     rng = random.Random(seed)  # seed=None: a fresh, unrepeatable game; otherwise it replays exactly

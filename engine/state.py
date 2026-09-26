@@ -16,8 +16,8 @@ from . import abilities
 class FactionMode(Enum):
     HUMAN = 'HUMAN'
     BOT = 'BOT'
-    DEFENSIVE = 'DEFENSIVE'
     NEUTRAL = 'NEUTRAL'
+    NONCOMBATANT = 'NONCOMBATANT'
 
 
 class Phase(Enum):
@@ -270,7 +270,7 @@ class UnitInstance:
 @dataclass
 class TerritoryState:
     territory_id: int
-    owner: Optional[str] = None  # faction code; None for Neutral/unowned sea
+    owner: Optional[str] = None  # faction code; None for Noncombatant/unowned sea
     units: list = field(default_factory=list)  # list[UnitInstance]
     # Faction codes currently contesting this territory (attackers whose
     # combat move ended here but combat hasn't fully resolved/eliminated
@@ -299,7 +299,7 @@ class TerritoryState:
     # attacks here, whatever the outcome; every other still-queued
     # faction's entry is untouched.
     ambush_bonus_for: set = field(default_factory=set)
-    # True for a territory that started out in a DEFENSIVE power's hands: it is never a
+    # True for a territory that started out in a NEUTRAL power's hands: it is never a
     # Strategic Center in this game, whoever holds it -- capturing it doesn't turn it
     # into one. (the SC assignment's Strategic Centers are only the map's starting fact;
     # GameState.is_strategic_center is the answer the rules use.)
@@ -359,7 +359,7 @@ class FactionState:
     # setup.build_game_state time -- a 'random' input is rolled to a
     # concrete value there and only the concrete result is stored, so it
     # stays fixed for the rest of the game even though it was chosen
-    # randomly. None for HUMAN/DEFENSIVE/NEUTRAL factions, which never
+    # randomly. None for HUMAN/NEUTRAL/NONCOMBATANT factions, which never
     # consult this policy layer at all.
     alliance_strategy: Optional[str] = None
     alliance_behavior: Optional[str] = None
@@ -509,7 +509,7 @@ class GameState:
     def is_strategic_center(self, territory_id, terr):
         """Whether the territory counts as a Strategic Center in this game: it is one on the
         map (`terr` is its engine.data.territories() entry) and hasn't been switched off -- a territory
-        that started out in a DEFENSIVE power's hands never is one (TerritoryState.sc_disabled),
+        that started out in a NEUTRAL power's hands never is one (TerritoryState.sc_disabled),
         even after another faction captures it."""
         return bool(terr.get('strategic_center')) and not self.territories[territory_id].sc_disabled
 

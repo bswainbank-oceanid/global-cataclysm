@@ -360,7 +360,7 @@ class RandomBot:
         enemy_territories = [
             tid for tid, t in game_state.territories.items()
             if terrs[tid]['type'] == 'land' and t.owner is not None
-            and game_state.factions[t.owner].mode != FactionMode.NEUTRAL
+            and game_state.factions[t.owner].mode != FactionMode.NONCOMBATANT
             and not _is_ally_or_self(game_state, self.faction, t.owner)
             and tid in dist_from_origin
         ]

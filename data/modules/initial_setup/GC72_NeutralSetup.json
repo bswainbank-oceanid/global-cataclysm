@@ -1,7 +1,7 @@
 {
  "module_type": "InitialSetup",
- "id": "GC72_DefensiveSetup",
- "name": "Defensive setup (100 MPC)",
+ "id": "GC72_NeutralSetup",
+ "name": "Neutral setup (100 MPC)",
  "_note": "Starting-setup scenario: 100 IPC per faction, no Strategic Centers (no cost discount, and the stacking cap is exactly the territory's value with no bonus -- a 0-value territory holds no units at all), no promotions, territory ownership from data/territories.json. purchases is per-territory unit buys; carrier_escorts/naval_overrides are the fixed setup-time picks layered on top.",
  "sc_assignment_id": "GC72_SCAssignment",
  "unit_set_id": "GC72_UnitSet",

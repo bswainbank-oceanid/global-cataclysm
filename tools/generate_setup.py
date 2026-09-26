@@ -1,5 +1,5 @@
 """
-Generate a starting setup: the scenario's standard or defensive InitialSetup and its
+Generate a starting setup: the scenario's standard or neutral InitialSetup and its
 UnitPromotions (docs/DATA_MODEL.md). For each faction, bought like this --
 
   1. One garrison unit (the cheapest purchasable land unit with the mustering ability:
@@ -253,7 +253,7 @@ def main():
     import json
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--scenario', default=tool_data.DEFAULT_SCENARIO_ID)
-    parser.add_argument('--setup', choices=['standard', 'defensive'], default='standard')
+    parser.add_argument('--setup', choices=['standard', 'neutral'], default='standard')
     parser.add_argument('--seed', type=int, default=SEED)
     parser.add_argument('--check', action='store_true', help='report whether the stored setup would change; write nothing')
     args = parser.parse_args()

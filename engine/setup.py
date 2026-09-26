@@ -4,12 +4,12 @@ UnitPromotions modules, see docs/DATA_MODEL.md) plus a per-faction faction-mode
 assignment. HUMAN/BOT factions get their units from the scenario's standard setup,
 placed on the board directly (initial deployment, not a pending purchase -- units are
 live from turn 0, and the setup's MPC budget never touches a faction's treasury_mpc).
-DEFENSIVE factions always take theirs from the scenario's defensive setup -- the
+NEUTRAL factions always take theirs from the scenario's neutral setup -- the
 smaller, no-Strategic-Center ruleset the design doc specifies for a non-turn-taking
-defender. NEUTRAL factions get zero units; their territories stay "owned" by that
+defender. NONCOMBATANT factions get zero units; their territories stay "owned" by that
 faction code (for identity/color) but it's the faction's mode, not a per-territory
 flag, that makes the territory impassable -- see engine/movement.py. Every faction's
-treasury_mpc (including DEFENSIVE/NEUTRAL's, though they never spend it) is then
+treasury_mpc (including NEUTRAL/NONCOMBATANT's, though they never spend it) is then
 seeded with its starting MPC income (engine/economy.py's compute_income, see the
 rule set's production.income_formula) once its territories are in place --
 ordinarily 31 MPC (25 base territory value + 3 Strategic Centers x 2).
@@ -89,7 +89,7 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
     faction in data.factions(). Returns a fresh GameState at global_turn 0
     with every territory's TerritoryState created (land territories'
     owner comes from the scenario's faction assignment; sea territories have no owner),
-    populated with starting units for HUMAN/BOT/DEFENSIVE factions, and
+    populated with starting units for HUMAN/BOT/NEUTRAL factions, and
     active_faction set to the first HUMAN/BOT faction in turn order.
 
     game_start_settings, chosen once here at game creation:
@@ -136,7 +136,7 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
     there's a real decision from turn 1, not None -- see RandomBot.
     _maybe_reroll_variable_alliance_settings for the same re-roll
     repeating every turn after that. Only ever set for FactionMode.BOT
-    factions; HUMAN/DEFENSIVE/NEUTRAL factions never consult this policy
+    factions; HUMAN/NEUTRAL/NONCOMBATANT factions never consult this policy
     layer, so their fields stay None."""
     rng = rng or random.Random()
     _check_starting_alliances(starting_alliances, faction_modes, max_alliance_size)
@@ -151,10 +151,10 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
 
     for tid, t in data.territories().items():
         owner = t.get('faction') if t['type'] == 'land' else None
-        # A Defensive power has no Strategic Centers, and its territory keeps that status
+        # A Neutral power has no Strategic Centers, and its territory keeps that status
         # for good -- even once someone else captures it.
-        defensive_home = owner is not None and faction_modes.get(owner) == FactionMode.DEFENSIVE
-        gs.territories[tid] = TerritoryState(territory_id=tid, owner=owner, sc_disabled=defensive_home)
+        neutral_home = owner is not None and faction_modes.get(owner) == FactionMode.NEUTRAL
+        gs.territories[tid] = TerritoryState(territory_id=tid, owner=owner, sc_disabled=neutral_home)
 
     faction_codes = list(data.factions())
     if randomize_play_order:
@@ -193,9 +193,9 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
     unit_defs = data.units()
     setups = {}
     for code, fstate in gs.factions.items():
-        if fstate.mode == FactionMode.NEUTRAL:
+        if fstate.mode == FactionMode.NONCOMBATANT:
             continue
-        kind = 'defensive' if fstate.mode == FactionMode.DEFENSIVE else 'standard'  # HUMAN or BOT: standard
+        kind = 'neutral' if fstate.mode == FactionMode.NEUTRAL else 'standard'  # HUMAN or BOT: standard
         if kind not in setups:
             setups[kind] = data.initial_setup(kind)
         setup, promotions = setups[kind]

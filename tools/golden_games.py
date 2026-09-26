@@ -2,7 +2,7 @@
 Seeded full-game digests, for proving a refactor left the game unchanged.
 
 Plays a fixed set of seeded bot games (random and strategy bots, with and without
-Defensive/Neutral seats and starting alliances) and prints a SHA-1 of each game's
+Neutral/Noncombatant seats and starting alliances) and prints a SHA-1 of each game's
 full turn log plus the final board. `--save` writes them to a file; `--check`
 compares against a saved file and exits non-zero on any difference.
 
@@ -32,14 +32,14 @@ def _seat(mode, faction='random'):
 CASES = {
     'random_6bot': ({'seats': [_bot('random') for _ in range(6)], 'seed': 11}, 60),
     'strategy_6bot': ({'seats': [_bot('strategy') for _ in range(6)], 'seed': 12}, 18),
-    'strategy_3bot_defensive': ({'seats': [_bot('strategy'), _bot('strategy'), _bot('strategy'),
-                                           _seat('DEFENSIVE'), _seat('DEFENSIVE'), _seat('NEUTRAL')],
+    'strategy_3bot_neutral': ({'seats': [_bot('strategy'), _bot('strategy'), _bot('strategy'),
+                                           _seat('NEUTRAL'), _seat('NEUTRAL'), _seat('NONCOMBATANT')],
                                  'seed': 13, 'max_alliance_size': 1}, 24),
     'mixed_alliances': ({'seats': [_bot('strategy', alliance=1), _bot('strategy', alliance=1), _bot('random'),
-                                   _bot('random'), _seat('DEFENSIVE'), _bot('strategy')],
+                                   _bot('random'), _seat('NEUTRAL'), _bot('strategy')],
                          'seed': 14, 'allow_combat_first_turn': True}, 24),
-    'fixed_order_2bot': ({'seats': [_bot('random', 'NAA'), _bot('strategy', 'GPC'), _seat('NEUTRAL'), _seat('NEUTRAL'),
-                                    _seat('DEFENSIVE'), _seat('DEFENSIVE')],
+    'fixed_order_2bot': ({'seats': [_bot('random', 'NAA'), _bot('strategy', 'GPC'), _seat('NONCOMBATANT'), _seat('NONCOMBATANT'),
+                                    _seat('NEUTRAL'), _seat('NEUTRAL')],
                           'seed': 15, 'randomize_order': False}, 30),
 }
 

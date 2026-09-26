@@ -1,6 +1,6 @@
 class_name LaunchScreen
 extends Control
-## The game launch screen: six seats, each a Human, Bot, Defense or Neutral, and for
+## The game launch screen: six seats, each a Human, Bot, Neutral or Noncombatant, and for
 ## players (humans and bots) a faction (or random), a starting alliance, and for
 ## bots an alliance strategy and behavior; plus whether to randomise the turn order.
 ## "Start Game" sends the settings to the server (server/lobby.py builds the game and
@@ -14,7 +14,7 @@ signal start_requested(settings: Dictionary)
 signal resume_requested
 
 var SEATS := 6  # one seat per faction: set from GameData's faction set in _ready
-const MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Defense", "DEFENSIVE"], ["Neutral", "NEUTRAL"]]
+const MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Neutral", "NEUTRAL"], ["Noncombatant", "NONCOMBATANT"]]
 const ALLIANCES := ["None", "Alliance 1", "Alliance 2", "Alliance 3"]
 const STRATEGIES := ["random", "aggressive", "passive", "counterweight", "independent", "variable"]
 const BEHAVIORS := ["random", "loyal", "opportunistic", "treacherous", "variable"]
@@ -177,7 +177,7 @@ func _option(items: Array, width: float) -> OptionButton:
 func _add_row(grid: GridContainer, i: int) -> void:
 	grid.add_child(HudStyle.label("%d" % (i + 1), 15, HudStyle.GOLD))
 	var mode := _option(MODES.map(func(m): return m[0]), 110)
-	mode.select(0 if i == 0 else 1 if i == 1 else 3)  # a Human, a Bot, the rest Neutral
+	mode.select(0 if i == 0 else 1 if i == 1 else 3)  # a Human, a Bot, the rest Noncombatant
 	grid.add_child(mode)
 
 	var faction := _option(["Random"], 250)

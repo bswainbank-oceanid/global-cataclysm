@@ -94,10 +94,10 @@ class TestSettings(unittest.TestCase):
 
 
 def make_game(modes=None, seed=1, first_turn_combat=True):
-    modes = modes or {f: FactionMode.NEUTRAL for f in FACTIONS}
+    modes = modes or {f: FactionMode.NONCOMBATANT for f in FACTIONS}
     modes = dict(modes)
     rng = random.Random(seed)
-    gs = build_game_state({f: modes.get(f, FactionMode.NEUTRAL) for f in FACTIONS},
+    gs = build_game_state({f: modes.get(f, FactionMode.NONCOMBATANT) for f in FACTIONS},
                           randomize_play_order=False, allow_combat_moves_first_turn=first_turn_combat, rng=rng)
     engine = GameEngine(gs, data, combat_rng=random.Random(seed + 1))
     return engine, gs
@@ -116,7 +116,7 @@ def planner_for(engine, faction='NAA', style='Strategic', mode='full', budget=15
 
 class TestPlanner(unittest.TestCase):
     def setUp(self):
-        modes = {f: FactionMode.NEUTRAL for f in FACTIONS}
+        modes = {f: FactionMode.NONCOMBATANT for f in FACTIONS}
         modes['NAA'] = modes['GPC'] = FactionMode.BOT
         self.engine, self.gs = make_game(modes)
         # England (21), NAA's, with Scotland (13) next to it: GPC masses in Scotland.
@@ -125,7 +125,7 @@ class TestPlanner(unittest.TestCase):
         self.gs.territories[13].owner = 'NAA'
 
     def test_no_threat_means_nothing_to_do(self):
-        engine, gs = make_game({**{f: FactionMode.NEUTRAL for f in FACTIONS}, 'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        engine, gs = make_game({**{f: FactionMode.NONCOMBATANT for f in FACTIONS}, 'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT})
         p = planner_for(engine)
         self.assertEqual(p.hold_chance(21, p.defenders_at(21, claimed_only=False)), 1.0)
 
@@ -164,7 +164,7 @@ class TestPlanner(unittest.TestCase):
             self.assertIn(uid, p.claimed)
 
     def test_empty_territory_an_enemy_walk_in_gets_a_garrison(self):
-        engine, gs = make_game({**{f: FactionMode.NEUTRAL for f in FACTIONS}, 'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        engine, gs = make_game({**{f: FactionMode.NONCOMBATANT for f in FACTIONS}, 'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT})
         gs.territories[13].units = []
         put(gs, 13, 'Infantry', 'GPC', 1)  # an enemy Infantry stands next to empty... make England reachable
         gs.territories[13].owner = 'NAA'
@@ -174,7 +174,7 @@ class TestPlanner(unittest.TestCase):
         self.assertTrue(p.purchases or p.moves_nc, 'England should get a garrison')
 
     def test_a_weak_strategic_center_is_attacked_by_a_strong_force(self):
-        engine, gs = make_game({**{f: FactionMode.NEUTRAL for f in FACTIONS}, 'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        engine, gs = make_game({**{f: FactionMode.NONCOMBATANT for f in FACTIONS}, 'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT})
         # give NAA overwhelming force at England and make Scotland a lone-defender GPC SC... use an existing GPC SC
         gpc_sc = next(t for t, x in data.territories().items() if x['type'] == 'land' and x.get('faction') == 'GPC' and x.get('strategic_center'))
         neighbours = data.adjacency()[gpc_sc]
@@ -190,7 +190,7 @@ class TestPlanner(unittest.TestCase):
             self.assertEqual(path[-1], gpc_sc)
 
     def test_an_eliminated_factions_empty_strategic_center_is_still_a_target(self):
-        engine, gs = make_game({**{f: FactionMode.NEUTRAL for f in FACTIONS}, 'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        engine, gs = make_game({**{f: FactionMode.NONCOMBATANT for f in FACTIONS}, 'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT})
         gpc_sc = next(t for t, x in data.territories().items() if x['type'] == 'land' and x.get('faction') == 'GPC' and x.get('strategic_center'))
         neighbours = data.adjacency()[gpc_sc]
         land_neighbour = next(n for n in neighbours if data.territories()[n]['type'] == 'land')
@@ -205,14 +205,14 @@ class TestPlanner(unittest.TestCase):
         p.objective_capture_scs()
         self.assertEqual([path[-1] for path in p.moves_combat.values()], [gpc_sc])
 
-    def test_a_neutral_factions_land_is_never_a_target(self):
-        engine, gs = make_game({**{f: FactionMode.NEUTRAL for f in FACTIONS}, 'NAA': FactionMode.BOT})
+    def test_a_noncombatant_factions_land_is_never_a_target(self):
+        engine, gs = make_game({**{f: FactionMode.NONCOMBATANT for f in FACTIONS}, 'NAA': FactionMode.BOT})
         p = planner_for(engine)
         self.assertFalse(p.capturable('GPC'))
         self.assertFalse(p.capturable('NAA'))
 
     def test_the_min_risk_of_an_sc_attack_is_the_chance_to_force_a_contest(self):
-        engine, gs = make_game({**{f: FactionMode.NEUTRAL for f in FACTIONS}, 'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        engine, gs = make_game({**{f: FactionMode.NONCOMBATANT for f in FACTIONS}, 'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT})
         gpc_sc = next(t for t, x in data.territories().items() if x['type'] == 'land' and x.get('faction') == 'GPC' and x.get('strategic_center'))
         land_neighbour = next(n for n in data.adjacency()[gpc_sc] if data.territories()[n]['type'] == 'land')
         gs.territories[land_neighbour].owner = 'NAA'
@@ -250,7 +250,7 @@ class TestEmptyLandGrab(unittest.TestCase):
     """The secondary objective: Mechanized Infantry take undefended enemy land."""
 
     def setUp(self):
-        modes = {f: FactionMode.NEUTRAL for f in FACTIONS}
+        modes = {f: FactionMode.NONCOMBATANT for f in FACTIONS}
         modes['NAA'] = modes['GPC'] = FactionMode.BOT
         self.engine, self.gs = make_game(modes)
         # Scotland (13) is NAA's next to England (21); GPC's garrison there is gone: an empty territory.
@@ -324,11 +324,11 @@ class TestEmptyLandGrabReach(unittest.TestCase):
     """GRAB_REACH (6 hops): how far a target may be for the objective to bother buying a Mech Inf toward it."""
 
     def _chain_engine(self):
-        # 1 (NAA) -- 2..5 (a neutral faction's land: filler, never a target) -- 6, 7, 8 (GPC, undefended land,
+        # 1 (NAA) -- 2..5 (a noncombatant faction's land: filler, never a target) -- 6, 7, 8 (GPC, undefended land,
         # at hops 5, 6 and 7 from NAA's only territory).
         territories = {1: {'type': 'land', 'value': 30, 'name': 'NAA Land'}}
         for i in range(2, 6):
-            territories[i] = {'type': 'land', 'value': 1, 'name': f'Neutral {i}'}
+            territories[i] = {'type': 'land', 'value': 1, 'name': f'Noncombatant {i}'}
         for i in range(6, 9):
             territories[i] = {'type': 'land', 'value': 1, 'name': f'GPC Land {i}'}
         adjacency = {i: [] for i in range(1, 9)}
@@ -337,7 +337,7 @@ class TestEmptyLandGrabReach(unittest.TestCase):
             adjacency[i + 1].append(i)
         data = FakeData(territories=territories, adjacency=adjacency)
         owners = {1: 'NAA', **{i: 'UER' for i in range(2, 6)}, **{i: 'GPC' for i in range(6, 9)}}
-        gs = make_state(data, owners, {'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT, 'UER': FactionMode.NEUTRAL})
+        gs = make_state(data, owners, {'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT, 'UER': FactionMode.NONCOMBATANT})
         gs.active_faction = 'NAA'
         return GameEngine(gs, data), gs
 

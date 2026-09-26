@@ -184,7 +184,7 @@ func _start_view() -> void:
 		# otherwise the launch screen (opened by the server's "lobby" message) comes first.
 		Net.auto_watch = Dbg.args.has("resume") or (Dbg.args.has("shot") and not Dbg.args.has("launch"))
 		Net.start("" if url == "true" else url)
-		if Dbg.args.has("launch"):  # --launch=<seat modes, e.g. HUMAN,BOT,NEUTRAL,...>: play the launch screen's Start
+		if Dbg.args.has("launch"):  # --launch=<seat modes, e.g. HUMAN,BOT,NONCOMBATANT,...>: play the launch screen's Start
 			await _launch_scripted()
 		if Dbg.args.has("steps"):
 			await Stepper.press(int(Dbg.args["steps"]))
@@ -356,8 +356,8 @@ func _fit_whole_map() -> void:
 
 
 ## Dev/scripted: wait for the launch screen, then start the game it describes
-## (--launch=HUMAN,BOT,NEUTRAL,... one mode per seat, factions random unless the
-## seat is written MODE:FACTION[:STRATEGY], e.g. HUMAN:NAA,BOT:GPC:aggressive,NEUTRAL).
+## (--launch=HUMAN,BOT,NONCOMBATANT,... one mode per seat, factions random unless the
+## seat is written MODE:FACTION[:STRATEGY], e.g. HUMAN:NAA,BOT:GPC:aggressive,NONCOMBATANT).
 func _launch_scripted() -> void:
 	var waited := 0.0
 	while (not _launch.visible or not Net.is_open()) and waited < 10.0:
@@ -373,7 +373,7 @@ func _launch_scripted() -> void:
 			"strategy": parts[2] if parts.size() > 2 else "random", "behavior": "random",
 			"ai": str(Dbg.args.get("bot_ai", "strategy"))})  # --bot_ai=random|strategy for every bot
 	while seats.size() < GameData.faction_order.size():  # one seat per faction
-		seats.append({"mode": "NEUTRAL", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "random"})
+		seats.append({"mode": "NONCOMBATANT", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "random"})
 	if Dbg.args.has("start_allied"):  # the first two seats start in Alliance 1
 		seats[0]["alliance"] = 1
 		seats[1]["alliance"] = 1

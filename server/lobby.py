@@ -4,7 +4,7 @@ the game they describe.
 
 Settings (the "new_game" message's "settings"):
 
-    {"seats": [ {"mode": "HUMAN" | "BOT" | "DEFENSIVE" | "NEUTRAL",
+    {"seats": [ {"mode": "HUMAN" | "BOT" | "NEUTRAL" | "NONCOMBATANT",
                  "faction": "random" | "NAA" | "UE" | "UER" | "GPC" | "PAF" | "AAC",
                  "alliance": 0 | 1 | 2 | 3,             # 0 = none; players only
                  "strategy": "random" | aggressive | passive | counterweight | independent | variable,   # bots only
@@ -22,8 +22,8 @@ Settings (the "new_game" message's "settings"):
 
 Every faction is in exactly one seat: explicit picks are honoured first (and must
 be distinct), "random" seats then take the factions left over, in random order.
-"Players" are the HUMAN and BOT seats; DEFENSIVE seats' units defend but take no
-turns, and NEUTRAL seats are impassable (see the rule set power_modes).
+"Players" are the HUMAN and BOT seats; NEUTRAL seats' units defend but take no
+turns, and NONCOMBATANT seats are impassable (see the rule set power_modes).
 
 The rules the screen enforces (and the server re-checks, being the authority):
 at least two players, at most one human, distinct explicit factions, and each
@@ -52,7 +52,7 @@ def seat_count():
     """One seat per faction in the scenario (six in GC72)."""
     return len(data_module.factions())
 
-MODES = ('HUMAN', 'BOT', 'DEFENSIVE', 'NEUTRAL')
+MODES = ('HUMAN', 'BOT', 'NEUTRAL', 'NONCOMBATANT')
 ALLIANCE_NUMBERS = (1, 2, 3)
 PLAYER_MODES = ('HUMAN', 'BOT')
 # The heuristic bot (engine/bots/strategy_bot.py), the random baseline, and Claude itself

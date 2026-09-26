@@ -69,7 +69,7 @@ def naval_deploy_excluded():
 
 
 def initial_setup(kind):
-    """(InitialSetup, UnitPromotions) module documents for the 'standard' or 'defensive' setup."""
+    """(InitialSetup, UnitPromotions) module documents for the 'standard' or 'neutral' setup."""
     return config().initial_setup(kind)
 
 

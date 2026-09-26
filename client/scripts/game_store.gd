@@ -167,10 +167,10 @@ func unit_of(unit_id: int) -> Dictionary:
 	return _unit_index.get(unit_id, {})
 
 
-## Neutral powers take no turns; their land is shown in cream rather than the
+## Noncombatant powers take no turns; their land is shown in cream rather than the
 ## faction colour. (Mode is only known once a server state has arrived.)
-func is_neutral(code: String) -> bool:
-	return faction_state(code).get("mode", "") == "NEUTRAL"
+func is_noncombatant(code: String) -> bool:
+	return faction_state(code).get("mode", "") == "NONCOMBATANT"
 
 
 ## A "player" faction is one in HUMAN mode; in a bot-vs-bot game there is none.
@@ -243,12 +243,12 @@ func game_ended_by_armistice() -> bool:
 	return false
 
 
-const NEUTRAL_COLOR := Color(0.93, 0.87, 0.68)
+const NONCOMBATANT_COLOR := Color(0.93, 0.87, 0.68)
 
 
 ## The colour a faction's land and markers are drawn in.
 func display_color(code: String) -> Color:
-	return NEUTRAL_COLOR if is_neutral(code) else GameData.factions[code].color
+	return NONCOMBATANT_COLOR if is_noncombatant(code) else GameData.factions[code].color
 
 
 func owner_of(tid: int) -> String:
@@ -785,7 +785,7 @@ func territory_income(code: String) -> int:
 
 
 ## Whether the territory is a Strategic Center in this game: it is one on the map, and
-## the engine hasn't switched it off -- a territory that started out in a Defensive
+## the engine hasn't switched it off -- a territory that started out in a Neutral
 ## power's hands never is one (`sc_disabled`), whoever holds it now.
 func is_sc(tid: int) -> bool:
 	if not GameData.territories[tid].get("strategic_center", false):

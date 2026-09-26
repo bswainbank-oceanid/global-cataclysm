@@ -8,7 +8,7 @@ bought only at coastal territories and deployed to a sea zone ADJACENT to where 
 were bought, never to an excluded zone (the map's naval_deploy_excluded), every
 carrier (carrier_air_wing ability) starting with at least one of its faction's
 aircraft, no two factions sharing a sea zone (within a setup, and across the scenario's
-standard and defensive setups, which can meet in one game), a land unit at every land
+standard and neutral setups, which can meet in one game), a land unit at every land
 territory with a foreign neighbor (unless nothing fits there), and each faction using
 at least min_unit_types unit types.
 
@@ -19,7 +19,7 @@ min_unit_types, budget_tolerance.
 
 Run from the repo root:
     python tools/validate_setup.py                      # both of the scenario's setups
-    python tools/validate_setup.py --setup defensive
+    python tools/validate_setup.py --setup neutral
 Exits with status 1 if any errors are found, 0 otherwise.
 """
 import argparse
@@ -102,11 +102,11 @@ def check_setup(setup, used_zones):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--scenario', default=tool_data.DEFAULT_SCENARIO_ID)
-    parser.add_argument('--setup', choices=['standard', 'defensive', 'all'], default='all')
+    parser.add_argument('--setup', choices=['standard', 'neutral', 'all'], default='all')
     args = parser.parse_args()
     tool_data.use_scenario(args.scenario)
 
-    kinds = ['standard', 'defensive'] if args.setup == 'all' else [args.setup]
+    kinds = ['standard', 'neutral'] if args.setup == 'all' else [args.setup]
     used_zones, all_errors = {}, []
     for kind in kinds:
         setup, _ = tool_data.config().initial_setup(kind)

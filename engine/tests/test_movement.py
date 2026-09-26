@@ -505,8 +505,8 @@ class TestAmphibiousThroughOccupiedWater(unittest.TestCase):
         trace_combat_move('Mechanized Infantry', 'NAA', paths[4], gs, data)
 
 
-class TestNeutralExclusion(unittest.TestCase):
-    def test_neutral_territory_is_never_reachable_and_blocks_passage(self):
+class TestNoncombatantExclusion(unittest.TestCase):
+    def test_noncombatant_territory_is_never_reachable_and_blocks_passage(self):
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
             adjacency={1: [2], 2: [1, 3], 3: [2]},
@@ -514,20 +514,20 @@ class TestNeutralExclusion(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 2: 'PAF', 3: 'AAC'},
-            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NONCOMBATANT, 'AAC': FactionMode.HUMAN},
         )
         dest = legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
         self.assertNotIn(2, dest)
-        self.assertNotIn(3, dest, 'Neutral territory blocks passage entirely, not just capture')
+        self.assertNotIn(3, dest, 'Noncombatant territory blocks passage entirely, not just capture')
 
-    def test_amphibious_escape_cannot_land_on_neutral_territory(self):
+    def test_amphibious_escape_cannot_land_on_noncombatant_territory(self):
         # 1 (land, NAA origin) -- 2 (sea, hostile: enemy Cruiser present)
-        # -- 3 (land, NEUTRAL). The hostile-water escape/amphibious
+        # -- 3 (land, NONCOMBATANT). The hostile-water escape/amphibious
         # exception overrides ordinary land classification (own/ally
         # land's normal pass-only status), but must never override
-        # NEUTRAL exclusion -- a bug found and fixed this session
+        # NONCOMBATANT exclusion -- a bug found and fixed this session
         # (`hop.stop or (land_only and neighbor_is_land)` used to bypass
-        # _is_neutral entirely).
+        # _is_noncombatant entirely).
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'sea'}, 3: {'type': 'land'}},
             adjacency={1: [2], 2: [1, 3], 3: [2]},
@@ -535,12 +535,12 @@ class TestNeutralExclusion(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 3: 'PAF'},
-            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NONCOMBATANT, 'AAC': FactionMode.HUMAN},
             units_by_territory={2: [enemy_unit(1, 'Cruiser', 'AAC')]},
         )
         dest = legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, data)
         self.assertIn(2, dest)  # still must be prepared to fight the naval battle there
-        self.assertNotIn(3, dest, 'neutral territory is never a legal landing spot, even via the amphibious exception')
+        self.assertNotIn(3, dest, 'noncombatant territory is never a legal landing spot, even via the amphibious exception')
 
 
 class TestSeaUnitsStayAtSea(unittest.TestCase):
@@ -705,12 +705,12 @@ class TestCruiserBombardment(unittest.TestCase):
         gs.factions['UE'].alliance = 'x'
         self.assertNotIn(2, legal_combat_move_destinations('Cruiser', 'NAA', 1, gs, data))
 
-    def test_neutral_territory_cannot_be_bombarded(self):
+    def test_noncombatant_territory_cannot_be_bombarded(self):
         data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'land'}}, adjacency={1: [2], 2: [1]})
         gs = make_state(
-            data, territory_owners={2: 'NEUTRAL_FACTION'},
-            faction_modes={'NAA': FactionMode.HUMAN, 'NEUTRAL_FACTION': FactionMode.NEUTRAL},
-            units_by_territory={2: [enemy_unit(1, 'Infantry', 'NEUTRAL_FACTION')]},
+            data, territory_owners={2: 'NONCOMBATANT_FACTION'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'NONCOMBATANT_FACTION': FactionMode.NONCOMBATANT},
+            units_by_territory={2: [enemy_unit(1, 'Infantry', 'NONCOMBATANT_FACTION')]},
         )
         self.assertNotIn(2, legal_combat_move_destinations('Cruiser', 'NAA', 1, gs, data))
 
@@ -986,10 +986,10 @@ class TestAirMovement(unittest.TestCase):
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
         self.assertNotIn(2, dest, "an ally's carrier, pending or not, is still never a legal landing spot")
 
-    def test_air_flies_over_neutral_territory_to_reach_a_further_attack_target(self):
-        # 1 (land, NAA origin) -- 2 (land, NEUTRAL) -- 3 (land, AAC,
-        # occupied -- a legal attack target). Confirmed: neutral
-        # territory blocks land/sea entirely (TestNeutralExclusion) but
+    def test_air_flies_over_noncombatant_territory_to_reach_a_further_attack_target(self):
+        # 1 (land, NAA origin) -- 2 (land, NONCOMBATANT) -- 3 (land, AAC,
+        # occupied -- a legal attack target). Confirmed: noncombatant
+        # territory blocks land/sea entirely (TestNoncombatantExclusion) but
         # air may now fly straight over it.
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
@@ -998,14 +998,14 @@ class TestAirMovement(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 2: 'PAF', 3: 'AAC'},
-            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NONCOMBATANT, 'AAC': FactionMode.HUMAN},
             units_by_territory={3: [enemy_unit(1, 'Armor', 'AAC')]},
         )
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', gs, data)
-        self.assertIn(3, dest, 'air can fly over neutral territory to reach a further attack target')
-        self.assertNotIn(2, dest, 'neutral territory is still never itself a legal attack target')
+        self.assertIn(3, dest, 'air can fly over noncombatant territory to reach a further attack target')
+        self.assertNotIn(2, dest, 'noncombatant territory is still never itself a legal attack target')
 
-    def test_air_noncombat_move_can_pass_through_neutral_territory(self):
+    def test_air_noncombat_move_can_pass_through_noncombatant_territory(self):
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
             adjacency={1: [2], 2: [1, 3], 3: [2]},
@@ -1013,11 +1013,11 @@ class TestAirMovement(unittest.TestCase):
         gs = make_state(
             data,
             territory_owners={1: 'NAA', 2: 'PAF', 3: 'NAA'},
-            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL},
+            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NONCOMBATANT},
         )
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'noncombat', gs, data)
-        self.assertIn(3, dest, 'air can fly through neutral territory to reach a further friendly landing spot')
-        self.assertNotIn(2, dest, 'neutral territory is still never a legal landing spot, even though flyover is allowed')
+        self.assertIn(3, dest, 'air can fly through noncombatant territory to reach a further friendly landing spot')
+        self.assertNotIn(2, dest, 'noncombatant territory is still never a legal landing spot, even though flyover is allowed')
 
     def test_enemy_fighter_in_transit_forces_a_combat_move_to_stop_and_attack_there(self):
         # 1 (land, NAA origin) -- 2 (land, AAC, an enemy FIGHTER present)
@@ -1177,16 +1177,16 @@ class TestFindEmergencyLanding(unittest.TestCase):
         result = find_emergency_landing(1, 'NAA', gs, data, random.Random(0))
         self.assertIsNone(result, 'enemy land is never a qualifying emergency landing spot')
 
-    def test_neutral_territory_is_excluded(self):
+    def test_noncombatant_territory_is_excluded(self):
         data = FakeData(
             territories={1: {'type': 'sea'}, 2: {'type': 'land'}},
             adjacency={1: [2]},
         )
         gs = make_state(
             data, territory_owners={2: 'NAA'},
-            faction_modes={'NAA': FactionMode.NEUTRAL},
+            faction_modes={'NAA': FactionMode.NONCOMBATANT},
         )
-        # territory 2 is 'owned' by NAA but NAA is itself the Neutral
+        # territory 2 is 'owned' by NAA but NAA is itself the Noncombatant
         # faction here -- exercising the exclusion path directly regardless
         # of who the mover is.
         result = find_emergency_landing(1, 'AAC', gs, data, random.Random(0))
@@ -1366,22 +1366,22 @@ class TestTraceCombatMove(unittest.TestCase):
         with self.assertRaises(ValueError):
             trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3, 4], gs, data)
 
-    def test_neutral_territory_blocks_the_path(self):
+    def test_noncombatant_territory_blocks_the_path(self):
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}},
             adjacency={1: [2], 2: [1, 3], 3: [2]},
         )
         gs = make_state(
             data, territory_owners={1: 'NAA', 2: 'PAF', 3: 'AAC'},
-            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NONCOMBATANT, 'AAC': FactionMode.HUMAN},
         )
         with self.assertRaises(ValueError):
             trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 3], gs, data)
 
-    def test_amphibious_escape_cannot_land_on_neutral_territory(self):
+    def test_amphibious_escape_cannot_land_on_noncombatant_territory(self):
         # Same hostile-water-escape shape as
         # test_amphibious_escape_through_hostile_water_to_friendly_land,
-        # but the far shore is NEUTRAL -- must still be rejected, even
+        # but the far shore is NONCOMBATANT -- must still be rejected, even
         # though the amphibious exception otherwise skips the landing
         # hop's ordinary classification entirely.
         data = FakeData(
@@ -1390,7 +1390,7 @@ class TestTraceCombatMove(unittest.TestCase):
         )
         gs = make_state(
             data, territory_owners={1: 'NAA', 3: 'PAF'},
-            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NEUTRAL, 'AAC': FactionMode.HUMAN},
+            faction_modes={'NAA': FactionMode.HUMAN, 'PAF': FactionMode.NONCOMBATANT, 'AAC': FactionMode.HUMAN},
             contested={2: {'NAA', 'AAC'}},
         )
         with self.assertRaises(ValueError):

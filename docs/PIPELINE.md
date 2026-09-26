@@ -69,8 +69,8 @@ sea-sea|land-land|land-sea`, `--diff` to colour by agreement with the outlines).
 
 ## Starting setups
 
-A scenario has a standard setup (HUMAN/BOT seats) and a defensive one
-(DEFENSIVE seats), each an InitialSetup + UnitPromotions module.
+A scenario has a standard setup (HUMAN/BOT seats) and a neutral one
+(NEUTRAL seats), each an InitialSetup + UnitPromotions module.
 
 ```
 python tools/generate_setup.py --setup standard --check   # would regenerating change it?
@@ -89,7 +89,7 @@ Setups can also be edited by hand in `sheets/InitialSetup.ods`.
 
 Known as of the data-model refactor: the stored standard setup predates later
 unit-weight changes (the generator would now produce a different one), and the
-stored defensive setup fails validation on current unit costs (three factions
+stored neutral setup fails validation on current unit costs (three factions
 spend 101 of 100 MPC; Eastern United States holds 5 of 4). Both are left as
 they were so the game plays exactly as before.
 
@@ -99,6 +99,6 @@ they were so the game plays exactly as before.
 python tools/golden_games.py --check tools/golden_games.json
 ```
 
-replays five seeded bot games (random and strategy bots, Defensive/Neutral
+replays five seeded bot games (random and strategy bots, Neutral/Noncombatant
 seats, alliances) and compares digests of the starting board, the full turn log
 and the final board with the recorded baseline.

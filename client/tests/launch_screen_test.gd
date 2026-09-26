@@ -30,11 +30,11 @@ func _initialize() -> void:
 	root.add_child(screen)
 	await process_frame
 
-	# Defaults: a human, a bot, four neutrals -- a valid game.
+	# Defaults: a human, a bot, four noncombatants -- a valid game.
 	_check(screen.problems().is_empty(), "the default setup is valid: %s" % str(screen.problems()))
 	var s: Dictionary = screen.settings()
 	_check(s["seats"].size() == 6 and s["randomize_order"] == true, "six seats, randomize turn order on by default")
-	_check(s["seats"][0]["mode"] == "HUMAN" and s["seats"][1]["mode"] == "BOT" and s["seats"][2]["mode"] == "NEUTRAL", "default seat types")
+	_check(s["seats"][0]["mode"] == "HUMAN" and s["seats"][1]["mode"] == "BOT" and s["seats"][2]["mode"] == "NONCOMBATANT", "default seat types")
 	_check(s["seats"][0]["faction"] == "random" and s["seats"][1]["strategy"] == "random" and s["seats"][1]["behavior"] == "random",
 		"faction, strategy and behavior default to random")
 	_check(s["seats"][1]["alliance"] == 0, "starting alliance defaults to none")
@@ -54,7 +54,7 @@ func _initialize() -> void:
 	screen._changed()
 
 	# At least two players.
-	_pick(screen, 1, "mode", 3)  # the bot becomes Neutral
+	_pick(screen, 1, "mode", 3)  # the bot becomes Noncombatant
 	_check(not screen.problems().is_empty(), "one player alone can't start")
 	_check(screen._start.disabled, "Start is disabled then")
 	_pick(screen, 1, "mode", 1)
@@ -70,7 +70,7 @@ func _initialize() -> void:
 	# Strategy and behavior are for bots only; alliance for players only.
 	_check((_row(screen, 0)["strategy"] as OptionButton).disabled, "a human has no strategy")
 	_check(not (_row(screen, 1)["strategy"] as OptionButton).disabled, "a bot has a strategy")
-	_check((_row(screen, 2)["alliance"] as OptionButton).disabled, "a neutral seat has no alliance")
+	_check((_row(screen, 2)["alliance"] as OptionButton).disabled, "a noncombatant seat has no alliance")
 	_pick(screen, 1, "mode", 2)  # Defense
 	_check((_row(screen, 1)["alliance"] as OptionButton).disabled and (_row(screen, 1)["strategy"] as OptionButton).disabled, "a defense seat is neither")
 	_pick(screen, 1, "mode", 1)
@@ -100,7 +100,7 @@ func _initialize() -> void:
 	var sent: Dictionary = screen.settings()
 	_check(sent["seats"][0]["alliance"] == 1 and sent["seats"][1]["alliance"] == 1 and sent["seats"][2]["alliance"] == 0, "alliance numbers are sent")
 
-	# A neutral seat's leftover alliance choice isn't sent.
+	# A noncombatant seat's leftover alliance choice isn't sent.
 	_pick(screen, 2, "alliance", 2)
 	_pick(screen, 2, "mode", 3)
 	_check(screen.settings()["seats"][2]["alliance"] == 0, "non-players send no alliance")

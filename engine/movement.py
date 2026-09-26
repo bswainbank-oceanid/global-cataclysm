@@ -90,9 +90,9 @@ def _base_move(unit_type, move_type, unit_defs):
     return stats[key]
 
 
-def _is_neutral(territory_id, game_state):
+def _is_noncombatant(territory_id, game_state):
     owner = game_state.territories[territory_id].owner
-    return owner is not None and game_state.factions[owner].mode == FactionMode.NEUTRAL
+    return owner is not None and game_state.factions[owner].mode == FactionMode.NONCOMBATANT
 
 
 def _is_contested(territory_id, game_state):
@@ -144,9 +144,9 @@ def _enemy_fighter_present(territory_id, mover_faction, game_state, unit_defs):
     """True if `territory_id` holds a unit with the interception ability (a
     Fighter) belonging to a faction that's neither `mover_faction` nor one of
     its allies -- the one thing that disrupts air's otherwise-unconstrained
-    overflight of enemy and neutral territory (the rule set's
+    overflight of enemy and noncombatant territory (the rule set's
     air_interception_rule). Bombers, every other unit type, and simple
-    non-ally/neutral presence alone never trigger this."""
+    non-ally/noncombatant presence alone never trigger this."""
     return any(abilities.has(unit_defs, u.unit_type, abilities.INTERCEPTION)
                and not _is_ally_or_self(game_state, mover_faction, u.owner)
                for u in game_state.territories[territory_id].units)
@@ -176,7 +176,7 @@ STOP_AND_PASS_LAND_ONLY = _Hop(stop=True, pass_through='land_only')
 
 
 def _classify_combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_state, territories, unit_defs):
-    if _is_neutral(dest_id, game_state):
+    if _is_noncombatant(dest_id, game_state):
         return BLOCKED
 
     dest = game_state.territories[dest_id]
@@ -258,7 +258,7 @@ def _classify_noncombat_hop(dest_id, mover_faction, game_state, territories, uni
     No attack semantics, no Mech Inf exception (that's combat-move-only);
     only amphibious land units may enter water (the caller's search
     enforces that, not this classification)."""
-    if _is_neutral(dest_id, game_state):
+    if _is_noncombatant(dest_id, game_state):
         return BLOCKED
     dest = game_state.territories[dest_id]
     is_land = territories[dest_id]['type'] == 'land'
@@ -362,11 +362,11 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
             # mark it as one (e.g. friendly uncontested land, which is
             # normally pass-through-only) -- it's still a combat move,
             # just one that ends in a safe landing rather than an attack.
-            # NEUTRAL is the one exception even to that override -- it's
-            # never enterable at all (movement.neutral_exclusion), so the
-            # override only applies when the hop wasn't neutral-blocked
+            # NONCOMBATANT is the one exception even to that override -- it's
+            # never enterable at all (movement.noncombatant_exclusion), so the
+            # override only applies when the hop wasn't noncombatant-blocked
             # (a bug found and fixed this session: `hop.stop or (land_only
-            # and neighbor_is_land)` used to bypass _is_neutral entirely).
+            # and neighbor_is_land)` used to bypass _is_noncombatant entirely).
             # That landing is also ALWAYS the final stop of the move --
             # never continuable, even when the landing spot's own
             # ordinary classification would otherwise permit passing
@@ -374,10 +374,10 @@ def _reachable_destinations(origin_id, mover_faction, unit_type, move_type, game
             # foreign territory, which would normally let it blitz
             # onward) -- so it's never pushed onward here either, a
             # second bug found and fixed this session alongside the
-            # Neutral one, matching trace_combat_move's own
+            # Noncombatant one, matching trace_combat_move's own
             # (already-correct) 'must be the final stop' check.
             if land_only:
-                if neighbor_is_land and not _is_neutral(neighbor_id, game_state):
+                if neighbor_is_land and not _is_noncombatant(neighbor_id, game_state):
                     destinations.add(neighbor_id)
                     paths[neighbor_id] = new_path
                 continue
@@ -413,7 +413,7 @@ def _legal_bombardment_targets(unit_type, owner, origin_id, game_state, data_mod
     def enemy_occupied_land_neighbors(sea_id):
         out = []
         for n in adjacency.get(sea_id, []):
-            if territories[n]['type'] != 'land' or _is_neutral(n, game_state):
+            if territories[n]['type'] != 'land' or _is_noncombatant(n, game_state):
                 continue
             if any(not _is_ally_or_self(game_state, owner, u.owner) for u in game_state.territories[n].units):
                 out.append(n)
@@ -616,8 +616,8 @@ def _trace_bombardment_movement(unit_type, owner, path, game_state, data_module)
         raise ValueError(f'{sea_id} and {target_id} are not adjacent')
     if territories[target_id]['type'] != 'land':
         raise ValueError(f'{target_id} is not a land territory')
-    if _is_neutral(target_id, game_state):
-        raise ValueError(f'{target_id} is neutral territory and cannot be bombarded')
+    if _is_noncombatant(target_id, game_state):
+        raise ValueError(f'{target_id} is noncombatant territory and cannot be bombarded')
 
     return sea_id, target_id
 
@@ -698,15 +698,15 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
                 raise ValueError(f'cannot continue past hostile water without landing at {next_id}')
             if not is_last:
                 raise ValueError('a hostile-water landing must be the final stop of this combat move')
-            if _is_neutral(next_id, game_state):
+            if _is_noncombatant(next_id, game_state):
                 # The amphibious exception overrides ordinary land
                 # classification (own/ally land's normal pass-only
-                # status, in particular), but never NEUTRAL -- that's
+                # status, in particular), but never NONCOMBATANT -- that's
                 # still an absolute block, same as everywhere else (a
                 # bug found and fixed this session: this hop used to
-                # skip _classify_combat_hop -- and so its _is_neutral
+                # skip _classify_combat_hop -- and so its _is_noncombatant
                 # check -- entirely once land_only_restricted was set).
-                raise ValueError(f'{next_id} is neutral territory and cannot be entered')
+                raise ValueError(f'{next_id} is noncombatant territory and cannot be entered')
 
         if is_land_unit and not neighbor_is_land and not is_amphibious(unit_defs[unit_type]):
             raise ValueError(f'{unit_type} cannot enter the water ({next_id}); only Mechanized Infantry can')
@@ -781,7 +781,7 @@ def legal_noncombat_move_paths(unit_type, owner, origin_id, game_state, data_mod
 
 
 def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_state, data_module):
-    """Air units fly over enemy AND neutral territories/sea zones freely
+    """Air units fly over enemy AND noncombatant territories/sea zones freely
     (never blocked, never forced to stop by mere occupation) in both
     move phases -- the only constraints are their own move budget (no
     water bonus; that's a land-unit/Transport concept), an enemy
@@ -804,7 +804,7 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
       shouldn't guess at, another unit's not-yet-submitted move.
 
     Enemy Fighter interception (the rule set's air_interception_rule):
-    Bombers, ground/sea units, and simple non-ally/neutral presence
+    Bombers, ground/sea units, and simple non-ally/noncombatant presence
     never disrupt overflight -- ONLY an enemy Fighter (belonging to a
     faction that's neither `owner` nor one of its allies) does, in
     whichever territory/sea zone it's physically sitting in along the
@@ -930,7 +930,7 @@ def find_emergency_landing(origin_id, owner, game_state, data_module, rng):
 
     own_carrier, own_land, allied_land = [], [], []
     for neighbor_id in adjacency.get(origin_id, []):
-        if _is_neutral(neighbor_id, game_state):
+        if _is_noncombatant(neighbor_id, game_state):
             continue
         dest = game_state.territories[neighbor_id]
         if territories[neighbor_id]['type'] == 'land':

@@ -50,7 +50,7 @@ func _initialize() -> void:
 	territories[str(other)]["contested_by"] = null
 	store.set_state({"global_turn": 0, "active_faction": "NAA", "phase": "PURCHASE", "territories": territories, "factions": factions})
 	_check(store.territory_income("NAA") == expected + int(data.territories[other]["value"]), "once the contest ends the territory counts again")
-	# A territory the engine has switched off (it started out Defensive) is no Strategic Center
+	# A territory the engine has switched off (it started out Neutral) is no Strategic Center
 	# for whoever holds it: no bonus in the income, no star.
 	territories[str(sc)]["sc_disabled"] = true
 	store.set_state({"global_turn": 0, "active_faction": "NAA", "phase": "PURCHASE", "territories": territories, "factions": factions})

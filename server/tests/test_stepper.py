@@ -13,7 +13,7 @@ PHASES = [p.value for p in Phase]
 
 
 def _watch_session(seed=1):
-    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes = {code: FactionMode.NONCOMBATANT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.BOT
     modes['AAC'] = FactionMode.BOT
     gs = build_game_state(modes, randomize_play_order=False)
@@ -157,7 +157,7 @@ class TestWatch(unittest.TestCase):
         self.assertIs(first, again)
 
     def test_watch_is_refused_when_a_faction_is_neither_human_nor_a_bot_with_a_bot_attached(self):
-        modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+        modes = {code: FactionMode.NONCOMBATANT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
         modes['NAA'] = FactionMode.BOT  # a BOT with no RandomBot attached
         modes['AAC'] = FactionMode.BOT
         gs = build_game_state(modes, randomize_play_order=False)
@@ -295,7 +295,7 @@ if __name__ == '__main__':
 
 def _human_session(seed=1):
     """NAA a human player, GPC a bot."""
-    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes = {code: FactionMode.NONCOMBATANT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.HUMAN
     modes['GPC'] = FactionMode.BOT
     gs = build_game_state(modes, randomize_play_order=False)
@@ -410,7 +410,7 @@ class TestHumanPurchase(unittest.TestCase):
 def _human_moves_session(seed=1):
     """NAA human, GPC bot, Combat Move allowed on the first turn (the rules skip it),
     parked at NAA's Combat Move."""
-    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes = {code: FactionMode.NONCOMBATANT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.HUMAN
     modes['GPC'] = FactionMode.BOT
     gs = build_game_state(modes, randomize_play_order=False, allow_combat_moves_first_turn=True)

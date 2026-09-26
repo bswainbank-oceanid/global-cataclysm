@@ -12,7 +12,7 @@ def _session(seed=1):
     """A human NAA against the bots UE and GPC (no alliances), fixed turn order."""
     def seat(mode, faction):
         return {'mode': mode, 'faction': faction, 'alliance': 0, 'strategy': 'independent', 'behavior': 'loyal'}
-    seats = [seat('HUMAN', 'NAA'), seat('BOT', 'UE'), seat('BOT', 'GPC')] + [seat('NEUTRAL', f) for f in ('UER', 'PAF', 'AAC')]
+    seats = [seat('HUMAN', 'NAA'), seat('BOT', 'UE'), seat('BOT', 'GPC')] + [seat('NONCOMBATANT', f) for f in ('UER', 'PAF', 'AAC')]
     session, _ = build_session({'seats': seats, 'randomize_order': False, 'max_alliance_size': 1}, random.Random(seed))
     return session
 

@@ -179,19 +179,19 @@ func _marker_width(tid: int) -> float:
 	var t: Dictionary = GameData.territories[tid]
 	if t["type"] != "land":
 		return 0.0
-	if GameStore.is_neutral(GameStore.owner_of(tid)):
-		return 0.0  # neutrals take no part in the game; their value isn't shown
+	if GameStore.is_noncombatant(GameStore.owner_of(tid)):
+		return 0.0  # noncombatants take no part in the game; their value isn't shown
 	if GameStore.display_value(tid) <= 0:
 		return 0.0
 	return STAR_W if GameStore.is_sc(tid) else DISC_W
 
 
 ## The territory's value (Strategic Center bonus included) in a disc of its owner's colour (cream for
-## neutrals); a Strategic Center's disc sits inside a gold star.
+## noncombatants); a Strategic Center's disc sits inside a gold star.
 func _draw_value_marker(tid: int, c: Vector2) -> void:
 	var owner := GameStore.owner_of(tid)
 	var col := GameStore.display_color(owner) if GameData.factions.has(owner) else Color(0.5, 0.5, 0.5)
-	var text_col := Color(0.15, 0.12, 0.05) if GameStore.is_neutral(owner) else Color.WHITE
+	var text_col := Color(0.15, 0.12, 0.05) if GameStore.is_noncombatant(owner) else Color.WHITE
 	var r := DISC_R
 	if GameStore.is_sc(tid):
 		var pts := HudStyle.star_points(c, STAR_R)

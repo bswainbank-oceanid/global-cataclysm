@@ -14,7 +14,7 @@ def _session(strategies, seed=1):
     def seat(mode, faction, strategy='random'):
         return {'mode': mode, 'faction': faction, 'alliance': 0, 'strategy': strategy, 'behavior': 'loyal'}
     seats = [seat('HUMAN', 'NAA'), seat('BOT', 'UE', strategies[0]), seat('BOT', 'GPC', strategies[1])] + \
-        [seat('NEUTRAL', f) for f in ('UER', 'PAF', 'AAC')]
+        [seat('NONCOMBATANT', f) for f in ('UER', 'PAF', 'AAC')]
     session, _ = build_session({'seats': seats, 'randomize_order': False}, random.Random(seed))
     return session
 
@@ -159,7 +159,7 @@ def _allied_session(can_withdraw=True, can_rejoin=False, seed=1):
     def seat(mode, faction, alliance=0):
         return {'mode': mode, 'faction': faction, 'alliance': alliance, 'strategy': 'independent', 'behavior': 'loyal'}
     seats = [seat('HUMAN', 'NAA', 1), seat('BOT', 'UE', 1), seat('BOT', 'GPC')] + \
-        [seat('NEUTRAL', f) for f in ('UER', 'PAF', 'AAC')]
+        [seat('NONCOMBATANT', f) for f in ('UER', 'PAF', 'AAC')]
     session, _ = build_session({'seats': seats, 'randomize_order': False,
                                 'can_withdraw': can_withdraw, 'can_rejoin': can_rejoin}, random.Random(seed))
     return session
@@ -189,7 +189,7 @@ class TestAllianceRuleSettingsAreEnforced(unittest.TestCase):
             return {'mode': mode, 'faction': faction, 'alliance': alliance, 'strategy': 'aggressive', 'behavior': behavior}
         for seed in range(6):
             seats = [seat('BOT', 'NAA', 1), seat('BOT', 'UE', 1), seat('BOT', 'GPC'), seat('BOT', 'AAC')] + \
-                [seat('NEUTRAL', f) for f in ('UER', 'PAF')]
+                [seat('NONCOMBATANT', f) for f in ('UER', 'PAF')]
             session, _ = build_session({'seats': seats, 'randomize_order': False, 'can_withdraw': False}, random.Random(seed))
             messages = session.handle_message({'type': 'watch'})
             for _ in range(200):

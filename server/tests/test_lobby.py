@@ -8,7 +8,7 @@ from server.lobby import LobbyError, build_session, check_settings, resolve_sett
 FACTIONS = ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')
 
 
-def seat(mode='NEUTRAL', faction='random', alliance=0, strategy='random', behavior='random'):
+def seat(mode='NONCOMBATANT', faction='random', alliance=0, strategy='random', behavior='random'):
     return {'mode': mode, 'faction': faction, 'alliance': alliance, 'strategy': strategy, 'behavior': behavior}
 
 
@@ -23,7 +23,7 @@ class TestSettingsChecks(unittest.TestCase):
 
     def test_at_least_two_players_are_needed(self):
         self.assertTrue(check_settings(settings(seat('HUMAN'))))
-        self.assertTrue(check_settings(settings(seat('BOT'), seat('DEFENSIVE'), seat('NEUTRAL'))))
+        self.assertTrue(check_settings(settings(seat('BOT'), seat('NEUTRAL'), seat('NONCOMBATANT'))))
         self.assertTrue(check_settings(settings()))
 
     def test_zero_humans_is_allowed_and_more_than_one_is_not(self):
@@ -52,7 +52,7 @@ class TestSettingsChecks(unittest.TestCase):
         self.assertEqual(ok, [])
 
     def test_alliances_on_non_player_seats_are_ignored(self):
-        self.assertEqual(check_settings(settings(seat('HUMAN'), seat('BOT'), seat('NEUTRAL', alliance=2))), [])
+        self.assertEqual(check_settings(settings(seat('HUMAN'), seat('BOT'), seat('NONCOMBATANT', alliance=2))), [])
 
     def test_all_problems_are_reported_together(self):
         with self.assertRaises(LobbyError) as ctx:
@@ -64,7 +64,7 @@ class TestResolveAndBuild(unittest.TestCase):
     def test_every_faction_ends_up_in_exactly_one_seat(self):
         for seed in range(20):
             assignments, _, _ = resolve_settings(settings(
-                seat('HUMAN', 'GPC'), seat('BOT'), seat('DEFENSIVE'), seat('NEUTRAL'), seat('BOT', 'NAA')), random.Random(seed))
+                seat('HUMAN', 'GPC'), seat('BOT'), seat('NEUTRAL'), seat('NONCOMBATANT'), seat('BOT', 'NAA')), random.Random(seed))
             self.assertEqual(sorted(a['faction'] for a in assignments), sorted(FACTIONS))
             self.assertEqual(assignments[0]['faction'], 'GPC')
             self.assertEqual(assignments[4]['faction'], 'NAA')
@@ -82,12 +82,12 @@ class TestResolveAndBuild(unittest.TestCase):
     def test_the_built_game_matches_the_settings(self):
         session, seats = build_session(settings(
             seat('HUMAN', 'NAA', alliance=1), seat('BOT', 'UE', alliance=1, strategy='aggressive', behavior='loyal'),
-            seat('BOT', 'GPC'), seat('DEFENSIVE', 'UER'), seat('NEUTRAL', 'PAF'), seat('NEUTRAL', 'AAC'),
+            seat('BOT', 'GPC'), seat('NEUTRAL', 'UER'), seat('NONCOMBATANT', 'PAF'), seat('NONCOMBATANT', 'AAC'),
             randomize_order=False), random.Random(3))
         gs = session.engine.game_state
         self.assertEqual(gs.factions['NAA'].mode, FactionMode.HUMAN)
-        self.assertEqual(gs.factions['UER'].mode, FactionMode.DEFENSIVE)
-        self.assertEqual(gs.factions['PAF'].mode, FactionMode.NEUTRAL)
+        self.assertEqual(gs.factions['UER'].mode, FactionMode.NEUTRAL)
+        self.assertEqual(gs.factions['PAF'].mode, FactionMode.NONCOMBATANT)
         self.assertEqual(gs.factions['NAA'].alliance, gs.factions['UE'].alliance)
         self.assertIsNone(gs.factions['GPC'].alliance)
         self.assertEqual(gs.factions['UE'].alliance_strategy, 'aggressive')

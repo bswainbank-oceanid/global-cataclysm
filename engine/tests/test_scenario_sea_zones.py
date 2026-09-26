@@ -2,7 +2,7 @@ import unittest
 
 from engine import data
 
-SETUPS = ['standard', 'defensive']
+SETUPS = ['standard', 'neutral']
 
 
 def _naval_zones(kind):
@@ -35,7 +35,7 @@ class TestStartingNavalDeployments(unittest.TestCase):
 
     def test_no_two_factions_deploy_to_the_same_sea_zone(self):
         # Within one setup, and ACROSS them: a faction plays the standard setup as HUMAN/BOT
-        # but the defensive one as DEFENSIVE, and any mix can happen in one game.
+        # but the neutral one as NEUTRAL, and any mix can happen in one game.
         used = {}  # zone id -> {faction: setup}
         for kind in SETUPS:
             for fac, zones in _naval_zones(kind).items():

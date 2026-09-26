@@ -59,7 +59,7 @@ class GameConfig:
         return self.module('RuleSet', self.scenario['rule_set_id'])
 
     def initial_setup(self, kind):
-        """(InitialSetup, UnitPromotions) for the scenario's 'standard' or 'defensive' setup."""
+        """(InitialSetup, UnitPromotions) for the scenario's 'standard' or 'neutral' setup."""
         s = self.scenario['setups'][kind]
         return self.module('InitialSetup', s['initial_setup_id']), self.module('UnitPromotions', s['unit_promotions_id'])
 

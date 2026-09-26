@@ -6,7 +6,7 @@ strategy bots (engine/bots/strategy_bot.py) against the random bots.
     python tools/bot_arena.py --games 6 --mix strategy=3,random=3 --budget 1500 --seed 100
 
 --mix says how many of the seats (one per faction: six) each AI gets (they must add up to at most that; the rest are empty
-seats' worth of Neutral). Factions are dealt to the seats at random each game. A faction 'survives' if it
+seats' worth of Noncombatant). Factions are dealt to the seats at random each game. A faction 'survives' if it
 is not eliminated when the game ends (it ended by an alliance of the survivors, by one faction left, or
 by the turn cap).
 """
@@ -39,7 +39,7 @@ def play(seed, mix, max_turns, budget):
         for _ in range(n):
             seats.append({'mode': 'BOT', 'faction': 'random', 'alliance': 0, 'strategy': 'random', 'behavior': 'random', 'ai': ai})
     while len(seats) < seat_count():
-        seats.append({'mode': 'NEUTRAL', 'faction': 'random', 'alliance': 0, 'strategy': 'random', 'behavior': 'random'})
+        seats.append({'mode': 'NONCOMBATANT', 'faction': 'random', 'alliance': 0, 'strategy': 'random', 'behavior': 'random'})
     session, assigned = build_session({'seats': seats, 'seed': seed, 'dev': {'bot_budget': budget}})
     engine, gs = session.engine, session.engine.game_state
     turns = play_to_completion(engine, session.bots, max_turns=max_turns)

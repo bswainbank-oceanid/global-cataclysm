@@ -25,30 +25,30 @@ def _session(modes, bot_factions=(), **build_kwargs):
 
 
 def _solo_session():
-    """NAA the only HUMAN faction, everyone else NEUTRAL -- only 1 active
+    """NAA the only HUMAN faction, everyone else NONCOMBATANT -- only 1 active
     faction, so would_game_end() is True the moment NAA's own turn
     reaches process_game_end_check -- deliberately the smallest possible
     game, one full turn then over."""
-    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes = {code: FactionMode.NONCOMBATANT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.HUMAN
     return _session(modes)
 
 
 def _two_human_session():
-    """NAA and UE both HUMAN, everyone else NEUTRAL -- 2 active
+    """NAA and UE both HUMAN, everyone else NONCOMBATANT -- 2 active
     factions, so the game keeps going turn after turn (not mutually
     allied, and len(active) > 1) -- lets a test actually observe
     your_turn switching from one faction to the other."""
-    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes = {code: FactionMode.NONCOMBATANT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.HUMAN
     modes['UE'] = FactionMode.HUMAN
     return _session(modes)
 
 
 def _human_and_bot_session():
-    """NAA HUMAN, AAC BOT, everyone else NEUTRAL -- the same shape as
+    """NAA HUMAN, AAC BOT, everyone else NONCOMBATANT -- the same shape as
     server.app._build_demo_session, for exercising bot-turn playback."""
-    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes = {code: FactionMode.NONCOMBATANT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.HUMAN
     modes['AAC'] = FactionMode.BOT
     return _session(modes, bot_factions=['AAC'])
@@ -58,20 +58,20 @@ def _two_human_session_with_combat_moves_allowed():
     """Same as _two_human_session, but with game_start_settings.
     allow_combat_moves_first_turn=True so Combat Move is a real decision
     point from NAA's very first turn, not just its second onward."""
-    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes = {code: FactionMode.NONCOMBATANT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.HUMAN
     modes['UE'] = FactionMode.HUMAN
     return _session(modes, allow_combat_moves_first_turn=True)
 
 
 def _three_human_session():
-    """NAA, UE, and AAC all HUMAN, everyone else NEUTRAL -- 3 active
+    """NAA, UE, and AAC all HUMAN, everyone else NONCOMBATANT -- 3 active
     factions, the minimum needed for an alliance invite to be legal at
     all (GameEngine._effective_max_alliance_size caps out at
     active_count - 1, so only 2 active factions could never actually
     ally -- see engine/tests/test_engine.py's TestInviteToAlliance).
     NAA still goes first (randomize_play_order=False)."""
-    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes = {code: FactionMode.NONCOMBATANT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.HUMAN
     modes['UE'] = FactionMode.HUMAN
     modes['AAC'] = FactionMode.HUMAN
@@ -79,13 +79,13 @@ def _three_human_session():
 
 
 def _two_human_and_bot_session():
-    """NAA and UE HUMAN, AAC BOT, everyone else NEUTRAL -- 3 active
+    """NAA and UE HUMAN, AAC BOT, everyone else NONCOMBATANT -- 3 active
     factions (same minimum-for-an-alliance reasoning as
     _three_human_session), but with a real BOT among them so a
     synchronous alliance_policy.accepts_invite invite target actually
     exists (distinct from a HUMAN target, which never resolves
     synchronously -- see TestAllianceInviteResponse)."""
-    modes = {code: FactionMode.NEUTRAL for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+    modes = {code: FactionMode.NONCOMBATANT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
     modes['NAA'] = FactionMode.HUMAN
     modes['UE'] = FactionMode.HUMAN
     modes['AAC'] = FactionMode.BOT
@@ -113,7 +113,7 @@ class TestConnect(unittest.TestCase):
 
     def test_non_human_faction_errors(self):
         session = _solo_session()
-        messages = session.connect('UE')  # NEUTRAL in this scenario
+        messages = session.connect('UE')  # NONCOMBATANT in this scenario
         self.assertEqual(messages[0]['type'], 'error')
         self.assertIn('not a HUMAN', messages[0]['message'])
 
@@ -312,7 +312,7 @@ class TestHumanCombatPlayback(unittest.TestCase):
         enemy_unit = UnitInstance(unit_id=99999, unit_type='Infantry', owner='AAC', current_hp=2)
         gs.territories[owned].units.append(enemy_unit)
         gs.territories[owned].contested_by = {'NAA', 'AAC'}
-        # AAC is NEUTRAL in this solo scenario -- switch it to HUMAN
+        # AAC is NONCOMBATANT in this solo scenario -- switch it to HUMAN
         # (not BOT) purely so it counts as an active, non-allied combatant;
         # it never actually takes a turn in this test.
         gs.factions['AAC'].mode = FactionMode.HUMAN

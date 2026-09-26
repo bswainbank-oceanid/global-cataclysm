@@ -39,14 +39,14 @@ Source: `reference/GC Data Model.rtf`, plus the decisions recorded below.
 | FactionSet | `faction_set` | `GC72_FactionSet` | factions: id, name, color, icon |
 | FactionAssignment | `faction_assignment` | `GC72_FactionAssignment` | value assignment id, faction set id; each land location's faction and starting-setup sea deployment location |
 | SCAssignment | `sc_assignment` | `GC72_SCAssignment` | value assignment id, SC bonus (added to a Strategic Center's value), the Strategic Center locations |
-| InitialSetup | `initial_setup` | `GC72_StandardSetup`, `GC72_DefensiveSetup` | SC assignment id, unit set id, generation parameters (budget, SC use, diversity); units per location, each with id, unit type and faction |
-| UnitPromotions | `unit_promotions` | `GC72_StandardPromotions`, `GC72_DefensivePromotions` | initial setup id; starting promotions per setup unit id |
+| InitialSetup | `initial_setup` | `GC72_StandardSetup`, `GC72_NeutralSetup` | SC assignment id, unit set id, generation parameters (budget, SC use, diversity); units per location, each with id, unit type and faction |
+| UnitPromotions | `unit_promotions` | `GC72_StandardPromotions`, `GC72_NeutralPromotions` | initial setup id; starting promotions per setup unit id |
 | Objectives | `objectives` | `GC72_Objectives` | bot objectives: id, name, primary/secondary |
 | PrimaryObjectiveOrder | `primary_objective_order` | `GC72_PrimaryOrder` | the order the bot plans its primary objectives in, and each step's share of the planning budget |
 | StrategyThresholdSet | `strategy_threshold_set` | `GC72_StrategyThresholds` | strategies, each with per-objective min/max risk and weight; distance weights |
 | FactionWeightSet | `faction_weight_set` | `GC72_FactionWeights` | faction set, unit set and threshold set ids; per-faction unit weights and strategy weights |
 | RuleSet | `rule_set` | `GC72_Rules` | the rules (what `data/rules.json` held): combat, movement, purchase, production, promotion, victory, game-start defaults |
-| Scenario | `scenario` | `GC72_Scenario` | the ids of everything above that make one game, including a standard and a defensive setup |
+| Scenario | `scenario` | `GC72_Scenario` | the ids of everything above that make one game, including a standard and a neutral setup |
 
 ### Scenario
 
@@ -59,7 +59,7 @@ Source: `reference/GC Data Model.rtf`, plus the decisions recorded below.
   "rule_set_id": "GC72_Rules",
   "setups": {
     "standard":  {"initial_setup_id": "GC72_StandardSetup",  "unit_promotions_id": "GC72_StandardPromotions"},
-    "defensive": {"initial_setup_id": "GC72_DefensiveSetup", "unit_promotions_id": "GC72_DefensivePromotions"}
+    "neutral": {"initial_setup_id": "GC72_NeutralSetup", "unit_promotions_id": "GC72_NeutralPromotions"}
   },
   "bots": {"faction_weight_set_id": "GC72_FactionWeights", "strategy_threshold_set_id": "GC72_StrategyThresholds",
            "objectives_id": "GC72_Objectives", "primary_objective_order_id": "GC72_PrimaryOrder"}
@@ -67,7 +67,7 @@ Source: `reference/GC Data Model.rtf`, plus the decisions recorded below.
 ```
 
 HUMAN and BOT seats take their starting units from the `standard` setup,
-DEFENSIVE seats from the `defensive` one. There is one scenario for now and no
+NEUTRAL seats from the `neutral` one. There is one scenario for now and no
 picker on the launch screen; the server and tools use `GC72_Scenario` by
 default.
 

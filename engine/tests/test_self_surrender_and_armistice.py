@@ -77,8 +77,8 @@ class TestSelfSurrender(unittest.TestCase):
         with self.assertRaises(ValueError):
             engine.surrender('UE')  # the game is over
 
-    def test_a_neutral_or_defensive_faction_cannot_surrender(self):
-        engine, gs = world({'NAA': FactionMode.NEUTRAL, 'UE': FactionMode.DEFENSIVE, 'GPC': FactionMode.BOT})
+    def test_a_noncombatant_or_neutral_faction_cannot_surrender(self):
+        engine, gs = world({'NAA': FactionMode.NONCOMBATANT, 'UE': FactionMode.NEUTRAL, 'GPC': FactionMode.BOT})
         with self.assertRaises(ValueError):
             engine.surrender('NAA')
         with self.assertRaises(ValueError):

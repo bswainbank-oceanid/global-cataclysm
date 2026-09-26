@@ -23,7 +23,7 @@ def _session(humans=('NAA',), bots=('UE', 'GPC'), seed=1):
         return {'mode': mode, 'faction': faction, 'alliance': 0, 'strategy': 'independent', 'behavior': 'loyal'}
     seated = {f for f in humans} | {f for f in bots}
     seats = [seat('HUMAN', f) for f in humans] + [seat('BOT', f) for f in bots] + \
-        [seat('NEUTRAL', f) for f in ('NAA', 'UE', 'GPC', 'AAC', 'PAF', 'UER') if f not in seated]
+        [seat('NONCOMBATANT', f) for f in ('NAA', 'UE', 'GPC', 'AAC', 'PAF', 'UER') if f not in seated]
     session, _ = build_session({'seats': seats, 'randomize_order': False, 'max_alliance_size': 1}, random.Random(seed))
     return session
 
@@ -32,7 +32,7 @@ def _multi_human_session(humans, bots=(), seed=1):
     """Bypasses the lobby's one-human-seat cap (server/lobby.py's own rule, not an engine one -- the
     engine/protocol already support more, e.g. alliance_invite/alliance_invite_response) to exercise the
     human-to-human armistice path: asking a SECOND human and waiting on THEIR answer."""
-    modes = {f: FactionMode.NEUTRAL for f in data_module.factions()}
+    modes = {f: FactionMode.NONCOMBATANT for f in data_module.factions()}
     for f in humans:
         modes[f] = FactionMode.HUMAN
     for f in bots:

@@ -138,18 +138,18 @@ class Planner:
         if other is None or self.allied(other):
             return False
         f = self.gs.factions[other]
-        return f.mode in (FactionMode.HUMAN, FactionMode.BOT, FactionMode.DEFENSIVE) and not f.eliminated
+        return f.mode in (FactionMode.HUMAN, FactionMode.BOT, FactionMode.NEUTRAL) and not f.eliminated
 
     def capturable(self, other):
         """Whose land an attack can take: an enemy's, or that of a faction that has been eliminated -- its
         Strategic Centers and the rest are still there for the taking, and now likely undefended. (An ally's, a
-        neutral faction's and one's own are not.)"""
+        noncombatant faction's and one's own are not.)"""
         if other is None or self.allied(other):
             return False
         f = self.gs.factions[other]
-        if f.mode == FactionMode.NEUTRAL:
+        if f.mode == FactionMode.NONCOMBATANT:
             return False
-        return f.eliminated or f.mode in (FactionMode.HUMAN, FactionMode.BOT, FactionMode.DEFENSIVE)
+        return f.eliminated or f.mode in (FactionMode.HUMAN, FactionMode.BOT, FactionMode.NEUTRAL)
 
     def mobile_hostile(self, other):
         return self.hostile(other) and self.gs.factions[other].mode in (FactionMode.HUMAN, FactionMode.BOT)
@@ -912,7 +912,7 @@ class Planner:
             return costs['friendly']
         if owner is None:
             return costs['friendly']
-        if self.gs.factions[owner].mode == FactionMode.NEUTRAL:
+        if self.gs.factions[owner].mode == FactionMode.NONCOMBATANT:
             return None
         if self.allied(owner):
             return costs['allied']

@@ -346,7 +346,7 @@ class _Checker:
             'faction_assignment_id': 'FactionAssignment', 'sc_assignment_id': 'SCAssignment', 'rule_set_id': 'RuleSet',
         }
         got = {k: self.ref(where, t, self.field(where, s, k, STR)) for k, t in refs.items()}
-        for kind in ('standard', 'defensive'):
+        for kind in ('standard', 'neutral'):
             setup = (s.get('setups') or {}).get(kind)
             if not setup:
                 self.err(where, f'no {kind} setup')

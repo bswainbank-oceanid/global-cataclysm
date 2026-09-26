@@ -60,24 +60,24 @@ class TestSetup(unittest.TestCase):
             actual = sum(1 for u in _all_units(gs) if u.owner == fac and u.promoted)
             self.assertEqual(actual, expected, f'{fac} promotion count mismatch')
 
-    def test_defensive_mode_uses_the_defensive_setup(self):
+    def test_neutral_mode_uses_the_neutral_setup(self):
         modes = {c: FactionMode.HUMAN for c in data.factions()}
-        modes['AAC'] = FactionMode.DEFENSIVE
+        modes['AAC'] = FactionMode.NEUTRAL
         gs = build_game_state(modes)
-        expected = len(_setup_units('defensive', 'AAC'))
+        expected = len(_setup_units('neutral', 'AAC'))
         actual = sum(1 for u in _all_units(gs) if u.owner == 'AAC')
         self.assertEqual(actual, expected)
 
-    def test_neutral_mode_gets_zero_units(self):
+    def test_noncombatant_mode_gets_zero_units(self):
         modes = {c: FactionMode.HUMAN for c in data.factions()}
-        modes['PAF'] = FactionMode.NEUTRAL
+        modes['PAF'] = FactionMode.NONCOMBATANT
         gs = build_game_state(modes)
         actual = sum(1 for u in _all_units(gs) if u.owner == 'PAF')
         self.assertEqual(actual, 0)
 
     def test_active_faction_is_first_human_or_bot(self):
         modes = {c: FactionMode.HUMAN for c in data.factions()}
-        modes['NAA'] = FactionMode.NEUTRAL
+        modes['NAA'] = FactionMode.NONCOMBATANT
         # randomize_play_order defaults True (game_start_settings) --
         # disable it here since this test checks a specific, deterministic
         # first-mover, not the randomization itself.
@@ -155,7 +155,7 @@ if __name__ == '__main__':
 
 class TestStartingAlliances(unittest.TestCase):
     def _modes(self, **kw):
-        modes = {c: FactionMode.NEUTRAL for c in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+        modes = {c: FactionMode.NONCOMBATANT for c in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
         modes.update({k: v for k, v in kw.items()})
         return modes
 
@@ -184,7 +184,7 @@ class TestStartingAlliances(unittest.TestCase):
         bot = FactionMode.BOT
         cases = {
             'a group of one': (self._modes(NAA=bot, UE=bot, GPC=bot), [['NAA']], 3),
-            'a neutral member': (self._modes(NAA=bot, UE=bot, GPC=bot), [['NAA', 'AAC']], 3),
+            'a noncombatant member': (self._modes(NAA=bot, UE=bot, GPC=bot), [['NAA', 'AAC']], 3),
             'in two groups': (self._modes(NAA=bot, UE=bot, GPC=bot, AAC=bot), [['NAA', 'UE'], ['UE', 'GPC']], 3),
             'too big for max size': (self._modes(NAA=bot, UE=bot, GPC=bot, AAC=bot), [['NAA', 'UE', 'GPC']], 2),
             'everyone allied': (self._modes(NAA=bot, UE=bot, GPC=bot), [['NAA', 'UE', 'GPC']], 3),
@@ -195,8 +195,8 @@ class TestStartingAlliances(unittest.TestCase):
                                  max_alliance_size=size, starting_alliances=groups)
 
 
-class TestDefensivePowersHaveNoStrategicCenters(unittest.TestCase):
-    """A Defensive power's territory is never a Strategic Center -- and stays a non-SC when
+class TestNeutralPowersHaveNoStrategicCenters(unittest.TestCase):
+    """A Neutral power's territory is never a Strategic Center -- and stays a non-SC when
     another faction captures it."""
 
     def setUp(self):
@@ -205,7 +205,7 @@ class TestDefensivePowersHaveNoStrategicCenters(unittest.TestCase):
         from engine.engine import GameEngine
         from engine.state import GameState, FactionMode
         modes = {f: FactionMode.BOT for f in real_data.factions()}
-        modes['UER'] = FactionMode.DEFENSIVE
+        modes['UER'] = FactionMode.NEUTRAL
         self.gs = build_game_state(modes, randomize_play_order=False)
         self.data = real_data
         self.terrs = real_data.territories()
@@ -250,7 +250,7 @@ class TestDefensivePowersHaveNoStrategicCenters(unittest.TestCase):
         self.assertFalse(again.is_strategic_center(tid, self.terrs[tid]))
 
     def test_a_purchase_there_pays_the_ordinary_price_and_capacity(self):
-        # A captured former-Defensive SC is an ordinary territory for buying too.
+        # A captured former-Neutral SC is an ordinary territory for buying too.
         tid = self.uer_scs()[0]
         self.gs.territories[tid].owner = 'NAA'
         engine = self.GameEngine(self.gs, self.data)

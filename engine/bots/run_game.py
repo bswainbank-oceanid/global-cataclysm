@@ -1,5 +1,5 @@
 """
-Runs a full NAA-vs-AAC bot game (the other four factions left NEUTRAL) to
+Runs a full NAA-vs-AAC bot game (the other four factions left NONCOMBATANT) to
 completion, then prints a stats.GameStats report -- territory captures in
 turn order, and per-faction/per-unit-type deployed/promotions/deaths/
 kills (with transport-form deaths called out). A manual demo/verification
@@ -38,7 +38,7 @@ def main():
 
     codes = list(data.factions())
     pair = ('NAA', 'AAC') if {'NAA', 'AAC'} <= set(codes) else tuple(codes[:2])
-    modes = {code: FactionMode.NEUTRAL for code in codes}
+    modes = {code: FactionMode.NONCOMBATANT for code in codes}
     for code in pair:
         modes[code] = FactionMode.BOT
 

@@ -10,7 +10,7 @@ from engine.bots.strategy_bot import StrategyBot
 from engine.economy import compute_income
 from engine.state import FactionMode
 
-# Victory status, best (lowest rank) first; a row with no status (Defensive/Neutral seats) sorts last.
+# Victory status, best (lowest rank) first; a row with no status (Neutral/Noncombatant seats) sorts last.
 _STATUS_RANK = {'Winner': 0, 'Armistice': 1, 'Forced to Surrender': 2, 'Surrendered': 3}
 
 # elimination_reason labels for a forced surrender's grounds (surrender_grounds), SC loss quoted first
@@ -61,7 +61,7 @@ def _eliminated_by(elim_event):
 
 def _victory_status(code, gs, active_at_end, armistice_participants, elim_event):
     """One of 'Winner', 'Armistice', 'Forced to Surrender', 'Surrendered' for a HUMAN/BOT seat; None
-    for a Defensive/Neutral one (never a competitor, so it has no such thing as a victory status).
+    for a Neutral/Noncombatant one (never a competitor, so it has no such thing as a victory status).
 
     Elimination is checked FIRST and always wins over 'Armistice': an eliminated faction that went on to
     propose (or was asked to agree to) an armistice among the survivors keeps the status that actually
@@ -100,7 +100,7 @@ def _alliance_history(code, turn_log):
 
 def _bot_info(bot):
     """(Bot-Type, Bot Strategy) for a seat's bot instance -- ('Strategy', its drawn base style) for a
-    StrategyBot, ('Random', None) for a plain RandomBot, (None, None) for a HUMAN/DEFENSIVE/NEUTRAL seat
+    StrategyBot, ('Random', None) for a plain RandomBot, (None, None) for a HUMAN/NEUTRAL/NONCOMBATANT seat
     (no bot object at all)."""
     if bot is None:
         return None, None
@@ -113,11 +113,11 @@ def build_game_report(engine, turn_log, bots):
     """[{faction, seat_type, victory_status, elimination_reason, strategic_centers, territory_mpc,
     units_produced, units_destroyed, alliance_history, bot_type, bot_strategy, alliance_strategy,
     alliance_behavior, rounds_in_game, round_eliminated, eliminated_by}, ...] -- one row per seated
-    faction (all 6, Defensive/Neutral included), sorted by the report's own order: Victory status, then
+    faction (all 6, Neutral/Noncombatant included), sorted by the report's own order: Victory status, then
     Strategic Centers, Territory MPC, Units produced, Units destroyed, each descending (a None victory
-    status -- Defensive/Neutral -- sorts after every real one), a final alphabetical tie-break.
+    status -- Neutral/Noncombatant -- sorts after every real one), a final alphabetical tie-break.
     elimination_reason is only for an eliminated faction (why it's out -- see _elimination_reason), None
-    for anyone still in the game and for Defensive/Neutral seats. Units produced/destroyed are 0 if
+    for anyone still in the game and for Neutral/Noncombatant seats. Units produced/destroyed are 0 if
     `engine.stats` is None (a GameStats wasn't attached) rather than an error -- purely cosmetic, never
     required for the game itself to run. rounds_in_game (GameState.round_number, the SAME value on every
     row) is how long the whole game ran; round_eliminated (per row, None unless the faction was actually

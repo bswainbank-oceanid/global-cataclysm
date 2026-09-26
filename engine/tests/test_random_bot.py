@@ -328,7 +328,7 @@ class TestNonCombatMovePhase(unittest.TestCase):
 
 class TestPlayToCompletion(unittest.TestCase):
     def test_naa_vs_aac_bot_game_runs_without_error(self):
-        modes = {code: FactionMode.NEUTRAL for code in real_data.factions()}
+        modes = {code: FactionMode.NONCOMBATANT for code in real_data.factions()}
         modes['NAA'] = FactionMode.BOT
         modes['AAC'] = FactionMode.BOT
         gs = build_game_state(modes)
@@ -364,7 +364,7 @@ class TestPlayToCompletion(unittest.TestCase):
         # deterministic -- which faction goes first, and exactly what it
         # buys, is otherwise random and irrelevant to what this test
         # checks.
-        modes = {code: FactionMode.NEUTRAL for code in real_data.factions()}
+        modes = {code: FactionMode.NONCOMBATANT for code in real_data.factions()}
         modes['NAA'] = FactionMode.BOT
         modes['AAC'] = FactionMode.BOT
         gs = build_game_state(modes, randomize_play_order=False)
