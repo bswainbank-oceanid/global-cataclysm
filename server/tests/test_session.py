@@ -10,6 +10,7 @@ from server.session import GameSession
 
 
 def _session(modes, bot_factions=(), **build_kwargs):
+    build_kwargs.setdefault('rng', random.Random(1))  # seeded: the bots' alliance settings too
     gs = build_game_state(modes, randomize_play_order=False, **build_kwargs)
     turn_log = TurnLog()
     # combat_rng must be seeded -- GameEngine defaults to an unseeded
