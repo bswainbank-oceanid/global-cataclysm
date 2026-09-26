@@ -1,178 +1,128 @@
 """
-Validate a starting-setup scenario against every setup rule in
-data/rules.json: exact budget spend, per-territory stacking cap (EVERY
-unit purchased at a territory counts, including naval units and
-carrier-escorted aircraft -- a starting-purchase limit, not an in-game
-one; see data/rules.json setup.stacking_cap_scope), coastal-only naval
-purchase, every naval deployment lands in a sea zone ADJACENT to the
-territory it was bought at (checked against data/adjacency.json, so a
-hand-picked naval_deploy_overrides zone can't silently go stale when
-adjacency changes), every Aircraft Carrier has an escorting Fighter/Bomber,
-no two factions share a sea zone, every land territory with a foreign neighbor
-has at least 1 land unit (Infantry, Mechanized Infantry, or Armor -- not
-necessarily Infantry), and each faction purchases at least N of the 8
-purchasable unit types (setup.unit_diversity_rule).
+Validate a starting setup (an InitialSetup module, docs/DATA_MODEL.md) against every
+setup rule in the rule set: the budget spent (exactly, or within the setup's
+budget_tolerance), the per-territory stacking cap (EVERY unit bought at a territory
+counts, including naval units and the aircraft on their carriers -- a starting-purchase
+limit, not an in-game one; see the rule set's setup.stacking_cap_scope), naval units
+bought only at coastal territories and deployed to a sea zone ADJACENT to where they
+were bought, never to an excluded zone (the map's naval_deploy_excluded), every
+carrier (carrier_air_wing ability) starting with at least one of its faction's
+aircraft, no two factions sharing a sea zone (within a setup, and across the scenario's
+standard and defensive setups, which can meet in one game), a land unit at every land
+territory with a foreign neighbor (unless nothing fits there), and each faction using
+at least min_unit_types unit types.
 
-Defaults to the canonical 125-MPC/SC scenario. --no-sc validates a
-ruleset that ignores every territory's strategic_center flag entirely:
-cap becomes flat value+<--cap-bonus> (instead of value+3, +2 more if SC)
-and every cost uses the unit's plain 'cost' field (never 'sc_cost') --
-use it for scenarios like data/scenarios/starting_setup_100ipc.json. A
-territory whose cap comes out to 0 is exempt from the foreign-border
-mandatory-land-unit rule (nothing fits there at all).
+The parameters come from each setup's `generation` block: budget, use_sc (whether
+Strategic Centers apply: their sc_cost discount and cap bonus), cap_bonus (cap = value +
+cap_bonus, + the SC assignment's sc_bonus at a Strategic Center when use_sc),
+min_unit_types, budget_tolerance.
 
-Run from the repo root, after derived/faction_territory_profile.json and
-derived/adjacency_foreign.json have been (re)built:
-    python3 tools/validate_setup.py
-    python3 tools/validate_setup.py --scenario data/scenarios/starting_setup_100ipc.json --no-sc --cap-bonus 0 --min-types 5 --budget-tolerance 1
+Run from the repo root:
+    python tools/validate_setup.py                      # both of the scenario's setups
+    python tools/validate_setup.py --setup defensive
 Exits with status 1 if any errors are found, 0 otherwise.
 """
 import argparse
-import json
 import sys
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--scenario', default='data/scenarios/starting_setup_125ipc.json')
-parser.add_argument('--no-sc', action='store_true', help='ignore strategic_center: flat value+cap-bonus cap, no sc_cost discount')
-parser.add_argument('--cap-bonus', type=int, default=2, help='with --no-sc, cap = value + this (0 = no bonus at all)')
-parser.add_argument('--min-types', type=int, default=7, help='minimum distinct unit types required per faction')
-parser.add_argument('--budget-tolerance', type=int, default=0,
-                     help='allow up to this many IPC unspent (small change) instead of requiring an exact match')
-parser.add_argument('--exclude-zone', type=int, action='append', default=[43],
-                     help='sea zone id that must never host a naval deployment (repeatable). '
-                          'Zone 43 (Caspian Sea) is excluded by default -- a permanent rule, not scenario-specific.')
-args = parser.parse_args()
-
-units_data = json.load(open('data/units.json'))['units']
-UNIT_COSTS = {name: {'type': info['category'], 'cost': info['cost'], 'sc_cost': info['sc_cost']}
-              for name, info in units_data.items() if info['purchasable']}
-
-scenario = json.load(open(args.scenario))
-BUDGET = scenario['budget_ipc']
-DESIGN = {
-    fac: [(entry['territory_id'], [(u['unit'], u['qty']) for u in entry['units']]) for entry in entries]
-    for fac, entries in scenario['purchases'].items()
-}
-CARRIER_ESCORTS = scenario['carrier_escorts']
-NAVAL_OVERRIDES = scenario['naval_deploy_overrides']
-
-profile = json.load(open('derived/faction_territory_profile.json'))
-prof_by_fac_id = {fac: {r['id']: r for r in rows} for fac, rows in profile.items()}
-
-adjf = json.load(open('derived/adjacency_foreign.json'))
-
-# Sea zone NAMES aren't unique on this map (e.g. two "Southern Ocean" zones
-# in different oceans) -- collisions must be checked by zone id, not name,
-# or two factions using distinct, non-adjacent same-named zones get
-# flagged as sharing one. naval_deploy_overrides stores a name string (not
-# an id), so an override is resolved to whichever same-named zone is
-# nearest the deploying territory.
-territories_data = json.load(open('data/territories.json'))['spaces']
-SPACE_BY_ID = {s['id']: s for s in territories_data}
-SEA_IDS_BY_NAME = {}
-for s in territories_data:
-    if s['type'] == 'sea':
-        SEA_IDS_BY_NAME.setdefault(s['name'], []).append(s['id'])
-
-_adj_raw = json.load(open('data/adjacency.json'))['neighbors_ordered']
-ADJ = {int(k): set(v) for k, v in _adj_raw.items()}
+import tool_data
+from engine import abilities
 
 
-def _dist(a, b):
-    return ((a['x'] - b['x']) ** 2 + (a['y'] - b['y']) ** 2) ** 0.5
+def check_setup(setup, used_zones):
+    """Errors for one InitialSetup; records each sea zone's user in used_zones ({zone: {faction: setup id}})."""
+    gen = setup['generation']
+    use_sc, cap_bonus = gen['use_sc'], gen['cap_bonus']
+    sc_bonus = tool_data.config().sc_bonus()
+    units = tool_data.units()
+    terrs = tool_data.config().territories()
+    adj = tool_data.config().adjacency()
+    excluded = set(tool_data.config().naval_deploy_excluded())
+    name = lambda t: f"{t}. {terrs[t]['name']}"  # noqa: E731
 
-def resolve_zone_id(from_tid, zone_name):
-    candidates = SEA_IDS_BY_NAME.get(zone_name, [])
-    if not candidates:
-        return zone_name  # unknown name; fall back to name-keyed (shouldn't happen)
-    if len(candidates) == 1:
-        return candidates[0]
-    origin = SPACE_BY_ID[from_tid]
-    return min(candidates, key=lambda zid: _dist(origin, SPACE_BY_ID[zid]))
+    def is_sc(tid):
+        return use_sc and terrs[tid].get('strategic_center')
 
-NAVAL = {'Aircraft Carrier', 'Submarine', 'Cruiser'}
-AIR = {'Fighter', 'Bomber'}
-LAND = {'Infantry', 'Mechanized Infantry', 'Armor'}
+    def cap(tid):
+        return terrs[tid]['value'] + cap_bonus + (sc_bonus if is_sc(tid) else 0)
 
-errors = []
-sea_zone_usage = {}
-carriers_by_fac = {}
+    errors = []
+    spend, bought_here, types_used, land_at = {}, {}, {}, {}
+    for loc in setup['locations']:
+        where = loc['location_id']
+        for u in loc['units']:
+            fac, unit_type = u['faction_id'], u['unit_type_id']
+            info = units[unit_type]
+            bought = u.get('purchased_at', where)
+            if terrs[bought]['type'] != 'land' or terrs[bought].get('faction') != fac:
+                errors.append(f'{fac}: {unit_type} {u["id"]} bought at {name(bought)}, not a territory of {fac}')
+                continue
+            spend[fac] = spend.get(fac, 0) + (info['sc_cost'] if is_sc(bought) else info['cost'])
+            bought_here[(fac, bought)] = bought_here.get((fac, bought), 0) + 1
+            types_used.setdefault(fac, set()).add(unit_type)
+            if terrs[where]['type'] == 'land':
+                if info['category'] == 'Land':
+                    land_at.setdefault(fac, set()).add(where)
+                continue
+            # a unit starting at sea: a ship, or an aircraft on its carrier
+            if where not in adj[bought]:
+                errors.append(f'{fac}: {unit_type} {u["id"]} bought at {name(bought)} starts in {name(where)}, '
+                              f'which is not adjacent to it')
+            if where in excluded:
+                errors.append(f'{fac}: {unit_type} {u["id"]} deployed to excluded zone {name(where)}')
+            used_zones.setdefault(where, {}).setdefault(fac, setup['id'])
+            if info['category'] == 'Air' and not any(
+                    o['faction_id'] == fac and abilities.has(units, o['unit_type_id'], abilities.CARRIER_AIR_WING)
+                    for o in loc['units']):
+                errors.append(f'{fac}: {unit_type} {u["id"]} in {name(where)} has no carrier there')
+            if info['category'] == 'Sea' and abilities.has(units, unit_type, abilities.CARRIER_AIR_WING) and not any(
+                    o['faction_id'] == fac and units[o['unit_type_id']]['category'] == 'Air' for o in loc['units']):
+                errors.append(f'{fac}: {unit_type} {u["id"]} in {name(where)} has no aircraft')
 
-for fac, entries in DESIGN.items():
-    spend = 0
-    for tid, units in entries:
-        prof = prof_by_fac_id[fac][tid]
-        is_sc = prof['sc'] and not args.no_sc
-        cap = (prof['value'] + args.cap_bonus) if args.no_sc else prof['cap']
-        units_here = 0
-        for unit, qty in units:
-            info = UNIT_COSTS[unit]
-            spend += (info['sc_cost'] if is_sc else info['cost']) * qty
-            if unit == 'Aircraft Carrier':
-                carriers_by_fac.setdefault(fac, []).append(tid)
-            if info['type'] == 'Sea':
-                if not prof['coastal']:
-                    errors.append(f"{fac}: naval {unit} at non-coastal {prof['name']}")
-                override_name = NAVAL_OVERRIDES.get(fac, {}).get(str(tid), {}).get(unit)
-                zone_id = resolve_zone_id(tid, override_name) if override_name else prof['sea_zone']
-                if zone_id not in ADJ.get(tid, ()):
-                    errors.append(f"{fac}: {unit} bought at {prof['name']} ({tid}) deploys to "
-                                  f"{zone_id}. {SPACE_BY_ID[zone_id]['name']}, which is not adjacent to it "
-                                  f"(adjacent seas: {[(n, SPACE_BY_ID[n]['name']) for n in sorted(ADJ.get(tid, ())) if SPACE_BY_ID[n]['type'] == 'sea']})")
-                if zone_id in args.exclude_zone:
-                    errors.append(f"{fac}: {unit} deployed to excluded zone {zone_id}. {SPACE_BY_ID[zone_id]['name']}")
-                sea_zone_usage.setdefault(zone_id, set()).add(fac)
-            # every unit purchased at this territory counts against its cap --
-            # a starting-purchase limit, not an in-game one (setup.stacking_cap_scope)
-            units_here += qty
-        if units_here > cap:
-            errors.append(f"{fac}: {prof['name']} ({tid}) {units_here}/{cap}")
-    if spend > BUDGET or BUDGET - spend > args.budget_tolerance:
-        errors.append(f'{fac}: spend {spend} != {BUDGET} (tolerance {args.budget_tolerance})')
+    for (fac, tid), n in sorted(bought_here.items()):
+        if n > cap(tid):
+            errors.append(f'{fac}: {name(tid)} {n}/{cap(tid)}')
 
-foreign_ids = {int(k) for k, v in adjf['foreign'].items() if v}
-for fac, entries in DESIGN.items():
-    units_by_tid = dict(entries)
-    for tid, prof in prof_by_fac_id.get(fac, {}).items():
-        if tid not in foreign_ids:
-            continue
-        cap = (prof['value'] + args.cap_bonus) if args.no_sc else prof['cap']
-        if cap == 0:
-            continue  # nothing can fit here at all -- exempt from the rule
-        units = units_by_tid.get(tid, [])
-        if not any(u in LAND and qty > 0 for u, qty in units):
-            errors.append(f'{fac}: {tid} foreign neighbor, no land unit')
+    for fac in tool_data.factions():
+        s = spend.get(fac, 0)
+        if s > gen['budget'] or gen['budget'] - s > gen.get('budget_tolerance', 0):
+            errors.append(f'{fac}: spend {s} != {gen["budget"]} (tolerance {gen.get("budget_tolerance", 0)})')
+        if len(types_used.get(fac, ())) < gen['min_unit_types']:
+            errors.append(f'{fac}: only {len(types_used.get(fac, ()))} unit types (need >={gen["min_unit_types"]}): '
+                          f'{sorted(types_used.get(fac, ()))}')
+        for tid, t in terrs.items():
+            if t['type'] != 'land' or t.get('faction') != fac or cap(tid) == 0:
+                continue
+            foreign = any(terrs[n]['type'] == 'land' and terrs[n].get('faction') != fac for n in adj[tid])
+            if foreign and tid not in land_at.get(fac, ()):
+                errors.append(f'{fac}: {name(tid)} has a foreign neighbor and no land unit')
+    return errors
 
-for fac, entries in DESIGN.items():
-    types_used = {u for _, units in entries for u, qty in units if qty > 0}
-    if len(types_used) < args.min_types:
-        errors.append(f'{fac}: only {len(types_used)} unit types purchased (need >={args.min_types}): {sorted(types_used)}')
 
-for fac, entries in DESIGN.items():
-    ed = {t: dict(u) for t, u in entries}
-    for tid in carriers_by_fac.get(fac, []):
-        units_here = ed.get(tid, {})
-        has_air = any(units_here.get(u, 0) >= 1 for u in AIR)
-        if not has_air:
-            errors.append(f'{fac}: Aircraft Carrier at {tid} has no aircraft')
-    # every carrier must actually appear as a carrier_tid in the escort list
-    escorted_carriers = {esc['carrier_tid'] for esc in CARRIER_ESCORTS.get(fac, [])}
-    for tid in carriers_by_fac.get(fac, []):
-        if tid not in escorted_carriers:
-            errors.append(f'{fac}: Aircraft Carrier at {tid} has no registered carrier_escorts entry')
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--scenario', default=tool_data.DEFAULT_SCENARIO_ID)
+    parser.add_argument('--setup', choices=['standard', 'defensive', 'all'], default='all')
+    args = parser.parse_args()
+    tool_data.use_scenario(args.scenario)
 
-for zone_id, facs in sea_zone_usage.items():
-    if len(facs) > 1:
-        errors.append(f"COLLISION at {zone_id}. {SPACE_BY_ID[zone_id]['name']}: {facs}")
+    kinds = ['standard', 'defensive'] if args.setup == 'all' else [args.setup]
+    used_zones, all_errors = {}, []
+    for kind in kinds:
+        setup, _ = tool_data.config().initial_setup(kind)
+        errors = check_setup(setup, used_zones)
+        print(f'{setup["id"]} ({kind}): ' + ('no validation errors.' if not errors else f'{len(errors)} error(s)'))
+        for e in errors:
+            print('  -', e)
+        all_errors += errors
+    terrs = tool_data.config().territories()
+    for zone, facs in sorted(used_zones.items()):
+        if len(facs) > 1:
+            msg = f"sea zone {zone}. {terrs[zone]['name']} is used by several factions: {facs}"
+            print('  -', msg)
+            all_errors.append(msg)
+    sys.exit(1 if all_errors else 0)
 
-print('ERRORS:' if errors else 'No validation errors.')
-for e in errors:
-    print(' -', e)
-print()
-print('Carriers by faction:', carriers_by_fac)
-print()
-print('Sea zone usage:')
-for zid, f in sorted(sea_zone_usage.items(), key=lambda kv: SPACE_BY_ID[kv[0]]['name']):
-    print(f"  {zid}. {SPACE_BY_ID[zid]['name']}", f)
 
-sys.exit(1 if errors else 0)
+if __name__ == '__main__':
+    main()

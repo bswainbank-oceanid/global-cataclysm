@@ -24,7 +24,7 @@ Client -> server (each a dict with at least "type" and "faction"):
         The COMPLETE, final order list for this Purchase phase, one shot
         -- decided this session: the client owns territory selection and
         MPC budget tracking itself (it already needs its own copy of
-        units.json for cost/type info to render the purchase UI at all),
+        the unit set for cost/type info to render the purchase UI at all),
         so there's nothing left for a separate stage-then-confirm round
         trip to teach the client that it doesn't already know. Calls
         engine.submit_purchases then confirm_purchases back to back

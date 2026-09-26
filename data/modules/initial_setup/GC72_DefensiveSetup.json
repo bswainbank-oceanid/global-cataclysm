@@ -1,0 +1,453 @@
+{
+ "module_type": "InitialSetup",
+ "id": "GC72_DefensiveSetup",
+ "name": "Defensive setup (100 MPC)",
+ "_note": "Starting-setup scenario: 100 IPC per faction, no Strategic Centers (no cost discount, and the stacking cap is exactly the territory's value with no bonus -- a 0-value territory holds no units at all), no promotions, territory ownership from data/territories.json. purchases is per-territory unit buys; carrier_escorts/naval_overrides are the fixed setup-time picks layered on top.",
+ "sc_assignment_id": "GC72_SCAssignment",
+ "unit_set_id": "GC72_UnitSet",
+ "faction_assignment_id": "GC72_FactionAssignment",
+ "generation": {"budget": 100, "use_sc": false, "min_unit_types": 5, "promotions": 0, "cap_bonus": 0, "budget_tolerance": 1},
+ "locations": [
+  {
+   "location_id": 2,
+   "units": [
+    {"id": "UER-001", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 6,
+   "units": [
+    {"id": "UER-002", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 7,
+   "units": [
+    {"id": "UER-003", "unit_type_id": "Infantry", "faction_id": "UER"},
+    {"id": "UER-004", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 8,
+   "units": [
+    {"id": "UER-005", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 10,
+   "units": [
+    {"id": "NAA-001", "unit_type_id": "Infantry", "faction_id": "NAA"}
+   ]
+  },
+  {
+   "location_id": 15,
+   "units": [
+    {"id": "UE-001", "unit_type_id": "Infantry", "faction_id": "UE"}
+   ]
+  },
+  {
+   "location_id": 17,
+   "units": [
+    {"id": "UER-006", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 18,
+   "units": [
+    {"id": "UER-007", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 19,
+   "units": [
+    {"id": "UER-008", "unit_type_id": "Armor", "faction_id": "UER"},
+    {"id": "UER-009", "unit_type_id": "Armor", "faction_id": "UER"},
+    {"id": "UER-010", "unit_type_id": "Infantry", "faction_id": "UER"},
+    {"id": "UER-011", "unit_type_id": "Mechanized Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 21,
+   "units": [
+    {"id": "NAA-002", "unit_type_id": "Mechanized Infantry", "faction_id": "NAA"},
+    {"id": "NAA-003", "unit_type_id": "Mechanized Infantry", "faction_id": "NAA"},
+    {"id": "NAA-004", "unit_type_id": "Mechanized Infantry", "faction_id": "NAA"}
+   ]
+  },
+  {
+   "location_id": 22,
+   "units": [
+    {"id": "UE-002", "unit_type_id": "Fighter", "faction_id": "UE"},
+    {"id": "UE-003", "unit_type_id": "Infantry", "faction_id": "UE"}
+   ]
+  },
+  {
+   "location_id": 23,
+   "units": [
+    {"id": "UE-004", "unit_type_id": "Armor", "faction_id": "UE"},
+    {"id": "UE-005", "unit_type_id": "Fighter", "faction_id": "UE"},
+    {"id": "UE-006", "unit_type_id": "Infantry", "faction_id": "UE"}
+   ]
+  },
+  {
+   "location_id": 24,
+   "units": [
+    {"id": "UE-007", "unit_type_id": "Infantry", "faction_id": "UE"}
+   ]
+  },
+  {
+   "location_id": 28,
+   "units": [
+    {"id": "UE-008", "unit_type_id": "Armor", "faction_id": "UE"},
+    {"id": "UE-009", "unit_type_id": "Bomber", "faction_id": "UE"},
+    {"id": "UE-010", "unit_type_id": "Infantry", "faction_id": "UE"}
+   ]
+  },
+  {
+   "location_id": 29,
+   "units": [
+    {"id": "UE-011", "unit_type_id": "Mechanized Infantry", "faction_id": "UE"},
+    {"id": "UE-012", "unit_type_id": "Mechanized Infantry", "faction_id": "UE"}
+   ]
+  },
+  {
+   "location_id": 30,
+   "units": [
+    {"id": "UE-013", "unit_type_id": "Infantry", "faction_id": "UE"}
+   ]
+  },
+  {
+   "location_id": 31,
+   "units": [
+    {"id": "UER-012", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 32,
+   "units": [
+    {"id": "UER-013", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 33,
+   "units": [
+    {"id": "GPC-001", "unit_type_id": "Infantry", "faction_id": "GPC"},
+    {"id": "GPC-002", "unit_type_id": "Infantry", "faction_id": "GPC"}
+   ]
+  },
+  {
+   "location_id": 37,
+   "units": [
+    {"id": "AAC-002", "unit_type_id": "Fighter", "faction_id": "AAC"},
+    {"id": "AAC-003", "unit_type_id": "Infantry", "faction_id": "AAC"}
+   ]
+  },
+  {
+   "location_id": 42,
+   "units": [
+    {"id": "PAF-001", "unit_type_id": "Cruiser", "faction_id": "PAF", "purchased_at": 49}
+   ]
+  },
+  {
+   "location_id": 44,
+   "units": [
+    {"id": "UER-014", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 45,
+   "units": [
+    {"id": "GPC-008", "unit_type_id": "Cruiser", "faction_id": "GPC", "purchased_at": 53},
+    {"id": "GPC-010", "unit_type_id": "Submarine", "faction_id": "GPC", "purchased_at": 53}
+   ]
+  },
+  {
+   "location_id": 47,
+   "units": [
+    {"id": "NAA-006", "unit_type_id": "Bomber", "faction_id": "NAA"},
+    {"id": "NAA-008", "unit_type_id": "Fighter", "faction_id": "NAA"},
+    {"id": "NAA-009", "unit_type_id": "Mechanized Infantry", "faction_id": "NAA"}
+   ]
+  },
+  {
+   "location_id": 48,
+   "units": [
+    {"id": "AAC-001", "unit_type_id": "Cruiser", "faction_id": "AAC", "purchased_at": 37},
+    {"id": "AAC-004", "unit_type_id": "Submarine", "faction_id": "AAC", "purchased_at": 37}
+   ]
+  },
+  {
+   "location_id": 49,
+   "units": [
+    {"id": "PAF-002", "unit_type_id": "Infantry", "faction_id": "PAF"}
+   ]
+  },
+  {
+   "location_id": 51,
+   "units": [
+    {"id": "GPC-003", "unit_type_id": "Infantry", "faction_id": "GPC"}
+   ]
+  },
+  {
+   "location_id": 52,
+   "units": [
+    {"id": "GPC-004", "unit_type_id": "Bomber", "faction_id": "GPC"},
+    {"id": "GPC-005", "unit_type_id": "Fighter", "faction_id": "GPC"},
+    {"id": "GPC-006", "unit_type_id": "Infantry", "faction_id": "GPC"}
+   ]
+  },
+  {
+   "location_id": 53,
+   "units": [
+    {"id": "GPC-007", "unit_type_id": "Bomber", "faction_id": "GPC"},
+    {"id": "GPC-009", "unit_type_id": "Fighter", "faction_id": "GPC"}
+   ]
+  },
+  {
+   "location_id": 54,
+   "units": [
+    {"id": "NAA-010", "unit_type_id": "Infantry", "faction_id": "NAA"}
+   ]
+  },
+  {
+   "location_id": 56,
+   "units": [
+    {"id": "NAA-005", "unit_type_id": "Aircraft Carrier", "faction_id": "NAA", "purchased_at": 47},
+    {"id": "NAA-007", "unit_type_id": "Fighter", "faction_id": "NAA", "purchased_at": 47}
+   ]
+  },
+  {
+   "location_id": 61,
+   "units": [
+    {"id": "PAF-006", "unit_type_id": "Submarine", "faction_id": "PAF", "purchased_at": 62}
+   ]
+  },
+  {
+   "location_id": 62,
+   "units": [
+    {"id": "PAF-003", "unit_type_id": "Armor", "faction_id": "PAF"},
+    {"id": "PAF-004", "unit_type_id": "Infantry", "faction_id": "PAF"},
+    {"id": "PAF-005", "unit_type_id": "Mechanized Infantry", "faction_id": "PAF"}
+   ]
+  },
+  {
+   "location_id": 63,
+   "units": [
+    {"id": "GPC-012", "unit_type_id": "Infantry", "faction_id": "GPC"}
+   ]
+  },
+  {
+   "location_id": 64,
+   "units": [
+    {"id": "GPC-011", "unit_type_id": "Cruiser", "faction_id": "GPC", "purchased_at": 63}
+   ]
+  },
+  {
+   "location_id": 67,
+   "units": [
+    {"id": "NAA-011", "unit_type_id": "Infantry", "faction_id": "NAA"}
+   ]
+  },
+  {
+   "location_id": 71,
+   "units": [
+    {"id": "PAF-007", "unit_type_id": "Armor", "faction_id": "PAF"},
+    {"id": "PAF-009", "unit_type_id": "Infantry", "faction_id": "PAF"}
+   ]
+  },
+  {
+   "location_id": 72,
+   "units": [
+    {"id": "UE-014", "unit_type_id": "Armor", "faction_id": "UE"},
+    {"id": "UE-015", "unit_type_id": "Bomber", "faction_id": "UE"},
+    {"id": "UE-016", "unit_type_id": "Infantry", "faction_id": "UE"}
+   ]
+  },
+  {
+   "location_id": 76,
+   "units": [
+    {"id": "AAC-005", "unit_type_id": "Fighter", "faction_id": "AAC"},
+    {"id": "AAC-006", "unit_type_id": "Infantry", "faction_id": "AAC"},
+    {"id": "AAC-007", "unit_type_id": "Infantry", "faction_id": "AAC"}
+   ]
+  },
+  {
+   "location_id": 80,
+   "units": [
+    {"id": "PAF-010", "unit_type_id": "Infantry", "faction_id": "PAF"},
+    {"id": "PAF-011", "unit_type_id": "Infantry", "faction_id": "PAF"},
+    {"id": "PAF-012", "unit_type_id": "Mechanized Infantry", "faction_id": "PAF"}
+   ]
+  },
+  {
+   "location_id": 81,
+   "units": [
+    {"id": "NAA-012", "unit_type_id": "Bomber", "faction_id": "NAA"},
+    {"id": "NAA-013", "unit_type_id": "Fighter", "faction_id": "NAA"},
+    {"id": "NAA-014", "unit_type_id": "Infantry", "faction_id": "NAA"},
+    {"id": "NAA-015", "unit_type_id": "Infantry", "faction_id": "NAA"}
+   ]
+  },
+  {
+   "location_id": 85,
+   "units": [
+    {"id": "UER-015", "unit_type_id": "Cruiser", "faction_id": "UER", "purchased_at": 79},
+    {"id": "UER-016", "unit_type_id": "Submarine", "faction_id": "UER", "purchased_at": 79}
+   ]
+  },
+  {
+   "location_id": 87,
+   "units": [
+    {"id": "PAF-013", "unit_type_id": "Infantry", "faction_id": "PAF"},
+    {"id": "PAF-014", "unit_type_id": "Infantry", "faction_id": "PAF"}
+   ]
+  },
+  {
+   "location_id": 88,
+   "units": [
+    {"id": "PAF-015", "unit_type_id": "Infantry", "faction_id": "PAF"}
+   ]
+  },
+  {
+   "location_id": 90,
+   "units": [
+    {"id": "AAC-008", "unit_type_id": "Infantry", "faction_id": "AAC"}
+   ]
+  },
+  {
+   "location_id": 91,
+   "units": [
+    {"id": "UER-017", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 93,
+   "units": [
+    {"id": "PAF-016", "unit_type_id": "Infantry", "faction_id": "PAF"},
+    {"id": "PAF-017", "unit_type_id": "Mechanized Infantry", "faction_id": "PAF"}
+   ]
+  },
+  {
+   "location_id": 94,
+   "units": [
+    {"id": "GPC-013", "unit_type_id": "Infantry", "faction_id": "GPC"}
+   ]
+  },
+  {
+   "location_id": 95,
+   "units": [
+    {"id": "PAF-008", "unit_type_id": "Cruiser", "faction_id": "PAF", "purchased_at": 71}
+   ]
+  },
+  {
+   "location_id": 98,
+   "units": [
+    {"id": "AAC-009", "unit_type_id": "Infantry", "faction_id": "AAC"}
+   ]
+  },
+  {
+   "location_id": 99,
+   "units": [
+    {"id": "AAC-010", "unit_type_id": "Bomber", "faction_id": "AAC"},
+    {"id": "AAC-011", "unit_type_id": "Bomber", "faction_id": "AAC"},
+    {"id": "AAC-013", "unit_type_id": "Infantry", "faction_id": "AAC"}
+   ]
+  },
+  {
+   "location_id": 100,
+   "units": [
+    {"id": "UER-019", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 101,
+   "units": [
+    {"id": "PAF-018", "unit_type_id": "Infantry", "faction_id": "PAF"}
+   ]
+  },
+  {
+   "location_id": 108,
+   "units": [
+    {"id": "AAC-014", "unit_type_id": "Infantry", "faction_id": "AAC"}
+   ]
+  },
+  {
+   "location_id": 109,
+   "units": [
+    {"id": "UER-018", "unit_type_id": "Cruiser", "faction_id": "UER", "purchased_at": 100}
+   ]
+  },
+  {
+   "location_id": 110,
+   "units": [
+    {"id": "GPC-014", "unit_type_id": "Submarine", "faction_id": "GPC", "purchased_at": 103}
+   ]
+  },
+  {
+   "location_id": 114,
+   "units": [
+    {"id": "AAC-015", "unit_type_id": "Infantry", "faction_id": "AAC"}
+   ]
+  },
+  {
+   "location_id": 115,
+   "units": [
+    {"id": "AAC-012", "unit_type_id": "Cruiser", "faction_id": "AAC", "purchased_at": 99}
+   ]
+  },
+  {
+   "location_id": 116,
+   "units": [
+    {"id": "AAC-016", "unit_type_id": "Infantry", "faction_id": "AAC"}
+   ]
+  },
+  {
+   "location_id": 117,
+   "units": [
+    {"id": "PAF-019", "unit_type_id": "Infantry", "faction_id": "PAF"}
+   ]
+  },
+  {
+   "location_id": 121,
+   "units": [
+    {"id": "GPC-015", "unit_type_id": "Infantry", "faction_id": "GPC"}
+   ]
+  },
+  {
+   "location_id": 123,
+   "units": [
+    {"id": "PAF-020", "unit_type_id": "Infantry", "faction_id": "PAF"}
+   ]
+  },
+  {
+   "location_id": 124,
+   "units": [
+    {"id": "UER-020", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 133,
+   "units": [
+    {"id": "UE-017", "unit_type_id": "Infantry", "faction_id": "UE"}
+   ]
+  },
+  {
+   "location_id": 138,
+   "units": [
+    {"id": "UER-021", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 139,
+   "units": [
+    {"id": "UER-022", "unit_type_id": "Infantry", "faction_id": "UER"}
+   ]
+  },
+  {
+   "location_id": 140,
+   "units": [
+    {"id": "AAC-017", "unit_type_id": "Infantry", "faction_id": "AAC"}
+   ]
+  }
+ ]
+}

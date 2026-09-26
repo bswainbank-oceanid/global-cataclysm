@@ -27,7 +27,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--max-turns', type=int, default=500)
-    # game_start_settings (data/rules.json) -- randomize_play_order and
+    # game_start_settings (the rule set) -- randomize_play_order and
     # allow_noncombat_moves_first_turn default on, allow_combat_moves_
     # first_turn defaults off, matching engine.setup.build_game_state's
     # own defaults.
@@ -36,12 +36,14 @@ def main():
     parser.add_argument('--no-noncombat-moves-first-turn', dest='allow_noncombat_moves_first_turn', action='store_false')
     args = parser.parse_args()
 
-    modes = {code: FactionMode.NEUTRAL for code in data.factions()}
-    modes['NAA'] = FactionMode.BOT
-    modes['AAC'] = FactionMode.BOT
+    codes = list(data.factions())
+    pair = ('NAA', 'AAC') if {'NAA', 'AAC'} <= set(codes) else tuple(codes[:2])
+    modes = {code: FactionMode.NEUTRAL for code in codes}
+    for code in pair:
+        modes[code] = FactionMode.BOT
 
     gs = build_game_state(
-        'starting_setup_125ipc', modes,
+        modes,
         randomize_play_order=args.randomize_play_order,
         allow_combat_moves_first_turn=args.allow_combat_moves_first_turn,
         allow_noncombat_moves_first_turn=args.allow_noncombat_moves_first_turn,
@@ -55,10 +57,7 @@ def main():
     # --seed doesn't actually make the game reproducible (a real bug
     # this session -- see GameEngine.__init__'s own docstring comment).
     engine = GameEngine(gs, stats=stats, combat_rng=random.Random(seed_rng.random()))
-    bots = {
-        'NAA': RandomBot(engine, 'NAA', rng=random.Random(seed_rng.random())),
-        'AAC': RandomBot(engine, 'AAC', rng=random.Random(seed_rng.random())),
-    }
+    bots = {code: RandomBot(engine, code, rng=random.Random(seed_rng.random())) for code in pair}
 
     turns_played = play_to_completion(engine, bots, max_turns=args.max_turns)
 

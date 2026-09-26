@@ -2,7 +2,7 @@
 GameEngine: the phased order-submission API wrapping a GameState,
 exposed identically to human and bot callers (see docs/GAME_ARCHITECTURE.md's
 build plan, Step 4). Every phase is now implemented -- Purchase covers
-data/rules.json's full `purchase` section (location targeting, the
+the rule set's full `purchase` section (location targeting, the
 start-of-turn ownership snapshot, SC-discounted cost, the SC-first-then-
 most-remaining-capacity multi-territory allocation with spillover,
 naval/land location restrictions, and the contested-land Infantry-only
@@ -72,6 +72,7 @@ import copy
 import random
 from dataclasses import dataclass
 
+from . import abilities
 from . import data as _default_data
 from .combat import BattleResult, EventKind, resolve_battle, resolve_bombardment, unit_stat_rows
 from .economy import compute_income
@@ -178,7 +179,7 @@ class GameEngine:
         into the water any more than it can host anything but Infantry
         deploying onto the land itself), Strategic Center(s) first, then
         by deploy cap descending (ties broken by territory_id for
-        determinism) -- see rules.json's purchase.multi_adjacent_allocation_order."""
+        determinism) -- see the rule set's purchase.multi_adjacent_allocation_order."""
         terrs = self.data.territories()
         if terrs[deploy_at]['type'] == 'land':
             return [deploy_at] if self.game_state.territories[deploy_at].owner == faction else []
@@ -192,7 +193,7 @@ class GameEngine:
         def sort_key(tid):
             terr = terrs[tid]
             is_sc = self.game_state.is_strategic_center(tid, terr)
-            cap = terr['value'] + (2 if is_sc else 0)
+            cap = terr['value'] + (self.data.sc_bonus() if is_sc else 0)
             return (0 if is_sc else 1, -cap, tid)
         return sorted(owned_land, key=sort_key)
 
@@ -232,9 +233,13 @@ class GameEngine:
 
         return list(sc_targets), list(other_targets)
 
+    def _has(self, unit_type, ability):
+        """Whether `unit_type` has `ability` (engine.abilities) in this game's unit set."""
+        return abilities.has(self.data.units(), unit_type, ability)
+
     def _deploy_cap(self, territory_id):
         terr = self.data.territories()[territory_id]
-        return terr['value'] + (2 if self.game_state.is_strategic_center(territory_id, terr) else 0)
+        return terr['value'] + (self.data.sc_bonus() if self.game_state.is_strategic_center(territory_id, terr) else 0)
 
     def _unit_cost(self, unit_type, territory_id):
         terr = self.data.territories()[territory_id]
@@ -283,7 +288,7 @@ class GameEngine:
                     raise ValueError(f'{faction} does not own land territory {deploy_at}')
                 if unit_def['category'] == 'Sea':
                     raise ValueError(f'{order.unit_type} cannot deploy on land (territory {deploy_at})')
-                if deploy_state.contested_by and order.unit_type != 'Infantry':
+                if deploy_state.contested_by and not self._has(order.unit_type, abilities.MUSTERING):
                     raise ValueError(f'only Infantry may be deployed into contested territory {deploy_at}')
             elif unit_def['category'] == 'Land' and not is_amphibious(unit_def):
                 raise ValueError(f'{order.unit_type} cannot deploy to a sea space ({deploy_at}); only Mechanized Infantry can')
@@ -470,8 +475,8 @@ class GameEngine:
         # that actually funded it (UnitInstance.purchased_at), same
         # own-carrier-only standard as everywhere else carriers matter
         # (an ally's carrier doesn't count).
-        has_own_carrier = any(u.unit_type == 'Aircraft Carrier' and u.owner == faction for u in t.units) or \
-            any(u.unit_type == 'Aircraft Carrier' for u in pending)
+        has_own_carrier = any(self._has(u.unit_type, abilities.CARRIER_AIR_WING) and u.owner == faction for u in t.units) or \
+            any(self._has(u.unit_type, abilities.CARRIER_AIR_WING) for u in pending)
 
         to_place_here = []
         redirected_by_land = {}
@@ -683,7 +688,7 @@ class GameEngine:
         unit_defs = self.data.units()
         terrs = self.data.territories()
         units_with_own_order = {o.unit_id for o in orders}
-        # rules.json's combat.cruiser_bombardment: every land territory some
+        # the rule set's combat.cruiser_bombardment: every land territory some
         # Cruiser of `faction`'s ALSO in this batch is bombarding -- what lets
         # another selected Sea unit's own order target that same land this
         # same batch (an escort, riding along; see the isinstance(trace,
@@ -693,7 +698,7 @@ class GameEngine:
         bombarded_this_batch = set()
         for o in orders:
             mover, _ = self._find_unit(game_state, o.unit_id, faction)
-            if mover.unit_type == 'Cruiser' and len(o.path) >= 2 and terrs[o.path[-1]]['type'] == 'land':
+            if self._has(mover.unit_type, abilities.BOMBARDMENT) and len(o.path) >= 2 and terrs[o.path[-1]]['type'] == 'land':
                 bombarded_this_batch.add(o.path[-1])
         for order in orders:
             if len(order.path) < 2:
@@ -721,14 +726,14 @@ class GameEngine:
                 # snaps back to this at the start of Non-Combat Move.
                 unit.combat_move_origin = origin_id
                 unit.based_on_carrier = next(
-                    (u.unit_id for u in origin_state.units if u.unit_type == 'Aircraft Carrier' and u.owner == faction),
+                    (u.unit_id for u in origin_state.units if self._has(u.unit_type, abilities.CARRIER_AIR_WING) and u.owner == faction),
                     None,
                 )
                 origin_state.units.remove(unit)
                 dest_state.units.append(unit)
                 self._mark_contested_by_attack(dest_state, faction, game_state)  # air alone can't capture, only attack
-            elif category == 'Sea' and unit.unit_type != 'Cruiser' and len(order.path) >= 2 and terrs[dest_id]['type'] == 'land':
-                # rules.json's combat.cruiser_bombardment: riding along a sibling
+            elif category == 'Sea' and not self._has(unit.unit_type, abilities.BOMBARDMENT) and len(order.path) >= 2 and terrs[dest_id]['type'] == 'land':
+                # the rule set's combat.cruiser_bombardment: riding along a sibling
                 # Cruiser's bombardment this same batch (bombarded_this_batch,
                 # precomputed above) -- never attacks, never contests anything,
                 # just relocates to wherever that Cruiser itself ends up (which
@@ -743,7 +748,7 @@ class GameEngine:
             else:
                 trace = trace_combat_move(unit.unit_type, faction, order.path, game_state, self.data)
                 if isinstance(trace, BombardmentTrace):
-                    # rules.json's combat.cruiser_bombardment: the Cruiser never
+                    # the rule set's combat.cruiser_bombardment: the Cruiser never
                     # enters trace.target_id -- it stays at trace.final_sea_id
                     # (which may just be where it already was, if it didn't
                     # reposition). No contested_by change (a pure naval potshot
@@ -763,7 +768,7 @@ class GameEngine:
                         # left from an earlier turn either way.
                         unit.arrived_amphibiously = trace.crossed_water
                     riders = []
-                    if unit.unit_type == 'Aircraft Carrier':
+                    if self._has(unit.unit_type, abilities.CARRIER_AIR_WING):
                         riders = [
                             u for u in origin_state.units
                             if u.owner == faction and u.unit_id not in units_with_own_order
@@ -1409,7 +1414,7 @@ class GameEngine:
         unit_defs = self.data.units()
         surviving_defender_ids = set(result.surviving_defender_ids)
         defenders_here = [u for u in t.units if u.unit_id in surviving_defender_ids]
-        owners_with_surviving_carrier = {u.owner for u in defenders_here if u.unit_type == 'Aircraft Carrier'}
+        owners_with_surviving_carrier = {u.owner for u in defenders_here if self._has(u.unit_type, abilities.CARRIER_AIR_WING)}
         for u in defenders_here:
             if unit_defs[u.unit_type]['category'] != 'Air' or u.owner in owners_with_surviving_carrier:
                 continue
@@ -1494,7 +1499,7 @@ class GameEngine:
         # Sea origin with no carrier recorded (departed from open water,
         # unusual but not impossible) -- only safe if faction's own
         # carrier happens to be there now.
-        if any(u.unit_type == 'Aircraft Carrier' and u.owner == faction for u in origin_state.units):
+        if any(self._has(u.unit_type, abilities.CARRIER_AIR_WING) and u.owner == faction for u in origin_state.units):
             return origin_id
         return None
 
@@ -1545,7 +1550,7 @@ class GameEngine:
                 raise ValueError(f'{order.destination} is not a legal non-combat move destination for unit {order.unit_id}')
 
             riders = []
-            if unit.unit_type == 'Aircraft Carrier':
+            if self._has(unit.unit_type, abilities.CARRIER_AIR_WING):
                 riders = [
                     u for u in game_state.territories[origin_id].units
                     if u.owner == faction and unit_defs[u.unit_type]['category'] == 'Air'
@@ -1616,7 +1621,7 @@ class GameEngine:
         for tid, t in self.game_state.territories.items():
             if terrs[tid]['type'] != 'sea':
                 continue
-            if any(u.unit_type == 'Aircraft Carrier' and u.owner == faction for u in t.units):
+            if any(self._has(u.unit_type, abilities.CARRIER_AIR_WING) and u.owner == faction for u in t.units):
                 continue
             t.units = [u for u in t.units if not (u.owner == faction and unit_defs[u.unit_type]['category'] == 'Air')]
 

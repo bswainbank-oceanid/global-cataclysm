@@ -1,0 +1,22 @@
+{
+ "module_type": "Objectives",
+ "id": "GC72_Objectives",
+ "name": "Strategy bot objectives",
+ "_note": "Each objective is a planner routine in engine/bots/planner.py; a new one needs code.",
+ "objectives": [
+  {"id": "hold_sc", "name": "Hold Strategic Centers", "kind": "primary"},
+  {"id": "capture_sc", "name": "Capture Strategic Centers", "kind": "primary"},
+  {"id": "reinforce_contested", "name": "Reinforce contested territory", "kind": "primary"},
+  {"id": "punish_betrayers", "name": "Punish betrayers", "kind": "primary"},
+  {"id": "fill_gaps", "name": "Fill defensive gaps", "kind": "primary"},
+  {"id": "treasonous_capture", "name": "Treasonous capture", "kind": "primary"},
+  {"id": "expand_territory", "name": "Expand territory", "kind": "secondary"},
+  {"id": "hold_frontier", "name": "Hold the frontier", "kind": "secondary"},
+  {"id": "control_oceans", "name": "Control the oceans", "kind": "secondary"},
+  {"id": "pursue_sc_1", "name": "Pursue nearest enemy SC", "kind": "secondary"},
+  {"id": "pursue_sc_2", "name": "Pursue second enemy SC", "kind": "secondary"},
+  {"id": "pursue_sc_3", "name": "Pursue third enemy SC", "kind": "secondary"},
+  {"id": "empty_land_grab", "name": "Grab empty land", "kind": "secondary"},
+  {"id": "pursue_leftovers", "name": "Use leftover units", "kind": "final"}
+ ]
+}

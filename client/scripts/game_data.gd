@@ -15,14 +15,15 @@ var bboxes := {}        # int id -> Rect2 covering every polygon of that territo
 var label_points := {}  # int id -> Vector2, a point guaranteed inside the largest polygon
 var factions := {}      # code -> {name, color: Color}
 var faction_order: Array[String] = []
-var units := {}         # unit type name -> stats dict
+var units := {}         # {"units": {unit type -> stats, incl. abilities {id: params}}, "category_icons": {...}}
+var map_wraps := true   # the map is a cylinder (east-west wrap) rather than flat
 
 
 func _ready() -> void:
 	_load_territories()
 	_load_shapes()
 	_load_factions()
-	units = _read_json("res://data/units.json")
+	_ensure_units()
 	print("[GameData] %d land, %d sea, %d factions" % [land_ids.size(), sea_ids.size(), factions.size()])
 
 
@@ -38,6 +39,7 @@ func _load_territories() -> void:
 	var d: Dictionary = _read_json("res://data/territories.json")
 	map_w = float(d["reference_image_width_px"])
 	map_h = float(d["reference_image_height_px"])
+	map_wraps = bool(d.get("wraps_east_west", true))
 	for s in d["spaces"]:
 		var tid := int(s["id"])
 		territories[tid] = s
@@ -199,3 +201,82 @@ func space_at(p: Vector2) -> int:
 				if Geometry2D.is_point_in_polygon(p, poly):
 					return tid
 	return -1
+
+# ---- unit types -----------------------------------------------------------------------
+# What a unit can do comes from its unit set's abilities (docs/DATA_MODEL.md), never its name.
+
+## Loads units.json if it isn't yet -- the helpers below can be asked before _ready (a headless
+## test script runs before the autoloads are ready).
+func _ensure_units() -> void:
+	if not units.is_empty():
+		return
+	units = _read_json("res://data/units.json")
+	if not units.has("category_icons"):
+		units["category_icons"] = {}
+
+
+func unit_def(unit_type: String) -> Dictionary:
+	_ensure_units()
+	return units["units"].get(unit_type, {})
+
+
+func has_ability(unit_type: String, ability: String) -> bool:
+	return unit_def(unit_type).get("abilities", {}).has(ability)
+
+
+func ability_param(unit_type: String, ability: String, param: String, default = null):
+	return unit_def(unit_type).get("abilities", {}).get(ability, {}).get(param, default)
+
+
+## Unit types with `ability`, in unit set order.
+func units_with(ability: String) -> Array[String]:
+	_ensure_units()
+	var out: Array[String] = []
+	for t in units["units"]:
+		if has_ability(t, ability):
+			out.append(t)
+	return out
+
+
+## The unit type a land unit is while at sea (its amphibious ability's transport unit).
+func transport_unit(unit_type: String) -> String:
+	var own = ability_param(unit_type, "amphibious", "transport_unit")
+	if own != null:
+		return str(own)
+	var any := units_with("transport")
+	return any[0] if not any.is_empty() else unit_type
+
+
+## The purchasable unit types, in the purchase panel's order.
+func purchase_order() -> Array[String]:
+	_ensure_units()
+	var out: Array[String] = []
+	for t in units["units"]:
+		if unit_def(t).get("purchasable", false):
+			out.append(t)
+	out.sort_custom(func(a, b): return int(unit_def(a).get("display_order", 999)) < int(unit_def(b).get("display_order", 999)))
+	return out
+
+
+## The unit type whose icon stands for a whole category ("Land"/"Sea"/"Air").
+func category_icon(category: String) -> String:
+	_ensure_units()
+	return str(units["category_icons"].get(category, ""))
+
+
+## "Cruisers", "Infantry": the name for several of a unit type.
+func unit_plural(unit_type: String) -> String:
+	return str(unit_def(unit_type).get("plural", unit_type + "s"))
+
+
+## "Infantry", "Mechanized Infantry or Armor": the purchasable unit types with `ability`, for messages.
+func names_with(ability: String) -> String:
+	var names: Array[String] = []
+	for t in units_with(ability):
+		if unit_def(t).get("purchasable", false):
+			names.append(t)
+	if names.is_empty():
+		return "no unit"
+	if names.size() == 1:
+		return names[0]
+	return ", ".join(names.slice(0, names.size() - 1)) + " or " + names[names.size() - 1]

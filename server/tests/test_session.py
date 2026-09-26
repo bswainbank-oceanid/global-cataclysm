@@ -10,7 +10,7 @@ from server.session import GameSession
 
 
 def _session(modes, bot_factions=(), **build_kwargs):
-    gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False, **build_kwargs)
+    gs = build_game_state(modes, randomize_play_order=False, **build_kwargs)
     turn_log = TurnLog()
     # combat_rng must be seeded -- GameEngine defaults to an unseeded
     # random.Random() otherwise, which made any test that actually

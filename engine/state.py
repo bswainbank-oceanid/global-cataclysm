@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from . import abilities
+
 
 class FactionMode(Enum):
     HUMAN = 'HUMAN'
@@ -46,17 +48,23 @@ def step_down_die(die):
     return DIE_SIZES[max(idx - 1, 0)]
 
 
+def _dig_in_bonus(base):
+    """The defense a unit type with the dig_in ability adds while defending (0 without it) --
+    Infantry's, currently, but it's the ability, not the unit type, that decides."""
+    return (base.get('abilities') or {}).get(abilities.DIG_IN, {}).get('defense_bonus', 0)
+
+
 def _has_dig_in(base):
-    """True if this unit type's data (units.json's special_abilities list)
-    carries the 'Dig In' trait -- currently Infantry only, but driven by
-    data rather than a hardcoded unit_type check so any future unit type
-    tagged the same way picks it up automatically."""
-    return any(a.startswith('Dig In') for a in base.get('special_abilities', []))
+    return abilities.DIG_IN in (base.get('abilities') or {})
 
 
 def max_promotions(unit_type, unit_defs, promotion_cfg=None, default=3):
-    """The most promotions a unit of this type can earn: units.json's own max_promotions for the type,
-    else the rules' promotion.max_promotions, else `default`."""
+    """The most promotions a unit of this type can earn: its heroic ability's max_promotions (or
+    the unit set's own max_promotions for the type), else the rules' promotion.max_promotions,
+    else `default`."""
+    heroic = abilities.param(unit_defs, unit_type, abilities.HEROIC, 'max_promotions')
+    if heroic is not None:
+        return heroic
     own = unit_defs.get(unit_type, {}).get('max_promotions')
     if own is not None:
         return own
@@ -66,11 +74,9 @@ def max_promotions(unit_type, unit_defs, promotion_cfg=None, default=3):
 
 
 def is_amphibious(base):
-    """True if this unit type's data carries the 'Amphibious' trait (units.json's
-    special_abilities) -- the only land units that may enter a sea space, where they
-    become Transports. Mechanized Infantry, currently; Infantry and Armor never leave
-    the land."""
-    return any(a.startswith('Amphibious') for a in base.get('special_abilities', []))
+    """True if this unit type has the amphibious ability -- the only land units that may enter
+    a sea space, where they become their transport unit. Mechanized Infantry, currently."""
+    return abilities.AMPHIBIOUS in (base.get('abilities') or {})
 
 
 @dataclass
@@ -83,7 +89,7 @@ class UnitInstance:
     owner: str
     current_hp: int
     xp: int = 0
-    # How many promotions the unit has earned (up to rules.json promotion.max_promotions): each steps the attack die up one
+    # How many promotions the unit has earned (up to the rule set promotion.max_promotions): each steps the attack die up one
     # size (max D12), adds +1 defense (max 10) and +1 max HP. XP toward the next one is `xp`.
     promotions: int = 0
     has_moved_combat: bool = False
@@ -101,7 +107,7 @@ class UnitInstance:
     # carrier, not a fixed location, to find it "wherever it is" after
     # combat) -- NOT a fully general "current home carrier" tracker for
     # every move a plane makes; see combat_move_origin below and
-    # rules.json's movement.carrier_air_operations for what's covered
+    # the rule set's movement.carrier_air_operations for what's covered
     # and what (ride-along outside this specific return trip, chaining)
     # still isn't. Cleared once process_return_to_base consumes it.
     based_on_carrier: Optional[int] = None
@@ -111,7 +117,7 @@ class UnitInstance:
     # there's no carrier to track, or that carrier didn't survive.
     # Cleared once process_return_to_base consumes it.
     combat_move_origin: Optional[int] = None
-    # rules.json's cruiser_bombardment: the LAND territory id this Cruiser
+    # the rule set's cruiser_bombardment: the LAND territory id this Cruiser
     # declared a bombardment against this turn (GameEngine._execute_combat_moves
     # sets this instead of relocating the unit onto land, which it never
     # actually enters -- see movement.trace_combat_move's BombardmentTrace).
@@ -174,27 +180,25 @@ class UnitInstance:
         true or false for the unit's entire time in a battle (all
         rounds, not just round 1) -- and unlike promotion, it isn't
         persisted on the unit either, since a unit that's attacking in
-        one battle can be defending in the next. Units with the 'Dig In'
-        trait (units.json's special_abilities -- Infantry, currently)
-        get +1 defense while defending, stacking additively with promotion and
+        one battle can be defending in the next. Units with the dig_in
+        ability (Infantry, currently) get its defense_bonus (+1) while defending, stacking additively with promotion and
         round1_bonus -- but added AFTER their cap of 10, so it can take a
         defending, fully promoted Infantry to 11.
 
         air_superiority: True only for the pre-combat air-superiority
-        round -- a unit type whose units.json entry has an
-        'air_superiority' block (Fighter: D10, 3 damage; Bomber: D6, 1
-        damage) rolls that die instead of its normal base die (promotion
+        round -- a unit type with the air_superiority
+        ability (Fighter: D10, 3 damage; Bomber: D6, 1 damage) rolls that die instead of its normal base die (promotion
         and round1_bonus still step it up from there) and deals that
         damage instead (an absolute override -- promotion doesn't touch
         damage). Every other unit type is unaffected -- this never
         touches defense, so it plays no part in a target's defense_of
         computation, only the acting unit's own roll."""
         if self.in_transport_form:
-            # A land unit in a sea battle is its Transport for the battle:
-            # units.json's Transport row (defense 6, 1 HP, no attack die or
-            # damage). Promotion, Dig In and the die adjustments don't apply;
+            # A land unit in a sea battle is its transport unit for the battle
+            # (the amphibious ability's transport_unit: defense 5, 1 HP, no attack
+            # die or damage). Promotion, Dig In and the die adjustments don't apply;
             # a round-1 bonus still hardens the defense of the side that has it.
-            ship = unit_defs['Transport']
+            ship = unit_defs[abilities.transport_unit(unit_defs, self.unit_type)]
             defense = ship['defense']
             if round1_bonus and defense is not None:
                 defense = min(defense + 1, 10)
@@ -204,8 +208,8 @@ class UnitInstance:
                 'combat_move': ship['combat_move'], 'non_combat_move': ship['non_combat_move'],
             }
         base = unit_defs[self.unit_type]
-        as_stats = base.get('air_superiority') if air_superiority else None
-        die = as_stats['attack_die'] if as_stats else base['attack_die']
+        as_stats = (base.get('abilities') or {}).get(abilities.AIR_SUPERIORITY) if air_superiority else None
+        die = (as_stats.get('attack_die') or base['attack_die']) if as_stats else base['attack_die']
         defense = base['defense']
         damage = base['damage']
         max_hp = base['hp']
@@ -220,9 +224,9 @@ class UnitInstance:
                 die = step_up_die(die)
             if defense is not None:
                 defense = min(defense + 1, 10)
-        if defending and defense is not None and _has_dig_in(base):
-            defense = defense + 1  # on top of the promotion/bonus cap of 10: a fully promoted Infantry defends at 11
-        if as_stats:
+        if defending and defense is not None:
+            defense = defense + _dig_in_bonus(base)  # on top of the promotion/bonus cap of 10: a fully promoted Infantry defends at 11
+        if as_stats and as_stats.get('damage') is not None:
             damage = as_stats['damage']
         return {
             'attack_die': die,
@@ -297,7 +301,7 @@ class TerritoryState:
     ambush_bonus_for: set = field(default_factory=set)
     # True for a territory that started out in a DEFENSIVE power's hands: it is never a
     # Strategic Center in this game, whoever holds it -- capturing it doesn't turn it
-    # into one. (territories.json's strategic_center is only the map's starting fact;
+    # into one. (the SC assignment's Strategic Centers are only the map's starting fact;
     # GameState.is_strategic_center is the answer the rules use.)
     sc_disabled: bool = False
 
@@ -504,7 +508,7 @@ class GameState:
 
     def is_strategic_center(self, territory_id, terr):
         """Whether the territory counts as a Strategic Center in this game: it is one on the
-        map (`terr` is its territories.json entry) and hasn't been switched off -- a territory
+        map (`terr` is its engine.data.territories() entry) and hasn't been switched off -- a territory
         that started out in a DEFENSIVE power's hands never is one (TerritoryState.sc_disabled),
         even after another faction captures it."""
         return bool(terr.get('strategic_center')) and not self.territories[territory_id].sc_disabled

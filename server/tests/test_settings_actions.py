@@ -38,7 +38,7 @@ def _multi_human_session(humans, bots=(), seed=1):
     for f in bots:
         modes[f] = FactionMode.BOT
     rng = random.Random(seed)
-    gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False, max_alliance_size=1, rng=rng)
+    gs = build_game_state(modes, randomize_play_order=False, max_alliance_size=1, rng=rng)
     turn_log = TurnLog()
     engine = GameEngine(gs, data_module, turn_log=turn_log, combat_rng=random.Random(rng.random()), stats=GameStats())
     bot_objs = {f: RandomBot(engine, f, rng=random.Random(rng.random())) for f in bots}

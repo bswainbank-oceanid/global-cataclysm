@@ -29,6 +29,42 @@ UNIT_DEFS = {
 }
 
 
+# The abilities the engine used to grant by unit name, before abilities were data.
+_ABILITIES_BY_NAME = {
+    'Infantry': {'mustering': {}}, 'Mechanized Infantry': {'blitz': {}}, 'Fighter': {'interception': {}},
+    'Bomber': {'indiscriminate': {}}, 'Aircraft Carrier': {'carrier_air_wing': {'capacity': 3}},
+    'Submarine': {'submerge': {}}, 'Cruiser': {'bombardment': {}}, 'Transport': {'transport': {}},
+}
+
+
+def with_real_abilities(unit_defs):
+    """Gives hand-built unit definitions the abilities they stood for before abilities were data:
+    the ones the engine granted by unit name (a 'Cruiser' bombards, 'Infantry' musters), plus those a
+    definition's own fields gave it (Dig In / Amphibious text, an air_superiority block, a
+    max_promotions) -- and the real unit set's battle order for the same unit type."""
+    real = real_data.units()
+    for name, d in unit_defs.items():
+        if 'abilities' in d:
+            continue
+        found = {k: dict(v) for k, v in _ABILITIES_BY_NAME.get(name, {}).items()}
+        text = d.get('special_abilities', [])
+        if any(t.startswith('Dig In') for t in text):
+            found['dig_in'] = {'defense_bonus': 1}
+        if any(t.startswith('Amphibious') for t in text):
+            found['amphibious'] = {'transport_unit': 'Transport'}
+        if 'air_superiority' in d or name == 'Fighter':
+            found['air_superiority'] = dict(d.get('air_superiority', {}), triggers_round=name == 'Fighter')
+        if d.get('max_promotions') is not None:
+            found['heroic'] = {'max_promotions': d['max_promotions']}
+        d['abilities'] = found
+        for k in ('land_order', 'sea_order'):
+            d.setdefault(k, real.get(name, {}).get(k))
+    return unit_defs
+
+
+with_real_abilities(UNIT_DEFS)
+
+
 class FakeData:
     """A hand-built, fully controlled territory graph -- the real
     149-territory map isn't practical for hand-verifying an exact
@@ -36,7 +72,7 @@ class FakeData:
     def __init__(self, territories, adjacency, unit_defs=None):
         self._territories = territories  # {id: {'type', 'value'?, 'strategic_center'?}}
         self._adjacency = adjacency
-        self._units = unit_defs or UNIT_DEFS
+        self._units = with_real_abilities(unit_defs) if unit_defs else UNIT_DEFS
 
     def units(self):
         return self._units
@@ -54,6 +90,12 @@ class FakeData:
 
     def adjacency(self):
         return self._adjacency
+
+    def sc_bonus(self):
+        return 2
+
+    def naval_deploy_excluded(self):
+        return real_data.naval_deploy_excluded()
 
 
 def make_state(data, territory_owners, faction_modes, treasury=None, contested=None,
@@ -236,7 +278,7 @@ class TestSeaUnitsCannotBeOrderedOntoLand(unittest.TestCase):
 
 
 class TestCruiserBombardmentEndToEnd(unittest.TestCase):
-    """rules.json's combat.cruiser_bombardment, the full turn: Combat Move
+    """the rule set's combat.cruiser_bombardment, the full turn: Combat Move
     (declaring it) through Combat Resolution (it actually firing)."""
 
     def _setup(self, stats=None, turn_log=None):
@@ -890,7 +932,7 @@ class TestLostContestedPurchaseOverAWholeTurn(unittest.TestCase):
     def play(self, hand_over_to_gpc=()):
         from engine.setup import build_game_state
         modes = {f: FactionMode.BOT for f in real_data.factions()}
-        gs = build_game_state('starting_setup_125ipc', modes, randomize_play_order=False)
+        gs = build_game_state(modes, randomize_play_order=False)
         engine = GameEngine(gs, real_data, combat_rng=random.Random(1))
         T = 10  # Western Canada, NAA's, with one NAA Infantry in it
         for i in range(4):  # GPC's promoted Armor holds it against that lone defender

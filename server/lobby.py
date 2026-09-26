@@ -10,7 +10,7 @@ Settings (the "new_game" message's "settings"):
                  "strategy": "random" | aggressive | passive | counterweight | independent | variable,   # bots only
                  "ai": "strategy" | "random" | "claude",                                                  # bots only: the heuristic bot (default), the random baseline, or Claude itself
                  "behavior": "random" | loyal | opportunistic | treacherous | variable},                  # bots only
-                ... exactly six ...],
+                ... one per faction (six) ...],
      "randomize_order": true,                            # default true
      "can_withdraw": true,                               # players may leave an alliance (default true)
      "can_rejoin": false,                                # ...and may re-ally with those they left (default false)
@@ -23,7 +23,7 @@ Settings (the "new_game" message's "settings"):
 Every faction is in exactly one seat: explicit picks are honoured first (and must
 be distinct), "random" seats then take the factions left over, in random order.
 "Players" are the HUMAN and BOT seats; DEFENSIVE seats' units defend but take no
-turns, and NEUTRAL seats are impassable (see data/rules.json power_modes).
+turns, and NEUTRAL seats are impassable (see the rule set power_modes).
 
 The rules the screen enforces (and the server re-checks, being the authority):
 at least two players, at most one human, distinct explicit factions, and each
@@ -47,7 +47,11 @@ from engine.stats import GameStats
 from engine.turn_log import TurnLog
 from .session import GameSession
 
-SEAT_COUNT = 6
+
+def seat_count():
+    """One seat per faction in the scenario (six in GC72)."""
+    return len(data_module.factions())
+
 MODES = ('HUMAN', 'BOT', 'DEFENSIVE', 'NEUTRAL')
 ALLIANCE_NUMBERS = (1, 2, 3)
 PLAYER_MODES = ('HUMAN', 'BOT')
@@ -69,8 +73,8 @@ def check_settings(settings):
     """Every problem with `settings`, as a list of readable strings (empty = valid)."""
     problems = []
     seats = settings.get('seats')
-    if not isinstance(seats, list) or len(seats) != SEAT_COUNT:
-        return [f'there must be exactly {SEAT_COUNT} seats']
+    if not isinstance(seats, list) or len(seats) != seat_count():
+        return [f'there must be exactly {seat_count()} seats']
     factions = list(data_module.factions())
 
     picked = {}
@@ -171,7 +175,7 @@ def build_session(settings, rng=None):
     assignments, groups, randomize = resolve_settings(settings, rng)
     modes = {a['faction']: FactionMode[a['mode']] for a in assignments}
     gs = build_game_state(
-        'starting_setup_125ipc', modes, randomize_play_order=randomize, rng=rng,
+        modes, randomize_play_order=randomize, rng=rng,
         max_alliance_size=int(settings.get('max_alliance_size', DEFAULT_MAX_ALLIANCE_SIZE)),
         alliance_strategies={a['faction']: a['strategy'] for a in assignments if a['mode'] == 'BOT'},
         alliance_behaviors={a['faction']: a['behavior'] for a in assignments if a['mode'] == 'BOT'},

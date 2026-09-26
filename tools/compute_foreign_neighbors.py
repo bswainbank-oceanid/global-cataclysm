@@ -1,6 +1,6 @@
 """
-Derive derived/adjacency_foreign.json from data/territories.json and
-data/adjacency.json: for every land territory, its land-neighbor ids, and
+Derive derived/adjacency_foreign.json from the scenario's map and territory
+assignment (tools/tool_data.py): for every land territory, its land-neighbor ids, and
 the subset of those belonging to a different faction ("foreign neighbor").
 
 Every land territory is a real node in data/adjacency.json (it's a fully
@@ -11,8 +11,16 @@ Run from the repo root: python3 tools/compute_foreign_neighbors.py
 """
 import json
 
-territories = json.load(open('data/territories.json'))['spaces']
-adjacency = json.load(open('data/adjacency.json'))
+import argparse
+
+import tool_data
+
+_parser = argparse.ArgumentParser()
+_parser.add_argument('--scenario', default=tool_data.DEFAULT_SCENARIO_ID)
+tool_data.use_scenario(_parser.parse_args().scenario)
+
+territories = tool_data.spaces()
+adjacency = tool_data.adjacency()
 
 land = {s['id']: s for s in territories if s['type'] == 'land'}
 edges = adjacency['edges']
@@ -33,5 +41,5 @@ out = {
     'adj': {str(k): v for k, v in adj.items()},
     'foreign': {str(k): v for k, v in foreign.items()},
 }
-json.dump(out, open('derived/adjacency_foreign.json', 'w'), indent=2)
+json.dump(out, open(tool_data.root_path('derived/adjacency_foreign.json'), 'w'), indent=2)
 print('wrote derived/adjacency_foreign.json:', len(adj), 'land territories')

@@ -1,15 +1,13 @@
 """
-Which spaces touch, according to the real outlines in data/territory_shapes.json.
+Which spaces touch, according to the real outlines (the Map module's boundaries).
 
 The outlines are painted into a label image -- seas first, land on top, because
 a sea zone's polygon is only its OUTER boundary and encloses the coastal land it
 borders, so painting land last leaves each sea's visible water -- and two spaces
 touch when their labels come within `touch_px` pixels of each other. Wraps
-east-west (the map is a cylinder). Used by tools/compute_adjacency.py (the
-source of data/adjacency.json) and tools/debug_adjacency.py.
+east-west on a cylinder map. Used by tools/compute_adjacency.py (the source of
+the Map's adjacency) and tools/debug_adjacency.py.
 """
-import json
-
 import cv2
 import numpy as np
 
@@ -28,9 +26,10 @@ def label_image(spaces, shapes, width, height):
     return labels
 
 
-def touching_pairs(labels, touch_px=DEFAULT_TOUCH_PX):
-    """{(a, b), ...} with a < b, for every two ids whose pixels are within touch_px."""
-    height = labels.shape[0]
+def touching_pairs(labels, touch_px=DEFAULT_TOUCH_PX, wraps=True):
+    """{(a, b), ...} with a < b, for every two ids whose pixels are within touch_px (across the
+    east-west seam too when `wraps`)."""
+    height, width = labels.shape
     pairs = set()
     for dy in range(0, touch_px + 1):
         for dx in range(-touch_px, touch_px + 1):
@@ -39,13 +38,21 @@ def touching_pairs(labels, touch_px=DEFAULT_TOUCH_PX):
             a = labels[:height - dy] if dy else labels
             b = np.roll(labels, -dx, axis=1)[dy:]  # wraps east-west
             m = (a != b) & (a > 0) & (b > 0)
+            if not wraps and dx:
+                # a flat map: drop the columns np.roll carried across the seam
+                seam = np.zeros(width, bool)
+                seam[:max(0, -dx)] = True
+                seam[width - max(0, dx):] = True
+                m &= ~seam[np.newaxis, :]
             for x, y in set(zip(a[m].tolist(), b[m].tolist())):
                 pairs.add((min(x, y), max(x, y)))
     return pairs
 
 
-def load(territories_path='data/territories.json', shapes_path='data/territory_shapes.json'):
-    meta = json.load(open(territories_path))
+def load():
+    """(map meta, {id: space}, {str(id): polygons}) for the scenario in use (tool_data.use_scenario)."""
+    import tool_data
+    meta = dict(tool_data.map_meta(), spaces=tool_data.spaces())
     spaces = {s['id']: s for s in meta['spaces']}
-    shapes = json.load(open(shapes_path))['shapes']
+    shapes = tool_data.shapes()
     return meta, spaces, shapes

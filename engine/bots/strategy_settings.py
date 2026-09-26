@@ -2,21 +2,11 @@
 The strategy bots' settings and their weighted random draws.
 
 Everything a strategy bot chooses by odds -- its strategy style, the order of its secondary objectives,
-each unit it buys -- is a weighted random draw over weights taken from data/bot_settings.json (built
-from reference/GC Bot Settings.ods by tools/build_bot_settings.py). A weight of 0 is never drawn.
+each unit it buys -- is a weighted random draw over weights taken from the scenario's bot modules
+(FactionWeightSet, StrategyThresholdSet, Objectives, PrimaryObjectiveOrder -- docs/DATA_MODEL.md). A weight
+of 0 is never drawn.
 """
-import json
-import os
-
-_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'bot_settings.json')
-
-STYLES = ('Strategic', 'Defensive', 'Expansive', 'Controlling')  # the concrete ones; 'Variable' re-rolls among them
-ALL_STYLES = STYLES + ('Variable',)
-
-# The secondary objectives, in the sheet's own names (the threshold rows are keyed by these).
-SECONDARY = ('expand_territory', 'hold_frontier', 'control_oceans', 'pursue_sc_1', 'pursue_sc_2', 'pursue_sc_3', 'empty_land_grab')
-
-_cache = None
+from .. import data as _default_data
 
 
 class StrategySettings:
@@ -25,27 +15,36 @@ class StrategySettings:
         self.strategy_weights = raw['strategy_weights']  # faction -> style -> weight
         self.thresholds = raw['thresholds']              # style -> objective -> {min, max[, weight]}
         self.distance_costs = raw['distance_costs']      # friendly / sea / enemy / allied -> cost per square
+        # The concrete styles, in the module's order; a variable style re-draws among them every turn.
+        self.styles = tuple(self.thresholds)
+        self.variable_styles = tuple(raw.get('variable_strategies', ()))
+        self.all_styles = self.styles + self.variable_styles
+        # The secondary objectives, in the module's order (the threshold rows are keyed by these).
+        self.secondary = tuple(o['id'] for o in raw.get('objectives', []) if o['kind'] == 'secondary')
+        self.primary_order = raw.get('primary_order', [])
+        self.secondary_budget_share = raw.get('secondary_budget_share')
+        self.final_order = raw.get('final_order', [])
 
     # -- the draws ---------------------------------------------------------------------------
 
     def draw_style(self, faction, rng):
         """The style a faction plays this game (or, for a Variable bot, its 'Variable' -- see turn_style)."""
         weights = self.strategy_weights[faction]
-        return weighted_choice(rng, list(ALL_STYLES), [weights.get(s, 0) for s in ALL_STYLES])
+        return weighted_choice(rng, list(self.all_styles), [weights.get(s, 0) for s in self.all_styles])
 
     def turn_style(self, faction, base_style, rng):
         """The concrete style playing this turn: the base style itself, or -- for Variable -- a fresh draw
         among the four concrete styles by the faction's own weights."""
-        if base_style != 'Variable':
+        if base_style not in self.variable_styles:
             return base_style
         weights = self.strategy_weights[faction]
-        return weighted_choice(rng, list(STYLES), [weights.get(s, 0) for s in STYLES])
+        return weighted_choice(rng, list(self.styles), [weights.get(s, 0) for s in self.styles])
 
     def secondary_order(self, style, rng):
         """This turn's order of consideration for the secondary objectives: weighted draws without
         replacement by the style's weights (a weight of 0 is never drawn, so that objective is skipped)."""
-        weights = {name: self.thresholds[style][name]['weight'] for name in SECONDARY}
-        return weighted_order(rng, list(SECONDARY), [weights[n] for n in SECONDARY])
+        weights = {name: self.thresholds[style][name]['weight'] for name in self.secondary}
+        return weighted_order(rng, list(self.secondary), [weights[n] for n in self.secondary])
 
     def unit_odds(self, faction, unit_types):
         """Purchase odds for the given unit types (a weight per type; unknown types weigh nothing)."""
@@ -85,12 +84,14 @@ def weighted_order(rng, items, weights):
     return out
 
 
-def load_settings(path=None):
+def load_settings(data_module=None):
+    """The StrategySettings for `data_module`'s scenario (the default scenario if it has no bot settings)."""
     global _cache
-    if path is None and _cache is not None:
-        return _cache
-    with open(path or _PATH, encoding='utf-8') as f:
-        settings = StrategySettings(json.load(f))
-    if path is None:
-        _cache = settings
-    return settings
+    source = data_module if data_module is not None and hasattr(data_module, 'bot_settings') else _default_data
+    raw = source.bot_settings()
+    if _cache is None or _cache[0] is not raw:
+        _cache = (raw, StrategySettings(raw))
+    return _cache[1]
+
+
+_cache = None

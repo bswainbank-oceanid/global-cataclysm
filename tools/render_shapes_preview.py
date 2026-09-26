@@ -14,19 +14,22 @@ Not part of tools/build_all.py: like exports/map.png it is a reference image
 """
 import argparse
 import colorsys
-import json
 
 import cv2
 import numpy as np
 
+import tool_data
+
 parser = argparse.ArgumentParser()
+parser.add_argument('--scenario', default=tool_data.DEFAULT_SCENARIO_ID)
 parser.add_argument('--out', default='exports/territory_shapes_preview.png')
 args = parser.parse_args()
+tool_data.use_scenario(args.scenario)
 
-territories = {s['id']: s for s in json.load(open('data/territories.json'))['spaces']}
-shapes = json.load(open('data/territory_shapes.json'))['shapes']
-factions = json.load(open('data/factions.json'))['factions']
-meta = json.load(open('data/territories.json'))
+territories = {s['id']: s for s in tool_data.spaces()}
+shapes = tool_data.shapes()
+factions = tool_data.factions()
+meta = tool_data.map_meta()
 W, H = int(meta['reference_image_width_px']), int(meta['reference_image_height_px'])
 
 OUTLINE = (40, 40, 40)

@@ -1,143 +1,104 @@
-# Regeneration pipeline
+# Data pipeline
 
-Everything under `derived/` and `exports/` is generated from `data/` +
-`tools/`. Run the whole thing with:
+The game reads only the module JSON under `data/modules/` (`docs/DATA_MODEL.md`).
+People edit the module spreadsheets under `sheets/`; tools regenerate the parts
+that come from the map image. Everything under `derived/` and `exports/` is
+regenerable.
+
+## Editing game data
+
+1. Open the workbook for the module type in `sheets/` (`UnitSet.ods`,
+   `MapValues.ods`, `FactionAssignment.ods`, `FactionWeightSet.ods`, ...). Each
+   has a **Modules** sheet (one row per module instance, with its single-valued
+   fields — nested ones as dotted names like `generation.budget`) and a sheet
+   per list (one row per item, first column the module id). Row order is list
+   order. Columns marked `(info)` are for reading only.
+2. Save it (as .ods).
+3. Preview what the import would change, then import:
+
+   ```
+   python tools/import_sheets.py --check --diff
+   python tools/import_sheets.py
+   ```
+
+   Nothing is written unless every module still validates. A module that no
+   workbook mentions is left alone; fields the sheets don't carry (boundaries,
+   adjacency, label metrics) are kept.
+4. Restart the server and re-sync the client (`python tools/sync_client_data.py`)
+   — the engine caches module data per process.
+
+To add a module instance (a second unit set, a new territory allocation), add a
+row to the Modules sheet with a new id and its rows to the list sheets, then
+point a Scenario at it.
+
+After a tool changes the JSON (the map tools, a setup generator), refresh the
+workbooks so they show what the game reads:
 
 ```
-python3 tools/build_all.py
+python tools/export_sheets.py
 ```
 
-which runs, in order:
+## Regenerating from the map image
 
-1. `tools/compute_adjacency.py` — `data/territory_shapes.json` (so
-   `tools/extract_territory_shapes.py` runs first) → `data/adjacency.json`;
-   two spaces are adjacent when their real outlines touch (within a few
-   pixels, wrapping east-west, a sea zone counting as its visible water
-   only -- `tools/outline_adjacency.py`). This replaced a centre-point
-   Delaunay triangulation that got ~120 pairs wrong and missed ~125. Two
-   land spaces separated by water (England/Benelux) are therefore not
-   adjacent; they connect through the sea between. Fully regenerable —
-   kept in `data/` rather than `derived/` because it's
-   foundational/canonical enough to want reviewed directly, but nothing
-   in the generated file is hand-edited; the few hand corrections live in
-   `data/adjacency_overrides.json` (`remove`: outlines touch but the pair is not
-   adjacent in play; `add`: adjacent in play but the outlines don't touch), and
-   the script warns about any that no longer have an effect.
-2. `tools/compute_foreign_neighbors.py` — needs (1); `data/territories.json`
-   + `data/adjacency.json` → `derived/adjacency_foreign.json`
-3. `tools/compute_faction_profile.py` — needs (2) →
-   `derived/faction_territory_profile.json`
-4. `tools/build_master_xlsx.py` — `data/territories.json` +
-   `data/factions.json` → `exports/GC1972_Territories.xlsx` ('All
-   Territories' tab + 6 faction subtabs + Unassigned)
-5. `tools/build_setup_tab.py` — needs (3) and (4); adds/replaces the
-   'Initial Setup (125 MPC)' tab on the same workbook from
-   `data/scenarios/starting_setup_125ipc.json` + `data/units.json`
-6. `tools/recalc_xlsx.py exports/GC1972_Territories.xlsx`
-   — recalculates all live formulas via LibreOffice so the workbook opens
-   with correct cached values (openpyxl never evaluates formulas itself)
-7. `tools/validate_setup.py` — needs (3); checks the scenario against
-   every rule in `data/rules.json` (exact budget spend, starting-purchase
-   stacking cap, land unit at every foreign border, coastal-only naval
-   purchase, every carrier has an escort, no two factions share a sea
-   zone, >=6 unit types per faction). Exits non-zero on any violation.
-8. `tools/render_map.py` — `data/territories.json` + `data/factions.json`
-   + `assets/base_map.png` → `exports/map.png`
-9. `tools/extract_territory_shapes.py` — `data/territories.json` +
-   `assets/base_map.png` → `data/territory_shapes.json`; vector polygon
-   outlines per land territory and sea zone (game-client data, not used
-   elsewhere in this repo). Shares land-classification logic with (8) via
-   `tools/map_geometry.py`. Fully regenerable — kept in `data/` for the
-   same reason as (1).
+```
+python tools/build_all.py
+```
+
+runs, in order (stopping at the first failure):
+
+1. `tools/extract_territory_shapes.py` — the map image + each location's anchor
+   point → the Map's `boundary` polygons.
+2. `tools/compute_adjacency.py` — boundaries + `adjacency_overrides` → the Map's
+   `adjacency` (prints any override that no longer has an effect).
+3. `tools/compute_foreign_neighbors.py` → `derived/adjacency_foreign.json`.
+4. `tools/compute_faction_profile.py` → `derived/faction_territory_profile.json`.
+5. `tools/validate_modules.py` — fields, unique ids and cross-references of
+   every module.
+6. `tools/validate_setup.py --setup standard` — the standard starting setup
+   against the setup rules.
+7. `tools/export_sheets.py` — the workbooks.
+8. `tools/render_map.py` → `exports/map.png`.
+
+All tools take `--scenario` (default `GC72_Scenario`).
 
 Not part of `build_all.py`: `tools/render_shapes_preview.py` draws
-`exports/territory_shapes_preview.png` from `data/territory_shapes.json` (sea
-zones in stable pastels, land in faction colours, outlines dark) for eyeballing
-the extracted shapes. Like `exports/map.png` it is a gitignored reference image,
-regenerated on request.
+`exports/territory_shapes_preview.png` (sea zones in pastels, land in faction
+colours) for eyeballing the extracted shapes, and `tools/debug_adjacency.py`
+draws the adjacency as lines between anchor points (`--only
+sea-sea|land-land|land-sea`, `--diff` to colour by agreement with the outlines).
 
-`tools/debug_adjacency.py` draws `data/adjacency.json` as single-colour lines
-between centre points (`--only sea-sea|land-land|land-sea` filters the kind of
-pair; `--out` sets the file). `--diff` instead colours pairs by agreement with
-the outlines (green agree, red data-only, magenta outline-only). It also warns
-about outlines that are identical or fully hidden.
+## Starting setups
 
-## Editing territory data via the spreadsheet
-
-`data/territories.json` is canonical, but you don't have to edit it by
-hand — you can edit the `All Territories` tab in
-`exports/GC1972_Territories.xlsx` (reassign a faction, change a Value,
-toggle a Strategic Center, rename a territory) and pull those edits back
-in with:
+A scenario has a standard setup (HUMAN/BOT seats) and a defensive one
+(DEFENSIVE seats), each an InitialSetup + UnitPromotions module.
 
 ```
-python3 tools/sync_territories_from_xlsx.py          # writes data/territories.json
-python3 tools/build_all.py                           # regenerates everything downstream
+python tools/generate_setup.py --setup standard --check   # would regenerating change it?
+python tools/generate_setup.py --setup standard           # regenerate it
+python tools/validate_setup.py                            # both setups against the rules
 ```
 
-Add `--dry-run` to `sync_territories_from_xlsx.py` to preview the diff
-without writing anything. It validates before writing — an unknown
-Territory ID, an invalid Faction code, an out-of-range Value, or a
-missing row all abort with nothing written — and it will not add or
-remove territories (every row must match an existing id 1:1). See the
-script's docstring for what it deliberately does *not* handle: reassigning
-a territory's faction here can make existing entries in
-`data/scenarios/starting_setup_125ipc.json` stale (a purchase recorded
-under the territory's old faction), which `tools/validate_setup.py` does
-not yet catch cleanly. Treat a faction reassignment as the start of a
-scenario edit, not a fire-and-forget spreadsheet tweak.
+`generate_setup.py` works from the setup's own `generation` parameters (budget,
+use_sc, cap_bonus, min_unit_types, promotions, budget_tolerance): a garrison
+unit in every territory with room, then units drawn by each faction's unit
+weights (FactionWeightSet), naval units at up to three coastal territories per
+faction using their sea deployment zones, a carrier always bought with an
+escorting aircraft, the leftover closed with the garrison unit, and the
+highest-weighted unit types promoted. It is seeded, so it's reproducible.
+Setups can also be edited by hand in `sheets/InitialSetup.ods`.
 
-## Adding or changing a scenario
+Known as of the data-model refactor: the stored standard setup predates later
+unit-weight changes (the generator would now produce a different one), and the
+stored defensive setup fails validation on current unit costs (three factions
+spend 101 of 100 MPC; Eastern United States holds 5 of 4). Both are left as
+they were so the game plays exactly as before.
 
-Scenario design (which units go where, promotions, carrier escorts, naval
-zone overrides) is still a manual/assisted process, not automated — it
-depends on faction doctrine, budget-exact trimming, and cross-faction
-sea-zone collision avoidance. `tools/generate_scenario.py` automates this:
-`generate_scenario()` is parameterized (budget, whether Strategic Centers
-apply, minimum unit-type diversity, promotion count, whether baseline
-garrison covers every territory or only foreign-bordering ones) so it can
-produce ruleset variants, not just the canonical scenario.
+## Verifying a refactor changed nothing
 
-Two scenarios exist today:
-- `data/scenarios/starting_setup_125ipc.json` — the canonical scenario:
-  125 MPC, Strategic Centers apply (cost discount + cap bonus), >=7 unit
-  types, 3 promotions per faction: one Infantry in every territory, then units
-  drawn by each faction's Unit Weights (`data/bot_settings.json`), seeded so the
-  file is reproducible. Built by `tools/generate_scenario_weighted.py`.
-- `data/scenarios/starting_setup_100ipc.json` — a smaller, faster-setup
-  alternative: 100 IPC, no Strategic Centers at all (flat value+2 cap, no
-  cost discount), >=5 unit types, 0 promotions. A small (1-2 IPC) leftover
-  is acceptable here rather than forced-exact, since the ruleset has far
-  fewer denominations to hit an exact total with. Built by
-  `tools/generate_scenario_100ipc.py`, a thin wrapper around the same
-  `generate_scenario()` function with these parameters.
+```
+python tools/golden_games.py --check tools/golden_games.json
+```
 
-The 125-MPC scenario can also be tuned by hand in the spreadsheet: edit the rows (territory ID, unit, qty,
-deploys-to, promoted units) of the 'Initial Setup (125 MPC)' tab, then run
-`python3 tools/sync_scenario_from_xlsx.py` (`--check` first to see the differences) to read it back into
-`data/scenarios/starting_setup_125ipc.json`, and `python3 tools/validate_setup.py`. A naval row whose Deploys To
-names a zone the territory does not border (a row moved to another territory) falls back to the territory's own
-zone; a promotion row whose ID and territory name disagree goes by the name. Re-running `build_setup_tab.py`
-refreshes the tab from the JSON.
-
-`tools/build_setup_tab.py`'s `build_setup_tab()` function is similarly
-parameterized (scenario path, sheet name, use_sc, min_types) and renders
-both: `python3 tools/build_setup_tab.py` builds the 'Initial Setup (125 MPC)' tab
-from the 125-MPC scenario and the 'Initial Setup (100 IPC)' tab from the
-100-IPC one, in one workbook. `tools/validate_setup.py` takes the same
-parameters as CLI flags (`--scenario`, `--no-sc`, `--min-types`,
-`--budget-tolerance`) — see its docstring for both scenarios' exact
-invocations.
-
-A further scenario (e.g. a different budget or map state) can be dropped
-in the same way: call `generate_scenario()` with new parameters, add a
-`build_setup_tab()` call for it, and validate with the matching flags.
-
-## Verifying a change didn't regress game balance
-
-After editing any `data/` file and re-running the pipeline:
-
-1. `tools/validate_setup.py` must report `No validation errors.`
-2. Each faction's row in the Initial Setup tab's Faction Summary should
-   show `IPC Unspent = 0` and `Promotions = 3`.
-3. No row in any faction's Stacking Cap Check table should read `OVER CAP`.
+replays five seeded bot games (random and strategy bots, Defensive/Neutral
+seats, alliances) and compares digests of the starting board, the full turn log
+and the final board with the recorded baseline.

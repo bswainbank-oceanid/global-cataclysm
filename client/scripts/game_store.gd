@@ -272,8 +272,8 @@ func stacks(tid: int) -> Dictionary:
 	var out := {}
 	for u in units_at(tid):
 		var by_type: Dictionary = out.get(u["owner"], {})
-		# A land unit at sea is in Transport form: it shows as a Transport.
-		var key: String = "Transport" if in_transport_form(tid, u) else u["unit_type"] + ("%s%d" % [PROMOTED_MARK, int(u.get("promotions", 0))] if int(u.get("promotions", 0)) > 0 else "")
+		# A land unit at sea is in Transport form: it shows as its transport unit.
+		var key: String = GameData.transport_unit(str(u["unit_type"])) if in_transport_form(tid, u) else u["unit_type"] + ("%s%d" % [PROMOTED_MARK, int(u.get("promotions", 0))] if int(u.get("promotions", 0)) > 0 else "")
 		by_type[key] = by_type.get(key, 0) + 1
 		out[u["owner"]] = by_type
 	return out
@@ -500,7 +500,7 @@ func ride_along_ids() -> Array:
 	var opts: Dictionary = human_move["options"]
 	var carrier := false
 	for uid in move_selected:
-		if opts.has(uid) and opts[uid]["unit_type"] == "Aircraft Carrier":
+		if opts.has(uid) and GameData.has_ability(str(opts[uid]["unit_type"]), "carrier_air_wing"):
 			carrier = true
 	if not carrier:
 		return out
@@ -598,7 +598,7 @@ func move_targets() -> Dictionary:
 		var cruisers := []
 		var escorts_b := []
 		for uid in ids:
-			if opts[uid]["unit_type"] == "Cruiser":
+			if GameData.has_ability(str(opts[uid]["unit_type"]), "bombardment"):
 				cruisers.append(uid)
 			else:
 				escorts_b.append(uid)

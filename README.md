@@ -5,46 +5,45 @@ six factions: NAA, UE, UER, GPC, PAF, AAC) played on a 3500×1958px map of
 149 territories.
 
 This repo is structured so it can also serve as the data backbone for a
-future computer-game implementation: every rule and every piece of game
-state is plain, versioned JSON under `data/`, not baked into ad hoc
-scripts. See `docs/GAME_ARCHITECTURE.md` for the plan on engine, tech
-stack, and build order for that implementation.
+computer-game implementation: every rule and every piece of reference data is
+plain, versioned JSON under `data/modules/`, not baked into code. A Scenario
+module ties a map, unit set, factions, territory allocation, rules, starting
+setups and bot settings together, so new ones need no code changes. See
+`docs/DATA_MODEL.md` for the modules and `docs/GAME_ARCHITECTURE.md` for the
+engine.
 
 ## Layout
 
-- `data/` — canonical, hand-maintained (or hand-designed) game data.
-  Territories, adjacency, unit stats, faction reference, rule constants,
-  and the starting-setup scenario. See `docs/SCHEMA.md`.
-- `derived/` — regenerated from `data/`. Never edit by hand.
-- `tools/` — the scripts that build `derived/` and `exports/` from
-  `data/`. See `docs/PIPELINE.md` for run order.
-- `exports/` — build products: the editing/reference workbook
-  (`GC1972_Territories.xlsx`) and the rendered map (`map.png`).
-- `assets/` — static source assets (the base map image).
-- `reference/` — the source rulebook and design-doc PDFs, for provenance.
-- `docs/` — schema and pipeline documentation.
+- `data/modules/` — the game data, one JSON document per module instance.
+  See `docs/DATA_MODEL.md` and `docs/SCHEMA.md`.
+- `sheets/` — the module spreadsheets people edit (one workbook per module
+  type), imported into the JSON by `tools/import_sheets.py`.
+- `derived/` — regenerated from the modules. Never edit by hand.
+- `tools/` — the scripts that regenerate map data, derived files, sheets and
+  exports. See `docs/PIPELINE.md`.
+- `exports/` — build products: the rendered map (`map.png`).
+- `assets/` — static source assets (the base map image, unit icons).
+- `reference/` — the source rulebook and design documents, for provenance.
+- `docs/` — data model, schema and pipeline documentation.
 
 ## Quick start
 
 ```
-python3 tools/build_all.py
+python tools/build_all.py
 ```
 
-regenerates `derived/` and `exports/` from `data/` end to end, including
-validation. See `docs/PIPELINE.md` for what each step does and how to
-verify a change didn't regress game balance.
+regenerates the map data, `derived/`, the sheets and `exports/` end to end,
+including validation. See `docs/PIPELINE.md` for what each step does.
 
 ## Editing game data
 
-- Territory ownership, values, and Strategic Centers: `data/territories.json`
-  directly, or edit `exports/GC1972_Territories.xlsx`'s 'All Territories'
-  tab and run `python3 tools/sync_territories_from_xlsx.py` to pull the
-  edits back into JSON (see `docs/PIPELINE.md`).
-- Unit stats and costs: `data/units.json`.
-- Rule constants (stacking cap formula, promotion effect, combat rules,
-  etc): `data/rules.json`.
-- The starting-setup scenario (what each faction buys, promotes, and
-  where naval units deploy): `data/scenarios/starting_setup_125ipc.json`.
+Edit the workbook in `sheets/` (territory values and owners, Strategic Centers,
+unit stats and abilities, factions, starting setups, bot weights, rules), then
 
-Always re-run `python3 tools/build_all.py` after editing and check that
-`tools/validate_setup.py` reports no errors before trusting the result.
+```
+python tools/import_sheets.py --check --diff
+python tools/import_sheets.py
+```
+
+Restart the server afterwards, and run `python tools/sync_client_data.py` for
+the client. See `docs/PIPELINE.md`.

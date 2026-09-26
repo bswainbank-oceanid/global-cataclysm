@@ -88,7 +88,7 @@ Server -> client (always broadcast to watchers):
         What `faction` WILL do this phase, in turn_log's event shapes
         (purchase / combat_move / noncombat_move / alliance_plan / surrender_plan), plus
         'battle_preview' (the battles about to be fought and who is in
-        them) or 'bombardment_preview' (rules.json's combat.cruiser_bombardment
+        them) or 'bombardment_preview' (the rule set's combat.cruiser_bombardment
         -- the Cruiser and who it's about to fire at) for Combat Resolution,
         or -- for the automatic Capture and Deploy + Income phases -- the
         events a dry run of the phase produces. `skipped`: phases the game
@@ -425,7 +425,7 @@ class PhaseStepper:
     def _commit_one_bombardment(self, faction):
         """Combat Resolution goes bombardment by bombardment FIRST, each its
         own queue step (so a watcher can pause/preview per bombardment,
-        exactly like a battle) -- rules.json's combat.cruiser_bombardment:
+        exactly like a battle) -- the rule set's combat.cruiser_bombardment:
         every one of these fires before self._battles' real battles. Fights
         the queued one; returns True while more remain. Only ever called
         while self._bombardments is non-empty (see _commit); the
@@ -513,7 +513,7 @@ class PhaseStepper:
             events = [engine.staged_combat_move_event(faction)]
         elif phase == Phase.COMBAT_RESOLUTION:
             # Bombardments queue -- and fully drain -- before battles ever get a look in
-            # (rules.json's combat.cruiser_bombardment: the very start of Combat Resolution).
+            # (the rule set's combat.cruiser_bombardment: the very start of Combat Resolution).
             if self._bombardments is None:
                 self._bombardments = engine.declared_bombardments(faction)
                 self._bombardment_index = 0

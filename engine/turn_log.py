@@ -163,7 +163,7 @@ class TurnLog:
         })
 
     def record_bombardment(self, faction, territory_id, cruiser, result):
-        """rules.json's combat.cruiser_bombardment: one Cruiser's single
+        """the rule set's combat.cruiser_bombardment: one Cruiser's single
         bombardment attack roll against a land territory, resolved and
         applied immediately at the very start of Combat Resolution --
         `result` is a combat.BombardmentResult. Its own event kind,
