@@ -16,7 +16,7 @@ ANY invited faction, not just the one instance currently taking its turn --
 the accepting decision belongs to the TARGET's own strategy, not the
 inviter's.
 
-Five strategies (game_start setting, per bot):
+Six strategies (game_start setting, per bot):
 - Invitations (aggressive and counterweight) rotate through the legal targets: a
   bot asks whoever it asked least recently (never-asked first), so a faction that
   declines waits until every other legal target has been asked, and one that has
@@ -36,6 +36,13 @@ Five strategies (game_start setting, per bot):
   largest other alliance" cap to ACCEPTING an invitation too, confirmed
   this session -- not just to its own inviting.
 - independent: never invites, never accepts.
+- adversarial: never allies with a human. It never invites a human player or a
+  faction in an alliance with one, and never invites anyone while its own
+  alliance holds a human (which only a starting alliance can arrange); it never
+  accepts an invitation from a human or from an alliance with one. It accepts
+  every other bot's invitation, whatever its size, and invites other bots by
+  the counterweight rule. Before forcing a faction to surrender it offers an
+  alliance only where it would propose one anyway -- never to a human.
 - variable (added this session): re-rolls to one of the four CONCRETE
   strategies above -- never variable or random themselves -- once at game
   start and again at the start of every one of this bot's own turns (see
@@ -79,10 +86,12 @@ alliance_strategy/alliance_behavior directly -- that's the one place
 so none of the actual decision logic needs to know 'variable' exists at
 all.
 """
+from ..state import FactionMode
+
 # A bot stops inviting a faction once that faction has turned it down this many times.
 MAX_INVITE_DECLINES = 5
 
-STRATEGIES = ('aggressive', 'passive', 'counterweight', 'independent', 'variable')
+STRATEGIES = ('aggressive', 'passive', 'counterweight', 'independent', 'adversarial', 'variable')
 BEHAVIORS = ('loyal', 'opportunistic', 'treacherous', 'variable')
 
 # What a 'variable' bot's own per-turn re-roll picks from (reroll_alliance_
@@ -185,6 +194,22 @@ def _other_alliance_sizes(engine, exclude_tag):
     return [size for tag, size in _alliance_tag_sizes(engine).items() if tag != exclude_tag]
 
 
+def _alliance_has_human(engine, faction):
+    """True if `faction` is a human player or allied with one."""
+    gs = engine.game_state
+    return any(gs.factions[m].mode == FactionMode.HUMAN for m in engine._alliance_members(faction))
+
+
+def may_invite(engine, faction, target):
+    """Whether `faction`'s (effective) alliance strategy lets it propose an alliance to `target` at all --
+    only the adversarial strategy says no: never to a human or a faction allied with one, and never while
+    its own alliance holds a human. (Used for the invitation a bot offers before forcing a surrender, as
+    well as by choose_invite_target.)"""
+    if effective_alliance_strategy(engine.game_state, faction) != 'adversarial':
+        return True
+    return not _alliance_has_human(engine, faction) and not _alliance_has_human(engine, target)
+
+
 def choose_invite_target(engine, faction, rng):
     """Which faction (if any) `faction`'s (effective) alliance_strategy
     wants to invite this Diplomacy phase -- None means do nothing. Purely
@@ -193,19 +218,20 @@ def choose_invite_target(engine, faction, rng):
     checks exist only to avoid the common-case wasted attempt)."""
     gs = engine.game_state
     strategy = effective_alliance_strategy(gs, faction)
-    if strategy not in ('aggressive', 'counterweight'):
+    if strategy not in ('aggressive', 'counterweight', 'adversarial'):
         return None
 
     own_size = len(engine._alliance_members(faction))
     if own_size + 1 > engine._effective_max_alliance_size():
         return None
 
-    if strategy == 'counterweight':
+    if strategy in ('counterweight', 'adversarial'):
         others = _other_alliance_sizes(engine, gs.factions[faction].alliance)
         if not others or own_size >= max(others):
             return None
 
-    return _pick_target(gs.factions[faction], _eligible_invite_targets(engine, faction), rng)
+    candidates = [t for t in _eligible_invite_targets(engine, faction) if may_invite(engine, faction, t)]
+    return _pick_target(gs.factions[faction], candidates, rng)
 
 
 def _pick_target(fstate, candidates, rng):
@@ -227,13 +253,16 @@ def accepts_invite(engine, faction, inviter):
     always do (confirmed this session); Counterweight applies its size
     cap to accepting too, comparing the prospective merged alliance's
     size against the largest alliance other than the one it would be
-    joining."""
+    joining. Adversarial accepts any bot's invitation, never one from a human or from an alliance
+    that holds one."""
     gs = engine.game_state
     strategy = effective_alliance_strategy(gs, faction)
     if strategy not in _CONCRETE_STRATEGIES:
         return False
     if strategy == 'independent':
         return False
+    if strategy == 'adversarial':
+        return not _alliance_has_human(engine, inviter)
     if strategy in ('aggressive', 'passive'):
         return True
 

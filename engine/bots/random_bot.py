@@ -488,7 +488,9 @@ class RandomBot:
         wanted = [t['target'] for t in targets if not t['allied']]
         if not wanted:
             return plan
-        invitable = {t for t in wanted if engine.can_invite_to_alliance(self.faction, t)}
+        # (an adversarial bot never offers a human -- or an alliance with one -- a way out)
+        invitable = {t for t in wanted if engine.can_invite_to_alliance(self.faction, t)
+                     and alliance_policy.may_invite(engine, self.faction, t)}
         askable = sorted(invitable)
         if askable and plan['action'] != 'withdraw':
             target = self.rng.choice(askable)
