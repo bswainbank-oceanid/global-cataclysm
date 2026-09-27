@@ -343,7 +343,7 @@ func _on_launch_message(msg: Dictionary) -> void:
 	var kind := str(msg.get("type", ""))
 	if kind == "lobby":
 		if not Net.auto_watch:
-			_launch.open(bool(msg.get("game_running", false)))
+			_launch.open(bool(msg.get("game_running", false)), msg.get("new_scenario", {}))
 	elif kind == "game_started":
 		_launch.close()
 	elif kind == "error" and _launch.visible:
@@ -365,6 +365,8 @@ func _launch_scripted() -> void:
 		waited += get_process_delta_time()
 	var spec: String = Dbg.args["launch"]
 	if spec == "true" or spec == "":
+		if Dbg.args.has("new_scenario"):
+			_launch.select_scenario("new")
 		return  # just show the screen
 	var seats := []
 	for item in spec.split(","):
@@ -372,8 +374,10 @@ func _launch_scripted() -> void:
 		seats.append({"mode": parts[0], "faction": parts[1] if parts.size() > 1 else "random", "alliance": 0,
 			"strategy": parts[2] if parts.size() > 2 else "random", "behavior": "random",
 			"ai": str(Dbg.args.get("bot_ai", "strategy"))})  # --bot_ai=random|strategy for every bot
+	var new_scenario := Dbg.args.has("new_scenario")  # --new_scenario[=key:value;...]: a generated scenario
 	while seats.size() < GameData.faction_order.size():  # one seat per faction
-		seats.append({"mode": "NONCOMBATANT", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "random"})
+		seats.append({"mode": "NOT_PLAYING" if new_scenario else "NONCOMBATANT", "faction": "random", "alliance": 0,
+			"strategy": "random", "behavior": "random"})
 	if Dbg.args.has("start_allied"):  # the first two seats start in Alliance 1
 		seats[0]["alliance"] = 1
 		seats[1]["alliance"] = 1
@@ -385,6 +389,15 @@ func _launch_scripted() -> void:
 		s["max_alliance_size"] = int(Dbg.args["max_alliance"])
 	if Dbg.args.has("combat_first_turn"):
 		s["dev"] = {"combat_first_turn": true}
+	if new_scenario:
+		var options := {}
+		var spec_text := str(Dbg.args["new_scenario"])
+		if spec_text != "true":
+			for pair in spec_text.split(";"):
+				var kv := pair.split(":")
+				if kv.size() == 2:
+					options[kv[0]] = JSON.parse_string(kv[1])
+		s["scenario"] = {"kind": "new", "options": options}
 	Net.send_msg({"type": "new_game", "settings": s})
 
 

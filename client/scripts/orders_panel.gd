@@ -241,8 +241,8 @@ func _add_site(info: Dictionary) -> void:
 	else:
 		note = "Deploys here at Deploy & Income."
 		if GameStore.human_purchase["contested"].has(_target):
-			note += " Contested: Infantry only."
-		if t.get("strategic_center", false):
+			note += " Contested: %s only." % GameData.names_with("mustering")
+		if GameStore.is_sc(_target):
 			note += " SC prices."
 	var lbl := HudStyle.label("%s Room for %d more." % [note, int(info["remaining"])], 11, HudStyle.TEXT_DIM)
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

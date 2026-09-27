@@ -88,12 +88,17 @@ def write_ods(path, sheets):
                + '</office:automatic-styles><office:body><office:spreadsheet>'
                + ''.join(tables)
                + '</office:spreadsheet></office:body></office:document-content>')
+    # A fixed timestamp on every entry: the same sheets always make the same file, so an export that
+    # changes nothing leaves the workbook byte-identical (and out of the git diff).
+    def entry(name, compress):
+        info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+        info.compress_type = compress
+        return info
     with zipfile.ZipFile(path, 'w') as z:
-        z.writestr(zipfile.ZipInfo('mimetype'), 'application/vnd.oasis.opendocument.spreadsheet',
-                   compress_type=zipfile.ZIP_STORED)
-        z.writestr('META-INF/manifest.xml', _MANIFEST, compress_type=zipfile.ZIP_DEFLATED)
-        z.writestr('styles.xml', _STYLES, compress_type=zipfile.ZIP_DEFLATED)
-        z.writestr('content.xml', content, compress_type=zipfile.ZIP_DEFLATED)
+        z.writestr(entry('mimetype', zipfile.ZIP_STORED), 'application/vnd.oasis.opendocument.spreadsheet')
+        z.writestr(entry('META-INF/manifest.xml', zipfile.ZIP_DEFLATED), _MANIFEST)
+        z.writestr(entry('styles.xml', zipfile.ZIP_DEFLATED), _STYLES)
+        z.writestr(entry('content.xml', zipfile.ZIP_DEFLATED), content)
 
 
 def _text(el):

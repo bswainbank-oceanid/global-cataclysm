@@ -267,7 +267,7 @@ func show_space(tid: int) -> void:
 		by_owner[u["owner"]].append(u)
 	if by_owner.is_empty():
 		_detail.add_child(HudStyle.label("No units", 12, HudStyle.TEXT_DIM))
-	for code in GameData.faction_order:
+	for code in GameData.owner_order():
 		if not by_owner.has(code):
 			continue
 		var units: Array = by_owner[code]

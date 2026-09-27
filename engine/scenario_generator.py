@@ -43,24 +43,37 @@ from collections import deque
 from . import abilities
 from .repository import OverlayRepository
 
-# The options, in the order the launcher shows them: key -> (label, kind, min, max). A max of None is
-# worked out from the base scenario (the map's total land value).
+# The options, in the order the launcher shows them: key -> (label, kind, min, max, help). A max of None
+# is worked out from the base scenario (the map's total land value).
 OPTIONS = {
-    'faction_value_pool': ('Faction territory value (total, split among the players)', 'int', 0, None),
-    'neutral_value': ('Neutral territory value (the rest is Noncombatant)', 'int', 0, None),
-    'faction_weight': ('Territory faction weight (a faction\'s own base-map territory)', 'int', 0, 100),
-    'scs_per_faction': ('Strategic Centers per faction', 'int', 0, 10),
-    'sc_bonus': ('Strategic Center bonus', 'int', 0, 10),
-    'sc_min_distance': ('Strategic Center minimum distance', 'int', 0, 12),
-    'sc_final_min_distance': ('Final Strategic Center minimum distance (from your own)', 'int', 0, 12),
-    'neutral_scs': ('Neutral Strategic Centers', 'int', 0, 20),
-    'initial_mpc': ('Initial faction MPC', 'int', 0, 1000),
-    'infantry_in_every_territory': ('Faction Infantry in every territory', 'bool', None, None),
-    'extra_non_sc_units': ('Additional units outside Strategic Centers', 'int', 0, 100),
-    'neutral_budget': ('Neutral MPC', 'int', 0, 1000),
-    'neutral_infantry_in_every_territory': ('Neutral Infantry in every territory', 'bool', None, None),
-    'min_scs_to_avoid_surrender': ('Strategic Centers needed to avoid surrender', 'int', 0, 10),
-    'surrender_income_multiplier': ('Income multiple that forces surrender', 'num', 1, 10),
+    'faction_value_pool': ('Faction territory value', 'int', 0, None,
+                           'Total territory value dealt to the players, split evenly among them.'),
+    'neutral_value': ('Neutral territory value', 'int', 0, None,
+                      'Most territory value the Neutral pool takes from what the players leave; the rest is Noncombatant. '
+                      'At its maximum it takes everything left.'),
+    'faction_weight': ('Faction weight', 'int', 0, 100,
+                       "Extra draw weight a faction gets for territory that is its own on the base map."),
+    'scs_per_faction': ('SCs per faction', 'int', 0, 10, 'Strategic Centers each player starts with.'),
+    'sc_bonus': ('SC bonus', 'int', 0, 10, "What a Strategic Center adds to its territory's value."),
+    'sc_min_distance': ('SC min distance', 'int', 0, 12,
+                        'Fewest steps between any two Strategic Centers (relaxed if they cannot all fit).'),
+    'sc_final_min_distance': ('Final SC min distance', 'int', 0, 12,
+                              "Fewest steps between one of each player's Strategic Centers and its others."),
+    'neutral_scs': ('Neutral SCs', 'int', 0, 20, 'Strategic Centers in the Neutral pool: real ones once captured.'),
+    'initial_mpc': ('Initial faction MPC', 'int', 0, 1000,
+                    "Each player's starting units budget; what is left over carries into its first turn."),
+    'infantry_in_every_territory': ('Infantry everywhere', 'bool', None, None,
+                                    "Start by putting an Infantry in each of a player's territories."),
+    'extra_non_sc_units': ('Extra non-SC units', 'int', 0, 100,
+                           "Units bought at territories that are not Strategic Centers, after the Infantry; "
+                           'the rest of the budget goes to the Strategic Centers.'),
+    'neutral_budget': ('Neutral MPC', 'int', 0, 1000, "The Neutral pool's starting units budget."),
+    'neutral_infantry_in_every_territory': ('Neutral Infantry everywhere', 'bool', None, None,
+                                            'Start by putting an Infantry in each Neutral territory.'),
+    'min_scs_to_avoid_surrender': ('SCs to avoid surrender', 'int', 0, 10,
+                                   'A faction with fewer Strategic Centers can be forced to surrender (by one holding one of its own).'),
+    'surrender_income_multiplier': ('Surrender income multiple', 'num', 1, 10,
+                                    'A faction can force the surrender of one whose income is less than its own divided by this.'),
 }
 
 SC_ATTEMPTS = 200       # deals of the Strategic Centers tried before relaxing the distances
@@ -73,15 +86,15 @@ def land_value_total(base):
 
 
 def option_specs(base, defaults):
-    """[{key, label, kind, min, max, default}] for the launcher, maxima filled in from the base scenario."""
+    """[{key, label, kind, min, max, default, help}] for the launcher, maxima filled in from the base scenario."""
     total = land_value_total(base)
     out = []
-    for key, (label, kind, lo, hi) in OPTIONS.items():
+    for key, (label, kind, lo, hi, help_text) in OPTIONS.items():
         default = defaults.get(key)
         if key == 'neutral_value' and default is None:
             default = total
         out.append({'key': key, 'label': label, 'kind': kind, 'min': lo, 'max': total if hi is None else hi,
-                    'default': default})
+                    'default': default, 'help': help_text})
     return out
 
 

@@ -219,7 +219,7 @@ func _set_header() -> void:
 	if t["type"] == "land":
 		var value := int(t.get("value", 0))
 		if GameStore.is_sc(tid):
-			lines.append("Strategic Center - %d" % (value + 2))
+			lines.append("Strategic Center - %d" % (value + GameData.sc_bonus))
 		else:
 			lines.append("Territory - value %d" % value)
 		lines.append("%s Land Territory" % (owner if owner != "" else "Unowned"))
