@@ -336,8 +336,11 @@ func _involves_player(battle: Dictionary, bombardment: Dictionary) -> bool:
 	return false
 
 
-## Whether the queued phase waits for the Next button, per Settings.
+## Whether the queued phase waits for the Next button, per Settings -- and always before the
+## game's very first turn, so a new game opens on its starting map whatever the pause settings.
 func _should_pause(msg: Dictionary) -> bool:
+	if str(msg.get("phase", "")) == "START_OF_TURN" and int(GameStore.state.get("global_turn", -1)) == 0:
+		return true
 	var inv: Dictionary = msg.get("invitation", {})
 	if not inv.is_empty() and not bool(inv.get("answered", false)) and GameStore.is_player(str(inv["to"])):
 		return true  # the player has to answer an invitation first
