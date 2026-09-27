@@ -18,6 +18,7 @@ import random
 import re
 
 from . import data as _default_data
+from . import deployment
 from .bots.alliance_policy import (
     reroll_alliance_behavior, reroll_alliance_strategy, resolve_alliance_behavior, resolve_alliance_strategy,
 )
@@ -30,7 +31,7 @@ def _natural_key(unit_id):
     return [int(p) if p.isdigit() else p for p in re.split(r'(\d+)', str(unit_id))]
 
 
-def _place_faction_units(gs, faction, setup, promotions, unit_defs):
+def _place_faction_units(gs, faction, setup, promotions, unit_defs, data_module):
     """Places `faction`'s units from an InitialSetup module onto gs.territories, in unit id
     order (which is what fixes each unit's unit_id), then applies its starting promotions
     (each one also heals in its +1 max HP). An air unit placed in a sea zone starts on its
@@ -39,6 +40,7 @@ def _place_faction_units(gs, faction, setup, promotions, unit_defs):
             for loc in setup['locations'] for u in loc['units'] if u['faction_id'] == faction]
     by_setup_id = {}
     for setup_id, unit_type, location_id in sorted(rows, key=lambda r: _natural_key(r[0])):
+        unit_type = deployment.substitute(data_module, unit_type, location_id)  # e.g. no Armor on islands
         instance = UnitInstance(
             unit_id=gs.new_unit_id(),
             unit_type=unit_type,
@@ -222,7 +224,7 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
         if kind not in setups:
             setups[kind] = data.initial_setup(kind)
         setup, promotions = setups[kind]
-        _place_faction_units(gs, code, setup, promotions, unit_defs)
+        _place_faction_units(gs, code, setup, promotions, unit_defs, data)
         # a generated setup's unspent starting budget carries over into the first turn
         fstate.treasury_mpc += int((setup.get('carryover_mpc') or {}).get(code, 0))
 

@@ -28,6 +28,7 @@ real API at all.
 import json
 import os
 
+from .. import deployment
 from ..engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from ..state import FactionMode
 from . import battle_sim
@@ -227,7 +228,8 @@ class ClaudeBot(RandomBot):
         }
 
         def apply(decision):
-            orders = [PurchaseOrder(o['unit_type'], int(o['qty']), int(o['deploy_at'])) for o in decision.get('orders', [])]
+            orders = [PurchaseOrder(deployment.substitute(self.engine.data, o['unit_type'], int(o['deploy_at'])),
+                                    int(o['qty']), int(o['deploy_at'])) for o in decision.get('orders', [])]
             self.engine.submit_purchases(self.faction, orders)
 
         def fallback():

@@ -45,7 +45,7 @@ The deal:
 import copy
 from collections import deque
 
-from . import abilities
+from . import abilities, deployment
 from .repository import OverlayRepository
 
 # The scenario-wide options, in the order the launcher shows them: key -> (label, kind, min, max, help).
@@ -319,7 +319,7 @@ class _Buyer:
     """One faction's starting purchases, within its budget and the setup rules."""
 
     def __init__(self, base, faction, holdings, scs, navals, options, rng, weights, cap_bonus):
-        self.terrs, self.units = base.territories(), base.units()
+        self.terrs, self.units, self.data = base.territories(), base.units(), base
         self.faction, self.rng, self.weights = faction, rng, weights
         self.holdings, self.scs, self.navals = holdings, set(scs), navals  # navals: {land id: its sea zone}
         self.sc_bonus, self.cap_bonus = options['sc_bonus'], cap_bonus
@@ -363,6 +363,8 @@ class _Buyer:
         return min((self.cost(u, tid) for u in self.air_types()), default=10 ** 9)
 
     def buy(self, unit, tid):
+        if self.units[unit]['category'] == 'Land':
+            unit = deployment.substitute(self.data, unit, tid)  # e.g. Mechanized Infantry, not Armor, on an island
         self.add(unit, tid)
         if abilities.has(self.units, unit, abilities.CARRIER_AIR_WING):
             affordable = [u for u in self.air_types() if self.cost(u, tid) <= self.budget]

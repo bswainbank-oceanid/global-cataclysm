@@ -246,6 +246,12 @@
   "hostile_sea_deploy_creates_contested": "deploying units into a sea zone currently occupied by a non-ally makes that zone CONTESTED immediately, as a direct result of the deployment -- not silent co-occupation. The faction already there gets combat.first_round_bonuses' 'sea deploy into enemy-occupied zone' bonus in the first round of whatever battle eventually resolves the contest.",
   "status": "fully implemented, including the Deploy + Income consequences. GameEngine.submit_purchases/confirm_purchases (Purchase) cover location targeting, the start-of-turn ownership snapshot, SC-discounted cost, the SC-first-then-most-remaining-capacity multi-territory allocation with automatic spillover within a single order (UnitInstance.purchased_at records exactly which land territory funded each individual unit, since spillover can split one order across several), land/sea unit-category restrictions, and the contested-land Infantry-only restriction. GameEngine.deploy_and_collect_income (Deploy + Income) then covers carrierless_air_deploy_fallback, contested_purchase_lost_during_turn_fallback, and hostile_sea_deploy_creates_contested, using purchased_at to know where a redirected unit's land fallback is. Rollback matches phase_confirmation: submit_purchases takes the complete desired list each call (resubmitting is how a caller undoes a prior choice) and nothing touches treasury_mpc/pending_deployment until confirm_purchases, which is then irreversible for that faction's turn; Deploy + Income has no staging of its own since it's automatic by nature."
  },
+ "deployment": {
+  "island_size": 2,
+  "island_substitutions": {"Armor": "Mechanized Infantry"},
+  "rule": "Armor is never built or deployed on an island, however many: every Armor that would be deployed on an island is Mechanized Infantry instead. An island is a landmass of at most island_size (2) land territories, joined to each other by land adjacency and surrounded by sea (on GC72: Ireland, Hawaii, Cuba, the Philippines, Indonesia, New Guinea, Madagascar, New Zealand, Polynesia, Scotland/England, Northern/Southern Japan, Western/Eastern Australia).",
+  "scope": "every initial deployment (a scenario's starting setups, the setup generators and the New Scenario generator, which price the substitute) and every bot purchase; a human player's own purchases are not changed. engine/deployment.py."
+ },
  "promotion": {
   "xp_for_surviving_a_round": 1,
   "xp_for_dealing_damage": 1,

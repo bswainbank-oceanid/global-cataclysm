@@ -87,7 +87,7 @@ strategy/behavior's fixed rule.
 import copy
 import random
 
-from .. import abilities
+from .. import abilities, deployment
 from ..engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from ..movement import (
     _is_ally_or_self, graph_distances, legal_air_move_destinations,
@@ -169,7 +169,7 @@ class RandomBot:
             if not candidate_types:
                 failures += 1
                 continue
-            unit_type = self.rng.choice(candidate_types)
+            unit_type = deployment.substitute(self.engine.data, self.rng.choice(candidate_types), target)
             candidate = self._with_extra_unit(orders, unit_type, target)
             try:
                 total_cost = self.engine.submit_purchases(self.faction, candidate)

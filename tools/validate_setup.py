@@ -26,7 +26,7 @@ import argparse
 import sys
 
 import tool_data
-from engine import abilities
+from engine import abilities, deployment
 
 
 def check_setup(setup, used_zones):
@@ -63,6 +63,9 @@ def check_setup(setup, used_zones):
             if terrs[where]['type'] == 'land':
                 if info['category'] == 'Land':
                     land_at.setdefault(fac, set()).add(where)
+                    if deployment.substitute(tool_data.config(), unit_type, where) != unit_type:
+                        errors.append(f'{fac}: {unit_type} {u["id"]} on the island {name(where)} (the deployment rules '
+                                      f'make it {deployment.substitute(tool_data.config(), unit_type, where)} at game start)')
                 continue
             # a unit starting at sea: a ship, or an aircraft on its carrier
             if where not in adj[bought]:

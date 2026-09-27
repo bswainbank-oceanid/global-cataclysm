@@ -78,6 +78,11 @@ def sc_bonus():
     return config().sc_bonus()
 
 
+def islands():
+    """Land territory ids that are islands (see engine/deployment.py)."""
+    return config().islands()
+
+
 def naval_deploy_excluded():
     """Sea zones that never host a naval deployment (landlocked)."""
     return config().naval_deploy_excluded()
