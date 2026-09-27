@@ -34,7 +34,7 @@ import random
 import sys
 
 import tool_data
-from engine import abilities
+from engine import abilities, deployment
 from engine.repository import default_repository, dumps
 
 NAVAL_SPREAD_TARGET = 3
@@ -97,6 +97,8 @@ class Attempt:
         return self.rows[tid]['cap'] - self.used.get(tid, 0)
 
     def add(self, unit, tid, qty=1):
+        if self.units[unit]['category'] == 'Land':
+            unit = deployment.substitute(tool_data.config(), unit, tid)  # never Armor on an island
         self.purchases.setdefault(tid, {})
         self.purchases[tid][unit] = self.purchases[tid].get(unit, 0) + qty
         self.used[tid] = self.used.get(tid, 0) + qty

@@ -21,7 +21,7 @@ a 'noncombat' plan is made again after combat resolves, from the board as combat
 import heapq
 import time
 
-from .. import abilities
+from .. import abilities, deployment
 from ..engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from ..movement import (
     _is_ally_or_self, graph_distances, legal_air_move_destinations, legal_combat_move_paths,
@@ -381,6 +381,7 @@ class Planner:
         if prefer in candidates:
             order = [prefer] + [t for t in order if t != prefer]
         for unit_type in order:
+            unit_type = deployment.substitute(self.data, unit_type, tid)  # e.g. no Armor on islands
             key = (unit_type, tid)
             trial = dict(self.purchases)
             trial[key] = trial.get(key, 0) + 1

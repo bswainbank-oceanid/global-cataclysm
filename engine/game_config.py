@@ -113,6 +113,12 @@ class GameConfig:
         """{location_id: [polygon, ...]}, each polygon a list of [x, y]."""
         return self._view('boundaries', lambda: {loc['id']: loc['boundary'] for loc in self.map['locations']})
 
+    def islands(self):
+        """Land territory ids that are islands under the rule set's deployment rules (engine/deployment.py)."""
+        from .deployment import compute_islands
+        max_land = (self.rules().get('deployment') or {}).get('island_size', 2)
+        return self._view('islands', lambda: compute_islands(self.territories(), self.adjacency(), max_land))
+
     def naval_deploy_excluded(self):
         """Sea zones that never host a naval deployment."""
         return self._view('naval_excluded', lambda: [loc['id'] for loc in self.map['locations']
