@@ -391,12 +391,24 @@ class _Checker:
         unknown = [k for k in defaults if k not in OPTIONS]
         if unknown:
             self.err(where, f'unknown defaults {unknown}')
+        from .scenario_generator import NEUTRAL_SEAT_SETTINGS, SEAT_SETTINGS, check_seat, land_value_total
         try:
             base = GameConfig(base_id, self.repo)
             for p in check_options(base, resolve_options(base, defaults, {})):
                 self.err(where, f'default {p}')
+            total = land_value_total(base)
         except (KeyError, ValueError) as e:
             self.err(where, f'base scenario {base_id!r} could not be read ({e})')
+            return
+        for key, keys in (('seat_defaults', list(SEAT_SETTINGS)), ('neutral_defaults', list(NEUTRAL_SEAT_SETTINGS))):
+            d = self.field(where, g, key, (dict,))
+            if d is None:
+                continue
+            if sorted(d) != sorted(keys):
+                self.err(where, f'{key} must have exactly {keys}')
+                continue
+            for p in check_seat(d, keys, total, key):
+                self.err(where, p)
 
     def _check_scenario(self, where, s):
         refs = {

@@ -47,7 +47,7 @@ Source: `reference/GC Data Model.rtf`, plus the decisions recorded below.
 | FactionWeightSet | `faction_weight_set` | `GC72_FactionWeights` | faction set, unit set and threshold set ids; per-faction unit weights and strategy weights; `neutral_unit_weights` (a generated scenario's Neutral units) |
 | RuleSet | `rule_set` | `GC72_Rules` | the rules (what `data/rules.json` held): combat, movement, purchase, production, promotion, victory, game-start defaults |
 | Scenario | `scenario` | `GC72_Scenario` | the ids of everything above that make one game, including a standard and a neutral setup |
-| ScenarioGenerator | `scenario_generator` | `GC72_Generator` | the launcher's New Scenario: the base scenario and the generator's defaults |
+| ScenarioGenerator | `scenario_generator` | `GC72_Generator` | the launcher's New Scenario: the base scenario, the scenario-wide defaults, and each player seat's and the Neutral row's default settings |
 
 ### Scenario
 
@@ -132,14 +132,24 @@ unchanged.
 ### New Scenario (ScenarioGenerator)
 
 The launcher can start the fixed scenario or a **new** one, dealt afresh at game
-start by `engine/scenario_generator.py` from the game's seed and the options on
-the launch screen (their defaults are `GC72_Generator.defaults`; the launcher
-remembers the last ones used). See `reference/GC72 New Scenario.odt` and the
-module docstring for the deal: territory by round-robin weighted draws up to each
-player's share of the value pool, a Neutral pool up to the Neutral value (the rest
-Noncombatant), Strategic Centers at minimum distances (relaxed and reported when
-they can't all fit), starting units by the unit weights within the setup rules,
-the unspent budget carried into the first turn.
+start by `engine/scenario_generator.py` from the game's seed and the settings on
+the launch screen; the launcher remembers the last ones used. See
+`reference/GC72 New Scenario.odt` and the module docstring for the deal.
+
+Settings come at two levels:
+
+- **Scenario-wide** (`GC72_Generator.defaults`): faction weight, SC bonus, the two
+  SC minimum distances, extra non-SC units, Infantry in every territory (players,
+  and Neutral), and the two surrender thresholds.
+- **Per seat** (`seat_defaults`, and `neutral_defaults` for the Neutral row):
+  territory value, initial MPC, units MPC, promotions and Strategic Centers (the
+  Neutral row has no initial MPC). A player starts with its initial MPC, buys its
+  starting units with its units MPC out of it, and keeps the rest; initial MPC is
+  at least units MPC. The seats' territory values together may be at most the
+  map's total land value (150 on GC72) -- more is scaled down before the deal --
+  and the rest of the map is Noncombatant. A player's territory value left at its
+  default is the total split evenly among the players; the Neutral one, what they
+  leave.
 
 A new scenario's seats are Human, Bot or Not playing: a Not playing seat's faction
 is left out of the game altogether. The deal is a set of throwaway modules

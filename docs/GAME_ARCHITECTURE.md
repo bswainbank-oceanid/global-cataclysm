@@ -787,6 +787,10 @@ synced JSON read-only; nobody hand-edits game data inside the Godot editor.
   Neutral-pool land belongs to the built-in Neutral faction (NEU), leftover land
   to the built-in Noncombatant faction (NCB). Surrender thresholds are rule-set
   settings. Scripted: `python tools/client_shot.py OUT.png --server --launch
-  "HUMAN:NAA,BOT:GPC,BOT:PAF" --new_scenario "faction_value_pool:90;neutral_value:40"`.
+  "HUMAN:NAA,BOT:GPC,BOT:PAF" --new_scenario "sc_bonus:3"` (scenario-wide options; the seats
+  take their default settings). Each player seat (and a Neutral row for the Neutral pool) sets
+  its own territory value, initial MPC, units MPC, promotions and Strategic Centers; the seat
+  table keeps Seat, Type and Faction fixed and scrolls the rest sideways. Bots always play the
+  strategy AI.
   Tests: `engine/tests/test_scenario_generator.py`; the golden games include a
   seeded new scenario.
