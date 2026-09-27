@@ -5,14 +5,16 @@ the game they describe.
 Settings (the "new_game" message's "settings"):
 
     {"scenario": {"kind": "fixed" | "new",               # default fixed: the GC72 scenario as it stands
-                  "options": {...}},                     # new: the generator's options (see generator_info); omitted ones take its defaults
+                  "options": {...},                      # new: the generator's scenario-wide options (see generator_info); omitted ones take its defaults
+                  "neutral": {"territory_value", "units_mpc", "promotions", "scs"}},   # new: the Neutral row (omitted: defaults)
      "seats": [ {"mode": "HUMAN" | "BOT" | "NEUTRAL" | "NONCOMBATANT",   # a fixed scenario
                         | "HUMAN" | "BOT" | "NOT_PLAYING",               # a new one
                  "faction": "random" | "NAA" | "UE" | "UER" | "GPC" | "PAF" | "AAC",
                  "alliance": 0 | 1 | 2 | 3,             # 0 = none; players only
                  "strategy": "random" | aggressive | passive | counterweight | independent | variable,   # bots only
                  "ai": "strategy" | "random" | "claude",                                                  # bots only: the heuristic bot (default), the random baseline, or Claude itself
-                 "behavior": "random" | loyal | opportunistic | treacherous | variable},                  # bots only
+                 "behavior": "random" | loyal | opportunistic | treacherous | variable,                   # bots only
+                 "territory_value", "initial_mpc", "units_mpc", "promotions", "scs"},                      # a new scenario's players (omitted: defaults)
                 ... one per faction (six) ...],
      "randomize_order": true,                            # default true
      "can_withdraw": true,                               # players may leave an alliance (default true)
@@ -78,8 +80,15 @@ def base_config():
 
 
 def generator_info():
-    """What the launch screen needs to show New Scenario: [{key, label, kind, min, max, default}]."""
-    return {'options': scenario_generator.option_specs(base_config(), generator()['defaults'])}
+    """What the launch screen needs to show New Scenario: the scenario-wide options [{key, label, kind, min,
+    max, default, help}] and the seat settings {total, players: [...], neutral: [...]}."""
+    g, base = generator(), base_config()
+    return {'options': scenario_generator.option_specs(base, g['defaults']),
+            'seats': scenario_generator.seat_specs(base, g['seat_defaults'], g['neutral_defaults'])}
+
+
+def _seat_settings(seat):
+    return {k: seat[k] for k in scenario_generator.SEAT_SETTINGS if k in seat}
 
 
 def _scenario(settings):
@@ -123,6 +132,18 @@ def check_settings(settings):
             problems += scenario_generator.check_options(
                 base, scenario_generator.resolve_options(base, generator()['defaults'],
                                                          {k: v for k, v in options.items() if k not in unknown}))
+            total = scenario_generator.land_value_total(base)
+            g = generator()
+            for i, seat in enumerate(seats, 1):
+                if seat.get('mode') in PLAYER_MODES:
+                    values = dict(g['seat_defaults'], **_seat_settings(seat))
+                    problems += scenario_generator.check_seat(values, list(scenario_generator.SEAT_SETTINGS), total,
+                                                              f'seat {i}')
+            neutral = (settings.get('scenario') or {}).get('neutral') or {}
+            values = dict(g['neutral_defaults'], **{k: neutral[k] for k in scenario_generator.NEUTRAL_SEAT_SETTINGS
+                                                    if k in neutral})
+            problems += scenario_generator.check_seat(values, list(scenario_generator.NEUTRAL_SEAT_SETTINGS), total,
+                                                      'Neutral')
 
     picked = {}
     for i, seat in enumerate(seats, 1):
@@ -223,11 +244,17 @@ def build_session(settings, rng=None):
     kind, options = _scenario(settings)
     config = data_module
     if kind == 'new':
+        g, base = generator(), base_config()
         players = [a['faction'] for a in assignments if a['mode'] in PLAYER_MODES]
-        base = base_config()
-        resolved = scenario_generator.resolve_options(base, generator()['defaults'], options)
+        per_faction = {a['faction']: _seat_settings(seat) for seat, a in zip(settings['seats'], assignments)
+                       if a['mode'] in PLAYER_MODES}
+        seats_resolved, notes = scenario_generator.resolve_seats(
+            base, g['seat_defaults'], g['neutral_defaults'], players, per_faction,
+            (settings.get('scenario') or {}).get('neutral'))
+        resolved = scenario_generator.resolve_options(base, g['defaults'], options)
         # its own draw from the game's seed, taken only for a new scenario: fixed games deal as before
-        repo, scenario_id, _ = scenario_generator.generate(base, players, resolved, random.Random(rng.random()))
+        repo, scenario_id, _ = scenario_generator.generate(base, seats_resolved, resolved, random.Random(rng.random()),
+                                                           notes=notes)
         config = GameConfig(scenario_id, repo)
     modes = {a['faction']: FactionMode[a['mode']] for a in assignments if a['mode'] != 'NOT_PLAYING'}
     gs = build_game_state(

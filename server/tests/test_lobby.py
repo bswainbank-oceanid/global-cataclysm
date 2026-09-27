@@ -127,7 +127,8 @@ class TestGameHost(unittest.TestCase):
         host = GameHost()
         lobby = host.lobby_message()
         self.assertEqual({k: lobby[k] for k in ('type', 'game_running', 'seats')}, {'type': 'lobby', 'game_running': False, 'seats': []})
-        self.assertEqual(lobby['new_scenario']['options'][0]['key'], 'faction_value_pool')  # what New Scenario offers
+        self.assertEqual(lobby['new_scenario']['options'][0]['key'], 'faction_weight')  # what New Scenario offers
+        self.assertEqual(lobby['new_scenario']['seats']['total'], 150)
         direct, broadcast, joins = host.handle({'type': 'next'})
         self.assertEqual((direct[0]['type'], broadcast, joins), ('error', [], False))
 

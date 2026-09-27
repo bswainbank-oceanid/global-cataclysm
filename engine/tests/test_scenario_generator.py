@@ -19,14 +19,18 @@ def base():
     return GameConfig()
 
 
-def defaults():
-    return default_repository().get('ScenarioGenerator', 'GC72_Generator')['defaults']
+def generator():
+    return default_repository().get('ScenarioGenerator', 'GC72_Generator')
 
 
-def deal(players, seed=1, **overrides):
-    b = base()
-    options = gen.resolve_options(b, defaults(), overrides)
-    repo, sid, report = gen.generate(b, players, options, random.Random(seed))
+def deal(players, seed=1, seat=None, neutral=None, per_faction=None, **overrides):
+    """A deal for `players`: `seat` settings for every player, `per_faction` {faction: settings} on top,
+    `neutral` the Neutral row, `overrides` the scenario-wide options."""
+    b, g = base(), generator()
+    per = {f: dict(seat or {}, **((per_faction or {}).get(f) or {})) for f in players}
+    seats, notes = gen.resolve_seats(b, g['seat_defaults'], g['neutral_defaults'], players, per, neutral)
+    options = gen.resolve_options(b, g['defaults'], overrides)
+    repo, sid, report = gen.generate(b, seats, options, random.Random(seed), notes=notes)
     return b, options, GameConfig(sid, repo), repo, report
 
 
@@ -35,20 +39,38 @@ def value_held(b, owner, faction):
 
 
 class TestTerritory(unittest.TestCase):
-    def test_each_player_gets_its_share_of_the_pool(self):
+    def test_each_player_gets_its_territory_value(self):
         for players in (PLAYERS_6, PLAYERS_3):
-            b, options, _, _, report = deal(players, faction_value_pool=90)
+            b, options, _, _, report = deal(players, seat={'territory_value': 90 // len(players)})
             limit = 90 // len(players)
             for f in players:
                 self.assertLessEqual(value_held(b, report['owner'], f), limit)
                 self.assertGreaterEqual(value_held(b, report['owner'], f), limit - 1)
+        # each seat its own
+        b, _, _, _, report = deal(PLAYERS_3, per_faction={'NAA': {'territory_value': 40}, 'GPC': {'territory_value': 10}})
+        self.assertEqual(value_held(b, report['owner'], 'NAA'), 40)
+        self.assertEqual(value_held(b, report['owner'], 'GPC'), 10)
+
+    def test_the_default_split_and_the_scale_down(self):
+        b, g = base(), generator()
+        seats, notes = gen.resolve_seats(b, g['seat_defaults'], g['neutral_defaults'], PLAYERS_3, {}, None)
+        self.assertEqual([v['territory_value'] for v in seats['players'].values()], [50, 50, 50])
+        self.assertEqual(seats['neutral']['territory_value'], 0)
+        self.assertEqual(notes, [])
+        seats, notes = gen.resolve_seats(b, g['seat_defaults'], g['neutral_defaults'], ['NAA', 'GPC'],
+                                         {'NAA': {'territory_value': 150}, 'GPC': {'territory_value': 100}},
+                                         {'territory_value': 50})
+        self.assertLessEqual(sum(v['territory_value'] for v in seats['players'].values())
+                             + seats['neutral']['territory_value'], 150)
+        self.assertEqual(seats['players']['NAA']['territory_value'], 75)
+        self.assertTrue(notes)
 
     def test_the_neutral_pool_and_noncombatant_land(self):
-        b, _, _, _, report = deal(PLAYERS_3, faction_value_pool=90, neutral_value=30)
+        b, _, _, _, report = deal(PLAYERS_3, seat={'territory_value': 30}, neutral={'territory_value': 30})
         self.assertLessEqual(value_held(b, report['owner'], 'NEU'), 30)
         self.assertGreater(sum(1 for o in report['owner'].values() if o == 'NCB'), 0)
-        # at its maximum (the default) the Neutral pool takes everything the players leave
-        _, _, _, _, report = deal(PLAYERS_3, faction_value_pool=90)
+        # by default the Neutral pool takes everything the players leave
+        _, _, _, _, report = deal(PLAYERS_3, seat={'territory_value': 30})
         self.assertNotIn('NCB', report['owner'].values())
         self.assertEqual(len(report['owner']), sum(1 for t in b.territories().values() if t['type'] == 'land'))
 
@@ -63,11 +85,13 @@ class TestTerritory(unittest.TestCase):
 
 class TestStrategicCenters(unittest.TestCase):
     def test_counts_and_distances(self):
-        b, options, cfg, _, report = deal(PLAYERS_3, seed=2, faction_value_pool=90, neutral_value=40, neutral_scs=2)
+        b, options, cfg, _, report = deal(PLAYERS_3, seed=2, seat={'territory_value': 30},
+                                          per_faction={'PAF': {'scs': 1}},
+                                          neutral={'territory_value': 40, 'scs': 2})
         scs, owner = report['strategic_centers'], report['owner']
         dist = gen._distances(b.adjacency())
         for f in PLAYERS_3:
-            self.assertEqual(sum(1 for t in scs if owner[t] == f), 3)
+            self.assertEqual(sum(1 for t in scs if owner[t] == f), 1 if f == 'PAF' else 3)
         self.assertEqual(sum(1 for t in scs if owner[t] == 'NEU'), 2)
         if not report['notes']:  # nothing relaxed: every pair at least the minimum apart
             for a in scs:
@@ -85,8 +109,9 @@ class TestStrategicCenters(unittest.TestCase):
 
 class TestUnits(unittest.TestCase):
     def test_budget_carryover_and_the_setup_rules(self):
-        b, options, cfg, _, report = deal(PLAYERS_6, seed=4)
+        b, options, cfg, _, report = deal(PLAYERS_6, seed=4, per_faction={'NAA': {'initial_mpc': 160, 'promotions': 9}})
         setup, promotions = cfg.initial_setup('standard')
+        seats = cfg.scenario['generated']['seats']['players']
         units, terrs = b.units(), b.territories()
         scs = set(report['strategic_centers'])
         for f in PLAYERS_6:
@@ -98,24 +123,28 @@ class TestUnits(unittest.TestCase):
                     bought = u.get('purchased_at', loc['location_id'])
                     spent += units[u['unit_type_id']]['sc_cost' if bought in scs else 'cost']
                     per_territory[bought] = per_territory.get(bought, 0) + 1
-            self.assertEqual(spent + setup['carryover_mpc'][f], options['initial_mpc'])
+            self.assertLessEqual(spent, seats[f]['units_mpc'])
+            self.assertEqual(spent + setup['carryover_mpc'][f], seats[f]['initial_mpc'])
             for t, n in per_territory.items():
                 self.assertLessEqual(n, terrs[t]['value'] + 3 + (options['sc_bonus'] if t in scs else 0))
             held = [t for t, o in report['owner'].items() if o == f]
             self.assertTrue(all(t in per_territory for t in held))  # an Infantry in every territory
-        self.assertEqual(len(promotions['units']), 3 * 6)
+        self.assertEqual(len(promotions['units']), 3 * 5 + 9)  # more promotions than types: second units of the top ones
 
-    def test_neutral_units_are_land_and_air_and_never_promoted(self):
-        b, _, cfg, _, _ = deal(PLAYERS_3, faction_value_pool=90, neutral_value=40)
+    def test_neutral_units_are_land_and_air_and_promoted_as_asked(self):
+        b, _, cfg, _, _ = deal(PLAYERS_3, seat={'territory_value': 30}, neutral={'territory_value': 40})
         setup, promotions = cfg.initial_setup('neutral')
         types = {u['unit_type_id'] for loc in setup['locations'] for u in loc['units']}
         self.assertTrue(types)
         self.assertTrue(all(b.units()[t]['category'] in ('Land', 'Air') for t in types))
-        self.assertEqual(promotions['units'], [])
+        self.assertEqual(promotions['units'], [])  # the default: none
+        _, _, cfg, _, _ = deal(PLAYERS_3, seat={'territory_value': 30}, neutral={'territory_value': 40, 'promotions': 2})
+        self.assertEqual(len(cfg.initial_setup('neutral')[1]['units']), 2)
 
     def test_the_generated_modules_validate(self):
         for players in (PLAYERS_6, PLAYERS_3):
-            _, _, _, repo, _ = deal(players, faction_value_pool=90, neutral_value=30, neutral_scs=2)
+            _, _, _, repo, _ = deal(players, seat={'territory_value': 90 // len(players)},
+                                    neutral={'territory_value': 30, 'scs': 2})
             self.assertEqual([p for p in validate_repository(repo) if 'GEN_' in p], [])
 
 
@@ -123,10 +152,10 @@ class TestTheSameSeedDealsTheSameGame(unittest.TestCase):
     def test_same_seed_same_deal(self):
         docs = []
         for _ in range(2):
-            _, _, cfg, repo, _ = deal(PLAYERS_3, seed=7, faction_value_pool=90, neutral_value=30)
+            _, _, cfg, repo, _ = deal(PLAYERS_3, seed=7, seat={'territory_value': 30}, neutral={'territory_value': 30})
             docs.append(json.dumps([repo.get(t, i) for t, i in repo._docs], sort_keys=True))
         self.assertEqual(docs[0], docs[1])
-        _, _, _, repo, _ = deal(PLAYERS_3, seed=8, faction_value_pool=90, neutral_value=30)
+        _, _, _, repo, _ = deal(PLAYERS_3, seed=8, seat={'territory_value': 30}, neutral={'territory_value': 30})
         self.assertNotEqual(docs[0], json.dumps([repo.get(t, i) for t, i in repo._docs], sort_keys=True))
 
 
@@ -138,12 +167,12 @@ NOT_PLAYING = {'mode': 'NOT_PLAYING', 'faction': 'random'}
 
 
 class TestLobby(unittest.TestCase):
-    def settings(self, seats, **options):
-        return {'scenario': {'kind': 'new', 'options': options}, 'seats': seats, 'seed': 21}
+    def settings(self, seats, neutral=None, **options):
+        return {'scenario': {'kind': 'new', 'options': options, 'neutral': neutral or {}}, 'seats': seats, 'seed': 21}
 
     def test_a_new_scenario_game_leaves_out_the_factions_not_playing(self):
         session, seats = build_session(self.settings([bot('NAA'), bot('UE'), bot(), NOT_PLAYING, NOT_PLAYING, NOT_PLAYING],
-                                                     faction_value_pool=90, neutral_value=30))
+                                                     neutral={'territory_value': 30}))
         gs = session.engine.game_state
         playing = [s['faction'] for s in seats if s['mode'] == 'BOT']
         self.assertEqual(set(gs.factions), set(playing) | {'NEU', 'NCB'})
@@ -163,6 +192,9 @@ class TestLobby(unittest.TestCase):
         self.assertTrue(check_settings(self.settings([bot(), bot(), np, np, np, np], sc_bonus=99)))
         self.assertTrue(check_settings(self.settings([bot(), bot(), np, np, np, np], teleporters=True)))
         self.assertEqual(check_settings(self.settings([bot(), bot(), np, np, np, np])), [])
+        # a seat's own settings are checked too
+        self.assertTrue(check_settings(self.settings([dict(bot(), initial_mpc=50, units_mpc=80), bot(), np, np, np, np])))
+        self.assertTrue(check_settings(self.settings([bot(), bot(), np, np, np, np], neutral={'scs': -1})))
         # a fixed game has no NOT_PLAYING seats
         fixed = {'seats': [bot(), bot(), np, np, np, np]}
         self.assertTrue(check_settings(fixed))

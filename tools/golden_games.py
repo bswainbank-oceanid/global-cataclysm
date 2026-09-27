@@ -41,10 +41,10 @@ CASES = {
     'fixed_order_2bot': ({'seats': [_bot('random', 'NAA'), _bot('strategy', 'GPC'), _seat('NONCOMBATANT'), _seat('NONCOMBATANT'),
                                     _seat('NEUTRAL'), _seat('NEUTRAL')],
                           'seed': 15, 'randomize_order': False}, 30),
-    'new_scenario_3bot': ({'scenario': {'kind': 'new', 'options': {'faction_value_pool': 90, 'neutral_value': 30,
-                                                                   'neutral_scs': 2}},
-                           'seats': [_bot('strategy'), _bot('random'), _bot('strategy'), _seat('NOT_PLAYING'),
-                                     _seat('NOT_PLAYING'), _seat('NOT_PLAYING')], 'seed': 16}, 20),
+    'new_scenario_3bot': ({'scenario': {'kind': 'new', 'neutral': {'territory_value': 30, 'scs': 2, 'promotions': 1}},
+                           'seats': [dict(_bot('strategy'), territory_value=30), dict(_bot('random'), territory_value=30),
+                                     dict(_bot('strategy'), territory_value=30, initial_mpc=150, scs=2),
+                                     _seat('NOT_PLAYING'), _seat('NOT_PLAYING'), _seat('NOT_PLAYING')], 'seed': 16}, 20),
 }
 
 
