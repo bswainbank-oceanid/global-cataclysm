@@ -28,5 +28,11 @@
     "log": "4ae10cade7a46671fc2375bcaea6a3bc134a813a",
     "final": "cfee2a7cefec5fcb385eabb627ed45c67e324857",
     "events": 2870
+  },
+  "new_scenario_3bot": {
+    "setup": "642813478c7ba7e3c4203e8af3813aa42f9a311f",
+    "log": "fb28f5ea124afda5f3d8e2f275c07e163a408bd8",
+    "final": "ec43ef09a95ad38855467186b3292d1fc8b720db",
+    "events": 2156
   }
 }

@@ -151,7 +151,7 @@ from engine.bots.alliance_policy import accepts_invite
 from engine.engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from engine.state import FactionMode, Phase
 from engine.turn_log import TurnLog
-from .report import build_game_report
+from .report import build_game_report, scenario_block
 
 _PHASES = list(Phase)
 
@@ -650,7 +650,7 @@ class PhaseStepper:
         return None
 
     def _state_message(self):
-        return {'type': 'state', 'game_state': self.engine.game_state.to_dict()}
+        return {'type': 'state', 'game_state': self.engine.game_state.to_dict(), 'scenario': scenario_block(self.engine)}
 
     def _game_over_message(self):
         return {'type': 'game_over', 'report': build_game_report(self.engine, self.turn_log, self.bots)}

@@ -134,7 +134,9 @@ LAYOUTS = {
               matrix=('unit_type_id', 'weight')),
         Table('Strategy Weights', 'strategy_weights', [], parent=('factions', 'faction_id', 'faction_id', 'strategy_weights'),
               matrix=('strategy_id', 'weight')),
+        Table('Neutral Unit Weights', 'neutral_unit_weights', [Col('unit_type_id'), Col('weight', kind='num')]),
     ],
+    'ScenarioGenerator': [],  # the defaults are single values: the Modules sheet (defaults.<option>)
 }
 
 # Module types whose whole content (bar id/name) is one "path -> value" sheet: the rules are

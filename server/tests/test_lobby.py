@@ -125,7 +125,9 @@ class TestResolveAndBuild(unittest.TestCase):
 class TestGameHost(unittest.TestCase):
     def test_an_idle_host_offers_the_launch_screen_and_refuses_game_messages(self):
         host = GameHost()
-        self.assertEqual(host.lobby_message(), {'type': 'lobby', 'game_running': False, 'seats': []})
+        lobby = host.lobby_message()
+        self.assertEqual({k: lobby[k] for k in ('type', 'game_running', 'seats')}, {'type': 'lobby', 'game_running': False, 'seats': []})
+        self.assertEqual(lobby['new_scenario']['options'][0]['key'], 'faction_value_pool')  # what New Scenario offers
         direct, broadcast, joins = host.handle({'type': 'next'})
         self.assertEqual((direct[0]['type'], broadcast, joins), ('error', [], False))
 

@@ -63,6 +63,11 @@ def neutral_faction():
     return config().neutral_faction()
 
 
+def noncombatant_faction():
+    """{id, name, color}: the faction that owns Noncombatant land."""
+    return config().noncombatant_faction()
+
+
 def unassigned_land():
     """Land locations no faction is assigned to (they belong to the Neutral faction)."""
     return config().unassigned_land()

@@ -292,9 +292,11 @@
   "elimination_rule": "REPLACED by surrender_rule: a faction is no longer eliminated automatically for being down to 0-1 Strategic Centers (GameEngine.process_elimination_check is gone). It plays on -- purchases, income and all -- until another faction forces its surrender.",
   "surrender_rule": {
    "rule": "In its own Diplomacy phase a HUMAN/BOT faction may FORCE another such faction (an ally included) to surrender, as many times as it has grounds, before or after its alliance action. The target is eliminated at once: eliminated=True, every unit (and purchase awaiting deployment) removed from the board, its alliance ties cut (an alliance left with one member is dissolved); its territory stays as it is. It is not a negotiation: there is no accept or decline. Noncombatant and Neutral factions are never targets.",
+   "income_multiplier": 2,
+   "min_strategic_centers": 2,
    "grounds": {
-    "income": "the demander's income (compute_income: the value of its uncontested territories, +2 per Strategic Center) is more than 200% of the target's (strictly more than twice)",
-    "strategic_center": "the target controls 0 or 1 Strategic Centers and the demander controls (a contested one still counts) an SC whose ORIGINAL owner (territories.json 'faction') is the target"
+    "income": "the demander's income (compute_income: the value of its uncontested territories, + the SC bonus per Strategic Center) is more than income_multiplier times the target's (2: strictly more than twice)",
+    "strategic_center": "the target controls fewer than min_strategic_centers Strategic Centers (2: 0 or 1) and the demander controls (a contested one still counts) an SC whose ORIGINAL owner (the scenario's faction assignment) is the target"
    },
    "recovering": "a faction under threat can bring itself out of eligibility by claiming territory (income), winning back Strategic Centers, or taking an enemy SC.",
    "bots": "Before eliminating anyone a bot asks them into an alliance if that is legal (GameEngine.can_invite_to_alliance, ignoring the one-action-a-turn limit): the request is never declined by a bot, whatever its alliance strategy, and a faction that accepts is not eliminated; a human may decline, and is then forced to surrender the same phase. It has one alliance action a turn, so it asks one such faction per turn and the others wait (their grounds don't go away); one it cannot ask at all is forced to surrender at once. A bot never demands an ally's surrender -- unless it could win alone (every other faction is open to its demand), when it forces them ALL to surrender, allies included, to end the game.",

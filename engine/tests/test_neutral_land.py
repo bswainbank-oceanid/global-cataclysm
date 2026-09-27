@@ -1,6 +1,6 @@
 """Land the faction assignment leaves unassigned belongs to the built-in Neutral faction: it plays like a
-Neutral seat (units defend, no turns, capturable, never a Strategic Center), and only exists when it owns
-something."""
+Neutral seat (units defend, no turns, capturable), its Strategic Centers are real ones for whoever
+captures them, and it only exists when it owns something."""
 import copy
 import os
 import random
@@ -60,7 +60,8 @@ class TestNeutralLand(unittest.TestCase):
         self.assertEqual(gs.factions['NEU'].mode, FactionMode.NEUTRAL)
         self.assertNotIn('NEU', gs.active_factions())
         self.assertEqual(list(gs.factions)[-1], 'NEU')  # never in the play order
-        self.assertFalse(gs.is_strategic_center(NORWAY, data.territories()[NORWAY]))
+        # the built-in Neutral faction's Strategic Centers are real: worth capturing
+        self.assertTrue(gs.is_strategic_center(NORWAY, data.territories()[NORWAY]))
         self.assertEqual([u.unit_type for u in gs.territories[NORWAY].units if u.owner == 'NEU'], ['Infantry'])
 
     def test_a_game_with_neutral_land_plays(self):

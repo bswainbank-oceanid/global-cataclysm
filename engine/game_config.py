@@ -135,6 +135,12 @@ class GameConfig:
         n = self.faction_set.get('neutral') or {}
         return {'id': n.get('id', 'NEU'), 'name': n.get('name', 'Neutral'), 'color': n.get('color', '#7E8378')}
 
+    def noncombatant_faction(self):
+        """{id, name, color}: the faction that owns land a faction assignment gives to Noncombatant (it
+        plays like a Noncombatant seat: no units, no turns, impassable)."""
+        n = self.faction_set.get('noncombatant') or {}
+        return {'id': n.get('id', 'NCB'), 'name': n.get('name', 'Noncombatant'), 'color': n.get('color', '#EDDEAD')}
+
     def unassigned_land(self):
         """Land locations the faction assignment gives no faction: the Neutral faction's."""
         return self._view('unassigned_land', lambda: [tid for tid, t in self.territories().items()
@@ -213,5 +219,6 @@ class GameConfig:
             out['secondary_budget_share'] = order['secondary_budget_share']
             out['final_order'] = order['final']
             out['objectives'] = self.bot_module('objectives')['objectives']
+            out['neutral_unit_weights'] = {w['unit_type_id']: w['weight'] for w in weights.get('neutral_unit_weights', [])}
             return out
         return self._view('bot_settings', build)

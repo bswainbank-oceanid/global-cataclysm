@@ -218,7 +218,7 @@ session) -- the server never paces delivery itself.
 from engine.bots.alliance_policy import accepts_invite
 from engine.engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from engine.state import FactionMode, Phase
-from .report import build_game_report
+from .report import build_game_report, scenario_block
 from .stepper import PhaseStepper
 
 # turn_log event kinds a HUMAN's own drained (automatic) phases produce, and
@@ -775,7 +775,7 @@ class GameSession:
         return messages
 
     def _state_message(self):
-        return {'type': 'state', 'game_state': self.engine.game_state.to_dict()}
+        return {'type': 'state', 'game_state': self.engine.game_state.to_dict(), 'scenario': scenario_block(self.engine)}
 
     def _decision_prompt(self, faction):
         """The "your_turn" message prompting `faction` for whatever
