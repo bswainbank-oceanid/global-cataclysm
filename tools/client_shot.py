@@ -52,6 +52,7 @@ def main():
     ap.add_argument('--after_steps')
     ap.add_argument('--invite_answer')
     ap.add_argument('--launch', nargs='?', const='true')
+    ap.add_argument('--new_scenario', nargs='?', const='true', help='with --launch: a generated scenario (key:value;... options)')
     ap.add_argument('--fixed_order', action='store_true')
     ap.add_argument('--combat_first_turn', action='store_true')
     ap.add_argument('--seed')
@@ -71,7 +72,7 @@ def main():
 
     subprocess.run([sys.executable, str(ROOT / 'tools' / 'sync_client_data.py')], check=True)
     user_args = [f'--shot={Path(a.out).resolve()}', f'--wait={a.wait}']
-    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click', 'state', 'badges', 'server', 'steps', 'pause', 'pause_battle', 'your_pause_battle', 'battle_rolls', 'bombardment_rolls', 'resolve', 'buy', 'hold', 'move_to', 'recall', 'select2', 'drag_hold', 'launch', 'fixed_order', 'combat_first_turn', 'seed', 'bot_ai', 'max_alliance', 'alliance', 'invite_answer', 'after_steps', 'start_allied', 'no_withdraw', 'rejoin'):
+    for key in ('cam', 'hover', 'select', 'wheel', 'drag', 'click', 'state', 'badges', 'server', 'steps', 'pause', 'pause_battle', 'your_pause_battle', 'battle_rolls', 'bombardment_rolls', 'resolve', 'buy', 'hold', 'move_to', 'recall', 'select2', 'drag_hold', 'launch', 'new_scenario', 'fixed_order', 'combat_first_turn', 'seed', 'bot_ai', 'max_alliance', 'alliance', 'invite_answer', 'after_steps', 'start_allied', 'no_withdraw', 'rejoin'):
         if getattr(a, key):
             val = getattr(a, key)
             user_args.append(f'--{key}={Path(val).resolve() if key == "state" else val}')

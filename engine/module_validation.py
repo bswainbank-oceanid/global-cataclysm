@@ -178,16 +178,20 @@ class _Checker:
     def _check_faction_set(self, where, f):
         facs = f.get('factions') or []
         ids = self.unique(where, [x.get('id') for x in facs], 'faction id')
-        neutral = f.get('neutral')
-        if neutral is not None:
-            nw = f'{where} neutral'
-            nid = self.field(nw, neutral, 'id', STR)
-            self.field(nw, neutral, 'name', STR)
-            color = self.field(nw, neutral, 'color', STR)
+        builtin_ids = []
+        for key in ('neutral', 'noncombatant'):
+            entry = f.get(key)
+            if entry is None:
+                continue
+            nw = f'{where} {key}'
+            nid = self.field(nw, entry, 'id', STR)
+            self.field(nw, entry, 'name', STR)
+            color = self.field(nw, entry, 'color', STR)
             if color and not (color.startswith('#') and len(color) in (7, 9)):
                 self.err(nw, f'color {color!r} should be #RRGGBB')
-            if nid in ids:
-                self.err(nw, f'id {nid!r} is also a faction id')
+            if nid in ids or nid in builtin_ids:
+                self.err(nw, f'id {nid!r} is also another faction\'s id')
+            builtin_ids.append(nid)
         for x in facs:
             fw = f'{where} faction {x.get("id")}'
             self.field(fw, x, 'id', STR)
@@ -204,8 +208,7 @@ class _Checker:
     def _check_faction_assignment(self, where, a):
         values, m = self._map_of_values(where, self.field(where, a, 'map_values_id', STR))
         fset = self.ref(where, 'FactionSet', self.field(where, a, 'faction_set_id', STR))
-        facs = {x['id'] for x in (fset or {}).get('factions', [])}
-        facs.add(((fset or {}).get('neutral') or {}).get('id', 'NEU'))
+        facs = {x['id'] for x in (fset or {}).get('factions', [])} | _builtin_ids(fset)
         locs = {loc['id']: loc for loc in (m or {}).get('locations', [])}
         rows = a.get('locations') or []
         self.unique(where, [r.get('location_id') for r in rows], 'location')
@@ -216,7 +219,7 @@ class _Checker:
                 self.err(rw, 'is not a land location of the map')
                 continue
             if fset and r.get('faction_id') is not None and r.get('faction_id') not in facs:
-                self.err(rw, f'unknown faction {r.get("faction_id")!r} (leave it empty for Neutral land)')
+                self.err(rw, f'unknown faction {r.get("faction_id")!r} (empty or the Neutral id: Neutral land)')
             sea = r.get('sea_deployment_location_id')
             if sea is not None and loc is not None:
                 if sea not in loc.get('adjacency', []) or locs.get(sea, {}).get('type') != 'sea':
@@ -242,6 +245,16 @@ class _Checker:
         if fa and any(not r.get('faction_id') for r in fa.get('locations', [])):
             fset = self.ref(where, 'FactionSet', fa.get('faction_set_id'))
             facs.add(((fset or {}).get('neutral') or {}).get('id', 'NEU'))
+        carry = s.get('carryover_mpc')
+        if carry is not None:
+            if not isinstance(carry, dict):
+                self.err(where, 'carryover_mpc should be {faction: MPC}')
+            else:
+                for fac, v in carry.items():
+                    if fa and fac not in facs:
+                        self.err(where, f'carryover_mpc: unknown faction {fac!r}')
+                    if isinstance(v, bool) or not isinstance(v, int) or v < 0:
+                        self.err(where, f'carryover_mpc {fac}: {v!r} should be a whole number >= 0')
         locs = {loc['id']: loc for loc in (m or {}).get('locations', [])}
         self.unique(where, [loc.get('location_id') for loc in s.get('locations', [])], 'location')
         self.unique(where, [u.get('id') for loc in s.get('locations', []) for u in loc.get('units', [])], 'unit id')
@@ -352,6 +365,38 @@ class _Checker:
                 if thresholds and r.get('strategy_id') not in strategies:
                     self.err(fw, f'unknown strategy {r.get("strategy_id")!r}')
                 self.field(fw, r, 'weight', NUM)
+        all_units = {t['id']: t for t in (units or {}).get('unit_types', [])}
+        for r in w.get('neutral_unit_weights', []):
+            nw = f'{where} neutral_unit_weights'
+            t = all_units.get(r.get('unit_type_id'))
+            if units and t is None:
+                self.err(nw, f'unknown unit type {r.get("unit_type_id")!r}')
+            elif t and t['category'] == 'Sea':
+                self.err(nw, f'{t["id"]}: the Neutral faction buys land and air units only')
+            self.field(nw, r, 'weight', NUM)
+
+    def _check_scenario_generator(self, where, g):
+        from .game_config import GameConfig
+        from .scenario_generator import OPTIONS, check_options, resolve_options
+        base_id = self.field(where, g, 'base_scenario_id', STR)
+        if self.ref(where, 'Scenario', base_id) is None:
+            return
+        defaults = self.field(where, g, 'defaults', (dict,))
+        if defaults is None:
+            return
+        missing = [k for k in OPTIONS if k not in defaults]
+        if missing:
+            self.err(where, f'defaults missing {missing}')
+            return
+        unknown = [k for k in defaults if k not in OPTIONS]
+        if unknown:
+            self.err(where, f'unknown defaults {unknown}')
+        try:
+            base = GameConfig(base_id, self.repo)
+            for p in check_options(base, resolve_options(base, defaults, {})):
+                self.err(where, f'default {p}')
+        except (KeyError, ValueError) as e:
+            self.err(where, f'base scenario {base_id!r} could not be read ({e})')
 
     def _check_scenario(self, where, s):
         refs = {
@@ -387,6 +432,12 @@ class _Checker:
             self.err(where, 'faction assignment uses a different faction set')
         if got['unit_set_id'] and got['unit_set_id']['ability_catalog_id'] != s.get('ability_catalog_id'):
             self.err(where, 'unit set uses a different ability catalog')
+
+
+def _builtin_ids(fset):
+    """The faction set's built-in Neutral and Noncombatant faction ids."""
+    fset = fset or {}
+    return {(fset.get('neutral') or {}).get('id', 'NEU'), (fset.get('noncombatant') or {}).get('id', 'NCB')}
 
 
 def validate_repository(repo):

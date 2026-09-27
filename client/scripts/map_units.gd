@@ -145,7 +145,7 @@ func _draw() -> void:
 ## [[owner, {unit_type: count}], ...] in stable faction order.
 func _groups(by_owner: Dictionary) -> Array:
 	var out: Array = []
-	for code in GameData.faction_order:
+	for code in GameData.owner_order():
 		if by_owner.has(code):
 			out.append([code, by_owner[code]])
 	return out

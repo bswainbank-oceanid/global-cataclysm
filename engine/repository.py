@@ -34,6 +34,7 @@ MODULE_DIRS = {
     'PrimaryObjectiveOrder': 'primary_objective_order',
     'StrategyThresholdSet': 'strategy_threshold_set',
     'FactionWeightSet': 'faction_weight_set',
+    'ScenarioGenerator': 'scenario_generator',
 }
 
 DEFAULT_SCENARIO_ID = 'GC72_Scenario'
@@ -127,6 +128,29 @@ def _dir(module_type):
     if module_type not in MODULE_DIRS:
         raise ValueError(f'unknown module type {module_type!r}')
     return MODULE_DIRS[module_type]
+
+
+class OverlayRepository(ModuleRepository):
+    """A repository whose `docs` (module documents held in memory -- a generated scenario's) sit on top
+    of `base`'s; nothing is written. Reads fall through to `base` for everything else."""
+
+    def __init__(self, base, docs=()):
+        super().__init__(base.root)
+        self.base = base
+        self._docs = {(d['module_type'], d['id']): d for d in docs}
+
+    def add(self, doc):
+        self._docs[(doc['module_type'], doc['id'])] = doc
+
+    def ids(self, module_type):
+        return sorted(set(self.base.ids(module_type)) | {i for t, i in self._docs if t == module_type})
+
+    def get(self, module_type, module_id):
+        doc = self._docs.get((module_type, module_id))
+        return doc if doc is not None else self.base.get(module_type, module_id)
+
+    def save(self, doc):
+        raise TypeError('an overlay repository is read-only: its modules live in memory only')
 
 
 _default = None

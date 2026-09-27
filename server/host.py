@@ -15,7 +15,7 @@ Server -> client:
         the new game exists; followed by the usual "state" and "phase_queue"
     {"type": "error", "message": ..., "problems": [...]}   settings rejected
 """
-from .lobby import LobbyError, build_session
+from .lobby import LobbyError, build_session, generator_info
 
 
 class GameHost:
@@ -25,7 +25,8 @@ class GameHost:
 
     def lobby_message(self):
         return {'type': 'lobby', 'game_running': self.session is not None,
-                'seats': self.seats if self.session is not None else []}
+                'seats': self.seats if self.session is not None else [],
+                'new_scenario': generator_info()}
 
     def handle(self, msg):
         """(direct, broadcast, joins_as_watcher): messages for the sender alone,

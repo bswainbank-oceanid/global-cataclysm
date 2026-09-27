@@ -64,7 +64,8 @@ var game_over_report_minimized := false  # the Game Over report panel's minimize
 var armistice_cooldown_until_round := -1
 
 
-func set_state(new_state: Dictionary) -> void:
+func set_state(new_state: Dictionary, scenario := {}) -> void:
+	GameData.apply_scenario(scenario)
 	state = new_state
 	_unit_index.clear()
 	for tid in state.get("territories", {}):
@@ -807,9 +808,9 @@ func is_sc(tid: int) -> bool:
 	return t == null or not bool(t.get("sc_disabled", false))
 
 
-## The territory's value as shown on the map: its value plus 2 for a Strategic Center.
+## The territory's value as shown on the map: its value plus the SC bonus for a Strategic Center.
 func display_value(tid: int) -> int:
-	return int(GameData.territories[tid].get("value", 0)) + (2 if is_sc(tid) else 0)
+	return int(GameData.territories[tid].get("value", 0)) + (GameData.sc_bonus if is_sc(tid) else 0)
 
 
 ## Total purchase cost of the faction's deployed units (matches the bots'

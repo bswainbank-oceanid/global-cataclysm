@@ -4,7 +4,10 @@ the game they describe.
 
 Settings (the "new_game" message's "settings"):
 
-    {"seats": [ {"mode": "HUMAN" | "BOT" | "NEUTRAL" | "NONCOMBATANT",
+    {"scenario": {"kind": "fixed" | "new",               # default fixed: the GC72 scenario as it stands
+                  "options": {...}},                     # new: the generator's options (see generator_info); omitted ones take its defaults
+     "seats": [ {"mode": "HUMAN" | "BOT" | "NEUTRAL" | "NONCOMBATANT",   # a fixed scenario
+                        | "HUMAN" | "BOT" | "NOT_PLAYING",               # a new one
                  "faction": "random" | "NAA" | "UE" | "UER" | "GPC" | "PAF" | "AAC",
                  "alliance": 0 | 1 | 2 | 3,             # 0 = none; players only
                  "strategy": "random" | aggressive | passive | counterweight | independent | variable,   # bots only
@@ -25,6 +28,10 @@ be distinct), "random" seats then take the factions left over, in random order.
 "Players" are the HUMAN and BOT seats; NEUTRAL seats' units defend but take no
 turns, and NONCOMBATANT seats are impassable (see the rule set power_modes).
 
+A "new" scenario is dealt by engine/scenario_generator.py from the game's seed: only the
+players' factions take part (a NOT_PLAYING seat's faction is left out of the game
+altogether), the generator's Neutral pool and Noncombatant land take the rest.
+
 The rules the screen enforces (and the server re-checks, being the authority):
 at least two players, at most one human, distinct explicit factions, and each
 starting alliance (seats sharing an alliance number) has two or more members and
@@ -35,6 +42,9 @@ LobbyError.problems.
 import random
 
 from engine import data as data_module
+from engine import scenario_generator
+from engine.game_config import GameConfig
+from engine.repository import default_repository
 from engine.bots.alliance_policy import BEHAVIORS, STRATEGIES
 from engine.bots.claude_bot import ClaudeBot
 from engine.bots.random_bot import RandomBot
@@ -53,6 +63,28 @@ def seat_count():
     return len(data_module.factions())
 
 MODES = ('HUMAN', 'BOT', 'NEUTRAL', 'NONCOMBATANT')
+NEW_SCENARIO_MODES = ('HUMAN', 'BOT', 'NOT_PLAYING')
+SCENARIO_KINDS = ('fixed', 'new')
+GENERATOR_ID = 'GC72_Generator'
+
+
+def generator():
+    """The ScenarioGenerator module the launcher's New Scenario uses."""
+    return default_repository().get('ScenarioGenerator', GENERATOR_ID)
+
+
+def base_config():
+    return GameConfig(generator()['base_scenario_id'])
+
+
+def generator_info():
+    """What the launch screen needs to show New Scenario: [{key, label, kind, min, max, default}]."""
+    return {'options': scenario_generator.option_specs(base_config(), generator()['defaults'])}
+
+
+def _scenario(settings):
+    s = settings.get('scenario') or {}
+    return s.get('kind', 'fixed'), s.get('options') or {}
 ALLIANCE_NUMBERS = (1, 2, 3)
 PLAYER_MODES = ('HUMAN', 'BOT')
 # The heuristic bot (engine/bots/strategy_bot.py), the random baseline, and Claude itself
@@ -76,11 +108,26 @@ def check_settings(settings):
     if not isinstance(seats, list) or len(seats) != seat_count():
         return [f'there must be exactly {seat_count()} seats']
     factions = list(data_module.factions())
+    kind, options = _scenario(settings)
+    if kind not in SCENARIO_KINDS:
+        return [f'scenario kind must be one of {", ".join(SCENARIO_KINDS)}']
+    modes = NEW_SCENARIO_MODES if kind == 'new' else MODES
+    if kind == 'new':
+        if not isinstance(options, dict):
+            problems.append('scenario options must be an object')
+        else:
+            unknown = [k for k in options if k not in scenario_generator.OPTIONS]
+            if unknown:
+                problems.append(f'unknown scenario options: {", ".join(unknown)}')
+            base = base_config()
+            problems += scenario_generator.check_options(
+                base, scenario_generator.resolve_options(base, generator()['defaults'],
+                                                         {k: v for k, v in options.items() if k not in unknown}))
 
     picked = {}
     for i, seat in enumerate(seats, 1):
-        if seat.get('mode') not in MODES:
-            problems.append(f'seat {i}: mode must be one of {", ".join(MODES)}')
+        if seat.get('mode') not in modes:
+            problems.append(f'seat {i}: mode must be one of {", ".join(modes)}')
             continue
         f = seat.get('faction', 'random')
         if f != 'random':
@@ -173,7 +220,16 @@ def build_session(settings, rng=None):
     Returns (session, seats); raises LobbyError."""
     rng = rng or random.Random(settings.get('seed'))
     assignments, groups, randomize = resolve_settings(settings, rng)
-    modes = {a['faction']: FactionMode[a['mode']] for a in assignments}
+    kind, options = _scenario(settings)
+    config = data_module
+    if kind == 'new':
+        players = [a['faction'] for a in assignments if a['mode'] in PLAYER_MODES]
+        base = base_config()
+        resolved = scenario_generator.resolve_options(base, generator()['defaults'], options)
+        # its own draw from the game's seed, taken only for a new scenario: fixed games deal as before
+        repo, scenario_id, _ = scenario_generator.generate(base, players, resolved, random.Random(rng.random()))
+        config = GameConfig(scenario_id, repo)
+    modes = {a['faction']: FactionMode[a['mode']] for a in assignments if a['mode'] != 'NOT_PLAYING'}
     gs = build_game_state(
         modes, randomize_play_order=randomize, rng=rng,
         max_alliance_size=int(settings.get('max_alliance_size', DEFAULT_MAX_ALLIANCE_SIZE)),
@@ -184,12 +240,13 @@ def build_session(settings, rng=None):
         can_rejoin_alliances=bool(settings.get('can_rejoin', False)),
         allow_combat_moves_first_turn=bool(settings.get('allow_combat_first_turn', False) or settings.get('dev', {}).get('combat_first_turn', False)),
         allow_noncombat_moves_first_turn=bool(settings.get('allow_noncombat_first_turn', True)),
+        data_module=config,
     )
     turn_log = TurnLog()
     # The dice come from the same seed as everything else, so a seeded game replays exactly. `stats`
     # (deploys/kills/etc, per faction) feeds the Game Over report (server/report.py) -- purely
     # informational, so nothing about the game itself depends on it being attached.
-    engine = GameEngine(gs, data_module, turn_log=turn_log, combat_rng=random.Random(rng.random()), stats=GameStats())
+    engine = GameEngine(gs, config, turn_log=turn_log, combat_rng=random.Random(rng.random()), stats=GameStats())
     budget = int(settings.get('dev', {}).get('bot_budget', DEFAULT_BUDGET))  # the heuristic bots' planning effort per pass
     bots = {}
     for a in assignments:

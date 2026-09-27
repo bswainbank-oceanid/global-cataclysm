@@ -17,6 +17,8 @@ var factions := {}      # code -> {name, color: Color}
 var faction_order: Array[String] = []  # the factions seats can play (not the built-in Neutral one)
 var neutral_id := "NEU"  # the faction that owns land no faction is assigned to
 var neutral_color := Color("#7E8378")  # every Neutral faction's land and units are drawn in this
+var noncombatant_id := "NCB"  # the faction that owns Noncombatant land
+var sc_bonus := 2  # what a Strategic Center adds to its value (the game's own: see apply_scenario)
 var units := {}         # {"units": {unit type -> stats, incl. abilities {id: params}}, "category_icons": {...}}
 var map_wraps := true   # the map is a cylinder (east-west wrap) rather than flat
 
@@ -111,6 +113,33 @@ func _load_factions() -> void:
 	neutral_id = str(n.get("id", neutral_id))
 	neutral_color = Color(str(n.get("color", neutral_color.to_html())))
 	factions[neutral_id] = {"name": str(n.get("name", "Neutral")), "color": neutral_color}
+	var nc: Dictionary = d.get("noncombatant", {})
+	noncombatant_id = str(nc.get("id", noncombatant_id))
+	factions[noncombatant_id] = {"name": str(nc.get("name", "Noncombatant")), "color": Color(str(nc.get("color", "#EDDEAD")))}
+
+
+## Every faction that can own units or land, in display order: the playable ones, then the
+## built-in Neutral and Noncombatant factions.
+func owner_order() -> Array[String]:
+	var out: Array[String] = faction_order.duplicate()
+	out.append(neutral_id)
+	out.append(noncombatant_id)
+	return out
+
+
+## The game's own starting map, from the server (a generated scenario deals territory and
+## Strategic Centers afresh): each land territory's starting owner and Strategic Center flag,
+## and the SC bonus. Territory values and shapes never change.
+func apply_scenario(block: Dictionary) -> void:
+	if block.is_empty():
+		return
+	sc_bonus = int(block.get("sc_bonus", sc_bonus))
+	var terrs: Dictionary = block.get("territories", {})
+	for key in terrs:
+		var tid := int(key)
+		if territories.has(tid):
+			territories[tid]["faction"] = terrs[key].get("faction")
+			territories[tid]["strategic_center"] = bool(terrs[key].get("strategic_center", false))
 
 
 func _polygon_area_centroid(poly: PackedVector2Array) -> Array:

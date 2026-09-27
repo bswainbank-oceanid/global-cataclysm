@@ -36,17 +36,18 @@ Source: `reference/GC Data Model.rtf`, plus the decisions recorded below.
 | AbilityCatalog | `ability_catalog` | `GC72_Abilities` | the engine's fixed ability library: id, name, description template, parameters and their defaults |
 | UnitSet | `unit_set` | `GC72_UnitSet` | unit types: stats, purchasable, land/sea combat resolution order, display order, icon, abilities with parameters |
 | MapValues | `map_values` | `GC72_MapValues` | map id; each land location's value |
-| FactionSet | `faction_set` | `GC72_FactionSet` | factions: id, name, color, icon |
+| FactionSet | `faction_set` | `GC72_FactionSet` | factions: id, name, color, icon; the built-in `neutral` (NEU, the shared Neutral colour) and `noncombatant` (NCB) factions |
 | FactionAssignment | `faction_assignment` | `GC72_FactionAssignment` | value assignment id, faction set id; each land location's faction and starting-setup sea deployment location |
 | SCAssignment | `sc_assignment` | `GC72_SCAssignment` | value assignment id, SC bonus (added to a Strategic Center's value), the Strategic Center locations |
-| InitialSetup | `initial_setup` | `GC72_StandardSetup`, `GC72_NeutralSetup` | SC assignment id, unit set id, generation parameters (budget, SC use, diversity); units per location, each with id, unit type and faction |
+| InitialSetup | `initial_setup` | `GC72_StandardSetup`, `GC72_NeutralSetup` | SC assignment id, unit set id, generation parameters (budget, SC use, diversity); units per location, each with id, unit type and faction; optional `carryover_mpc` per faction (joins its starting treasury) |
 | UnitPromotions | `unit_promotions` | `GC72_StandardPromotions`, `GC72_NeutralPromotions` | initial setup id; starting promotions per setup unit id |
 | Objectives | `objectives` | `GC72_Objectives` | bot objectives: id, name, primary/secondary |
 | PrimaryObjectiveOrder | `primary_objective_order` | `GC72_PrimaryOrder` | the order the bot plans its primary objectives in, and each step's share of the planning budget |
 | StrategyThresholdSet | `strategy_threshold_set` | `GC72_StrategyThresholds` | strategies, each with per-objective min/max risk and weight; distance weights |
-| FactionWeightSet | `faction_weight_set` | `GC72_FactionWeights` | faction set, unit set and threshold set ids; per-faction unit weights and strategy weights |
+| FactionWeightSet | `faction_weight_set` | `GC72_FactionWeights` | faction set, unit set and threshold set ids; per-faction unit weights and strategy weights; `neutral_unit_weights` (a generated scenario's Neutral units) |
 | RuleSet | `rule_set` | `GC72_Rules` | the rules (what `data/rules.json` held): combat, movement, purchase, production, promotion, victory, game-start defaults |
 | Scenario | `scenario` | `GC72_Scenario` | the ids of everything above that make one game, including a standard and a neutral setup |
+| ScenarioGenerator | `scenario_generator` | `GC72_Generator` | the launcher's New Scenario: the base scenario and the generator's defaults |
 
 ### Scenario
 
@@ -127,6 +128,30 @@ their carriers). Each carries an `id` (unique in the setup), `unit_type_id`,
 unit starting in a sea zone is on its faction's carrier there. Units are placed
 in id order within each faction, which is what keeps unit ids and a seeded game
 unchanged.
+
+### New Scenario (ScenarioGenerator)
+
+The launcher can start the fixed scenario or a **new** one, dealt afresh at game
+start by `engine/scenario_generator.py` from the game's seed and the options on
+the launch screen (their defaults are `GC72_Generator.defaults`; the launcher
+remembers the last ones used). See `reference/GC72 New Scenario.odt` and the
+module docstring for the deal: territory by round-robin weighted draws up to each
+player's share of the value pool, a Neutral pool up to the Neutral value (the rest
+Noncombatant), Strategic Centers at minimum distances (relaxed and reported when
+they can't all fit), starting units by the unit weights within the setup rules,
+the unspent budget carried into the first turn.
+
+A new scenario's seats are Human, Bot or Not playing: a Not playing seat's faction
+is left out of the game altogether. The deal is a set of throwaway modules
+(Scenario, FactionAssignment, SCAssignment, InitialSetup/UnitPromotions for the
+players and the Neutral pool, and the RuleSet with the chosen surrender thresholds)
+held in memory by an `OverlayRepository` on top of the base scenario's; the game
+reads them through its own `GameConfig`, and the server sends the client the
+game's starting owners, Strategic Centers and SC bonus with every `state` message.
+
+Land owned by the built-in Neutral faction (NEU) plays like a Neutral seat, but its
+Strategic Centers are real ones for whoever captures them; land owned by the
+built-in Noncombatant faction (NCB) plays like a Noncombatant seat.
 
 ## Client data
 

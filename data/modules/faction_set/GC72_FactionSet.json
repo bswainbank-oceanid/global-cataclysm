@@ -2,8 +2,9 @@
  "module_type": "FactionSet",
  "id": "GC72_FactionSet",
  "name": "GC72 factions",
- "_note": "neutral: the one colour every Neutral faction's land and units are drawn in, and the faction that owns any land the faction assignment leaves unassigned (it plays as a Neutral seat: its units defend, it takes no turns, its land can be captured and is never a Strategic Center).",
+ "_note": "neutral: the one colour every Neutral faction's land and units are drawn in, and the faction that owns land the faction assignment gives to Neutral (or leaves unassigned): it plays as a Neutral seat -- its units defend, it takes no turns, its land can be captured, and its Strategic Centers are real ones for whoever captures them. noncombatant: the faction that owns land the faction assignment gives to Noncombatant: no units, no turns, impassable.",
  "neutral": {"id": "NEU", "name": "Neutral", "color": "#7E8378"},
+ "noncombatant": {"id": "NCB", "name": "Noncombatant", "color": "#EDDEAD"},
  "factions": [
   {"id": "NAA", "name": "North Atlantic Alliance", "color": "#1E4C7C", "icon": null},
   {"id": "UE", "name": "United Europe", "color": "#A5822F", "icon": null},

@@ -2,7 +2,7 @@
  "module_type": "FactionWeightSet",
  "id": "GC72_FactionWeights",
  "name": "Strategy bot faction weights",
- "_note": "Odds for weighted random draws; 0 is never drawn.",
+ "_note": "Odds for weighted random draws; 0 is never drawn. neutral_unit_weights: what the Neutral faction's starting units are drawn by in a generated scenario (land and air units only).",
  "faction_set_id": "GC72_FactionSet",
  "unit_set_id": "GC72_UnitSet",
  "strategy_threshold_set_id": "GC72_StrategyThresholds",
@@ -127,5 +127,12 @@
     {"strategy_id": "Variable", "weight": 0}
    ]
   }
+ ],
+ "neutral_unit_weights": [
+  {"unit_type_id": "Infantry", "weight": 7},
+  {"unit_type_id": "Mechanized Infantry", "weight": 3},
+  {"unit_type_id": "Armor", "weight": 3},
+  {"unit_type_id": "Fighter", "weight": 2},
+  {"unit_type_id": "Bomber", "weight": 1}
  ]
 }

@@ -65,7 +65,7 @@ func _on_message(msg: Dictionary) -> void:
 		return
 	match str(msg.get("type", "")):
 		"state":
-			GameStore.set_state(msg["game_state"])
+			GameStore.set_state(msg["game_state"], msg.get("scenario", {}))
 			_check_auto_spectate()
 		"phase_queue":
 			_awaiting = false

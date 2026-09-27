@@ -1743,18 +1743,22 @@ class GameEngine:
 
     def surrender_grounds(self, demander, target):
         """Why `demander` may force `target`'s surrender right now: a list with 'income' (the
-        demander's income -- the value of its uncontested territories -- is more than 200% of the
-        target's) and/or 'strategic_center' (the target holds 0-1 Strategic Centers and the demander
-        controls a Strategic Center that was originally the target's). Empty when it may not. Pure
+        demander's income -- the value of its uncontested territories -- is more than the rule set's
+        surrender_rule.income_multiplier (2: 200%) times the target's) and/or 'strategic_center' (the
+        target holds fewer than surrender_rule.min_strategic_centers (2) Strategic Centers and the
+        demander controls a Strategic Center that was originally the target's). Empty when it may not. Pure
         query; both must be factions still in play."""
         gs = self.game_state
         active = gs.active_factions()
         if demander == target or demander not in active or target not in active:
             return []
         reasons = []
-        if compute_income(demander, gs, self.data) > 2 * compute_income(target, gs, self.data):
+        surrender = self.data.rules().get('victory', {}).get('surrender_rule', {})
+        multiplier = surrender.get('income_multiplier', 2)
+        min_scs = surrender.get('min_strategic_centers', 2)
+        if compute_income(demander, gs, self.data) > multiplier * compute_income(target, gs, self.data):
             reasons.append('income')
-        if len(self._controlled_scs(target)) <= 1:
+        if len(self._controlled_scs(target)) < min_scs:
             terrs = self.data.territories()
             if any(terrs[tid].get('faction') == target for tid in self._controlled_scs(demander)):
                 reasons.append('strategic_center')

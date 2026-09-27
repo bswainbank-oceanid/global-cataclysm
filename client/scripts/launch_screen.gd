@@ -1,8 +1,11 @@
 class_name LaunchScreen
 extends Control
-## The game launch screen: six seats, each a Human, Bot, Neutral or Noncombatant, and for
-## players (humans and bots) a faction (or random), a starting alliance, and for
-## bots an alliance strategy and behavior; plus whether to randomise the turn order.
+## The game launch screen: the scenario -- Global Cataclysm: 1972 as it stands, or a New
+## scenario dealt afresh by the server's generator (engine/scenario_generator.py) from the
+## options shown -- and six seats, each a Human, Bot, Neutral or Noncombatant (a new
+## scenario: Human, Bot or Not playing), and for players (humans and bots) a faction (or
+## random), a starting alliance, and for bots an alliance strategy and behavior; plus
+## whether to randomise the turn order.
 ## "Start Game" sends the settings to the server (server/lobby.py builds the game and
 ## re-checks everything); "Resume" goes back to a game already running there.
 ##
@@ -15,6 +18,8 @@ signal resume_requested
 
 var SEATS := 6  # one seat per faction: set from GameData's faction set in _ready
 const MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Neutral", "NEUTRAL"], ["Noncombatant", "NONCOMBATANT"]]
+const NEW_MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Not playing", "NOT_PLAYING"]]  # a new scenario's seats
+const SCENARIOS := [["Global Cataclysm: 1972", "fixed"], ["New scenario", "new"]]
 const ALLIANCES := ["None", "Alliance 1", "Alliance 2", "Alliance 3"]
 const STRATEGIES := ["random", "aggressive", "passive", "counterweight", "independent", "variable"]
 const BEHAVIORS := ["random", "loyal", "opportunistic", "treacherous", "variable"]
@@ -22,6 +27,11 @@ const BOT_AIS := [["Strategy", "strategy"], ["Random", "random"], ["Claude", "cl
 const PATH := "user://launch.cfg"
 
 var _rows: Array = []  # per seat: {mode, faction, chip, alliance, strategy, behavior, ai}
+var _scenario: OptionButton
+var _new_panel: GridContainer  # a new scenario's options (shown only for one)
+var _option_specs: Array = []  # from the server: [{key, label, kind, min, max, default, help}]
+var _option_controls := {}  # key -> SpinBox | CheckBox
+var _option_values := {}  # key -> the value last chosen (kept across the server's refreshes)
 var _randomize: CheckBox
 var _can_withdraw: CheckBox
 var _can_rejoin: CheckBox
@@ -61,9 +71,14 @@ func _ready() -> void:
 	var title := HudStyle.label("Global Cataclysm: 1972", 26, HudStyle.GOLD)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(title)
-	var sub := HudStyle.label("New game", 15, HudStyle.TEXT_DIM)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(sub)
+	var scenario_row := HBoxContainer.new()
+	scenario_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	scenario_row.add_theme_constant_override("separation", 10)
+	scenario_row.add_child(HudStyle.label("New game:", 15, HudStyle.TEXT_DIM))
+	_scenario = _option(SCENARIOS.map(func(s): return s[0]), 240)
+	_scenario.item_selected.connect(func(_i): _scenario_changed())
+	scenario_row.add_child(_scenario)
+	v.add_child(scenario_row)
 	v.add_child(HSeparator.new())
 
 	var grid := GridContainer.new()
@@ -75,6 +90,13 @@ func _ready() -> void:
 		grid.add_child(HudStyle.label(h, 12, HudStyle.TEXT_DIM))
 	for i in SEATS:
 		_add_row(grid, i)
+
+	_new_panel = GridContainer.new()
+	_new_panel.columns = 6
+	_new_panel.add_theme_constant_override("h_separation", 10)
+	_new_panel.add_theme_constant_override("v_separation", 4)
+	_new_panel.visible = false
+	v.add_child(_new_panel)
 
 	_randomize = CheckBox.new()
 	_randomize.text = "Randomize turn order"
@@ -203,8 +225,18 @@ func _add_row(grid: GridContainer, i: int) -> void:
 
 # ---- reading the screen -----------------------------------------------------------
 
+func _is_new() -> bool:
+	return _scenario != null and _scenario.selected == 1
+
+
+func _modes() -> Array:
+	return NEW_MODES if _is_new() else MODES
+
+
 func _mode_of(row: Dictionary) -> String:
-	return MODES[(row["mode"] as OptionButton).selected][1]
+	var modes := _modes()
+	var i: int = (row["mode"] as OptionButton).selected
+	return modes[clampi(i, 0, modes.size() - 1)][1]
 
 
 func _faction_of(row: Dictionary) -> String:
@@ -228,6 +260,8 @@ func settings() -> Dictionary:
 	var s := {"seats": seats, "randomize_order": _randomize.button_pressed,
 		"can_withdraw": _can_withdraw.button_pressed, "can_rejoin": _can_rejoin.button_pressed}
 	s["max_alliance_size"] = _max_size
+	if _is_new():
+		s["scenario"] = {"kind": "new", "options": new_options()}
 	s["allow_combat_first_turn"] = _combat_first.button_pressed
 	s["allow_noncombat_first_turn"] = _noncombat_first.button_pressed
 	if Dbg.args.has("combat_first_turn"):
@@ -304,10 +338,96 @@ func _changed() -> void:
 
 
 ## Show the screen (again). `game_running`: the server has a game to go back to.
-func open(game_running: bool) -> void:
+## `new_scenario`: the server's New Scenario options ({"options": [...]}).
+func open(game_running: bool, new_scenario := {}) -> void:
 	_game_running = game_running
+	set_new_scenario_options(new_scenario.get("options", []))
 	_changed()
 	visible = true
+
+
+# ---- the scenario ---------------------------------------------------------------------
+
+## Switching between the fixed scenario and a new one: the seat types change (a Neutral or
+## Noncombatant seat becomes Not playing, and back), and the new scenario's options show.
+func _scenario_changed() -> void:
+	var was_loading := _loading
+	_loading = true
+	for row in _rows:
+		var o: OptionButton = row["mode"]
+		var old: int = o.selected
+		o.clear()
+		for m in _modes():
+			o.add_item(m[0])
+		if _is_new():
+			o.select(mini(old, 2))  # Human, Bot, the rest Not playing
+		else:
+			o.select(old if old < 2 else 3)  # Not playing -> Noncombatant
+	_loading = was_loading
+	_new_panel.visible = _is_new()
+	_changed()
+
+
+## "fixed" or "new" (scripted runs).
+func select_scenario(kind: String) -> void:
+	_scenario.select(1 if kind == "new" else 0)
+	_scenario_changed()
+
+
+## The generator's options, as the server describes them; the values chosen before (this session,
+## or remembered from the last launch) are kept, else the server's defaults.
+func set_new_scenario_options(specs: Array) -> void:
+	if specs.is_empty() or _option_specs == specs:
+		return
+	_option_specs = specs
+	for c in _new_panel.get_children():
+		c.queue_free()
+	_option_controls.clear()
+	for spec in specs:
+		var key := str(spec["key"])
+		var label := HudStyle.label(str(spec["label"]), 12, HudStyle.TEXT_DIM)
+		label.tooltip_text = str(spec.get("help", ""))
+		label.mouse_filter = Control.MOUSE_FILTER_PASS
+		_new_panel.add_child(label)
+		var value = _option_values.get(key, spec["default"])
+		if str(spec["kind"]) == "bool":
+			var cb := CheckBox.new()
+			cb.button_pressed = bool(value)
+			cb.focus_mode = Control.FOCUS_NONE
+			cb.tooltip_text = label.tooltip_text
+			_check_style(cb)
+			cb.toggled.connect(func(on: bool): _option_values[key] = on)
+			_new_panel.add_child(cb)
+			_option_controls[key] = cb
+		else:
+			var sb := SpinBox.new()
+			sb.min_value = float(spec["min"])
+			sb.max_value = float(spec["max"])
+			sb.step = 1.0 if str(spec["kind"]) == "int" else 0.1
+			sb.value = float(value) if value != null else float(spec["max"])
+			sb.custom_minimum_size = Vector2(90, 26)
+			sb.tooltip_text = label.tooltip_text
+			sb.value_changed.connect(func(x: float): _option_values[key] = int(x) if str(spec["kind"]) == "int" else x)
+			_new_panel.add_child(sb)
+			_option_controls[key] = sb
+		_option_values[key] = _control_value(key, spec)
+
+
+func _control_value(key: String, spec: Dictionary):
+	var c = _option_controls[key]
+	if c is CheckBox:
+		return (c as CheckBox).button_pressed
+	var x: float = (c as SpinBox).value
+	return int(x) if str(spec["kind"]) == "int" else x
+
+
+## The new scenario's options as chosen: {key: value}.
+func new_options() -> Dictionary:
+	var out := {}
+	for spec in _option_specs:
+		var key := str(spec["key"])
+		out[key] = _control_value(key, spec) if _option_controls.has(key) else _option_values.get(key, spec["default"])
+	return out
 
 
 func close() -> void:
@@ -348,6 +468,9 @@ func _save() -> void:
 	cfg.set_value("launch", "max_alliance_size", _max_pref)
 	cfg.set_value("launch", "combat_first", _combat_first.button_pressed)
 	cfg.set_value("launch", "noncombat_first", _noncombat_first.button_pressed)
+	cfg.set_value("launch", "scenario", SCENARIOS[_scenario.selected][1])
+	for key in new_options():
+		cfg.set_value("new_scenario", key, new_options()[key])
 	for i in SEATS:
 		var row: Dictionary = _rows[i]
 		for key in ["mode", "faction", "alliance", "strategy", "behavior", "ai"]:
@@ -369,6 +492,13 @@ func _load() -> void:
 	_combat_first.button_pressed = bool(cfg.get_value("launch", "combat_first", false))
 	_noncombat_first.button_pressed = bool(cfg.get_value("launch", "noncombat_first", true))
 	_max_size = _max_pref
+	if str(cfg.get_value("launch", "scenario", "fixed")) == "new":
+		_scenario.select(1)
+		_scenario_changed()
+		_loading = true
+	if cfg.has_section("new_scenario"):
+		for key in cfg.get_section_keys("new_scenario"):
+			_option_values[key] = cfg.get_value("new_scenario", key)
 	for i in SEATS:
 		var row: Dictionary = _rows[i]
 		for key in ["mode", "faction", "alliance", "strategy", "behavior", "ai"]:

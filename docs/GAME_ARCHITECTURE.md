@@ -776,3 +776,17 @@ synced JSON read-only; nobody hand-edits game data inside the Godot editor.
   directly through `GameStore`/`Stepper` the way `move_targets_test.gd`
   already does, plus `MapArrows.from_events`' multi-segment output) --
   `godot --headless --path client -s res://tests/move_extend_test.gd`.
+- ✅ **New Scenario.** The launch screen offers the fixed Global Cataclysm: 1972
+  scenario or a New scenario: the generator's options (defaults in the
+  `GC72_Generator` module, the last ones used remembered in `user://launch.cfg`)
+  and seats that are Human, Bot or Not playing. The server deals the scenario
+  from the game's seed (`engine/scenario_generator.py`, `server/lobby.py`
+  settings `scenario: {kind: new, options}`), leaves the factions not playing out
+  of the game, and sends the client the game's starting owners, Strategic
+  Centers and SC bonus with each `state` message (`GameData.apply_scenario`).
+  Neutral-pool land belongs to the built-in Neutral faction (NEU), leftover land
+  to the built-in Noncombatant faction (NCB). Surrender thresholds are rule-set
+  settings. Scripted: `python tools/client_shot.py OUT.png --server --launch
+  "HUMAN:NAA,BOT:GPC,BOT:PAF" --new_scenario "faction_value_pool:90;neutral_value:40"`.
+  Tests: `engine/tests/test_scenario_generator.py`; the golden games include a
+  seeded new scenario.

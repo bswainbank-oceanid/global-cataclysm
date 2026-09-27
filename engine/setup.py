@@ -17,7 +17,7 @@ ordinarily 31 MPC (25 base territory value + 3 Strategic Centers x 2).
 import random
 import re
 
-from . import data
+from . import data as _default_data
 from .bots.alliance_policy import (
     reroll_alliance_behavior, reroll_alliance_strategy, resolve_alliance_behavior, resolve_alliance_strategy,
 )
@@ -84,9 +84,11 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
                       allow_noncombat_moves_first_turn=True, max_alliance_size=2,
                       can_withdraw_from_alliances=True, can_rejoin_alliances=False,
                       alliance_strategies=None, alliance_behaviors=None, rng=None,
-                      starting_alliances=None):
-    """faction_modes: {faction_code: FactionMode}, one entry per
-    faction in data.factions(). Returns a fresh GameState at global_turn 0
+                      starting_alliances=None, data_module=None):
+    """faction_modes: {faction_code: FactionMode}, one entry per faction in the game -- every
+    faction of the scenario, or (a generated scenario) only those playing: a faction left out has no
+    place in the game at all, so it may own no land. data_module: the game's configuration
+    (engine.game_config.GameConfig, or engine.data for the default scenario). Returns a fresh GameState at global_turn 0
     with every territory's TerritoryState created (land territories'
     owner comes from the scenario's faction assignment; sea territories have no owner),
     populated with starting units for HUMAN/BOT/NEUTRAL factions, and
@@ -139,6 +141,7 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
     factions; HUMAN/NEUTRAL/NONCOMBATANT factions never consult this policy
     layer, so their fields stay None."""
     rng = rng or random.Random()
+    data = data_module or _default_data
     _check_starting_alliances(starting_alliances, faction_modes, max_alliance_size)
     gs = GameState(
         global_turn=0, phase=Phase.PURCHASE,
@@ -149,26 +152,36 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
         can_rejoin_alliances=can_rejoin_alliances,
     )
 
-    # Land the faction assignment leaves unassigned belongs to the built-in Neutral faction, which
-    # plays exactly like a NEUTRAL seat (and is only in the game when it owns something).
+    # The built-in factions: Neutral (owns land the faction assignment leaves unassigned or gives it by
+    # id; plays exactly like a NEUTRAL seat) and Noncombatant (plays like a NONCOMBATANT seat). Each is
+    # in the game only when it owns something.
     faction_modes = dict(faction_modes)
     neutral_id = data.neutral_faction()['id']
-    unassigned = set(data.unassigned_land())
-    if unassigned:
-        faction_modes[neutral_id] = FactionMode.NEUTRAL
+    builtin = {neutral_id: FactionMode.NEUTRAL, data.noncombatant_faction()['id']: FactionMode.NONCOMBATANT}
+    seat_modes = dict(faction_modes)
+    owners = {}
+    for tid, t in data.territories().items():
+        if t['type'] == 'land':
+            owner = t.get('faction') or neutral_id
+            if owner not in faction_modes and owner not in builtin:
+                raise ValueError(f'territory {tid} belongs to {owner}, which is not in the game')
+            owners[tid] = owner
+    used_builtin = [code for code in builtin if code in owners.values()]
+    for code in used_builtin:
+        faction_modes[code] = builtin[code]
 
     for tid, t in data.territories().items():
-        owner = (t.get('faction') or (neutral_id if tid in unassigned else None)) if t['type'] == 'land' else None
-        # A Neutral power has no Strategic Centers, and its territory keeps that status
-        # for good -- even once someone else captures it.
-        neutral_home = owner is not None and faction_modes.get(owner) == FactionMode.NEUTRAL
+        owner = owners.get(tid)
+        # A Neutral seat has no Strategic Centers, and its territory keeps that status for good --
+        # even once someone else captures it. (The built-in Neutral faction's Strategic Centers are
+        # real: they give it nothing, but whoever captures one has a Strategic Center.)
+        neutral_home = owner is not None and seat_modes.get(owner) == FactionMode.NEUTRAL
         gs.territories[tid] = TerritoryState(territory_id=tid, owner=owner, sc_disabled=neutral_home)
 
-    faction_codes = list(data.factions())
+    faction_codes = [code for code in data.factions() if code in seat_modes]
     if randomize_play_order:
         rng.shuffle(faction_codes)
-    if unassigned:
-        faction_codes.append(neutral_id)  # after the shuffle: never a seat, never in turn order
+    faction_codes += used_builtin  # after the shuffle: never a seat, never in turn order
     for code in faction_codes:
         gs.factions[code] = FactionState(code=code, mode=faction_modes[code], treasury_mpc=0)
 
@@ -210,6 +223,8 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
             setups[kind] = data.initial_setup(kind)
         setup, promotions = setups[kind]
         _place_faction_units(gs, code, setup, promotions, unit_defs)
+        # a generated setup's unspent starting budget carries over into the first turn
+        fstate.treasury_mpc += int((setup.get('carryover_mpc') or {}).get(code, 0))
 
     for members in starting_alliances or []:
         tag = f'ALLIANCE_{gs._next_alliance_id}'  # same tags GameEngine._new_alliance_tag hands out mid-game

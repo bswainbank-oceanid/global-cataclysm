@@ -43,7 +43,8 @@ def client_files(config):
         'reference_image_width_px': info['width_px'],
         'shapes': {str(tid): polys for tid, polys in config.boundaries().items()},
     }
-    factions = {'factions': config.factions(), 'neutral': config.neutral_faction()}
+    factions = {'factions': config.factions(), 'neutral': config.neutral_faction(),
+                'noncombatant': config.noncombatant_faction()}
     units = {
         'category_icons': config.unit_set.get('category_icons', {}),
         'units': {t: {k: v for k, v in d.items()} for t, d in config.units().items()},

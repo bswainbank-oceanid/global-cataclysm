@@ -1,0 +1,24 @@
+{
+ "module_type": "ScenarioGenerator",
+ "id": "GC72_Generator",
+ "name": "GC72 new scenario",
+ "_note": "The launcher's New Scenario: a fresh deal of territory, Strategic Centers and starting units on the base scenario's map (engine/scenario_generator.py, reference/GC72 New Scenario.odt). These are the defaults the launcher starts from (it remembers the last ones used). neutral_value null: everything the players leave unclaimed. faction_value_pool is split evenly among the players.",
+ "base_scenario_id": "GC72_Scenario",
+ "defaults": {
+  "faction_value_pool": 150,
+  "neutral_value": null,
+  "faction_weight": 6,
+  "scs_per_faction": 3,
+  "sc_bonus": 2,
+  "sc_min_distance": 3,
+  "sc_final_min_distance": 4,
+  "neutral_scs": 0,
+  "initial_mpc": 125,
+  "infantry_in_every_territory": true,
+  "extra_non_sc_units": 2,
+  "neutral_budget": 100,
+  "neutral_infantry_in_every_territory": true,
+  "min_scs_to_avoid_surrender": 2,
+  "surrender_income_multiplier": 2
+ }
+}

@@ -166,3 +166,19 @@ def build_game_report(engine, turn_log, bots):
         r['faction'],
     ))
     return rows
+
+
+def scenario_block(engine):
+    """The game's own starting map for the client -- its synced files describe the default scenario, but
+    a generated one deals territory and Strategic Centers afresh: {sc_bonus, territories: {land id:
+    {faction: starting owner, strategic_center}}, notes}."""
+    data = engine.data
+    terrs = data.territories()
+    config = data.config() if hasattr(data, 'config') else data
+    generated = (config.scenario.get('generated') or {}) if hasattr(config, 'scenario') else {}
+    return {
+        'sc_bonus': data.sc_bonus(),
+        'territories': {str(tid): {'faction': t.get('faction'), 'strategic_center': bool(t.get('strategic_center'))}
+                        for tid, t in terrs.items() if t['type'] == 'land'},
+        'notes': list(generated.get('notes', [])),
+    }
