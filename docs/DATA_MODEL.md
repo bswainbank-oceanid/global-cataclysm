@@ -89,7 +89,7 @@ not list is a validation error: a new ability needs engine code.
 | `transport` | | the sea form of an amphibious unit: no attack, carries its unit |
 | `air_superiority` | `attack_die`, `damage` (null: its normal ones), `triggers_round` | rolls this die/damage in the air superiority round; a `triggers_round` unit on either side makes the round happen |
 | `interception` | | enemy aircraft may not fly over a space it holds |
-| `carrier_air_wing` | `capacity` (3) | carries air units; they may take off from and land on it (the capacity is shown, not enforced -- as before) |
+| `carrier_air_wing` | `capacity` (3) | carries up to `capacity` of its owner's aircraft; they may take off from and land on it |
 | `submerge` | | cannot hit or be hit by air units |
 | `bombardment` | | may bombard an adjacent land space from the sea as its combat move |
 | `indiscriminate` | | picks targets without the same-type preference |

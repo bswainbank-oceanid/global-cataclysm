@@ -71,6 +71,17 @@ class TurnLog:
             'orders': [{'unit_id': uid, 'unit_type': ut, 'from': src, 'to': dst} for uid, ut, src, dst in moves],
         })
 
+    def record_aircraft_lost(self, faction, lost):
+        """Aircraft that crashed by themselves, with nowhere to land: `lost` is [(unit_id, unit_type,
+        territory_id, reason), ...], reason 'no_carrier' / 'carrier_full' (over sea, no place on an own
+        carrier), 'hostile_land' (on land not its own or an ally's) or 'no_emergency_landing' (its carrier
+        sunk in a battle and no landing within reach) -- at the end of the Non-Combat Move phase, or after
+        that battle."""
+        self.events.append({
+            'kind': 'aircraft_lost', 'faction': faction,
+            'units': [{'unit_id': uid, 'unit_type': ut, 'territory_id': tid, 'reason': why} for uid, ut, tid, why in lost],
+        })
+
     def record_start_of_turn(self, faction, round_number, turn, turns_in_round):
         """The announcement that opens a faction's turn (a queue step of its own in
         server/stepper.py, not an engine phase): which round it is and which of

@@ -37,6 +37,7 @@ var dimmed := false        # can't be picked right now (no legal move, or alread
 var committed := false     # queued to move: drawn with an arrow badge; clicking recalls it
 var drag_payload := {}     # non-empty: this tile can start a move drag carrying this payload
 var rolling := false       # the battle board: this unit's roll is the one on show
+var must_land := false     # an aircraft that must land this Non-Combat Move or crash: a red pulse
 var _shake_x := 0.0        # the battle board's reactions: a roll shakes the unit side to side,
 var _bounce_y := 0.0       # and a hit bounces it up and down (drawn as an offset; the layout is untouched)
 var _shake_tween: Tween
@@ -144,6 +145,10 @@ func _draw() -> void:
 	if rolling:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(1.0, 0.9, 0.35, 0.22))
 		draw_rect(Rect2(Vector2.ZERO, size).grow(-1.0), Color(1.0, 0.9, 0.35), false, 3.0)
+	if must_land:
+		var breath := 0.5 + 0.5 * sin(float(Time.get_ticks_msec()) / 1000.0 / 1.3 * TAU)
+		draw_rect(Rect2(Vector2.ZERO, size), Color(1.0, 0.2, 0.15, 0.12 + 0.2 * breath))
+		draw_rect(Rect2(Vector2.ZERO, size).grow(-1.0), Color(1.0, 0.3, 0.25, 0.6 + 0.4 * breath), false, 3.0)
 
 	if not in_transport:
 		_draw_package(Vector2.ZERO, owner_col)
@@ -265,3 +270,8 @@ func _draw_package(offset: Vector2, owner_col: Color) -> void:
 		var at := offset + Vector2(ICON_POS.x - 1.0, 62.0)
 		draw_string_outline(ThemeDB.fallback_font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, 3, Color(0, 0, 0, 0.9))
 		draw_string(ThemeDB.fallback_font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE if hp > 0 else Color(1.0, 0.4, 0.35))
+
+
+func _process(_delta: float) -> void:
+	if must_land:
+		queue_redraw()  # the red pulse

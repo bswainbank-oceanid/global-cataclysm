@@ -212,7 +212,7 @@ class Planner:
         got = self._nc_dests.get(u.unit_id)
         if got is None:
             if self.category(u) == 'Air':
-                got = set(legal_air_move_destinations(u.unit_type, self.me, tid, 'noncombat', self.gs, self.data))
+                got = set(legal_air_move_destinations(u.unit_type, self.me, tid, 'noncombat', self.gs, self.data, u.unit_id))
             else:
                 got = set(legal_noncombat_move_paths(u.unit_type, self.me, tid, self.gs, self.data))
             self._nc_dests[u.unit_id] = got

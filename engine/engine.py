@@ -77,7 +77,8 @@ from . import data as _default_data
 from .combat import BattleResult, EventKind, resolve_battle, resolve_bombardment, unit_stat_rows
 from .economy import compute_income
 from .movement import (
-    BombardmentTrace, _is_ally_or_self, _trace_bombardment_movement, find_emergency_landing,
+    BombardmentTrace, _is_ally_or_self, _trace_bombardment_movement, aircraft_at, carrier_capacity, carrier_room,
+    find_emergency_landing,
     legal_air_move_destinations, legal_combat_move_continuations, legal_combat_move_paths,
     legal_noncombat_move_destinations, trace_combat_move,
 )
@@ -236,6 +237,10 @@ class GameEngine:
     def _has(self, unit_type, ability):
         """Whether `unit_type` has `ability` (engine.abilities) in this game's unit set."""
         return abilities.has(self.data.units(), unit_type, ability)
+
+    def _capacity(self, unit_type):
+        """How many aircraft a unit of `unit_type` carries (its carrier_air_wing capacity; 0 if it is no carrier)."""
+        return abilities.param(self.data.units(), unit_type, abilities.CARRIER_AIR_WING, 'capacity', 0)
 
     def _deploy_cap(self, territory_id):
         terr = self.data.territories()[territory_id]
@@ -475,13 +480,18 @@ class GameEngine:
         # that actually funded it (UnitInstance.purchased_at), same
         # own-carrier-only standard as everywhere else carriers matter
         # (an ally's carrier doesn't count).
-        has_own_carrier = any(self._has(u.unit_type, abilities.CARRIER_AIR_WING) and u.owner == faction for u in t.units) or \
-            any(self._has(u.unit_type, abilities.CARRIER_AIR_WING) for u in pending)
+        # ...and likewise every one beyond what those carriers can hold (each its capacity, 3): the
+        # places go first to the aircraft already there, then to the new ones in purchase order.
+        room = (sum(self._capacity(u.unit_type) for u in t.units if u.owner == faction)
+                + sum(self._capacity(u.unit_type) for u in pending)
+                - sum(1 for u in t.units if u.owner == faction and unit_defs[u.unit_type]['category'] == 'Air'))
 
         to_place_here = []
         redirected_by_land = {}
         for u in pending:
-            if unit_defs[u.unit_type]['category'] == 'Air' and not has_own_carrier:
+            if unit_defs[u.unit_type]['category'] == 'Air':
+                room -= 1
+            if unit_defs[u.unit_type]['category'] == 'Air' and room < 0:
                 self.game_state.territories[u.purchased_at].units.append(u)
                 redirected_by_land.setdefault(u.purchased_at, []).append(u)
             else:
@@ -650,7 +660,7 @@ class GameEngine:
                     continue
                 category = unit_defs[u.unit_type]['category']
                 if category == 'Air':
-                    legal = legal_air_move_destinations(u.unit_type, faction, tid, 'noncombat', gs, self.data)
+                    legal = legal_air_move_destinations(u.unit_type, faction, tid, 'noncombat', gs, self.data, u.unit_id)
                 else:
                     if u.has_moved_combat:
                         continue
@@ -773,7 +783,7 @@ class GameEngine:
                             u for u in origin_state.units
                             if u.owner == faction and u.unit_id not in units_with_own_order
                             and unit_defs[u.unit_type]['category'] == 'Air'
-                        ]
+                        ][:self._capacity(unit.unit_type)]  # a carrier carries at most its capacity
                     origin_state.units.remove(unit)
                     # Every foreign territory entered or passed through this
                     # way is marked contested -- never captured outright,
@@ -918,6 +928,16 @@ class GameEngine:
             return self.legal_combat_move_options(faction, working)
         self._execute_noncombat_moves(self._staged_noncombat_moves.get(faction, []), faction, working)
         return self.legal_noncombat_move_options(faction, working)
+
+    def must_land_with_staged(self, faction):
+        """{unit_id: {'territory_id', 'reason'}}: `faction`'s aircraft that would crash if its Non-Combat
+        Move phase ended with the moves staged so far (aircraft_that_must_land, on a copy with them applied)
+        -- what a move UI highlights, whether or not they still have a legal move."""
+        working = copy.deepcopy(self.game_state)
+        self._execute_noncombat_moves(self._staged_noncombat_moves.get(faction, []), faction, working)
+        where = {u.unit_id: tid for tid, t in working.territories.items() for u in t.units}
+        return {uid: {'territory_id': where[uid], 'reason': why}
+                for uid, why in self.aircraft_that_must_land(faction, working).items()}
 
     def staged_moves_detail(self, faction, kind):
         """The staged moves as a UI wants them: one dict per ordered unit, with its
@@ -1422,7 +1442,8 @@ class GameEngine:
             t.units.remove(u)
             if landing is not None:
                 self.game_state.territories[landing].units.append(u)
-            # else: no adjacent own carrier, own land, or allied land -- lost
+            else:  # no adjacent own carrier with room, own land, or allied land -- lost
+                self._record_aircraft_lost(u.owner, [(u.unit_id, u.unit_type, territory_id, 'no_emergency_landing')])
 
     def has_processed_return_to_base(self, faction):
         """True once process_return_to_base has run for `faction` this turn."""
@@ -1487,8 +1508,12 @@ class GameEngine:
         """Where `unit` should snap back to, or None if that's no
         longer possible (falls through to a regular non-combat move)."""
         if unit.based_on_carrier is not None:
+            unit_defs = self.data.units()
             for t in self.game_state.territories.values():
                 if any(u.unit_id == unit.based_on_carrier for u in t.units):
+                    # a full deck (its carriers' capacity taken by other aircraft) is no base to return to
+                    if carrier_room(t.territory_id, faction, self.game_state, unit_defs, exclude_id=unit.unit_id) < 1:
+                        return None
                     return t.territory_id
             return None  # that carrier didn't survive
         origin_id = unit.combat_move_origin
@@ -1499,7 +1524,7 @@ class GameEngine:
         # Sea origin with no carrier recorded (departed from open water,
         # unusual but not impossible) -- only safe if faction's own
         # carrier happens to be there now.
-        if any(self._has(u.unit_type, abilities.CARRIER_AIR_WING) and u.owner == faction for u in origin_state.units):
+        if carrier_room(origin_id, faction, self.game_state, self.data.units(), exclude_id=unit.unit_id) >= 1:
             return origin_id
         return None
 
@@ -1540,7 +1565,8 @@ class GameEngine:
                 # movement.combat_or_noncombat_not_both: air is exempt
                 # from the combat-move/non-combat-move exclusivity --
                 # may non-combat-move even after already combat-moving.
-                legal = legal_air_move_destinations(unit.unit_type, faction, origin_id, 'noncombat', game_state, self.data)
+                legal = legal_air_move_destinations(unit.unit_type, faction, origin_id, 'noncombat', game_state, self.data,
+                                                    unit.unit_id)
             else:
                 if unit.has_moved_combat:
                     raise ValueError(f'unit {order.unit_id} already made a combat move this turn and cannot also non-combat-move')
@@ -1554,7 +1580,7 @@ class GameEngine:
                 riders = [
                     u for u in game_state.territories[origin_id].units
                     if u.owner == faction and unit_defs[u.unit_type]['category'] == 'Air'
-                ]
+                ][:self._capacity(unit.unit_type)]  # a carrier carries at most its capacity
 
             game_state.territories[origin_id].units.remove(unit)
             game_state.territories[order.destination].units.append(unit)
@@ -1605,25 +1631,62 @@ class GameEngine:
         orders = self._staged_noncombat_moves.get(faction, [])
         unit_info = self._unit_info(o.unit_id for o in orders) if self.turn_log is not None else None
         self._execute_noncombat_moves(orders, faction, self.game_state)
-        self._apply_stranded_aircraft_check(faction)
         self._noncombat_moves_confirmed.add(faction)
         self._staged_noncombat_moves.pop(faction, None)
         if self.turn_log is not None:
             self.turn_log.record_noncombat_move(faction, orders, unit_info)
+        self._apply_stranded_aircraft_check(faction)
+
+    def aircraft_that_must_land(self, faction, game_state=None):
+        """{unit_id: reason} -- `faction`'s aircraft that would crash if the Non-Combat Move phase ended now
+        (movement.stranded_aircraft_rule): over a sea zone without a place on one of its OWN carriers there
+        (an ally's never counts; a carrier queued to deploy there this turn does, up to its capacity), or on
+        land that is not its own or an ally's. Reasons: 'no_carrier', 'carrier_full', 'hostile_land'. A
+        pure query (on `game_state`, e.g. a copy with the staged moves applied) -- what the client pulses red."""
+        gs = game_state or self.game_state
+        terrs = self.data.territories()
+        unit_defs = self.data.units()
+        out = {}
+        for tid, t in gs.territories.items():
+            air = [u for u in t.units if u.owner == faction and unit_defs[u.unit_type]['category'] == 'Air']
+            if not air:
+                continue
+            if terrs[tid]['type'] == 'land':
+                if not _is_ally_or_self(gs, faction, t.owner):
+                    out.update({u.unit_id: 'hostile_land' for u in air})
+                continue
+            cap = carrier_capacity(tid, faction, gs, unit_defs)
+            queued = len(aircraft_at(tid, faction, gs, unit_defs)) - len(air)  # air bought for this zone keeps its place
+            room = max(0, cap - queued)
+            for u in air[room:]:  # the first to arrive keep the places
+                out[u.unit_id] = 'carrier_full' if cap else 'no_carrier'
+        return out
 
     def _apply_stranded_aircraft_check(self, faction):
         """movement.stranded_aircraft_rule: run once, at the end of the
-        Non-Combat Move phase -- any of `faction`'s air units sitting
-        over a sea zone with no OWN Aircraft Carrier present (an ally's
-        never counts) are lost."""
-        terrs = self.data.territories()
-        unit_defs = self.data.units()
+        Non-Combat Move phase -- every one of `faction`'s aircraft that
+        must still land (aircraft_that_must_land: over sea without a
+        place on its own carrier, or on hostile land) crashes, and each
+        crash is logged."""
+        doomed = self.aircraft_that_must_land(faction)
+        if not doomed:
+            return
+        lost = []
         for tid, t in self.game_state.territories.items():
-            if terrs[tid]['type'] != 'sea':
-                continue
-            if any(self._has(u.unit_type, abilities.CARRIER_AIR_WING) and u.owner == faction for u in t.units):
-                continue
-            t.units = [u for u in t.units if not (u.owner == faction and unit_defs[u.unit_type]['category'] == 'Air')]
+            for u in [u for u in t.units if u.unit_id in doomed]:
+                t.units.remove(u)
+                lost.append((u.unit_id, u.unit_type, tid, doomed[u.unit_id]))
+        self._record_aircraft_lost(faction, lost)
+
+    def _record_aircraft_lost(self, faction, lost):
+        """Every aircraft that crashed by itself -- nowhere to land -- goes in the game log (and the stats)."""
+        if not lost:
+            return
+        if self.stats is not None:
+            for _, unit_type, _, _ in lost:
+                self.stats.record_death(faction, unit_type)
+        if self.turn_log is not None:
+            self.turn_log.record_aircraft_lost(faction, lost)
 
     def process_capture_territory(self, faction):
         """The automated Capture Territory phase -- no player choice, no

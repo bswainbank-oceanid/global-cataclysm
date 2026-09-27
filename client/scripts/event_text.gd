@@ -116,6 +116,14 @@ static func describe(e: Dictionary) -> String:
 				return ""
 			return "%s aircraft return to base:
 %s" % [_fac(e["faction"]), _move_lines(e["orders"], func(o): return _terr(o["to"]))]
+		"aircraft_lost":
+			var reasons := {"no_carrier": "no own carrier to land on", "carrier_full": "no place on its own carrier",
+				"hostile_land": "no friendly land to land on", "no_emergency_landing": "its carrier sank and nowhere was in reach"}
+			var lines := []
+			for u in e["units"]:
+				lines.append("%s's %s crashes at %s (%s)" % [_fac(e["faction"]), u["unit_type"], _terr(u["territory_id"]),
+					reasons.get(str(u["reason"]), str(u["reason"]))])
+			return "\n".join(lines)
 		"battle_summary":
 			var lines := ["[b]Battle at %s[/b] (%s)" % [_terr(e["territory_id"]), e["battle_type"]]]
 			lines.append("  Attackers: " + _by_owner(e["attackers"]))
