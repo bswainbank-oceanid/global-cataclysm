@@ -105,12 +105,8 @@ func _initialize() -> void:
 	_pick(screen, 2, "mode", 3)
 	_check(screen.settings()["seats"][2]["alliance"] == 0, "non-players send no alliance")
 
-	# Bot AI: the heuristic bot by default, the random baseline on request; only bots have one.
-	_check(screen.settings()["seats"][1]["ai"] == "strategy", "a bot plays the heuristic AI by default")
-	_check(not (_row(screen, 1)["ai"] as OptionButton).disabled and (_row(screen, 0)["ai"] as OptionButton).disabled, "a bot seat can choose; a human's can't")
-	_pick(screen, 1, "ai", 1)
-	_check(screen.settings()["seats"][1]["ai"] == "random", "the random baseline can be chosen: %s" % str(screen.settings()["seats"][1]["ai"]))
-	_pick(screen, 1, "ai", 0)
+	# Bots always play the heuristic AI: no choice is offered or sent (the server's default).
+	_check(not screen.settings()["seats"][1].has("ai") and not _row(screen, 1).has("ai"), "no Bot AI choice")
 
 	# Maximum alliance size: 1 .. players-1, default 3 (1 = no alliances, no Alliances phase).
 	var size: OptionButton = screen._max_alliance
@@ -152,6 +148,45 @@ func _initialize() -> void:
 	screen._combat_first.button_pressed = true
 	screen._noncombat_first.button_pressed = false
 	_check(screen.settings()["allow_combat_first_turn"] == true and screen.settings()["allow_noncombat_first_turn"] == false, "the checkboxes are sent")
+
+	# A new scenario: Human / Bot / Not playing seats, per-seat settings and a Neutral row.
+	screen._combat_first.button_pressed = false
+	screen._noncombat_first.button_pressed = true
+	screen.set_seat_specs({"total": 150,
+		"players": [{"key": "territory_value", "min": 0, "max": 150, "default": null},
+			{"key": "initial_mpc", "min": 0, "max": 1000, "default": 125},
+			{"key": "units_mpc", "min": 0, "max": 1000, "default": 125},
+			{"key": "promotions", "min": 0, "max": 20, "default": 3},
+			{"key": "scs", "min": 0, "max": 10, "default": 3}],
+		"neutral": [{"key": "territory_value", "min": 0, "max": 150, "default": null},
+			{"key": "units_mpc", "min": 0, "max": 1000, "default": 100},
+			{"key": "promotions", "min": 0, "max": 20, "default": 0},
+			{"key": "scs", "min": 0, "max": 10, "default": 0}]})
+	_check(not screen._new_panel.visible and not screen._neutral_cells[0].visible, "a fixed scenario hides the new scenario's settings")
+	screen.select_scenario("new")
+	_check(screen._new_panel.visible and screen._neutral_cells[0].visible, "a new scenario shows them, with a Neutral row")
+	_check((_row(screen, 2)["mode"] as OptionButton).item_count == 3 and screen._mode_of(_row(screen, 5)) == "NOT_PLAYING",
+		"seats are Human, Bot or Not playing")
+	var players: int = screen._players()
+	var each := 150 / players
+	_check(int(_row(screen, 0)["territory_value"].value) == each, "a player's territory defaults to an even split (%d)" % each)
+	_check(int(screen._neutral_row["territory_value"].value) == 150 - each * players, "the Neutral pool defaults to what is left")
+	var ns: Dictionary = screen.settings()
+	_check(ns["scenario"]["kind"] == "new" and not ns["seats"][0].has("territory_value") and ns["seats"][0]["units_mpc"] == 125,
+		"a default territory is left to the server; the other settings are sent")
+	_check(not ns["seats"][5].has("units_mpc"), "a seat not playing sends no settings")
+	_row(screen, 0)["territory_value"].value = 40
+	_check(screen.settings()["seats"][0]["territory_value"] == 40, "an edited territory value is sent")
+	_row(screen, 0)["units_mpc"].value = 160
+	_check(int(_row(screen, 0)["initial_mpc"].value) == 160, "raising the units MPC past the initial MPC raises the initial MPC")
+	_row(screen, 0)["initial_mpc"].value = 100
+	_check(int(_row(screen, 0)["units_mpc"].value) == 100, "lowering the initial MPC below the units MPC lowers the units MPC")
+	screen._neutral_row["scs"].value = 2
+	_check(screen.settings()["scenario"]["neutral"]["scs"] == 2, "the Neutral row is sent")
+	_row(screen, 1)["territory_value"].value = 150
+	_check(screen._territory_note.text.contains("scaled down"), "more than the map holds is flagged as scaled down: %s" % screen._territory_note.text)
+	screen.select_scenario("fixed")
+	_check(not screen.settings().has("scenario") and screen._mode_of(_row(screen, 5)) == "NONCOMBATANT", "back to the fixed scenario")
 
 	print("launch screen test: failures=%d" % _failures)
 	quit(1 if _failures > 0 else 0)
