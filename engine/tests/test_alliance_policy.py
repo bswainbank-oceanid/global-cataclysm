@@ -335,6 +335,42 @@ class TestAcceptsInvite(unittest.TestCase):
         self.assertFalse(alliance_policy.accepts_invite(engine, 'UE', 'NAA'))
 
 
+class TestAdversarial(unittest.TestCase):
+    """Adversarial: never allies with a human; accepts every bot; invites bots by the counterweight rule."""
+    MODES = {'NAA': FactionMode.BOT, 'UE': FactionMode.HUMAN, 'GPC': FactionMode.BOT, 'PAF': FactionMode.BOT,
+             'AAC': FactionMode.BOT}
+
+    def test_never_accepts_a_human_or_an_alliance_holding_one(self):
+        engine, gs = make_engine(self.MODES, alliances={'GPC': 'A', 'UE': 'A'}, strategies={'NAA': 'adversarial'})
+        self.assertFalse(alliance_policy.accepts_invite(engine, 'NAA', 'UE'))   # the human
+        self.assertFalse(alliance_policy.accepts_invite(engine, 'NAA', 'GPC'))  # a bot allied with the human
+        self.assertTrue(alliance_policy.accepts_invite(engine, 'NAA', 'PAF'))   # a bot on its own
+
+    def test_accepts_bots_whatever_the_size(self):
+        engine, gs = make_engine(self.MODES, alliances={'GPC': 'A', 'PAF': 'A', 'AAC': 'A'},
+                                 strategies={'NAA': 'adversarial'})
+        self.assertTrue(alliance_policy.accepts_invite(engine, 'NAA', 'GPC'))  # past any counterweight cap
+
+    def test_invites_bots_by_the_counterweight_rule_and_never_a_human(self):
+        # no other alliance yet: like counterweight, it does not found the first
+        engine, gs = make_engine(self.MODES, strategies={'NAA': 'adversarial'})
+        self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
+        # a two-member alliance of bots on the board: it asks a bot to match, never the human
+        engine, gs = make_engine(self.MODES, alliances={'GPC': 'A', 'PAF': 'A'}, strategies={'NAA': 'adversarial'})
+        picks = {alliance_policy.choose_invite_target(engine, 'NAA', random.Random(seed)) for seed in range(30)}
+        self.assertEqual(picks, {'AAC'})
+        self.assertFalse(alliance_policy.may_invite(engine, 'NAA', 'UE'))
+
+    def test_never_invites_while_its_own_alliance_holds_a_human(self):
+        engine, gs = make_engine(self.MODES, alliances={'NAA': 'B', 'UE': 'B', 'GPC': 'A', 'PAF': 'A', 'AAC': 'A'},
+                                 strategies={'NAA': 'adversarial'})
+        self.assertFalse(alliance_policy.may_invite(engine, 'NAA', 'GPC'))
+
+    def test_other_strategies_may_invite_anyone(self):
+        engine, gs = make_engine(self.MODES, strategies={'NAA': 'aggressive'})
+        self.assertTrue(alliance_policy.may_invite(engine, 'NAA', 'UE'))
+
+
 class TestTotalUnitValue(unittest.TestCase):
     def test_none_cost_units_dont_break_the_sum(self):
         units = [make_unit('Transport', 'NAA'), make_unit('Infantry', 'NAA')]

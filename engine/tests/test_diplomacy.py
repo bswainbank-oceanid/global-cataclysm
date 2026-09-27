@@ -39,6 +39,21 @@ class TestBotDiplomacy(unittest.TestCase):
         bot.commit_diplomacy_phase(declined)
         self.assertTrue(gs.factions['AAC'].eliminated)
 
+    def test_an_adversarial_bot_forces_a_human_out_without_asking(self):
+        gs, engine, bot = world({'NAA': 10, 'AAC': 2, 'UE': 6}, modes={'AAC': FactionMode.HUMAN})
+        gs.factions['NAA'].alliance_strategy = 'adversarial'
+        plan = bot.plan_diplomacy_phase()
+        self.assertNotEqual(plan.get('target'), 'AAC')
+        self.assertEqual(plan['demands'], ['AAC'])
+        bot.commit_diplomacy_phase(plan)
+        self.assertTrue(gs.factions['AAC'].eliminated)
+
+    def test_an_adversarial_bot_still_asks_a_bot_first(self):
+        gs, engine, bot = world({'NAA': 10, 'AAC': 2, 'UE': 6})
+        gs.factions['NAA'].alliance_strategy = 'adversarial'
+        plan = bot.plan_diplomacy_phase()
+        self.assertEqual((plan['action'], plan['target'], plan['demand_if_declined']), ('invite', 'AAC', True))
+
     def test_a_human_who_accepts_is_not_eliminated(self):
         gs, engine, bot = world({'NAA': 10, 'AAC': 2, 'UE': 6}, modes={'AAC': FactionMode.HUMAN})
         bot.commit_diplomacy_phase(dict(bot.plan_diplomacy_phase(), accepts=True))

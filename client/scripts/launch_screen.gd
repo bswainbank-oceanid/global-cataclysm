@@ -26,7 +26,7 @@ const MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Neutral", "NEUTRAL"], ["No
 const NEW_MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Not playing", "NOT_PLAYING"]]  # a new scenario's seats
 const SCENARIOS := [["Global Cataclysm: 1972", "fixed"], ["New scenario", "new"]]
 const ALLIANCES := ["None", "Alliance 1", "Alliance 2", "Alliance 3"]
-const STRATEGIES := ["random", "aggressive", "passive", "counterweight", "independent", "variable"]
+const STRATEGIES := ["random", "aggressive", "passive", "counterweight", "independent", "adversarial", "variable"]
 const BEHAVIORS := ["random", "loyal", "opportunistic", "treacherous", "variable"]
 # A new scenario's seat settings: [key, header, width]; the Neutral row has no initial MPC.
 const SEAT_KEYS := [["territory_value", "Territory", 84], ["initial_mpc", "Initial MPC", 84], ["units_mpc", "Units MPC", 84],

@@ -1,27 +1,27 @@
 {
   "random_6bot": {
-    "setup": "3516e2d9c04aaec5b6ed80acc29fc8f27daf2e2d",
-    "log": "892841c7384010b0548180000f005ba55c9606b0",
-    "final": "ffeafaa83a3a871146b0abc4820964ace71f6f00",
-    "events": 5305
+    "setup": "1062dda07c139108cde5f769f2314da7308f5b65",
+    "log": "9835b817076847e6a6e68343625a3f8f9e4c42ca",
+    "final": "3b77bce990807da68603a32c6a64fbf4cb5597dd",
+    "events": 5714
   },
   "strategy_6bot": {
-    "setup": "8520fb7f6953d2324bfa8ad9c020e2afc3408b98",
-    "log": "f0c782dd9d66f007b364428354092d502cef0868",
-    "final": "d36d514cd8d4618e92f01846ba26af72a2c7836d",
-    "events": 733
+    "setup": "dfe089697b8a387bcff92ec553a9a02979b3f871",
+    "log": "eda0b892405bed6532f49a6e04993720f06872bd",
+    "final": "ead11212b0c24f8074143c78db7bd137fff7e6cf",
+    "events": 650
   },
   "strategy_3bot_neutral": {
-    "setup": "3155c51c76651ef9853866f0b6f9725e930dc3b4",
-    "log": "a16f484dbc2723ff65f8bcc26745ffbf2c13af18",
-    "final": "58f640ae6fd15b54d54168f15a67052c5ff89e91",
-    "events": 1058
+    "setup": "00d2ddee6e021c1c70e92eb6d88616c1f8d39713",
+    "log": "7dae8fd4f13fc53fed7fac45ba67b14f88897fc2",
+    "final": "33313bf734ff85db54886d5536f452245b45ce92",
+    "events": 1464
   },
   "mixed_alliances": {
-    "setup": "587657cf25817536ab14ef136ad366a4263e4802",
-    "log": "f720d7da4c891e54032d8570369172aa8d6aeba2",
-    "final": "a63e5823abda5644f3537f0f288ab20a2a3dbf2a",
-    "events": 2155
+    "setup": "c3dc4f40cd27f97312e49b1c2c5b0868cf2cd239",
+    "log": "35e067cba7123a77f70408a6dd951d54c1dbe5f6",
+    "final": "e854b93bbdd4d7966297c8abc1dd7ba93159ef6b",
+    "events": 1907
   },
   "fixed_order_2bot": {
     "setup": "69cb97185eae63fc85bb07037fb8413cb648a3db",
@@ -30,9 +30,9 @@
     "events": 2870
   },
   "new_scenario_3bot": {
-    "setup": "7239db3d25e613431b4f0f218d0fdb5a249c8527",
-    "log": "7a155d95872b13a65378ef9234fcc7c0ec578904",
-    "final": "9874e0632b050655a0f5d046dad8f2544e45db77",
-    "events": 2201
+    "setup": "cf280cb1db577843f8e94967754be4ed1eceeaee",
+    "log": "2fac0faa2ec2f5fca3f02b48f257c8b484066e8b",
+    "final": "1777d364c7efd1f1497c41eeaa7405f96d052628",
+    "events": 2240
   }
 }
