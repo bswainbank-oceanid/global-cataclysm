@@ -377,6 +377,11 @@ func clear_bombardment_mark() -> void:
 ## The server's move options and staged moves for the human's Combat/Non-Combat
 ## Move ({} = not in one). Destinations are normalised to {dest: path}; a
 ## non-combat move has no route, so its "path" is just [origin, dest].
+## The player's aircraft that must land this Non-Combat Move or crash: {unit id: {territory_id, reason}}.
+func must_land() -> Dictionary:
+	return human_move.get("must_land", {}) if human_move_active() else {}
+
+
 func set_human_move(faction: String, block: Dictionary) -> void:
 	if block.is_empty() or not block.has("kind"):
 		if not human_move.is_empty():
@@ -423,7 +428,10 @@ func set_human_move(faction: String, block: Dictionary) -> void:
 		else:
 			order["dest"] = int(o["destination"])
 		orders.append(order)
-	human_move = {"kind": block["kind"], "faction": faction, "options": options, "orders": orders}
+	var must_land := {}  # unit id -> {territory_id, reason}: aircraft that crash unless they land somewhere
+	for k in block.get("must_land", {}):
+		must_land[int(k)] = {"territory_id": int(block["must_land"][k]["territory_id"]), "reason": str(block["must_land"][k]["reason"])}
+	human_move = {"kind": block["kind"], "faction": faction, "options": options, "orders": orders, "must_land": must_land}
 	for uid in move_selected.keys():
 		if not options.has(uid):
 			move_selected.erase(uid)  # committed (or otherwise unable to move) now

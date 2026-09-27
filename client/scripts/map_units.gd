@@ -25,6 +25,7 @@ const STAR_DISC_R := 7.5
 var forced_style := -1  # -1 = adaptive; otherwise a Style, for debug comparisons
 var zoom := 1.0
 var pulse_spaces := {}  # territory id -> true: the player's spaces with a unit that can still move this phase
+var danger_spaces := {}  # territory id -> true: ...with an aircraft that must land (or crash): pulses red
 var _pulse_layer: Node2D
 
 
@@ -43,10 +44,14 @@ func _ready() -> void:
 ## could still make a legal move (the server's options leave out units already ordered).
 func _refresh_pulse() -> void:
 	pulse_spaces = {}
+	danger_spaces = {}
 	if GameStore.human_move_active():
 		for uid in GameStore.human_move["options"]:
 			pulse_spaces[int(GameStore.human_move["options"][uid]["origin"])] = true
-	_pulse_layer.set_process(not pulse_spaces.is_empty())
+		var must := GameStore.must_land()
+		for uid in must:
+			danger_spaces[int(must[uid]["territory_id"])] = true  # even with no legal move left
+	_pulse_layer.set_process(not pulse_spaces.is_empty() or not danger_spaces.is_empty())
 	_pulse_layer.queue_redraw()
 
 
@@ -72,7 +77,8 @@ func group_rect(tid: int, owner: String) -> Rect2:
 
 
 ## A bright gold glow that throbs around the player's movable badge groups, with a ring that
-## ripples outwards from it, at every zoom.
+## ripples outwards from it, at every zoom -- red instead around a group holding an aircraft that
+## must land this Non-Combat Move (or crash).
 class _PulseLayer extends Node2D:
 	const PERIOD := 1.3  # seconds per throb
 
@@ -85,25 +91,32 @@ class _PulseLayer extends Node2D:
 		queue_redraw()
 
 	func _draw() -> void:
-		if units == null or units.pulse_spaces.is_empty():
+		if units == null or (units.pulse_spaces.is_empty() and units.danger_spaces.is_empty()):
 			return
 		var t := float(Time.get_ticks_msec()) / 1000.0 / PERIOD
 		var breath := 0.5 + 0.5 * sin(t * TAU)
 		var ripple := fposmod(t, 1.0)  # 0 -> 1: the ring grows from the badge outwards as it fades
 		var owner := GameStore.move_faction()
 		var inv := units._badge_scale() / units.zoom
+		var spaces := units.pulse_spaces.duplicate()
+		spaces.merge(units.danger_spaces)
 		for copy in [-1, 0, 1]:
-			for tid in units.pulse_spaces:
+			for tid in spaces:
 				var rect := units.group_rect(int(tid), owner)
 				if rect.size == Vector2.ZERO:
 					continue
+				# red where an aircraft must land (or crash), gold where a unit can still move
+				var danger: bool = units.danger_spaces.has(tid)
+				var fill := Color(1.0, 0.2, 0.15) if danger else Color(1.0, 0.85, 0.2)
+				var edge := Color(1.0, 0.45, 0.4) if danger else Color(1.0, 0.95, 0.55)
+				var ring := Color(1.0, 0.3, 0.25) if danger else Color(1.0, 0.92, 0.4)
 				var anchor: Vector2 = GameData.label_points[int(tid)] + Vector2(copy * GameData.map_w, 0)
 				draw_set_transform(anchor + Vector2(0, 11.0 / units.zoom), 0.0, Vector2(inv, inv))
 				var glow := rect.grow(3.0 + 2.0 * breath)
-				draw_rect(glow, Color(1.0, 0.85, 0.2, 0.22 + 0.33 * breath))
+				draw_rect(glow, Color(fill.r, fill.g, fill.b, 0.22 + 0.33 * breath))
 				draw_rect(glow, Color(0.0, 0.0, 0.0, 0.7), false, 5.0)
-				draw_rect(glow, Color(1.0, 0.95, 0.55, 0.75 + 0.25 * breath), false, 3.0)
-				draw_rect(rect.grow(4.0 + 12.0 * ripple), Color(1.0, 0.92, 0.4, 0.9 * (1.0 - ripple)), false, 3.0)
+				draw_rect(glow, Color(edge.r, edge.g, edge.b, 0.75 + 0.25 * breath), false, 3.0)
+				draw_rect(rect.grow(4.0 + 12.0 * ripple), Color(ring.r, ring.g, ring.b, 0.9 * (1.0 - ripple)), false, 3.0)
 
 
 func _style() -> int:

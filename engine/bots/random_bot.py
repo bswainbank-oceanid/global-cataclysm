@@ -349,7 +349,7 @@ class RandomBot:
     def _advance_toward_nearest_enemy(self, unit, origin_id, category, game_state):
         data = self.engine.data
         if category == 'Air':
-            legal = legal_air_move_destinations(unit.unit_type, self.faction, origin_id, 'noncombat', game_state, data)
+            legal = legal_air_move_destinations(unit.unit_type, self.faction, origin_id, 'noncombat', game_state, data, unit.unit_id)
         else:
             legal = set(legal_noncombat_move_paths(unit.unit_type, self.faction, origin_id, game_state, data))
         if not legal:

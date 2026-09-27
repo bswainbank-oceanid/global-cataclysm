@@ -632,12 +632,17 @@ class PhaseStepper:
 
     def _move_block(self, faction, kind):
         """The 'human' block of a move-phase queue: what is still legal per unit
-        (with the staged moves applied) and the staged moves themselves."""
-        return {
+        (with the staged moves applied), the staged moves themselves, and -- in
+        Non-Combat Move -- the aircraft that must still land or crash
+        ({unit_id: {territory_id, reason}}: the client pulses them red)."""
+        block = {
             'kind': kind,
             'options': self.engine.move_options_with_staged(faction, kind),
             'orders': self.engine.staged_moves_detail(faction, kind),
         }
+        if kind == 'noncombat':
+            block['must_land'] = self.engine.must_land_with_staged(faction)
+        return block
 
     def _is_human(self, faction):
         return self.engine.game_state.factions[faction].mode == FactionMode.HUMAN

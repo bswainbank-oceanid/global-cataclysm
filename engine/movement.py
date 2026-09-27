@@ -780,7 +780,7 @@ def legal_noncombat_move_paths(unit_type, owner, origin_id, game_state, data_mod
     return paths
 
 
-def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_state, data_module):
+def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_state, data_module, mover_id=None):
     """Air units fly over enemy AND noncombatant territories/sea zones freely
     (never blocked, never forced to stop by mere occupation) in both
     move phases -- the only constraints are their own move budget (no
@@ -873,10 +873,11 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
             # isolation, so it has no way to know, and per this rule
             # shouldn't try to guess, what order a player will submit
             # the rest of their moves in.
+            # And only with a free place on those carriers: each holds its carrier_air_wing
+            # capacity (3) of the owner's aircraft, those already there or queued counted.
             if _enemies_present(tid, owner, game_state, territories, unit_defs):
                 return False
-            own_carrier = lambda u: abilities.has(unit_defs, u.unit_type, abilities.CARRIER_AIR_WING) and u.owner == owner
-            return any(own_carrier(u) for u in dest.units) or any(own_carrier(u) for u in dest.pending_deployment)
+            return carrier_room(tid, owner, game_state, unit_defs, exclude_id=mover_id) >= 1
         return {tid for tid in reachable if legal_landing(tid)}
 
     # combat: must result in an attack, same as any other combat move --
@@ -895,6 +896,32 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
         return (_enemies_present(tid, owner, game_state, territories, unit_defs)
                 or _enemy_transports_present(tid, owner, game_state, territories, unit_defs))
     return {tid for tid in reachable if is_attack_target(tid)}
+
+
+def carrier_capacity(territory_id, owner, game_state, unit_defs, include_pending=True):
+    """How many of `owner`'s aircraft its own carriers in `territory_id` can hold: each carrier's
+    carrier_air_wing capacity (3), counting carriers queued to deploy there this turn when
+    `include_pending` (TerritoryState.pending_deployment -- they arrive at Deploy + Income, and
+    aircraft may land to wait for them)."""
+    t = game_state.territories[territory_id]
+    units = list(t.units) + (list(t.pending_deployment) if include_pending else [])
+    return sum(abilities.param(unit_defs, u.unit_type, abilities.CARRIER_AIR_WING, 'capacity', 0)
+               for u in units if u.owner == owner and abilities.has(unit_defs, u.unit_type, abilities.CARRIER_AIR_WING))
+
+
+def aircraft_at(territory_id, owner, game_state, unit_defs, include_pending=True, exclude_id=None):
+    """`owner`'s aircraft in `territory_id` (and queued to deploy there, when `include_pending`)."""
+    t = game_state.territories[territory_id]
+    units = list(t.units) + (list(t.pending_deployment) if include_pending else [])
+    return [u for u in units if u.owner == owner and u.unit_id != exclude_id
+            and unit_defs[u.unit_type]['category'] == 'Air']
+
+
+def carrier_room(territory_id, owner, game_state, unit_defs, include_pending=True, exclude_id=None):
+    """Free places on `owner`'s own carriers in `territory_id`: their capacity less the aircraft
+    already there (not counting `exclude_id`)."""
+    return (carrier_capacity(territory_id, owner, game_state, unit_defs, include_pending)
+            - len(aircraft_at(territory_id, owner, game_state, unit_defs, include_pending, exclude_id)))
 
 
 def find_emergency_landing(origin_id, owner, game_state, data_module, rng):
@@ -938,8 +965,8 @@ def find_emergency_landing(origin_id, owner, game_state, data_module, rng):
                 own_land.append(neighbor_id)
             elif _is_ally_or_self(game_state, owner, dest.owner):
                 allied_land.append(neighbor_id)
-        elif any(u.owner == owner and abilities.has(unit_defs, u.unit_type, abilities.CARRIER_AIR_WING) for u in dest.units):
-            own_carrier.append(neighbor_id)
+        elif carrier_room(neighbor_id, owner, game_state, unit_defs, include_pending=False) >= 1:
+            own_carrier.append(neighbor_id)  # an own carrier with a free place
 
     for tier in (own_carrier, own_land, allied_land):
         if tier:
