@@ -9,38 +9,40 @@ const PHASES := {"PURCHASE": "Purchase", "COMBAT_MOVE": "Combat Moves", "NONCOMB
 const STATS := [["territory_mpc", "Territory MPC"], ["unit_value", "Unit value"], ["unit_count", "Units"], ["scs", "SCs"]]
 const DIM := "#7f8ea0"
 const WARN := "#ff8a7a"
+const HEAD := "#ffd23f"  # a section heading: turn start, a phase, end of turn
+const SUB := "#e8c872"   # a turn review's sub-heading
 
 
 static func describe(e: Dictionary) -> String:
 	match str(e.get("kind", "")):
 		"strategy_turn_start":
-			return "[b]%s: Turn start[/b]  (%s)\n  %s" % [EventText._fac(str(e["faction"])), _style(e),
+			return "%s\n  %s\n  %s" % [_heading(e, "TURN START", true), _style(e),
 				_stats(e["stats"], e.get("change"), "since last turn")]
 		"strategy_phase":
-			var lines := ["%s %s:" % [EventText._fac(str(e["faction"])), PHASES.get(str(e["phase"]), str(e["phase"]))]]
+			var lines := [_heading(e, str(PHASES.get(str(e["phase"]), str(e["phase"]))).to_upper(), false)]
 			lines.append_array(_choices(str(e["phase"]), e["choices"]))
 			lines.append_array(_rejected(e["rejected"], str(e["phase"])))
 			return "\n".join(lines)
 		"strategy_turn_end":
 			var r: Dictionary = e["review"]
-			var lines := ["[b]%s: End of turn[/b]  (%s)" % [EventText._fac(str(e["faction"])), _style(e)],
-				"  " + _stats(e["stats"], e.get("change"), "during turn"), "  [b]Turn review[/b]"]
+			var lines := [_heading(e, "END OF TURN", true), "  " + _style(e),
+				"  " + _stats(e["stats"], e.get("change"), "during turn"), "  [b][color=%s]Turn review[/color][/b]" % HEAD]
 			for p in [["PURCHASE", "purchase"], ["COMBAT_MOVE", "combat"], ["NONCOMBAT_MOVE", "noncombat"]]:
-				lines.append("  %s:" % PHASES[p[0]])
+				lines.append(_sub(PHASES[p[0]]))
 				for line in _choices(p[0], r.get(p[1], [])):
 					lines.append("  " + line)
 			var rejected: Array = r.get("rejected", [])
 			if not rejected.is_empty():
-				lines.append("  Rejected by the rules:")
+				lines.append(_sub("Rejected by the rules"))
 				for line in _rejected(rejected, ""):
 					lines.append("  " + line)
-			lines.append("  Units with no orders:")
+			lines.append(_sub("Units with no orders"))
 			var idle: Array = r.get("idle_units", [])
 			if idle.is_empty():
 				lines.append("    [color=%s]none[/color]" % DIM)
 			for u in idle:
 				lines.append("    %s at %s" % [_count(u["unit_type"], int(u["count"])), EventText._terr(u["at"])])
-			lines.append("  Objectives given no resources:")
+			lines.append(_sub("Objectives given no resources"))
 			var none: Array = r.get("no_resources", [])
 			if none.is_empty():
 				lines.append("    [color=%s]none[/color]" % DIM)
@@ -56,7 +58,20 @@ static func describe(e: Dictionary) -> String:
 
 
 static func _style(e: Dictionary) -> String:
-	return "strategy: %s" % str(e.get("style", "?"))
+	return "Strategy: [b]%s[/b]" % str(e.get("style", "?"))
+
+
+## A section's heading: "━━━━ GPC · TURN START ━━━━" (a turn's start and end, with a gap
+## before) or "── GPC · PURCHASE ──" (a phase).
+static func _heading(e: Dictionary, what: String, major: bool) -> String:
+	var bar := "━━━━" if major else "──"
+	return "%s[b][color=%s]%s[/color] %s [color=%s]· %s %s[/color][/b]" % [
+		"\n" if major else "", HEAD, bar, EventText._fac(str(e["faction"])), HEAD, what, bar]
+
+
+## A turn review's sub-heading: "  ▸ Purchase".
+static func _sub(what: String) -> String:
+	return "  [color=%s]▸ %s[/color]" % [SUB, what]
 
 
 ## "Territory MPC 31 (+2) · Unit value 148 (-9) · ..."

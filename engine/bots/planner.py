@@ -34,6 +34,10 @@ from .strategy_settings import weighted_order
 
 SC_BIAS = 8  # how much closer (in path-cost points) a Strategic Center purchase spot counts as, for where to buy
 
+# Units no Strategic Center objective (Capture SCs, Pursue an enemy SC, the leftovers' march on the SCs) buys,
+# moves or counts on: Submarines -- submerged, they can neither hit nor be hit by aircraft, and cannot take land.
+NO_SC_CAPTURE = (abilities.SUBMERGE,)
+
 DEFAULT_BUDGET = 3500  # simulated battles per planning pass: about 2-3 seconds in a busy mid-game
 
 
@@ -126,6 +130,7 @@ class Planner:
         self._excluded_zones = excluded_naval_purchase_zones(self.data)
         self._purchase_spots = None
         self._sc_spots = set()
+        self._landmasses = {}
 
         self.my_units = {}  # unit_id -> (unit, territory)
         for tid, t in self.gs.territories.items():
@@ -374,7 +379,7 @@ class Planner:
     def noncombat_orders(self):
         return [NonCombatMoveOrder(uid, dest) for uid, dest in sorted(self.moves_nc.items())]
 
-    def buy(self, tid, categories, name, prefer=None, only=None):
+    def buy(self, tid, categories, name, prefer=None, only=None, land_types=None, without=()):
         """Buys one unit for `tid` by the faction's unit odds among the categories allowed (or, with `prefer`,
         that type first if it can be bought; with `only`, none but those types), if the treasury and the deploy
         capacity allow it. Returns the stand-in unit, or None.
@@ -398,6 +403,10 @@ class Planner:
                 if sea_target and d['category'] == 'Land' and not (sea_ok and is_amphibious(d)):
                     continue
                 if only is not None and t not in only:
+                    continue
+                if land_types is not None and d['category'] == 'Land' and t not in land_types:
+                    continue
+                if any(abilities.has(self.unit_defs, t, a) for a in without):
                     continue
                 candidates.append(t)
         if not candidates:
@@ -428,7 +437,32 @@ class Planner:
             return stub
         return None
 
-    def buy_toward(self, dist, categories, name, only=None):
+    def _landmass(self, tid):
+        """The land territories joined to `tid` by land."""
+        got = self._landmasses.get(tid)
+        if got is None:
+            got, stack = {tid}, [tid]
+            while stack:
+                for n in self.adjacency.get(stack.pop(), []):
+                    if self.is_land(n) and n not in got:
+                        got.add(n)
+                        stack.append(n)
+            for t in got:
+                self._landmasses[t] = got
+        return got
+
+    def _island_land_types(self, spot):
+        """The land unit types that may be bought at `spot` toward the current target: when the target is an
+        island and `spot` is not on it, only the amphibious ones (Mechanized Infantry) -- nothing else could
+        ever get there. None: no limit."""
+        target = self._target
+        if target is None or not self.is_land(target) or target not in deployment.islands(self.data):
+            return None
+        if self.is_land(spot) and spot in self._landmass(target):
+            return None
+        return tuple(t for t, d in self.unit_defs.items() if d['category'] == 'Land' and is_amphibious(d))
+
+    def buy_toward(self, dist, categories, name, only=None, without=()):
         """Buys one unit at a purchase spot near a target (`dist`: cost of the cheapest path from each square to
         the target), by the faction's unit odds among the categories. Strategic Centers are favoured spots: a unit
         bought there costs less (the SC price) and there is room for two more, and it is a garrison where it matters --
@@ -442,7 +476,7 @@ class Planner:
         spots = sorted(self._purchase_spots,
                        key=lambda t: (dist.get(t, 1 << 30) - (SC_BIAS if t in self._sc_spots else 0), t))
         for tid in spots[:10]:
-            stub = self.buy(tid, categories, name, only=only)
+            stub = self.buy(tid, categories, name, only=only, land_types=self._island_land_types(tid), without=without)
             if stub is not None:
                 return stub
         return None
@@ -546,12 +580,13 @@ class Planner:
             return 'defender'
         return None
 
-    def assess_assault(self, tid, categories, contest=False):
+    def assess_assault(self, tid, categories, contest=False, without=()):
         """Chance of taking `tid` with every unit that could reach it (for ordering targets); with `contest`, the
-        chance of at least forcing a contest (hanging on through 3 rounds)."""
+        chance of at least forcing a contest (hanging on through 3 rounds). `without`: abilities whose units
+        take no part."""
         defenders = self.enemies_at(tid)
-        attackers, crossed = self._attack_candidates(tid, categories)
-        attackers = self.mine_at(tid) + [u for u, _ in attackers]
+        attackers, crossed = self._attack_candidates(tid, categories, without)
+        attackers = [u for u in self.mine_at(tid) if not self._has_any(u, without)] + [u for u, _ in attackers]
         if self.is_land(tid) and not self._has_land(attackers):
             return 0.0
         bonus = self._bonus_side(tid, [u for u in attackers if self.category(u) == 'Land'], crossed)
@@ -559,10 +594,15 @@ class Planner:
             return self.contest_odds(attackers, defenders, self.kind(tid), bonus)
         return self.attacker_odds(attackers, defenders, self.kind(tid), bonus)
 
-    def _attack_candidates(self, tid, categories):
+    def _has_any(self, u, abilities_):
+        return any(abilities.has(self.unit_defs, u.unit_type, a) for a in abilities_)
+
+    def _attack_candidates(self, tid, categories, without=()):
         out, crossed = [], {}
         for uid, (u, origin) in self.my_units.items():
             if origin == tid or self.category(u) not in categories or not self.free_for(u, 'combat'):
+                continue
+            if self._has_any(u, without):
                 continue
             path = self.combat_paths(u, origin).get(tid)
             if path is None:
@@ -576,14 +616,15 @@ class Planner:
         out.sort(key=lambda c: (self.cost(c[0]), c[0].unit_id))
         return out, crossed
 
-    def assault(self, tid, name, limits, categories=('Land', 'Air'), purchase_infantry=False, min_is_contest=False):
+    def assault(self, tid, name, limits, categories=('Land', 'Air'), purchase_infantry=False, min_is_contest=False,
+                without=()):
         prev, self._target = self._target, tid
         try:
-            return self._assault(tid, name, limits, categories, purchase_infantry, min_is_contest)
+            return self._assault(tid, name, limits, categories, purchase_infantry, min_is_contest, without)
         finally:
             self._target = prev
 
-    def _assault(self, tid, name, limits, categories, purchase_infantry, min_is_contest):
+    def _assault(self, tid, name, limits, categories, purchase_infantry, min_is_contest, without=()):
         """Take (or win the fight at) `tid` by combat movement: with every unit that could get there, if the
         chance is under the min give up; else add units cheapest-first until it passes the max. With
         `min_is_contest` (attacking a Strategic Center) the min risk is the chance the attack at least forces a
@@ -598,10 +639,11 @@ class Planner:
         snap = self.snapshot()
         kind = self.kind(tid)
         defenders = self.enemies_at(tid)
-        present = [u for u in self.mine_at(tid) if u.unit_id not in self.moves_combat and u.unit_id not in self.moves_nc]
-        candidates, crossed = self._attack_candidates(tid, categories)
+        present = [u for u in self.mine_at(tid) if u.unit_id not in self.moves_combat and u.unit_id not in self.moves_nc
+                   and not self._has_any(u, without)]
+        candidates, crossed = self._attack_candidates(tid, categories, without)
         if not candidates and not present:
-            self.attempt(tid, 'not_pursued', 'no units can reach it')
+            self.attempt(tid, 'not_pursued', self._why_no_attackers(tid, categories, without))
             return False
 
         def chance(units, fast=True):
@@ -681,6 +723,15 @@ class Planner:
         for _, tid in sorted(ranked):  # the most threatened first
             self.secure(tid, 'hold_sc', limits)
 
+    def _why_no_attackers(self, tid, categories, without=()):
+        """The strategy log: nobody can attack `tid` -- because no unit could reach it, or because the ones that
+        could are already committed to something else."""
+        for uid, (u, origin) in self.my_units.items():
+            if origin != tid and self.category(u) in categories and not self._has_any(u, without) \
+                    and self.combat_paths(u, origin).get(tid) is not None:
+                return 'every unit that could reach it is committed elsewhere'
+        return 'no units can reach it'
+
     def objective_capture_scs(self):
         if not self.allow_combat:
             return
@@ -691,12 +742,13 @@ class Planner:
         for tid in targets:
             if self.out_of_time():
                 break
-            ranked.append((-self.assess_assault(tid, ('Land', 'Air', 'Sea')), tid, self.assess_assault(tid, ('Land', 'Air', 'Sea'), contest=True)))
+            ranked.append((-self.assess_assault(tid, ('Land', 'Air', 'Sea'), without=NO_SC_CAPTURE), tid,
+                           self.assess_assault(tid, ('Land', 'Air', 'Sea'), contest=True, without=NO_SC_CAPTURE)))
         for neg, tid, contest in sorted(ranked):
             if contest < limits[0]:
                 self.attempt(tid, 'not_pursued', f'best chance {self._pct(contest)} to force a contest < min {self._pct(limits[0])}')
                 continue  # the min risk: the chance the attack at least forces a contest
-            self.assault(tid, 'capture_sc', limits, ('Land', 'Air', 'Sea'), min_is_contest=True)
+            self.assault(tid, 'capture_sc', limits, ('Land', 'Air', 'Sea'), min_is_contest=True, without=NO_SC_CAPTURE)
 
     def objective_reinforce_contested(self):
         if not self.allow_combat:
@@ -816,9 +868,10 @@ class Planner:
         targets = []
         for tid, t in self.gs.territories.items():
             if self.is_land(tid) and self.capturable(t.owner) and not self.is_sc(tid):
-                targets.append((-self.value(tid), tid))
+                # empty territory first (a free capture for whoever can reach it), then the most valuable
+                targets.append((1 if self.enemies_at(tid) else 0, -self.value(tid), tid))
         failed = []
-        for _, tid in sorted(targets):
+        for _, _, tid in sorted(targets):
             if self.out_of_time():
                 break
             if not self.assault(tid, 'expand_territory', limits, ('Land', 'Air')):
@@ -1006,10 +1059,11 @@ class Planner:
             return costs['allied']
         return costs['enemy']
 
-    def costs_from(self, src):
+    def costs_from(self, src, land_only=False):
         """Cheapest path costs from `src` (the cost of a path is the sum of its squares' costs, the start
-        excluded), and each square's predecessor."""
-        got = self._costs.get(src)
+        excluded), and each square's predecessor. `land_only`: over land alone -- the paths an Infantry or
+        Armor, which can never enter the sea, can actually walk."""
+        got = self._costs.get((src, land_only))
         if got is not None:
             return got
         dist, prev = {src: 0}, {}
@@ -1019,6 +1073,8 @@ class Planner:
             if d > dist.get(node, 1 << 30):
                 continue
             for n in self.adjacency.get(node, []):
+                if land_only and not self.is_land(n):
+                    continue
                 c = self.square_cost(n)
                 if c is None:
                     continue
@@ -1027,8 +1083,15 @@ class Planner:
                     dist[n] = nd
                     prev[n] = node
                     heapq.heappush(heap, (nd, n))
-        self._costs[src] = (dist, prev)
-        return self._costs[src]
+        self._costs[(src, land_only)] = (dist, prev)
+        return self._costs[(src, land_only)]
+
+    def land_bound(self, u):
+        """A land unit that can never enter the sea (not amphibious): Infantry, Armor."""
+        return self.category(u) == 'Land' and not is_amphibious(self.unit_defs[u.unit_type])
+
+    def _maps_for(self, u, any_maps, land_maps):
+        return land_maps if self.land_bound(u) else any_maps
 
     def sc_targets(self):
         """The enemy Strategic Centers, easiest first, as (challenge number, target, the path from my nearest SC)."""
@@ -1088,16 +1151,18 @@ class Planner:
         number, target, path = self._sc_targets[rank]
         self._target = target
         dist_maps = {r: self.costs_from(self._sc_targets[r][1])[0] for r in ranks}
+        land_maps = {r: self.costs_from(self._sc_targets[r][1], land_only=True)[0] for r in ranks}
         dist_to_target = dist_maps[rank]
         defenders = self._region_enemies(target)
         cand = []
         for uid, (u, origin) in self.my_units.items():
-            if u.unit_id in self.claimed:
+            if u.unit_id in self.claimed or self._has_any(u, NO_SC_CAPTURE):
                 continue
-            nearest = min(((dist_maps[r].get(origin, 1 << 30), r) for r in ranks))
+            maps = self._maps_for(u, dist_maps, land_maps)  # (an Infantry or Armor goes by land or not at all)
+            nearest = min(((maps[r].get(origin, 1 << 30), r) for r in ranks))
             if nearest[1] != rank or nearest[0] >= 1 << 30:
                 continue
-            cand.append((dist_to_target[origin], self.cost(u), u.unit_id, u, origin))
+            cand.append((maps[rank][origin], self.cost(u), u.unit_id, u, origin))
         cand.sort(key=lambda c: c[:3])
         self._cut = limits
         force = [c[3] for c in cand]
@@ -1107,7 +1172,7 @@ class Planner:
         bought = []
         k = 0
         while p < limits[1] and not self.out_of_time():
-            stub = self.buy_toward(dist_to_target, ('Land', 'Air', 'Sea'), name)
+            stub = self.buy_toward(dist_to_target, ('Land', 'Air', 'Sea'), name, without=NO_SC_CAPTURE)
             if stub is None:
                 break
             bought.append(stub)
@@ -1130,7 +1195,7 @@ class Planner:
             if self.out_of_time():
                 break
             origin = self.my_units[u.unit_id][1]
-            if self._advance(u, origin, target, dist_to_target, on_path, limits):
+            if self._advance(u, origin, target, self._maps_for(u, dist_maps, land_maps)[rank], on_path, limits):
                 moved += 1
         if moved:
             self.note(f'{name}: {moved} units advance on {self.terrs[target]["name"]} (challenge {number})')
@@ -1155,13 +1220,15 @@ class Planner:
             return
         ranks = list(range(len(targets)))
         dist_maps = {r: self.costs_from(targets[r][1])[0] for r in ranks}
+        land_maps = {r: self.costs_from(targets[r][1], land_only=True)[0] for r in ranks}
         paths = {r: set(targets[r][2]) for r in ranks}
         limits = self.settings.limits(self.style, 'pursue_sc_1')
         moved = 0
         for uid, (u, origin) in sorted(self.my_units.items()):
-            if u.unit_id in self.claimed or self.out_of_time():
+            if u.unit_id in self.claimed or self.out_of_time() or self._has_any(u, NO_SC_CAPTURE):
                 continue
-            nearest = min((dist_maps[r].get(origin, 1 << 30), r) for r in ranks)
+            maps = self._maps_for(u, dist_maps, land_maps)  # (an Infantry or Armor goes by land or not at all)
+            nearest = min((maps[r].get(origin, 1 << 30), r) for r in ranks)
             if nearest[0] >= 1 << 30:
                 continue
             if self.is_land(origin) and self.owner(origin) == self.me and self.category(u) == 'Land':
@@ -1169,13 +1236,13 @@ class Planner:
                 if not others and any(self.category(v) == 'Land' for units in self.threats(origin).values() for v in units):
                     continue
             r = nearest[1]
-            if self._advance(u, origin, targets[r][1], dist_maps[r], paths[r], limits):
+            if self._advance(u, origin, targets[r][1], maps[r], paths[r], limits):
                 moved += 1
         bought, k = 0, 0
         while self.allow_purchase and not self.out_of_time():
             r = ranks[k % len(ranks)]
             self._target = targets[r][1]
-            stub = self.buy_toward(dist_maps[r], ('Land', 'Air', 'Sea'), 'pursue_leftovers')
+            stub = self.buy_toward(dist_maps[r], ('Land', 'Air', 'Sea'), 'pursue_leftovers', without=NO_SC_CAPTURE)
             if stub is None:
                 # nothing more can be bought toward this target (spots full or the money is gone): try the others once
                 if all(self._buy_toward_target(targets[q][1], dist_maps[q], 'pursue_leftovers') is None for q in ranks):
@@ -1193,7 +1260,7 @@ class Planner:
 
     def _buy_toward_target(self, target, dist, name):
         self._target = target
-        return self.buy_toward(dist, ('Land', 'Air', 'Sea'), name)
+        return self.buy_toward(dist, ('Land', 'Air', 'Sea'), name, without=NO_SC_CAPTURE)
 
     # -- Empty Land Grab ------------------------------------------------------------------------------
 
