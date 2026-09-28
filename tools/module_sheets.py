@@ -152,6 +152,9 @@ LAYOUTS = {
 TREE = {'RuleSet': 'Rules'}
 
 
+_ABSENT = object()
+
+
 # ---- paths --------------------------------------------------------------------------------------
 
 def _get(doc, path, default=None):
@@ -365,6 +368,8 @@ def import_workbook(module_type, sheets, existing):
         for h, v in zip(header, row):
             if not h or h.endswith(INFO):
                 continue
+            if v is None and _get(doc, h, _ABSENT) is _ABSENT:
+                continue  # a column another module has: blank here, and this module never had the field
             _set(doc, h, _scalar_from_cell(v))
         docs[mid] = doc
 

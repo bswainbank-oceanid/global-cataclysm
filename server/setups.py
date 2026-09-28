@@ -20,6 +20,30 @@ MAX_NAME = 60
 MAX_DESCRIPTION = 2000
 # what a saved setup leaves out: a seed replays one game, and dev switches are for testing
 NOT_SAVED = ('seed', 'dev')
+# a seat's keys in the order they are stored (and are columns of sheets/ScenarioSetup.ods)
+SEAT_KEYS = ('mode', 'faction', 'alliance', 'strategy', 'behavior', 'ai',
+             'territory_value', 'initial_mpc', 'units_mpc', 'promotions', 'scs')
+
+
+def canonical(settings):
+    """`settings` with each seat's keys in SEAT_KEYS order (any others after) and whole numbers as integers
+    (a client may send 2.0), so a saved setup reads the same whichever client wrote it and survives the
+    spreadsheet round trip unchanged."""
+    out = _whole(dict(settings))
+    if isinstance(out.get('seats'), list):
+        out['seats'] = [{**{k: seat[k] for k in SEAT_KEYS if k in seat}, **{k: v for k, v in seat.items() if k not in SEAT_KEYS}}
+                        if isinstance(seat, dict) else seat for seat in out['seats']]
+    return out
+
+
+def _whole(v):
+    if isinstance(v, dict):
+        return {k: _whole(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_whole(x) for x in v]
+    if isinstance(v, float) and v.is_integer():
+        return int(v)
+    return v
 
 
 def listing(repo=None):
@@ -53,7 +77,7 @@ def save(setup, repo=None):
     if not isinstance(settings, dict):
         problems.append('a saved scenario needs its settings')
     else:
-        settings = {k: v for k, v in settings.items() if k not in NOT_SAVED}
+        settings = canonical({k: v for k, v in settings.items() if k not in NOT_SAVED})
         if (settings.get('scenario') or {}).get('kind') != 'new':
             problems.append('only a new scenario\'s settings can be saved')
         else:
