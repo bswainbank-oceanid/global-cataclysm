@@ -4,8 +4,8 @@ extends VBoxContainer
 ## selected space (owner, value, strategic center, contest, and the units
 ## there grouped by faction and type) -- later also where orders get picked.
 ## Lower: the orders QUEUED for the current phase (what Next will execute),
-## above the Game Log of the phases already executed -- and, beside it, the
-## Strategy tab (the bots' Strategy Log, StrategyText; shown when Settings'
+## above the log of the phases already executed (the Game Log tab) -- and the
+## Strategy tab, filling the same space (the bots' Strategy Log, StrategyText; shown when Settings'
 ## strategy_log is on).
 
 var _detail: VBoxContainer
@@ -60,22 +60,25 @@ func _ready() -> void:
 	lower.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	lower.size_flags_stretch_ratio = 1.0
 	lower.add_theme_stylebox_override("panel", HudStyle.box())
+	# Two tabs filling the panel: the Game Log (the queued orders above the executed log) and the
+	# Strategy Log; the tab bar only shows while the Strategy tab is on (Settings).
+	_log_tabs = TabContainer.new()
+	_log_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_log_tabs.add_theme_font_size_override("font_size", 12)
+	lower.add_child(_log_tabs)
 	var lv := VBoxContainer.new()
-	lower.add_child(lv)
+	lv.name = "Game Log"
+	_log_tabs.add_child(lv)
 	_queue_head = HudStyle.label("Queued orders", 12, HudStyle.GOLD)
 	lv.add_child(_queue_head)
 	_queue = _rich_text()
 	_queue.scroll_following = false
 	lv.add_child(_queue)
 	lv.add_child(HSeparator.new())
-	_log_tabs = TabContainer.new()
-	_log_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_log_tabs.add_theme_font_size_override("font_size", 12)
-	lv.add_child(_log_tabs)
+	lv.add_child(HudStyle.label("Executed", 12, HudStyle.TEXT_DIM))
 	_log = _rich_text()
-	_log.name = "Game Log"
 	_log.scroll_following = true
-	_log_tabs.add_child(_log)
+	lv.add_child(_log)
 	_strategy = _rich_text()
 	_strategy.name = "Strategy"
 	_strategy.scroll_following = true
@@ -233,6 +236,7 @@ func log_line(text: String) -> void:
 ## The Strategy tab shows only while Settings' strategy_log is on (it is always filled).
 func _sync_log_tabs() -> void:
 	_log_tabs.set_tab_hidden(1, not Settings.strategy_log)
+	_log_tabs.tabs_visible = Settings.strategy_log
 	if not Settings.strategy_log:
 		_log_tabs.current_tab = 0
 
