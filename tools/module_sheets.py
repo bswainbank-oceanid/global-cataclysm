@@ -137,6 +137,14 @@ LAYOUTS = {
         Table('Neutral Unit Weights', 'neutral_unit_weights', [Col('unit_type_id'), Col('weight', kind='num')]),
     ],
     'ScenarioGenerator': [],  # the defaults are single values: the Modules sheet (defaults.<option>)
+    'ScenarioSetup': [  # the launch settings: single values on the Modules sheet (settings.<key>), the seats here
+        Table('Seats', 'settings.seats', [
+            Col('mode'), Col('faction'), Col('alliance', kind='int'), Col('strategy'), Col('behavior'),
+            Col('ai', omit=True), Col('territory_value', kind='int', omit=True), Col('initial_mpc', kind='int', omit=True),
+            Col('units_mpc', kind='int', omit=True), Col('promotions', kind='int', omit=True),
+            Col('scs', kind='int', omit=True),
+        ]),
+    ],
 }
 
 # Module types whose whole content (bar id/name) is one "path -> value" sheet: the rules are
@@ -255,7 +263,7 @@ def export_workbook(module_type, docs, ctx):
     if module_type in TREE:
         claimed = {k for d in docs for k in d if k not in ('id', 'name', '_note', '_comment', '_moved')}
     # Modules sheet: the union of every doc's single-valued fields, in first-seen order.
-    fields = []
+    fields = ['id', 'name']  # (even with no docs yet: an empty workbook still imports)
     per_doc = []
     for d in docs:
         flat = dict(_flatten(d, claimed))

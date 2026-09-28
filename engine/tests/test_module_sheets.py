@@ -47,6 +47,16 @@ class TestSheets(unittest.TestCase):
             for mid in docs:
                 self.assertEqual(dumps(docs[mid]), dumps(existing[mid]), f'{module_type} {mid} changed in the round trip')
 
+    def test_a_saved_scenario_setup_survives_the_round_trip(self):
+        from server.tests.test_setups import new_settings
+        doc = {'module_type': 'ScenarioSetup', 'id': 'Setup_001', 'name': 'Duel', 'description': 'Two players',
+               'generator_id': 'GC72_Generator', 'settings': new_settings()}
+        sheets = export_workbook('ScenarioSetup', [doc], {'names': names(self.repo)})
+        path = os.path.join(self.dir, 'ScenarioSetup.ods')
+        write_ods(path, sheets)
+        back = import_workbook('ScenarioSetup', read_ods(path), {'Setup_001': doc})
+        self.assertEqual(dumps(back['Setup_001']), dumps(doc))
+
     def test_an_edited_cost_reaches_the_unit_set(self):
         def edit(sheets):
             rows = sheets['Unit Types']

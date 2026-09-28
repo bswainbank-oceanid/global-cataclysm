@@ -1,15 +1,23 @@
 class_name LaunchScreen
 extends Control
-## The game launch screen: the scenario -- Global Cataclysm: 1972 as it stands, or a New
-## scenario dealt afresh by the server's generator (engine/scenario_generator.py) -- and six
-## seats, each a Human, Bot, Neutral or Noncombatant (a new scenario: Human, Bot or Not
-## playing), with for players (humans and bots) a faction (or random) and a starting
-## alliance, and for bots an alliance strategy and behavior. A new scenario also sets, per
-## player seat, its territory value, initial MPC, units MPC, promotions and Strategic
-## Centers, with a Neutral row for the Neutral pool, plus the scenario-wide options below.
-## Bots always play the heuristic (strategy) AI. "Start Game" sends the settings to the
-## server (server/lobby.py builds the game and re-checks everything); "Resume" goes back to a
-## game already running there.
+## The game launch screen (reference/GC Startup Screen.odt). The scenario list at the top offers
+## Global Cataclysm: 1972 as it stands, a New scenario dealt afresh by the server's generator
+## (engine/scenario_generator.py), and every saved scenario setup (server/setups.py): the
+## settings on this screen saved under a name -- not the map they deal, which is new every game.
+## Picking a saved one fills the screen with its settings to play or edit; saving it again under
+## the same name updates it, under a new name makes a new one. The fixed scenario can't be saved.
+##
+## Below it: the scenario's name, id (assigned by the server) and description; six seats, each a
+## Human, Bot, Neutral or Noncombatant (a new scenario: Human, Bot or Not playing), with for
+## players a faction (or random) and a starting alliance, and for bots an alliance strategy and
+## behavior (bots always play the heuristic AI); a new scenario also sets, per player seat, its
+## territory value, initial MPC, units MPC, promotions and Strategic Centers, with a Neutral row
+## for the Neutral pool. Then the sections Alliance, Rules, Strategic Centers and Starting
+## Locations and Units (the last two, and the surrender rules, for a new scenario only).
+##
+## Save, Delete, Resume and Start are long presses (HoldButton). "Start Game" sends the settings
+## to the server (server/lobby.py builds the game and re-checks everything); "Resume" goes back to
+## a game already running there.
 ##
 ## The seat table: Seat, Type and Faction stay put; the other columns scroll sideways when
 ## the window is too narrow for them.
@@ -20,11 +28,14 @@ extends Control
 
 signal start_requested(settings: Dictionary)
 signal resume_requested
+signal save_requested(setup: Dictionary)   # {id, name, description, settings}: the server replies "setups"
+signal delete_requested(setup_id: String)
 
 var SEATS := 6  # one seat per faction: set from GameData's faction set in _ready
 const MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Neutral", "NEUTRAL"], ["Noncombatant", "NONCOMBATANT"]]
 const NEW_MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Not playing", "NOT_PLAYING"]]  # a new scenario's seats
-const SCENARIOS := [["Global Cataclysm: 1972", "fixed"], ["New scenario", "new"]]
+const FIXED := "fixed"  # the scenario list's entries: FIXED, NEW, or a saved setup's id
+const NEW := "new"
 const ALLIANCES := ["None", "Alliance 1", "Alliance 2", "Alliance 3"]
 const STRATEGIES := ["random", "aggressive", "passive", "counterweight", "independent", "adversarial", "variable"]
 const BEHAVIORS := ["random", "loyal", "opportunistic", "treacherous", "variable"]
@@ -32,8 +43,17 @@ const BEHAVIORS := ["random", "loyal", "opportunistic", "treacherous", "variable
 const SEAT_KEYS := [["territory_value", "Territory", 84], ["initial_mpc", "Initial MPC", 84], ["units_mpc", "Units MPC", 84],
 	["promotions", "Promotions", 84], ["scs", "SCs", 70]]
 const NEUTRAL_KEYS := ["territory_value", "units_mpc", "promotions", "scs"]
+# Which section each of the generator's scenario-wide options sits in (its label comes from the server).
+const OPTION_SECTIONS := {
+	"min_scs_to_avoid_surrender": "rules", "surrender_income_multiplier": "rules",
+	"sc_bonus": "sc", "sc_min_distance": "sc", "sc_final_min_distance": "sc",
+	"faction_weight": "starting", "infantry_in_every_territory": "starting",
+	"neutral_infantry_in_every_territory": "starting", "extra_non_sc_units": "starting",
+}
+const HOLD_SECONDS := 1.0
 const ROW_H := 30.0
 const HEAD_H := 18.0
+const LABEL_W := 205.0  # a section's labels
 const PATH := "user://launch.cfg"
 
 var _rows: Array = []  # per seat: {mode, faction, chip, alliance, strategy, behavior, <seat key>: SpinBox}
@@ -46,12 +66,19 @@ var _seat_specs := {}  # from the server: {total, players: [...], neutral: [...]
 var _scroll: ScrollContainer
 var _fixed: HBoxContainer  # the Seat, Type and Faction columns
 var _scenario: OptionButton
-var _new_panel: GridContainer  # a new scenario's scenario-wide options
+var _info: GridContainer  # the scenario's name, id and description (a new scenario only)
+var _name: LineEdit
+var _id_label: Label
+var _description: TextEdit
+var _sections := {}  # "alliance" | "rules" | "sc" | "starting" -> its GridContainer
+var _sc_section: Control  # the Strategic Centers section (a new scenario only)
+var _starting_section: Control  # ...and Starting Locations and Units
+var _new_only_rows: Array = []  # the Rules section's rows for a new scenario only
 var _territory_note: Label
 var _option_specs: Array = []  # from the server: [{key, label, kind, min, max, default, help}]
 var _option_controls := {}  # key -> SpinBox | CheckBox
-var _option_values := {}  # key -> the value last chosen (kept across the server's refreshes)
-var _seat_values := {}  # "<seat>/<key>" -> remembered seat setting (applied when the server's specs arrive)
+var _option_values := {}  # key -> the value chosen (kept across the server's refreshes)
+var _seat_values := {}  # "<seat>/<key>" or "neutral/<key>" -> a seat setting to show (else the default)
 var _randomize: CheckBox
 var _can_withdraw: CheckBox
 var _can_rejoin: CheckBox
@@ -61,8 +88,15 @@ var _noncombat_first: CheckBox
 var _max_pref := 3  # the maximum alliance size the player asked for
 var _max_size := 3  # ...as offered: kept within 2 .. players-1 for the players there are
 var _message: Label
-var _start: Button
-var _resume: Button
+var _start: HoldButton
+var _resume: HoldButton
+var _save_button: HoldButton
+var _delete_button: HoldButton
+var _setups: Array = []  # the saved setups, from the server: [{id, name, description, settings}]
+var _setup_id := ""  # the saved setup on the screen ("" = none: the fixed or a new scenario)
+var _setup_name := ""  # ...and the name it was saved under
+var _entry := FIXED  # the scenario list's current entry
+var _pending_entry := ""  # remembered from the last launch: a saved setup to pick once the list arrives
 var _game_running := false
 var _loading := false
 var remember := true  # keep the last setup in user://launch.cfg (off for scripted runs and tests)
@@ -94,41 +128,23 @@ func _ready() -> void:
 	var scenario_row := HBoxContainer.new()
 	scenario_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	scenario_row.add_theme_constant_override("separation", 10)
-	scenario_row.add_child(HudStyle.label("New game:", 15, HudStyle.TEXT_DIM))
-	_scenario = _option(SCENARIOS.map(func(s): return s[0]), 240)
-	_scenario.item_selected.connect(func(_i): _scenario_changed())
+	scenario_row.add_child(HudStyle.label("Scenario:", 15, HudStyle.TEXT_DIM))
+	_scenario = OptionButton.new()
+	_scenario.focus_mode = Control.FOCUS_NONE
+	_scenario.custom_minimum_size = Vector2(320, ROW_H)
+	_scenario.item_selected.connect(func(i: int): _entry_picked(str(_scenario.get_item_metadata(i))))
 	scenario_row.add_child(_scenario)
 	v.add_child(scenario_row)
-	v.add_child(HSeparator.new())
+	_rebuild_scenario_list()
 
+	_build_info(v)
+	v.add_child(HSeparator.new())
 	_build_seat_table(v)
 	_territory_note = HudStyle.label("", 12, HudStyle.TEXT_DIM)
 	_territory_note.visible = false
 	v.add_child(_territory_note)
-
-	_new_panel = GridContainer.new()
-	_new_panel.columns = 6
-	_new_panel.add_theme_constant_override("h_separation", 10)
-	_new_panel.add_theme_constant_override("v_separation", 4)
-	_new_panel.visible = false
-	v.add_child(_new_panel)
-
-	_randomize = _checkbox("Randomize turn order", true, v)
-	_can_withdraw = _checkbox("Players can withdraw from alliances", true, v)
-	_can_rejoin = _checkbox("Players can rejoin alliances they left", false, v)
-	_combat_first = _checkbox("Combat Moves allowed on a faction's first turn", false, v)
-	_noncombat_first = _checkbox("Non-Combat Moves allowed on a faction's first turn", true, v)
-	var size_row := HBoxContainer.new()
-	size_row.add_theme_constant_override("separation", 10)
-	size_row.add_child(HudStyle.label("Maximum alliance size", 14))
-	_max_alliance = _option([], 70)
-	_max_alliance.item_selected.connect(func(i: int):
-		_max_pref = int(_max_alliance.get_item_text(i))
-		_max_size = _max_pref
-		_changed())
-	_max_alliance.tooltip_text = "The most factions one alliance may hold, from 1 to the number of players minus one. 1 means no alliances at all, and no Alliances phase."
-	size_row.add_child(_max_alliance)
-	v.add_child(size_row)
+	v.add_child(HSeparator.new())
+	_build_sections(v)
 
 	_message = HudStyle.label("", 12, Color(1.0, 0.6, 0.5))
 	_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -136,24 +152,131 @@ func _ready() -> void:
 	v.add_child(_message)
 
 	var buttons := HBoxContainer.new()
-	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
 	buttons.add_theme_constant_override("separation", 14)
 	v.add_child(buttons)
+	_delete_button = _button("Delete Scenario Setup")
+	_delete_button.activated.connect(func():
+		if _setup_id != "":
+			delete_requested.emit(_setup_id))
+	buttons.add_child(_delete_button)
+	_save_button = _button("Save Scenario Setup")
+	_save_button.activated.connect(func(): save_requested.emit(setup()))
+	buttons.add_child(_save_button)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gap.custom_minimum_size = Vector2(20, 0)
+	buttons.add_child(gap)
 	_resume = _button("Resume current game")
-	_resume.pressed.connect(func(): resume_requested.emit())
+	_resume.activated.connect(func(): resume_requested.emit())
 	buttons.add_child(_resume)
 	_start = _button("Start Game")
-	_start.pressed.connect(func():
+	_start.activated.connect(func():
 		_save()
 		start_requested.emit(settings()))
 	buttons.add_child(_start)
+	var hint := HudStyle.label("Press and hold a button to use it.", 11, HudStyle.TEXT_DIM)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	v.add_child(hint)
 
 	get_viewport().size_changed.connect(_fit_scroll)
+	_set_new_visible(false)
 	_load()
 	_changed()
 
 
 # ---- building ------------------------------------------------------------------------------------
+
+## The scenario's name, id and description.
+func _build_info(parent: VBoxContainer) -> void:
+	_info = GridContainer.new()
+	_info.columns = 2
+	_info.add_theme_constant_override("h_separation", 10)
+	_info.add_theme_constant_override("v_separation", 6)
+	parent.add_child(_info)
+	_info.add_child(_field_label("Scenario Name:"))
+	_name = LineEdit.new()
+	_name.custom_minimum_size = Vector2(420, ROW_H)
+	_name.max_length = 60
+	_name.placeholder_text = "Name this setup to save it"
+	_name.text_changed.connect(func(_t): _changed())
+	_info.add_child(_name)
+	_info.add_child(_field_label("Scenario ID:"))
+	_id_label = HudStyle.label("", 13, HudStyle.TEXT_DIM)
+	_id_label.custom_minimum_size = Vector2(0, 22)
+	_info.add_child(_id_label)
+	var d := _field_label("Description:")
+	d.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_info.add_child(d)
+	_description = TextEdit.new()
+	_description.custom_minimum_size = Vector2(720, 64)
+	_description.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	_description.placeholder_text = "What this setup is for"
+	_info.add_child(_description)
+
+
+func _field_label(text: String) -> Label:
+	var l := HudStyle.label(text, 14, HudStyle.TEXT_DIM)
+	l.custom_minimum_size = Vector2(120, ROW_H)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	return l
+
+
+## The four sections side by side (wrapping when the window is narrow). The generator's options
+## are added to Rules, Strategic Centers and Starting Locations and Units when the server
+## describes them (set_new_scenario_options).
+func _build_sections(parent: VBoxContainer) -> void:
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 26)
+	flow.add_theme_constant_override("v_separation", 10)
+	parent.add_child(flow)
+	for s in [["alliance", "Alliance"], ["rules", "Rules"], ["sc", "Strategic Centers"], ["starting", "Starting Locations and Units"]]:
+		var box := VBoxContainer.new()
+		box.add_theme_constant_override("separation", 4)
+		flow.add_child(box)
+		box.add_child(HudStyle.label(s[1], 15, HudStyle.GOLD))
+		var grid := GridContainer.new()
+		grid.columns = 2
+		grid.add_theme_constant_override("h_separation", 10)
+		grid.add_theme_constant_override("v_separation", 2)
+		box.add_child(grid)
+		_sections[s[0]] = grid
+		if s[0] == "sc":
+			_sc_section = box
+		elif s[0] == "starting":
+			_starting_section = box
+
+	_max_alliance = _option([], 70)
+	_max_alliance.item_selected.connect(func(i: int):
+		_max_pref = int(_max_alliance.get_item_text(i))
+		_max_size = _max_pref
+		_changed())
+	_max_alliance.tooltip_text = "The most factions one alliance may hold, from 1 to the number of players minus one. 1 means no alliances at all, and no Alliances phase."
+	_section_row("alliance", "Maximum size:", _max_alliance)
+	_can_withdraw = _checkbox(true)
+	_section_row("alliance", "Can withdraw:", _can_withdraw, "Players can withdraw from alliances.")
+	_can_rejoin = _checkbox(false)
+	_section_row("alliance", "Can rejoin:", _can_rejoin, "Players can rejoin alliances they left.")
+	_randomize = _checkbox(true)
+	_section_row("rules", "Randomize turn order:", _randomize)
+	_noncombat_first = _checkbox(true)
+	_section_row("rules", "First turn non-combat moves:", _noncombat_first, "Non-Combat Moves allowed on a faction's first turn.")
+	_combat_first = _checkbox(false)
+	_section_row("rules", "First turn combat moves:", _combat_first, "Combat Moves allowed on a faction's first turn.")
+
+
+## A label and its control, in `section`. Returns both (to show or hide together).
+func _section_row(section: String, text: String, control: Control, help := "") -> Array:
+	var l := HudStyle.label(text, 13)
+	l.custom_minimum_size = Vector2(LABEL_W, 26)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	if help != "":
+		l.tooltip_text = help
+		l.mouse_filter = Control.MOUSE_FILTER_PASS
+		control.tooltip_text = help
+	_sections[section].add_child(l)
+	_sections[section].add_child(control)
+	return [l, control]
+
 
 ## The seat table as columns (so a whole column can come and go): Seat, Type and Faction fixed,
 ## the rest in a sideways-scrolling area; one cell per seat, and a last one for the Neutral row.
@@ -278,23 +401,19 @@ func _spin(width: float, key: String, seat: int) -> SpinBox:
 	return sb
 
 
-func _checkbox(text: String, on: bool, parent: VBoxContainer) -> CheckBox:
+func _checkbox(on: bool) -> CheckBox:
 	var c := CheckBox.new()
-	c.text = text
 	c.button_pressed = on
 	c.focus_mode = Control.FOCUS_NONE
-	_check_style(c)
+	HudStyle.style_checkbox(c)
 	c.toggled.connect(func(_on): _changed())
-	parent.add_child(c)
 	return c
 
 
-func _check_style(c: CheckBox) -> void:
-	HudStyle.style_checkbox(c)
-
-
-func _button(text: String) -> Button:
-	var b := Button.new()
+func _button(text: String) -> HoldButton:
+	var b := HoldButton.new()
+	b.hold_seconds = HOLD_SECONDS
+	b.space_key = false  # four of them on show: Space would be ambiguous
 	b.text = text
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(220, 44)
@@ -333,7 +452,7 @@ func _fit_scroll() -> void:
 # ---- reading the screen -----------------------------------------------------------
 
 func _is_new() -> bool:
-	return _scenario != null and _scenario.selected == 1
+	return _entry != FIXED
 
 
 func _modes() -> Array:
@@ -394,6 +513,20 @@ func settings() -> Dictionary:
 	if Dbg.args.has("combat_first_turn"):
 		s["dev"] = {"combat_first_turn": true}  # scripted runs only: the rules skip it
 	return s
+
+
+## What Save sends: {id, name, description, settings}. The server keeps `id` while the name is
+## the one it was saved under, and makes a new setup otherwise.
+func setup() -> Dictionary:
+	var s := settings()
+	s.erase("dev")
+	return {"id": _setup_id if _setup_id != "" else null, "name": _name.text.strip_edges(),
+		"description": _description.text.strip_edges(), "settings": s}
+
+
+## True when Save makes a new setup (nothing saved is on the screen, or its name was changed).
+func saves_as_new() -> bool:
+	return _setup_id == "" or _name.text.strip_edges() != _setup_name
 
 
 ## The reasons this setup can't start (empty = it can). Mirrors server/lobby.py.
@@ -465,15 +598,34 @@ func _changed() -> void:
 	_message.text = "\n".join(p) if not p.is_empty() else ""
 	_start.disabled = not p.is_empty()
 	_resume.visible = _game_running
+	_refresh_save_buttons(p)
 	_fit_scroll.call_deferred()
+
+
+## Save needs a new scenario with a name and a setup that could start; its label says whether it
+## updates the saved setup or makes a new one. Delete is for a saved setup only.
+func _refresh_save_buttons(p: Array) -> void:
+	_save_button.visible = _is_new()
+	_delete_button.visible = _is_new()
+	_delete_button.disabled = _setup_id == ""
+	_save_button.disabled = _name.text.strip_edges() == "" or not p.is_empty()
+	_save_button.text = "Save as New Scenario Setup" if _setup_id != "" and saves_as_new() else "Save Scenario Setup"
+	if _setup_id == "":
+		_id_label.text = "assigned when saved"
+	elif saves_as_new():
+		_id_label.text = "%s  (a new name saves a new scenario)" % _setup_id
+	else:
+		_id_label.text = _setup_id
 
 
 ## Show the screen (again). `game_running`: the server has a game to go back to.
 ## `new_scenario`: the server's New Scenario description ({"options": [...], "seats": {...}}).
-func open(game_running: bool, new_scenario := {}) -> void:
+## `setups`: the saved scenario setups.
+func open(game_running: bool, new_scenario := {}, setups := []) -> void:
 	_game_running = game_running
 	set_new_scenario_options(new_scenario.get("options", []))
 	set_seat_specs(new_scenario.get("seats", {}))
+	set_setups(setups)
 	_changed()
 	visible = true
 
@@ -499,12 +651,98 @@ func _refresh_max_alliance() -> void:
 	_max_alliance.select(_max_size - 1)
 
 
-# ---- the scenario ---------------------------------------------------------------------
+# ---- the scenario list ------------------------------------------------------------------
+
+## The scenario list: the fixed scenario, a new one, then the saved setups by name (each with its
+## description as a tooltip); the current entry stays selected.
+func _rebuild_scenario_list() -> void:
+	_scenario.clear()
+	_scenario.add_item("Global Cataclysm: 1972")
+	_scenario.set_item_metadata(0, FIXED)
+	_scenario.add_item("New scenario")
+	_scenario.set_item_metadata(1, NEW)
+	if not _setups.is_empty():
+		_scenario.add_separator("Saved scenarios")
+		for s in _setups:
+			_scenario.add_item(str(s["name"]))
+			var i := _scenario.item_count - 1
+			_scenario.set_item_metadata(i, str(s["id"]))
+			_scenario.get_popup().set_item_tooltip(i, str(s.get("description", "")))
+	for i in _scenario.item_count:
+		if not _scenario.is_item_separator(i) and str(_scenario.get_item_metadata(i)) == _entry:
+			_scenario.select(i)
+			return
+	_scenario.select(1 if _is_new() else 0)
+
+
+func _setup_by_id(setup_id: String) -> Dictionary:
+	for s in _setups:
+		if str(s["id"]) == setup_id:
+			return s
+	return {}
+
+
+## The saved setups, from the server ("lobby", and "setups" after a save or delete). `selected`:
+## the setup just saved (it stays on the screen as it is, now under its id), or null after a
+## delete (the screen becomes a new scenario with the same settings, unnamed).
+func set_setups(setups: Array, selected = "keep") -> void:
+	_setups = setups
+	if selected == null:
+		_entry = NEW
+		_setup_id = ""
+		_setup_name = ""
+		_name.text = ""
+		_description.text = ""
+	elif str(selected) != "keep":
+		var s := _setup_by_id(str(selected))
+		_entry = str(selected)
+		_setup_id = str(selected)
+		_setup_name = str(s.get("name", _name.text.strip_edges()))
+		_name.text = _setup_name
+	elif _setup_id != "" and _setup_by_id(_setup_id).is_empty():
+		_entry = NEW  # deleted elsewhere: what is on the screen becomes an unsaved new scenario
+		_setup_id = ""
+		_setup_name = ""
+	_rebuild_scenario_list()
+	if _pending_entry != "":
+		var pending := _pending_entry
+		_pending_entry = ""
+		if not _setup_by_id(pending).is_empty():
+			_entry_picked(pending)
+	_changed()
+
+
+## A pick from the scenario list: a saved setup fills the screen with its settings; the fixed or a
+## new scenario keeps the settings on the screen (the seat types switching over).
+func _entry_picked(entry: String) -> void:
+	var was_new := _is_new()
+	_entry = entry
+	if entry != FIXED and entry != NEW:
+		var s := _setup_by_id(entry)
+		if s.is_empty():
+			_entry = NEW
+		else:
+			_setup_id = entry
+			_setup_name = str(s["name"])
+			_name.text = _setup_name
+			_description.text = str(s.get("description", ""))
+			apply_settings(s["settings"])
+			_rebuild_scenario_list()
+			return
+	_setup_id = ""
+	_setup_name = ""
+	_name.text = ""
+	_description.text = ""
+	_rebuild_scenario_list()
+	if was_new != _is_new():
+		_scenario_changed()
+	else:
+		_changed()
+
 
 ## "fixed" or "new" (scripted runs).
 func select_scenario(kind: String) -> void:
-	_scenario.select(1 if kind == "new" else 0)
-	_scenario_changed()
+	_entry_picked(NEW if kind == "new" else FIXED)
 
 
 ## Switching between the fixed scenario and a new one: the seat types change (a Neutral or
@@ -515,9 +753,7 @@ func _scenario_changed() -> void:
 	for row in _rows:
 		var o: OptionButton = row["mode"]
 		var old: int = o.selected
-		o.clear()
-		for m in _modes():
-			o.add_item(m[0])
+		_fill_modes(o)
 		if _is_new():
 			o.select(mini(old, 2))  # Human, Bot, the rest Not playing
 		else:
@@ -527,51 +763,114 @@ func _scenario_changed() -> void:
 	_changed()
 
 
+func _fill_modes(o: OptionButton) -> void:
+	o.clear()
+	for m in _modes():
+		o.add_item(m[0])
+
+
 func _set_new_visible(on: bool) -> void:
 	for col in _new_columns:
 		col.visible = on
 	for cell in _neutral_cells:
 		cell.visible = on
-	if _new_panel != null:
-		_new_panel.visible = on
-	if _territory_note != null:
-		_territory_note.visible = on
+	for c in [_info, _sc_section, _starting_section, _territory_note]:
+		if c != null:
+			c.visible = on
+	for c in _new_only_rows:
+		c.visible = on
 
 
-## The seat settings' ranges and defaults, from the server; a seat keeps what was chosen before
-## (this session, or remembered from the last launch), else takes the default.
+## Fills the screen from `s` (launch settings, as settings() makes them): a saved setup's, or the
+## last launch's. What `s` leaves out takes the defaults.
+func apply_settings(s: Dictionary) -> void:
+	_loading = true
+	var sc: Dictionary = s.get("scenario", {}) if s.get("scenario") is Dictionary else {}
+	var new_kind: bool = str(sc.get("kind", FIXED)) == "new"
+	if new_kind != _is_new():
+		_entry = NEW if new_kind else FIXED
+	var modes := _modes()
+	var seats: Array = s.get("seats", []) if s.get("seats") is Array else []
+	for i in SEATS:
+		var row: Dictionary = _rows[i]
+		var seat: Dictionary = seats[i] if i < seats.size() and seats[i] is Dictionary else {}
+		var mode_o: OptionButton = row["mode"]
+		_fill_modes(mode_o)
+		var m := modes.size() - 1
+		for j in modes.size():
+			if modes[j][1] == str(seat.get("mode", "")):
+				m = j
+		mode_o.select(m)
+		var fac_o: OptionButton = row["faction"]
+		fac_o.select(0)
+		for j in range(1, fac_o.item_count):
+			if str(fac_o.get_item_metadata(j)) == str(seat.get("faction", "random")):
+				fac_o.select(j)
+		(row["alliance"] as OptionButton).select(clampi(int(seat.get("alliance", 0)), 0, ALLIANCES.size() - 1))
+		(row["strategy"] as OptionButton).select(maxi(0, STRATEGIES.find(str(seat.get("strategy", "random")))))
+		(row["behavior"] as OptionButton).select(maxi(0, BEHAVIORS.find(str(seat.get("behavior", "random")))))
+		for k in SEAT_KEYS:
+			var key := "%d/%s" % [i, k[0]]
+			if seat.has(k[0]):
+				_seat_values[key] = seat[k[0]]
+			else:
+				_seat_values.erase(key)
+		_territory_auto[i] = not seat.has("territory_value")
+	var neutral: Dictionary = sc.get("neutral", {}) if sc.get("neutral") is Dictionary else {}
+	for k in NEUTRAL_KEYS:
+		if neutral.has(k):
+			_seat_values["neutral/%s" % k] = neutral[k]
+		else:
+			_seat_values.erase("neutral/%s" % k)
+	_territory_auto["neutral"] = not neutral.has("territory_value")
+	_option_values = (sc.get("options", {}) as Dictionary).duplicate() if sc.get("options") is Dictionary else {}
+	_randomize.button_pressed = bool(s.get("randomize_order", true))
+	_can_withdraw.button_pressed = bool(s.get("can_withdraw", true))
+	_can_rejoin.button_pressed = bool(s.get("can_rejoin", false))
+	_combat_first.button_pressed = bool(s.get("allow_combat_first_turn", false))
+	_noncombat_first.button_pressed = bool(s.get("allow_noncombat_first_turn", true))
+	_max_pref = maxi(1, int(s.get("max_alliance_size", 3)))
+	_max_size = _max_pref
+	_loading = false
+	_apply_seat_values()
+	_apply_option_values()
+	_set_new_visible(_is_new())
+	_changed()
+
+
+# ---- a new scenario's settings ----------------------------------------------------------
+
+## The seat settings' ranges and defaults, from the server.
 func set_seat_specs(specs: Dictionary) -> void:
 	if specs.is_empty() or _seat_specs == specs:
 		return
 	_seat_specs = specs
+	_apply_seat_values()
+
+
+## Each seat setting as chosen (_seat_values), else the server's default.
+func _apply_seat_values() -> void:
+	if _seat_specs.is_empty():
+		return
 	_updating = true
-	for spec in specs.get("players", []):
+	for spec in _seat_specs.get("players", []):
 		var key := str(spec["key"])
 		for i in SEATS:
-			var sb: SpinBox = _rows[i][key]
-			sb.min_value = float(spec["min"])
-			sb.max_value = float(spec["max"])
-			var remembered = _seat_values.get("%d/%s" % [i, key])
-			if remembered != null:
-				sb.value = float(remembered)
-				if key == "territory_value":
-					_territory_auto[i] = false
-			elif spec["default"] != null:
-				sb.value = float(spec["default"])
-	for spec in specs.get("neutral", []):
+			_set_spin(_rows[i][key], spec, _seat_values.get("%d/%s" % [i, key]))
+	for spec in _seat_specs.get("neutral", []):
 		var key := str(spec["key"])
-		var sb: SpinBox = _neutral_row[key]
-		sb.min_value = float(spec["min"])
-		sb.max_value = float(spec["max"])
-		var remembered = _seat_values.get("neutral/%s" % key)
-		if remembered != null:
-			sb.value = float(remembered)
-			if key == "territory_value":
-				_territory_auto["neutral"] = false
-		elif spec["default"] != null:
-			sb.value = float(spec["default"])
+		_set_spin(_neutral_row[key], spec, _seat_values.get("neutral/%s" % key))
 	_updating = false
 	_refresh_territory()
+
+
+func _set_spin(sb: SpinBox, spec: Dictionary, value) -> void:
+	sb.min_value = float(spec["min"])
+	sb.max_value = float(spec["max"])
+	if value != null:
+		sb.value = float(value)
+	elif spec["default"] != null:
+		sb.value = float(spec["default"])
 
 
 ## A seat setting edited by the player: a territory value stops following the default, and a
@@ -590,6 +889,10 @@ func _seat_setting_changed(seat: int, key: String) -> void:
 		elif key == "initial_mpc" and row["initial_mpc"].value < row["units_mpc"].value:
 			row["units_mpc"].value = row["initial_mpc"].value
 		_updating = false
+		for k in SEAT_KEYS:
+			_seat_values["%d/%s" % [seat, k[0]]] = int(row[k[0]].value)
+	else:
+		_seat_values["neutral/%s" % key] = int(_neutral_row[key].value)
 	_refresh_territory()
 
 
@@ -622,42 +925,55 @@ func _refresh_territory() -> void:
 		_territory_note.text = "Territory: players %d + Neutral %d of %d on the map; Noncombatant %d." % [used, neutral, total, total - asked]
 
 
-## The generator's scenario-wide options, as the server describes them; the values chosen before
-## (this session, or remembered from the last launch) are kept, else the server's defaults.
+## The generator's scenario-wide options, as the server describes them, each in its section.
 func set_new_scenario_options(specs: Array) -> void:
 	if specs.is_empty() or _option_specs == specs:
 		return
 	_option_specs = specs
-	for c in _new_panel.get_children():
+	for c in _option_controls.values():
+		c.get_meta("label").queue_free()
 		c.queue_free()
 	_option_controls.clear()
+	_new_only_rows = []
 	for spec in specs:
 		var key := str(spec["key"])
-		var label := HudStyle.label(str(spec["label"]), 12, HudStyle.TEXT_DIM)
-		label.tooltip_text = str(spec.get("help", ""))
-		label.mouse_filter = Control.MOUSE_FILTER_PASS
-		_new_panel.add_child(label)
-		var value = _option_values.get(key, spec["default"])
+		var section: String = OPTION_SECTIONS.get(key, "starting")
+		var control: Control
 		if str(spec["kind"]) == "bool":
 			var cb := CheckBox.new()
-			cb.button_pressed = bool(value)
 			cb.focus_mode = Control.FOCUS_NONE
-			cb.tooltip_text = label.tooltip_text
-			_check_style(cb)
+			HudStyle.style_checkbox(cb)
 			cb.toggled.connect(func(on: bool): _option_values[key] = on)
-			_new_panel.add_child(cb)
-			_option_controls[key] = cb
+			control = cb
 		else:
 			var sb := SpinBox.new()
 			sb.min_value = float(spec["min"])
 			sb.max_value = float(spec["max"])
 			sb.step = 1.0 if str(spec["kind"]) == "int" else 0.1
-			sb.value = float(value) if value != null else float(spec["max"])
 			sb.custom_minimum_size = Vector2(90, 26)
-			sb.tooltip_text = label.tooltip_text
 			sb.value_changed.connect(func(x: float): _option_values[key] = int(x) if str(spec["kind"]) == "int" else x)
-			_new_panel.add_child(sb)
-			_option_controls[key] = sb
+			control = sb
+		var pair := _section_row(section, "%s:" % str(spec["label"]), control, str(spec.get("help", "")))
+		control.set_meta("label", pair[0])
+		_option_controls[key] = control
+		if section == "rules":
+			_new_only_rows.append_array(pair)
+	_apply_option_values()
+	_set_new_visible(_is_new())
+
+
+## Each option's control shows the value chosen (_option_values), else the server's default.
+func _apply_option_values() -> void:
+	for spec in _option_specs:
+		var key := str(spec["key"])
+		if not _option_controls.has(key):
+			continue
+		var value = _option_values.get(key, spec["default"])
+		var c = _option_controls[key]
+		if c is CheckBox:
+			(c as CheckBox).set_pressed_no_signal(bool(value))
+		else:
+			(c as SpinBox).set_value_no_signal(float(value) if value != null else float(spec["max"]))
 		_option_values[key] = _control_value(key, spec)
 
 
@@ -675,37 +991,22 @@ func new_options() -> Dictionary:
 	for spec in _option_specs:
 		var key := str(spec["key"])
 		out[key] = _control_value(key, spec) if _option_controls.has(key) else _option_values.get(key, spec["default"])
+	for key in _option_values:  # (chosen before the server described them)
+		if not out.has(key):
+			out[key] = _option_values[key]
 	return out
 
 
 # ---- remembering the last setup ---------------------------------------------------------
 
+## The last launch: the scenario list's entry and the settings on the screen. A saved setup is
+## picked again (with its saved settings) once the server's list arrives.
 func _save() -> void:
 	if Dbg.args.has("shot") or not remember:
 		return
 	var cfg := ConfigFile.new()
-	var s := settings()
-	cfg.set_value("launch", "randomize_order", s["randomize_order"])
-	cfg.set_value("launch", "can_withdraw", s["can_withdraw"])
-	cfg.set_value("launch", "can_rejoin", s["can_rejoin"])
-	cfg.set_value("launch", "max_alliance_size", _max_pref)
-	cfg.set_value("launch", "combat_first", _combat_first.button_pressed)
-	cfg.set_value("launch", "noncombat_first", _noncombat_first.button_pressed)
-	cfg.set_value("launch", "scenario", SCENARIOS[_scenario.selected][1])
-	for key in new_options():
-		cfg.set_value("new_scenario", key, new_options()[key])
-	for i in SEATS:
-		var row: Dictionary = _rows[i]
-		for key in ["mode", "faction", "alliance", "strategy", "behavior"]:
-			cfg.set_value("seat%d" % i, key, (row[key] as OptionButton).selected)
-		for k in SEAT_KEYS:
-			if k[0] == "territory_value" and _territory_auto.get(i, true):
-				continue
-			cfg.set_value("seat%d" % i, k[0], int((row[k[0]] as SpinBox).value))
-	for key in NEUTRAL_KEYS:
-		if key == "territory_value" and _territory_auto.get("neutral", true):
-			continue
-		cfg.set_value("neutral", key, int((_neutral_row[key] as SpinBox).value))
+	cfg.set_value("launch", "entry", _entry)
+	cfg.set_value("launch", "settings", JSON.stringify(settings()))
 	cfg.save(PATH)
 
 
@@ -713,34 +1014,12 @@ func _load() -> void:
 	if Dbg.args.has("shot") or not remember:
 		return
 	var cfg := ConfigFile.new()
-	if cfg.load(PATH) != OK:
-		return
-	_loading = true
-	_randomize.button_pressed = bool(cfg.get_value("launch", "randomize_order", true))
-	_can_withdraw.button_pressed = bool(cfg.get_value("launch", "can_withdraw", true))
-	_can_rejoin.button_pressed = bool(cfg.get_value("launch", "can_rejoin", false))
-	_max_pref = maxi(1, int(cfg.get_value("launch", "max_alliance_size", 3)))
-	_combat_first.button_pressed = bool(cfg.get_value("launch", "combat_first", false))
-	_noncombat_first.button_pressed = bool(cfg.get_value("launch", "noncombat_first", true))
-	_max_size = _max_pref
-	if str(cfg.get_value("launch", "scenario", "fixed")) == "new":
-		_scenario.select(1)
-		_scenario_changed()
-		_loading = true
-	if cfg.has_section("new_scenario"):
-		for key in cfg.get_section_keys("new_scenario"):
-			_option_values[key] = cfg.get_value("new_scenario", key)
-	for i in SEATS:
-		var row: Dictionary = _rows[i]
-		for key in ["mode", "faction", "alliance", "strategy", "behavior"]:
-			var o: OptionButton = row[key]
-			var idx := int(cfg.get_value("seat%d" % i, key, o.selected))
-			if idx >= 0 and idx < o.item_count:
-				o.select(idx)
-		for k in SEAT_KEYS:
-			if cfg.has_section_key("seat%d" % i, k[0]):
-				_seat_values["%d/%s" % [i, k[0]]] = cfg.get_value("seat%d" % i, k[0])
-	for key in NEUTRAL_KEYS:
-		if cfg.has_section_key("neutral", key):
-			_seat_values["neutral/%s" % key] = cfg.get_value("neutral", key)
-	_loading = false
+	if cfg.load(PATH) != OK or not cfg.has_section_key("launch", "settings"):
+		return  # (an older launch.cfg: the defaults)
+	var s = JSON.parse_string(str(cfg.get_value("launch", "settings", "")))
+	if s is Dictionary:
+		apply_settings(s)
+	var entry := str(cfg.get_value("launch", "entry", FIXED))
+	if entry != FIXED and entry != NEW:
+		_pending_entry = entry
+	_rebuild_scenario_list()

@@ -410,6 +410,17 @@ class _Checker:
             for p in check_seat(d, keys, total, key):
                 self.err(where, p)
 
+    def _check_scenario_setup(self, where, s):
+        self.field(where, s, 'description', STR, optional=True)
+        g = self.ref(where, 'ScenarioGenerator', self.field(where, s, 'generator_id', STR))
+        settings = self.field(where, s, 'settings', (dict,))
+        if g is None or settings is None:
+            return
+        if (settings.get('scenario') or {}).get('kind') != 'new':
+            self.err(where, "settings must be a new scenario's (scenario.kind 'new')")
+        if not isinstance(settings.get('seats'), list):
+            self.err(where, 'settings has no seats list')
+
     def _check_scenario(self, where, s):
         refs = {
             'map_id': 'Map', 'ability_catalog_id': 'AbilityCatalog', 'unit_set_id': 'UnitSet',

@@ -13,6 +13,7 @@ const RING_COLOR := Color(0.45, 1.0, 0.55)
 const DRAIN_SPEED := 3.0   # progress per second while released
 
 var hold_seconds := 0.0
+var space_key := true      # Space works it too (off where several are on show at once)
 var progress := 0.0        # 0..1 of the current hold
 var _holding := false
 var _fired := false        # this hold already fired; needs a release before it can again
@@ -55,7 +56,7 @@ func _process(delta: float) -> void:
 
 ## Space does the same as the mouse: held for hold_seconds, or an ordinary press.
 func _unhandled_key_input(event: InputEvent) -> void:
-	if not is_visible_in_tree() or disabled:
+	if not space_key or not is_visible_in_tree() or disabled:
 		return
 	var k := event as InputEventKey
 	if k == null or k.keycode != KEY_SPACE or k.echo:
