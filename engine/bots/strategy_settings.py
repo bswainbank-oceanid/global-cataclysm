@@ -24,6 +24,13 @@ class StrategySettings:
         self.primary_order = raw.get('primary_order', [])
         self.secondary_budget_share = raw.get('secondary_budget_share')
         self.final_order = raw.get('final_order', [])
+        self.objective_names = {o['id']: o['name'] for o in raw.get('objectives', [])}
+
+    def objective_name(self, objective_id):
+        return self.objective_names.get(objective_id, objective_id.replace('_', ' ').capitalize())
+
+    def secondary_ids(self):
+        return self.secondary
 
     # -- the draws ---------------------------------------------------------------------------
 

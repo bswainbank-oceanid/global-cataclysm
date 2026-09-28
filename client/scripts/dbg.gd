@@ -32,6 +32,7 @@ extends Node
 ##   --drag=x1,y1,x2,y2      inject a left-button drag between two screen points
 ##   --click=x,y             inject a left click at a screen point
 ##   (injected input runs in that order: wheel, drag, click)
+##   --strategy_log     show (and open) the Strategy Log tab
 ## Other scripts read `Dbg.args` for the scene-setup ones.
 
 var args := {}

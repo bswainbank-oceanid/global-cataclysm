@@ -17,6 +17,7 @@ var opp_pause := OppPause.PHASE          # opponents' turns: pause never / once 
 var opp_pause_battle := false            # ...and before every battle
 var opp_pause_battle_mine := false       # ...or only before battles involving your units
 var your_pause_battle := false           # on your own turns: before every battle
+var strategy_log := false                # show the bots' Strategy Log tab beside the Game Log
 # Battle board: how much one press of Next Roll reveals (BattleModel.Resolve),
 # remembered per side of the board between battles.
 var resolve_attacker := BattleModel.Resolve.UNIT_TYPE
@@ -30,6 +31,7 @@ func _ready() -> void:
 			opp_pause = OppPause[str(Dbg.args["pause"]).to_upper()]
 		opp_pause_battle = Dbg.args.has("pause_battle")
 		your_pause_battle = Dbg.args.has("your_pause_battle")
+		strategy_log = Dbg.args.has("strategy_log")
 		if Dbg.args.has("resolve"):  # --resolve=entire|round|side|type|unit, for both sides
 			var mode: int = {"entire": 0, "round": 1, "side": 2, "type": 3, "unit": 4}[str(Dbg.args["resolve"])]
 			resolve_attacker = mode
@@ -42,6 +44,7 @@ func _ready() -> void:
 	opp_pause_battle = bool(cfg.get_value("playback", "opp_pause_battle", opp_pause_battle))
 	opp_pause_battle_mine = bool(cfg.get_value("playback", "opp_pause_battle_mine", opp_pause_battle_mine))
 	your_pause_battle = bool(cfg.get_value("playback", "your_pause_battle", your_pause_battle))
+	strategy_log = bool(cfg.get_value("log", "strategy", strategy_log))
 	resolve_attacker = int(cfg.get_value("battle", "resolve_attacker", resolve_attacker))
 	resolve_defender = int(cfg.get_value("battle", "resolve_defender", resolve_defender))
 
@@ -56,6 +59,7 @@ func commit() -> void:
 	cfg.set_value("playback", "opp_pause_battle", opp_pause_battle)
 	cfg.set_value("playback", "opp_pause_battle_mine", opp_pause_battle_mine)
 	cfg.set_value("playback", "your_pause_battle", your_pause_battle)
+	cfg.set_value("log", "strategy", strategy_log)
 	cfg.set_value("battle", "resolve_attacker", resolve_attacker)
 	cfg.set_value("battle", "resolve_defender", resolve_defender)
 	cfg.save(PATH)

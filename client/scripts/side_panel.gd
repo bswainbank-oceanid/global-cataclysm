@@ -4,12 +4,16 @@ extends VBoxContainer
 ## selected space (owner, value, strategic center, contest, and the units
 ## there grouped by faction and type) -- later also where orders get picked.
 ## Lower: the orders QUEUED for the current phase (what Next will execute),
-## above a log of the phases already executed.
+## above the Game Log of the phases already executed -- and, beside it, the
+## Strategy tab (the bots' Strategy Log, StrategyText; shown when Settings'
+## strategy_log is on).
 
 var _detail: VBoxContainer
 var _queue: RichTextLabel
 var _queue_head: Label
 var _log: RichTextLabel
+var _strategy: RichTextLabel
+var _log_tabs: TabContainer
 signal territory_clicked(tid: int)  # a territory name in the queue/log was clicked
 signal units_selected(unit_ids: Array)  # the units toggled on in the selection panel
 
@@ -64,10 +68,22 @@ func _ready() -> void:
 	_queue.scroll_following = false
 	lv.add_child(_queue)
 	lv.add_child(HSeparator.new())
-	lv.add_child(HudStyle.label("Executed", 12, HudStyle.TEXT_DIM))
+	_log_tabs = TabContainer.new()
+	_log_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_log_tabs.add_theme_font_size_override("font_size", 12)
+	lv.add_child(_log_tabs)
 	_log = _rich_text()
+	_log.name = "Game Log"
 	_log.scroll_following = true
-	lv.add_child(_log)
+	_log_tabs.add_child(_log)
+	_strategy = _rich_text()
+	_strategy.name = "Strategy"
+	_strategy.scroll_following = true
+	_log_tabs.add_child(_strategy)
+	Settings.changed.connect(_sync_log_tabs)
+	_sync_log_tabs()
+	if Dbg.args.has("strategy_log"):
+		_log_tabs.current_tab = 1
 	add_child(lower)
 
 	GameStore.state_changed.connect(func(): show_space(_selected))
@@ -203,6 +219,7 @@ func show_queue_again() -> void:
 func reset_logs() -> void:
 	_queue.clear()
 	_log.clear()
+	_strategy.clear()
 	_last_queue = {}
 	_expanded.clear()
 	_queue_head.text = "Queued orders"
@@ -213,10 +230,21 @@ func log_line(text: String) -> void:
 	_log.append_text(text + "\n")
 
 
+## The Strategy tab shows only while Settings' strategy_log is on (it is always filled).
+func _sync_log_tabs() -> void:
+	_log_tabs.set_tab_hidden(1, not Settings.strategy_log)
+	if not Settings.strategy_log:
+		_log_tabs.current_tab = 0
+
+
 func log_events(header: String, events: Array) -> void:
 	log_line("[color=#ffd23f]%s[/color]" % header)
 	var shown := 0
 	for e in events:
+		if str(e.get("kind", "")).begins_with("strategy_"):
+			_strategy.append_text(StrategyText.describe(e) + "
+")
+			continue
 		var line := EventText.describe(e)
 		if line != "":
 			log_line(line)

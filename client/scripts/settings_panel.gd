@@ -8,6 +8,7 @@ var _opp: OptionButton
 var _opp_battle: CheckBox
 var _opp_battle_mine: CheckBox
 var _your_battle: CheckBox
+var _strategy_log: CheckBox
 var _note: Label
 var _surrender_btn: HoldButton
 var _armistice_btn: HoldButton
@@ -48,6 +49,11 @@ func _ready() -> void:
 	_note = HudStyle.label("No human player in this game: you're watching bots, so the options for your own units and turns do nothing.", 11, HudStyle.TEXT_DIM)
 	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(_note)
+
+	v.add_child(HSeparator.new())
+	v.add_child(HudStyle.label("Game Log", 13))
+	_strategy_log = _check(v, "Show the bots' Strategy Log tab", func(on): Settings.strategy_log = on)
+	_strategy_log.tooltip_text = "Each bot's strategy decisions: what it chose each phase, for which objective, and why objectives went without."
 
 	v.add_child(HSeparator.new())
 	v.add_child(HudStyle.label("Game", 13))
@@ -105,6 +111,7 @@ func _sync() -> void:
 	_opp_battle.set_pressed_no_signal(Settings.opp_pause_battle)
 	_opp_battle_mine.set_pressed_no_signal(Settings.opp_pause_battle_mine)
 	_your_battle.set_pressed_no_signal(Settings.your_pause_battle)
+	_strategy_log.set_pressed_no_signal(Settings.strategy_log)
 	var has_player := GameStore.has_player()
 	_opp_battle_mine.disabled = not has_player
 	_your_battle.disabled = not has_player
