@@ -412,6 +412,7 @@ func _checkbox(on: bool) -> CheckBox:
 
 func _button(text: String) -> HoldButton:
 	var b := HoldButton.new()
+	b.button_down.connect(_commit_typing)  # (the buttons take no focus, so a box being typed in keeps it)
 	b.hold_seconds = HOLD_SECONDS
 	b.space_key = false  # four of them on show: Space would be ambiguous
 	b.text = text
@@ -426,6 +427,16 @@ func _button(text: String) -> HoldButton:
 	b.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, Color(0.3, 0.25, 0.08), 2))
 	b.add_theme_stylebox_override("disabled", HudStyle.box(HudStyle.EDGE, HudStyle.BG, 1))
 	return b
+
+
+## A number still being typed into a SpinBox counts before a button acts on the settings.
+func _commit_typing() -> void:
+	var focused := get_viewport().gui_get_focus_owner()
+	if focused is LineEdit and focused.get_parent() is SpinBox:
+		var text := (focused as LineEdit).text.strip_edges()
+		if text.is_valid_float():
+			(focused.get_parent() as SpinBox).value = float(text)
+		focused.release_focus()
 
 
 func _option(items: Array, width: float) -> OptionButton:
@@ -947,6 +958,7 @@ func set_new_scenario_options(specs: Array) -> void:
 			control = cb
 		else:
 			var sb := SpinBox.new()
+			sb.update_on_text_changed = true  # a typed number counts at once, not only on Enter
 			sb.min_value = float(spec["min"])
 			sb.max_value = float(spec["max"])
 			sb.step = 1.0 if str(spec["kind"]) == "int" else 0.1
