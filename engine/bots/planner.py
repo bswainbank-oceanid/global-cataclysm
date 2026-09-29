@@ -18,6 +18,7 @@ The planner never changes the game: it reads the real state and produces a Plan 
 move orders, non-combat move orders). A 'full' plan is made at Purchase and is executed across the turn;
 a 'noncombat' plan is made again after combat resolves, from the board as combat left it, and only moves.
 """
+import copy
 import heapq
 import time
 
@@ -108,6 +109,7 @@ class Planner:
         self.stay = set()       # unit ids committed to staying where they are
         self.moves_combat = {}  # unit_id -> path
         self.moves_nc = {}      # unit_id -> destination
+        self.nc_rank = {}       # unit_id -> 0 / 2: its non-combat order goes before / after the rest (default 1)
         self.purchases = {}     # (unit_type, territory) -> qty
         self.stubs = {}         # territory -> planned arrivals and purchases, as stand-in units
         self.treasury = self.gs.factions[faction].treasury_mpc if self.allow_purchase else 0
@@ -383,7 +385,10 @@ class Planner:
         return [CombatMoveOrder(uid, list(path)) for uid, path in sorted(self.moves_combat.items())]
 
     def noncombat_orders(self):
-        return [NonCombatMoveOrder(uid, dest) for uid, dest in sorted(self.moves_nc.items())]
+        """In unit id order, except where the order matters (nc_rank: 0 before the rest, 2 after): an aircraft
+        landing on a carrier that is about to sail goes first, one landing where a carrier is sailing to, last."""
+        return [NonCombatMoveOrder(uid, dest) for uid, dest in
+                sorted(self.moves_nc.items(), key=lambda m: (self.nc_rank.get(m[0], 1), m[0]))]
 
     def buy(self, tid, categories, name, prefer=None, only=None, land_types=None, without=()):
         """Buys one unit for `tid` by the faction's unit odds among the categories allowed (or, with `prefer`,
@@ -970,46 +975,77 @@ class Planner:
 
     def _land_idle_aircraft_on_carriers(self):
         """Non-Combat Move: every aircraft of mine that nothing has claimed flies to one of my carriers with
-        room that stays where it is this turn -- among several it can reach, the one nearest enemy units
-        (then the nearest to it). An aircraft already on a carrier stays."""
-        moving = set(self.moves_nc) | set(self.moves_combat)
-        room = {}
-        for tid in self.terrs:
-            if self.is_land(tid):
+        room -- among several it can reach, the one that will end the turn nearest enemy units (then the one
+        nearest the aircraft). An aircraft already on a carrier stays.
+
+        A carrier the plan moves this turn still counts, by sequencing the orders (the engine checks them one
+        after another, and a moving carrier sweeps along the aircraft in its zone): an aircraft that can reach
+        the carrier where it starts lands there FIRST and rides along; one that can only reach where the carrier
+        is going lands there AFTER the carrier has moved (nc_rank)."""
+        combat_movers = set(self.moves_combat)
+        by_zone = {}  # sea zone -> my carriers starting there (none moved in combat)
+        for uid, (u, origin) in self.my_units.items():
+            if not self.is_land(origin) and uid not in combat_movers \
+                    and abilities.has(self.unit_defs, u.unit_type, abilities.CARRIER_AIR_WING):
+                by_zone.setdefault(origin, []).append(u)
+        # A zone qualifies when all its carriers share one fate: they all stay, or there is one and it moves.
+        spots = []  # {start, end, room, carrier}: land at `start` (before the carrier moves) ...
+        late = []   # ...or at `end` after it has (a moving carrier's destination)
+        for zone, carriers in sorted(by_zone.items()):
+            moving = [c for c in carriers if c.unit_id in self.moves_nc]
+            if moving and len(carriers) > 1:
                 continue
-            here = self.mine_at(tid)
-            carriers = [u for u in here if u.unit_id not in moving
-                        and abilities.has(self.unit_defs, u.unit_type, abilities.CARRIER_AIR_WING)]
-            if not carriers:
+            capacity = sum(abilities.param(self.unit_defs, c.unit_type, abilities.CARRIER_AIR_WING, 'capacity', 0)
+                           for c in carriers)
+            aboard = sum(1 for u in self.mine_at(zone) if self.category(u) == 'Air')
+            room = capacity - aboard - sum(1 for uid, dest in self.moves_nc.items()
+                                           if dest == zone and self.category(self.my_units[uid][0]) == 'Air')
+            if room <= 0:
                 continue
-            capacity = sum(abilities.param(self.unit_defs, u.unit_type, abilities.CARRIER_AIR_WING, 'capacity', 0)
-                           for u in carriers)
-            aboard = sum(1 for u in here if self.category(u) == 'Air' and u.unit_id not in moving)
-            coming = sum(1 for uid, dest in self.moves_nc.items() if dest == tid and self.category(self.my_units[uid][0]) == 'Air')
-            if capacity - aboard - coming > 0:
-                room[tid] = capacity - aboard - coming
-        if not room:
+            end = self.moves_nc[moving[0].unit_id] if moving else zone
+            spot = {'start': zone, 'end': end, 'room': room, 'carrier': moving[0].unit_id if moving else None}
+            spots.append(spot)
+            if moving:
+                late.append(spot)
+        if not spots:
             return
+        after = None  # the board with the moving carriers moved: where a late lander checks its reach
+        if late:
+            after = copy.deepcopy(self.gs)
+            for spot in late:
+                ship = next(u for u in after.territories[spot['start']].units if u.unit_id == spot['carrier'])
+                after.territories[spot['start']].units.remove(ship)
+                after.territories[spot['end']].units.append(ship)
         enemy_near = {}
-        for tid in room:
-            dist = graph_distances(tid, self.data)
-            enemy_near[tid] = min((d for t, d in dist.items() if self.enemies_at(t)), default=1 << 30)
+        for spot in spots:
+            if spot['end'] not in enemy_near:
+                dist = graph_distances(spot['end'], self.data)
+                enemy_near[spot['end']] = min((d for t, d in dist.items() if self.enemies_at(t)), default=1 << 30)
         for uid, (u, origin) in sorted(self.my_units.items()):
             if self.category(u) != 'Air' or not self.free_for(u, 'nc'):
                 continue
-            if not self.is_land(origin) and any(abilities.has(self.unit_defs, c.unit_type, abilities.CARRIER_AIR_WING)
-                                                for c in self.mine_at(origin)):
+            if origin in by_zone:
                 continue  # already on a carrier
-            options = [t for t in room if room[t] > 0 and t in self.nc_dests(u, origin)]
+            options = []
+            for spot in spots:
+                if spot['room'] <= 0:
+                    continue
+                if spot['start'] in self.nc_dests(u, origin):
+                    options.append((spot, spot['start'], 0))  # lands first, then rides along
+                elif spot['carrier'] is not None and spot['end'] in legal_air_move_destinations(
+                        u.unit_type, self.me, origin, 'noncombat', after, self.data, u.unit_id):
+                    options.append((spot, spot['end'], 2))  # lands once the carrier is there
             if not options:
                 continue
             origin_dist = graph_distances(origin, self.data)
-            dest = min(options, key=lambda t: (enemy_near[t], origin_dist.get(t, 1 << 30), t))
-            self.claim(u, 'control_oceans', dest)
+            spot, dest, rank = min(options, key=lambda o: (enemy_near[o[0]['end']], origin_dist.get(o[1], 1 << 30), o[1]))
+            self.claim(u, 'control_oceans', spot['end'])
             self.moves_nc[uid] = dest
-            room[dest] -= 1
-            self.note(f'control_oceans: an idle {u.unit_type} lands on the carrier at {self.terrs[dest]["name"]}')
-            self.attempt(dest, 'pursued', f'an idle {u.unit_type} lands on the carrier here')
+            self.nc_rank[uid] = rank
+            spot['room'] -= 1
+            self.note(f'control_oceans: an idle {u.unit_type} lands on the carrier at {self.terrs[spot["end"]]["name"]}')
+            self.attempt(spot['end'], 'pursued', f'an idle {u.unit_type} lands on the carrier here'
+                         + (' (before it sails)' if rank == 0 and spot['carrier'] else ' (after it arrives)' if rank == 2 else ''))
 
     def _bombard_idle_cruisers(self, name, limits):
         """the rule set's combat.cruiser_bombardment: a Cruiser left with no worthwhile enemy fleet

@@ -179,6 +179,47 @@ class TestControlOceans(unittest.TestCase):
         self.assertEqual(sum(1 for u in idle if p.moves_nc.get(u.unit_id) == 23), 1)  # room for one more
 
 
+class TestLandingOnAMovingCarrier(unittest.TestCase):
+    """An idle aircraft may land on a carrier the plan moves this turn: where it starts (the aircraft's order
+    first, and it rides along) or, out of reach of that, where it is going (the carrier's order first)."""
+
+    # 30: NAA's land, on a chain of sea zones 31 - 32 - 33 - 34 - 35; 36: GPC's, beside 35.
+    MAP = {30: {'type': 'land', 'value': 2, 'name': 'Port'}, 36: {'type': 'land', 'value': 2, 'name': 'Enemy'},
+           **{i: {'type': 'sea', 'name': f'Sea {i}'} for i in range(31, 36)}}
+    ADJ = {30: [31], 31: [30, 32], 32: [31, 33], 33: [32, 34], 34: [33, 35], 35: [34, 36], 36: [35]}
+
+    def run_plan(self, carrier_at, carrier_to):
+        fighter, carrier = make_unit('Fighter', 'NAA'), make_unit('Aircraft Carrier', 'NAA')
+        data = FakeData(territories=self.MAP, adjacency=self.ADJ)
+        gs = make_state(data, {30: 'NAA', 36: 'GPC'}, {'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT},
+                        units_by_territory={30: [fighter], carrier_at: [carrier], 36: [make_unit('Infantry', 'GPC')]},
+                        phase=Phase.NONCOMBAT_MOVE)
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        p = Planner(engine, 'NAA', load_settings(), 'Controlling', random.Random(2), 'noncombat', 1500)
+        p._begin_objective('control_oceans')
+        p.claim(carrier, 'control_oceans', carrier_to)
+        p.moves_nc[carrier.unit_id] = carrier_to  # the plan sails it
+        p._land_idle_aircraft_on_carriers()
+        engine.submit_noncombat_moves('NAA', p.noncombat_orders())
+        engine.confirm_noncombat_moves('NAA')
+        where = {u.unit_id: tid for tid, t in gs.territories.items() for u in t.units}
+        return p, fighter, carrier, where
+
+    def test_in_reach_of_its_start_the_aircraft_lands_first_and_rides_along(self):
+        p, fighter, carrier, where = self.run_plan(31, 33)
+        self.assertEqual((p.moves_nc[fighter.unit_id], p.nc_rank[fighter.unit_id]), (31, 0))
+        self.assertEqual(p.noncombat_orders()[0].unit_id, fighter.unit_id)
+        self.assertEqual((where[fighter.unit_id], where[carrier.unit_id]), (33, 33))
+
+    def test_out_of_reach_of_its_start_the_aircraft_lands_where_it_is_going(self):
+        p, fighter, carrier, where = self.run_plan(35, 33)  # 35 is 5 away; 33 is 3
+        self.assertEqual((p.moves_nc[fighter.unit_id], p.nc_rank[fighter.unit_id]), (33, 2))
+        self.assertEqual(p.noncombat_orders()[-1].unit_id, fighter.unit_id)
+        self.assertEqual((where[fighter.unit_id], where[carrier.unit_id]), (33, 33))
+
+
 class TestEmptyLandGrab(unittest.TestCase):
     """The primary objective: undefended enemy land in reach gets the cheapest land unit that can take it."""
 
