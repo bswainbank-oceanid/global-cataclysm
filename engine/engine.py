@@ -442,9 +442,21 @@ class GameEngine:
         # water) -- purchase.contested_purchase_lost_during_turn_fallback.
         fallback = self._find_fallback_for_lost_purchase(tid, faction)
         if fallback is None:
-            return  # no adjacent controlled territory -- lost outright, never placed
+            if self.turn_log is not None:  # no adjacent controlled territory -- lost outright, never placed
+                self.turn_log.record_deploy_lost(faction, tid, self._unit_counts(pending), 'territory_lost')
+            return
+        if self.turn_log is not None:
+            self.turn_log.record_deploy_redirected(faction, tid, fallback, self._unit_counts(pending), 'territory_lost')
         self.game_state.territories[fallback].units.extend(pending)
         self._record_deploys(faction, fallback, pending)
+
+    @staticmethod
+    def _unit_counts(units):
+        """[{unit_type, qty}] in first-seen order."""
+        counts = {}
+        for u in units:
+            counts[u.unit_type] = counts.get(u.unit_type, 0) + 1
+        return [{'unit_type': t, 'qty': n} for t, n in counts.items()]
 
     def _record_deploys(self, faction, territory_id, units):
         if self.stats is not None:
@@ -504,6 +516,8 @@ class GameEngine:
         if to_place_here:
             self._record_deploys(faction, tid, to_place_here)
         for land_tid, units in redirected_by_land.items():
+            if self.turn_log is not None:
+                self.turn_log.record_deploy_redirected(faction, tid, land_tid, self._unit_counts(units), 'no_carrier_room')
             self._record_deploys(faction, land_tid, units)
 
         # Hostile sea deploy creates contested, immediately, as a direct

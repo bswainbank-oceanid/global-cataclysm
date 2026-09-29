@@ -911,6 +911,21 @@ class TestContestedPurchaseLostFallback(unittest.TestCase):
         deploys = [e for e in log.events if e['kind'] == 'unit_deployed']
         self.assertEqual([(e['territory_id'], e['qty']) for e in deploys], [(2, 1)])
         self.assertEqual(len(gs.territories[3].units), 0)
+        self.assertIn({'kind': 'deploy_redirected', 'faction': 'NAA', 'from': 1, 'to': 2,
+                       'units': [{'unit_type': 'Infantry', 'qty': 1}], 'reason': 'territory_lost'}, log.events)
+
+    def test_a_purchase_lost_outright_is_logged(self):
+        data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'land', 'value': 3}}, adjacency={1: [2]})
+        gs = make_state(
+            data, {1: 'AAC', 2: 'AAC'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            phase=Phase.DEPLOY_INCOME,
+            pending_by_territory={1: [make_unit('Infantry', 'NAA', purchased_at=1) for _ in range(2)]},
+        )
+        log = TurnLog()
+        GameEngine(gs, data, turn_log=log).deploy_and_collect_income('NAA')
+        self.assertIn({'kind': 'deploy_lost', 'faction': 'NAA', 'territory_id': 1,
+                       'units': [{'unit_type': 'Infantry', 'qty': 2}], 'reason': 'territory_lost'}, log.events)
+        self.assertFalse([e for e in log.events if e['kind'] == 'unit_deployed'])
 
     def test_still_owned_territory_is_unaffected(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}}, adjacency={})
@@ -985,10 +1000,13 @@ class TestCarrierlessAirDeployFallback(unittest.TestCase):
             data, {1: 'NAA'}, {'NAA': FactionMode.HUMAN}, phase=Phase.DEPLOY_INCOME,
             pending_by_territory={2: [make_unit('Fighter', 'NAA', purchased_at=1)]},
         )
-        engine = GameEngine(gs, data)
+        log = TurnLog()
+        engine = GameEngine(gs, data, turn_log=log)
         engine.deploy_and_collect_income('NAA')
         self.assertEqual(len(gs.territories[1].units), 1)
         self.assertEqual(len(gs.territories[2].units), 0)
+        self.assertIn({'kind': 'deploy_redirected', 'faction': 'NAA', 'from': 2, 'to': 1,
+                       'units': [{'unit_type': 'Fighter', 'qty': 1}], 'reason': 'no_carrier_room'}, log.events)
 
     def test_stays_at_sea_when_own_carrier_already_present(self):
         data = FakeData(territories={1: {'type': 'land', 'value': 5}, 2: {'type': 'sea'}}, adjacency={2: [1]})

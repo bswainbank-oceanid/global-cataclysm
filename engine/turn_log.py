@@ -200,6 +200,20 @@ class TurnLog:
             'unit_type': unit_type, 'qty': qty,
         })
 
+    def record_deploy_redirected(self, faction, from_id, to_id, units, reason):
+        """Purchased units that could not deploy where they were bought for and went elsewhere: `units`
+        [{unit_type, qty}]; reason 'territory_lost' (a contested territory lost before Deploy: to an adjacent
+        one still held) or 'no_carrier_room' (aircraft for a sea zone without room on an own carrier: to the
+        land that paid for them)."""
+        self.events.append({'kind': 'deploy_redirected', 'faction': faction, 'from': from_id, 'to': to_id,
+                            'units': units, 'reason': reason})
+
+    def record_deploy_lost(self, faction, territory_id, units, reason):
+        """Purchased units that could not deploy anywhere and are lost: reason 'territory_lost' (a contested
+        territory lost before Deploy, with no adjacent territory still held)."""
+        self.events.append({'kind': 'deploy_lost', 'faction': faction, 'territory_id': territory_id,
+                            'units': units, 'reason': reason})
+
     def record_income(self, faction, amount):
         self.events.append({'kind': 'income_collected', 'faction': faction, 'amount': amount})
 

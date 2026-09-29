@@ -5,7 +5,8 @@ extends RefCounted
 ## engine/bots/strategy_log.py), as BBCode. Each choice reads
 ## "choice -- #objective number objective name (target)".
 
-const PHASES := {"PURCHASE": "Purchase", "COMBAT_MOVE": "Combat Moves", "NONCOMBAT_MOVE": "Non-Combat Moves"}
+const PHASES := {"PURCHASE": "Purchase", "COMBAT_MOVE": "Combat Moves", "NONCOMBAT_MOVE": "Non-Combat Moves",
+	"DEPLOY_INCOME": "Deploy"}
 const STATS := [["territory_mpc", "Territory MPC"], ["unit_value", "Unit value"], ["unit_count", "Units"], ["scs", "SCs"]]
 const DIM := "#7f8ea0"
 const WARN := "#ff8a7a"
@@ -16,16 +17,20 @@ const SUB := "#e8c872"   # a turn review's sub-heading
 static func describe(e: Dictionary) -> String:
 	match str(e.get("kind", "")):
 		"strategy_turn_start":
-			return "%s\n  %s\n  %s" % [_heading(e, "TURN START", true), _style(e),
+			return "%s\n  %s\n  %s" % [_heading(e, _round(e) + "TURN START", true), _style(e),
 				_stats(e["stats"], e.get("change"), "since last turn")]
 		"strategy_phase":
 			var lines := [_heading(e, str(PHASES.get(str(e["phase"]), str(e["phase"]))).to_upper(), false)]
+			if e.has("deploy_changes"):  # Deploy: only logged when purchased units had to go elsewhere
+				for c in e["deploy_changes"]:
+					lines.append("  " + EventText.deploy_change(c))
+				return "\n".join(lines)
 			lines.append_array(_choices(str(e["phase"]), e["choices"]))
 			lines.append_array(_rejected(e["rejected"], str(e["phase"])))
 			return "\n".join(lines)
 		"strategy_turn_end":
 			var r: Dictionary = e["review"]
-			var lines := [_heading(e, "END OF TURN", true), "  " + _style(e),
+			var lines := [_heading(e, _round(e) + "END OF TURN", true), "  " + _style(e),
 				"  " + _stats(e["stats"], e.get("change"), "during turn"), "  [b][color=%s]Turn review[/color][/b]" % HEAD]
 			for p in [["PURCHASE", "purchase"], ["COMBAT_MOVE", "combat"], ["NONCOMBAT_MOVE", "noncombat"]]:
 				lines.append(_sub(PHASES[p[0]]))
@@ -36,6 +41,11 @@ static func describe(e: Dictionary) -> String:
 				lines.append(_sub("Rejected by the rules"))
 				for line in _rejected(rejected, ""):
 					lines.append("  " + line)
+			var moved_on: Array = r.get("deploy_changes", [])
+			if not moved_on.is_empty():
+				lines.append(_sub("Purchases deployed elsewhere or lost"))
+				for c in moved_on:
+					lines.append("    " + EventText.deploy_change(c))
 			lines.append(_sub("Units with no orders"))
 			var idle: Array = r.get("idle_units", [])
 			if idle.is_empty():
@@ -55,6 +65,11 @@ static func describe(e: Dictionary) -> String:
 					lines.append("      [color=%s](and %d more)[/color]" % [DIM, int(n["more"])])
 			return "\n".join(lines)
 	return ""
+
+
+## "ROUND 5 · " for a turn's start and end headings (older events carry no round: "").
+static func _round(e: Dictionary) -> String:
+	return "ROUND %d · " % int(e["round"]) if e.get("round") != null else ""
 
 
 static func _style(e: Dictionary) -> String:

@@ -116,6 +116,8 @@ static func describe(e: Dictionary) -> String:
 				return ""
 			return "%s aircraft return to base:
 %s" % [_fac(e["faction"]), _move_lines(e["orders"], func(o): return _terr(o["to"]))]
+		"deploy_redirected", "deploy_lost":
+			return "%s: %s" % [_fac(str(e["faction"])), deploy_change(e)]
 		"aircraft_lost":
 			var reasons := {"no_carrier": "no own carrier to land on", "carrier_full": "no place on its own carrier",
 				"hostile_land": "no friendly land to land on", "no_emergency_landing": "its carrier sank and nowhere was in reach"}
@@ -191,6 +193,25 @@ static func describe(e: Dictionary) -> String:
 		"alliance_withdrawal":
 			return "%s withdraws from its alliance" % _fac(e["faction"])
 	return ""
+
+
+## A deploy_redirected / deploy_lost event (purchased units that could not deploy where they were bought
+## for), without the faction: "6x Infantry bought for Czechia deploy to Italy instead (Czechia was lost
+## this turn)".
+static func deploy_change(e: Dictionary) -> String:
+	var bits := []
+	for u in e["units"]:
+		bits.append(("%dx %s" % [int(u["qty"]), u["unit_type"]]) if int(u["qty"]) > 1 else str(u["unit_type"]))
+	var what := ", ".join(bits)
+	var reason := str(e.get("reason", ""))
+	if str(e["kind"]) == "deploy_lost":
+		var at := _terr(e["territory_id"])
+		return "[color=#ff8a7a]%s bought for %s are lost[/color] (%s was lost this turn, and no adjacent territory is still held)" % [
+			what, at, at]
+	var why := "%s was lost this turn" % _terr(e["from"]) if reason == "territory_lost" \
+		else "no room on an own Aircraft Carrier there: back to the land that paid for them" if reason == "no_carrier_room" \
+		else reason
+	return "[color=#ffb35c]%s bought for %s deploy to %s instead[/color] (%s)" % [what, _terr(e["from"]), _terr(e["to"]), why]
 
 
 ## Why a surrender may be demanded, in words.

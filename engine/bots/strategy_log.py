@@ -7,7 +7,7 @@ pursued); nothing here changes the game or the bot's choices.
 A StrategyLogger follows one bot faction through its turns (server/stepper.py drives it) and makes
 turn_log-shaped events, every territory an id and every objective {no, id, name}:
 
-    strategy_turn_start {faction, style, stats, change}
+    strategy_turn_start {faction, round, style, stats, change}
         stats: {territory_mpc, unit_value, unit_count, scs}; change: since the start of the faction's
         previous turn (null on its first)
     strategy_phase {faction, phase, choices, rejected}
@@ -15,9 +15,12 @@ turn_log-shaped events, every territory an id and every objective {no, id, name}
         phase COMBAT_MOVE / NONCOMBAT_MOVE: choices [{units: [{unit_type, count}], from, to, objective,
         target}] -- `to` equal to `from` with "hold": true for units told to stay put (Non-Combat Move)
         rejected: what the plan wanted but the engine would not take, in the same shapes
-    strategy_turn_end {faction, style, stats, change, review}
+    strategy_phase {faction, phase: DEPLOY_INCOME, choices: [], rejected: [], deploy_changes}
+        only when purchased units could not deploy where they were bought for: the turn log's
+        deploy_redirected / deploy_lost events
+    strategy_turn_end {faction, round, style, stats, change, review}
         change: during this turn; review: {purchase, combat, noncombat: those phases' choices;
-        rejected: [{phase, ...}]; idle_units: [{unit_type, count, at}] (units with no orders at all);
+        rejected: [{phase, ...}]; deploy_changes: as above; idle_units: [{unit_type, count, at}] (units with no orders at all);
         no_resources: [{objective, reasons: [{target, reason}], more}] (objectives given nothing, and why)}
 
 The objective numbers are the planning order of the pass that made the choice: purchases and combat
@@ -68,7 +71,7 @@ class StrategyLogger:
         self.faction = bot.faction
         self._last_start = None   # stats at the start of the previous turn
         self._start = None        # ...and of this one
-        self._review = {'purchase': [], 'combat': [], 'noncombat': [], 'rejected': [], 'idle_units': []}
+        self._review = {'purchase': [], 'combat': [], 'noncombat': [], 'rejected': [], 'deploy_changes': [], 'idle_units': []}
         self._full_plan = None    # the plan the Purchase and Combat Move choices came from
         self._staged = {}         # phase -> (staged orders, {unit_id: (unit_type, origin)}) captured before confirm
 
@@ -77,10 +80,10 @@ class StrategyLogger:
     def turn_start(self):
         stats = faction_stats(self.engine, self.faction)
         self._last_start, self._start = self._start, stats
-        self._review = {'purchase': [], 'combat': [], 'noncombat': [], 'rejected': [], 'idle_units': []}
+        self._review = {'purchase': [], 'combat': [], 'noncombat': [], 'rejected': [], 'deploy_changes': [], 'idle_units': []}
         self._full_plan = None
-        return {'kind': 'strategy_turn_start', 'faction': self.faction, 'style': self.bot.style,
-                'stats': stats, 'change': _change(stats, self._last_start)}
+        return {'kind': 'strategy_turn_start', 'faction': self.faction, 'round': self.engine.game_state.round_number,
+                'style': self.bot.style, 'stats': stats, 'change': _change(stats, self._last_start)}
 
     def before_commit(self, phase):
         """Captures what is staged for `phase` (and where each unit is) before the engine executes it."""
@@ -121,8 +124,19 @@ class StrategyLogger:
         stats = faction_stats(self.engine, self.faction)
         review = dict(self._review)
         review['no_resources'] = self._no_resources()
-        return {'kind': 'strategy_turn_end', 'faction': self.faction, 'style': self.bot.style,
-                'stats': stats, 'change': _change(stats, self._start), 'review': review}
+        return {'kind': 'strategy_turn_end', 'faction': self.faction, 'round': self.engine.game_state.round_number,
+                'style': self.bot.style, 'stats': stats, 'change': _change(stats, self._start), 'review': review}
+
+    def deploy(self, events):
+        """The strategy_phase event for Deploy + Income, from the events it logged: the purchased units that
+        could not deploy where they were bought for -- redirected elsewhere, or lost (None: there were none)."""
+        changes = [dict(e) for e in events if e.get('faction') == self.faction
+                   and e['kind'] in ('deploy_redirected', 'deploy_lost')]
+        self._review['deploy_changes'] = changes
+        if not changes:
+            return None
+        return {'kind': 'strategy_phase', 'faction': self.faction, 'phase': 'DEPLOY_INCOME', 'choices': [],
+                'rejected': [], 'deploy_changes': changes}
 
     # ---- choices -------------------------------------------------------------------------------
 

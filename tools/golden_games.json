@@ -1,38 +1,38 @@
 {
   "random_6bot": {
     "setup": "1062dda07c139108cde5f769f2314da7308f5b65",
-    "log": "c65b627b1af7763c30f94355839580e2a7c0081d",
+    "log": "fad270011889dd42b8f1bcc13a3c062da7ef8664",
     "final": "4d991c22eb79e442426c091a15ae27e8bcf431b1",
-    "events": 4538
+    "events": 4565
   },
   "strategy_6bot": {
     "setup": "dfe089697b8a387bcff92ec553a9a02979b3f871",
-    "log": "9e93fb8ec7ccbc4d882f34d096e2e088b1a51fbc",
+    "log": "f40ce0f74cb5e78dcce26bad7766fb04d35f41f0",
     "final": "d20c48121b415bd0a8f6d24c17b7f16810356558",
-    "events": 635
+    "events": 636
   },
   "strategy_3bot_neutral": {
     "setup": "00d2ddee6e021c1c70e92eb6d88616c1f8d39713",
-    "log": "11f35853a7422cbd5e4303a60b663e95581da366",
+    "log": "04ed402f999a71ae4ec3385170b4a95d10cf83ba",
     "final": "962c63c9ccd8cbf839a4f9551d1a67a4f1f9939e",
-    "events": 1303
+    "events": 1307
   },
   "mixed_alliances": {
     "setup": "c3dc4f40cd27f97312e49b1c2c5b0868cf2cd239",
-    "log": "182cd51f4e4512e0ac3aab4152998d072fc14f14",
+    "log": "442188d7bf303ad4722348fcfaf53f14c4e3fd44",
     "final": "3fe35f515eeb39f6a122bbf62d03525d2b4b780b",
-    "events": 2383
+    "events": 2392
   },
   "fixed_order_2bot": {
     "setup": "69cb97185eae63fc85bb07037fb8413cb648a3db",
-    "log": "4ecbd55c50cf46bd071a91328e4678955c98da9b",
+    "log": "ef9f4146b9fb3ac6dea70321f42dc916352abc2f",
     "final": "d881641de6f480ff2fe7b62baf2a135f8172852a",
-    "events": 1107
+    "events": 1113
   },
   "new_scenario_3bot": {
     "setup": "12733e28cc715bfce4ed0fdd59a586d899c7300e",
-    "log": "9c4a0536f8887d15725b1c3bc20d120f2b5d0a49",
+    "log": "8d95839904a03495dd9fd331beceae2693c928c6",
     "final": "86754d4c4dda0bd04d2522af1daf3ecdb8f62730",
-    "events": 2001
+    "events": 2015
   }
 }

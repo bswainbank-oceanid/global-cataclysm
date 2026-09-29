@@ -114,7 +114,8 @@ Server -> client (always broadcast to watchers):
         the roll-by-roll events and one battle_summary per battle). A strategy bot's
         turn also logs its Strategy Log (engine/bots/strategy_log.py): strategy_turn_start
         with its Start of Turn, a strategy_phase after its Purchase, Combat Move and
-        Non-Combat Move, and strategy_turn_end (the turn review) after its Diplomacy --
+        Non-Combat Move (and after Deploy + Income when purchased units had to go elsewhere),
+        and strategy_turn_end (the turn review) after its Diplomacy --
         the client shows them in the Strategy tab, not the Game Log.
     {"type": "state", "game_state": ...}   sent after every executed phase.
     {"type": "self_surrender_result", "faction": "NAA", "events": [...]}
@@ -361,6 +362,10 @@ class PhaseStepper:
             stay = self._commit(faction, phase)
             if logged:
                 event = log.phase(phase.value)
+                if event is not None:
+                    self.turn_log.events.append(event)
+            if log is not None and phase == Phase.DEPLOY_INCOME:
+                event = log.deploy(self.turn_log.events[start:])
                 if event is not None:
                     self.turn_log.events.append(event)
             if log is not None and phase == Phase.DIPLOMACY:

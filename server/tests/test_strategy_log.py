@@ -44,6 +44,24 @@ class TestStrategyLog(unittest.TestCase):
                                      ('strategy_phase', 'COMBAT_MOVE'), ('strategy_phase', 'NONCOMBAT_MOVE'),
                                      ('strategy_turn_end', None)])
 
+    def test_turn_start_and_end_carry_the_round(self):
+        for e in self.strategy:
+            if e['kind'] in ('strategy_turn_start', 'strategy_turn_end'):
+                self.assertIsInstance(e['round'], int)
+                self.assertGreaterEqual(e['round'], 1)
+
+    def test_purchases_deployed_elsewhere_are_listed_under_deploy(self):
+        from engine.bots.strategy_log import StrategyLogger
+        f = sorted(self.strategy_bots)[0]
+        log = StrategyLogger(self.session.engine, self.session.bots[f])
+        moved = {'kind': 'deploy_redirected', 'faction': f, 'from': 40, 'to': 39,
+                 'units': [{'unit_type': 'Infantry', 'qty': 6}], 'reason': 'territory_lost'}
+        other = dict(moved, faction='someone else')
+        self.assertIsNone(log.deploy([{'kind': 'unit_deployed', 'faction': f}]))
+        e = log.deploy([moved, other, {'kind': 'income_collected', 'faction': f}])
+        self.assertEqual((e['kind'], e['phase'], e['deploy_changes']), ('strategy_phase', 'DEPLOY_INCOME', [moved]))
+        self.assertEqual(log.turn_end()['review']['deploy_changes'], [moved])
+
     def test_stats_and_changes(self):
         starts = [e for e in self.strategy if e['kind'] == 'strategy_turn_start']
         self.assertTrue(all(set(e['stats']) == {'territory_mpc', 'unit_value', 'unit_count', 'scs'} for e in starts))
@@ -77,7 +95,8 @@ class TestStrategyLog(unittest.TestCase):
         self.assertTrue(ends)
         for e in ends:
             r = e['review']
-            self.assertEqual(set(r), {'purchase', 'combat', 'noncombat', 'rejected', 'idle_units', 'no_resources'})
+            self.assertEqual(set(r), {'purchase', 'combat', 'noncombat', 'rejected', 'deploy_changes', 'idle_units',
+                                      'no_resources'})
             for n in r['no_resources']:
                 self.assertTrue(n['reasons'], n)
                 self.assertTrue(all(w['reason'] for w in n['reasons']))
