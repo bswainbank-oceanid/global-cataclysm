@@ -1,0 +1,93 @@
+{
+ "module_type": "ScenarioSetup",
+ "id": "Setup_001",
+ "name": "Against the Hegemon",
+ "description": "One faction is far more powerful than the other. It won't join your alliance. Can you stop them from world domination?",
+ "generator_id": "GC72_Generator",
+ "settings": {
+  "allow_combat_first_turn": false,
+  "allow_noncombat_first_turn": true,
+  "can_rejoin": false,
+  "can_withdraw": true,
+  "max_alliance_size": 3,
+  "randomize_order": true,
+  "scenario": {
+   "kind": "new",
+   "neutral": {"promotions": 0, "scs": 1, "units_mpc": 50},
+   "options": {
+    "extra_non_sc_units": 2,
+    "faction_weight": 100,
+    "infantry_in_every_territory": true,
+    "min_scs_to_avoid_surrender": 2,
+    "neutral_infantry_in_every_territory": true,
+    "sc_bonus": 5,
+    "sc_final_min_distance": 4,
+    "sc_min_distance": 3,
+    "surrender_income_multiplier": 2
+   }
+  },
+  "seats": [
+   {
+    "mode": "HUMAN",
+    "faction": "random",
+    "alliance": 0,
+    "strategy": "random",
+    "behavior": "random",
+    "territory_value": 23,
+    "initial_mpc": 125,
+    "units_mpc": 125,
+    "promotions": 4,
+    "scs": 3
+   },
+   {
+    "mode": "BOT",
+    "faction": "random",
+    "alliance": 0,
+    "strategy": "adversarial",
+    "behavior": "opportunistic",
+    "territory_value": 45,
+    "initial_mpc": 225,
+    "units_mpc": 200,
+    "promotions": 1,
+    "scs": 5
+   },
+   {
+    "mode": "BOT",
+    "faction": "random",
+    "alliance": 0,
+    "strategy": "variable",
+    "behavior": "random",
+    "territory_value": 25,
+    "initial_mpc": 125,
+    "units_mpc": 125,
+    "promotions": 4,
+    "scs": 3
+   },
+   {
+    "mode": "BOT",
+    "faction": "random",
+    "alliance": 0,
+    "strategy": "random",
+    "behavior": "random",
+    "territory_value": 25,
+    "initial_mpc": 125,
+    "units_mpc": 125,
+    "promotions": 4,
+    "scs": 3
+   },
+   {
+    "mode": "BOT",
+    "faction": "random",
+    "alliance": 0,
+    "strategy": "random",
+    "behavior": "treacherous",
+    "territory_value": 25,
+    "initial_mpc": 125,
+    "units_mpc": 125,
+    "promotions": 4,
+    "scs": 3
+   },
+   {"mode": "NOT_PLAYING", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "random"}
+  ]
+ }
+}

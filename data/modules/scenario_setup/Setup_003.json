@@ -1,0 +1,82 @@
+{
+ "module_type": "ScenarioSetup",
+ "id": "Setup_003",
+ "name": "Axis & Allies '72",
+ "description": "German, Japan, and their allies have joined forces once again and are bent on global conquest!",
+ "generator_id": "GC72_Generator",
+ "settings": {
+  "allow_combat_first_turn": false,
+  "allow_noncombat_first_turn": true,
+  "can_rejoin": false,
+  "can_withdraw": false,
+  "max_alliance_size": 2,
+  "randomize_order": true,
+  "scenario": {
+   "kind": "new",
+   "neutral": {"promotions": 0, "scs": 1, "territory_value": 28, "units_mpc": 75},
+   "options": {
+    "extra_non_sc_units": 3,
+    "faction_weight": 100,
+    "infantry_in_every_territory": true,
+    "min_scs_to_avoid_surrender": 2,
+    "neutral_infantry_in_every_territory": true,
+    "sc_bonus": 2,
+    "sc_final_min_distance": 4,
+    "sc_min_distance": 2,
+    "surrender_income_multiplier": 2
+   }
+  },
+  "seats": [
+   {
+    "mode": "BOT",
+    "faction": "NAA",
+    "alliance": 1,
+    "strategy": "random",
+    "behavior": "random",
+    "territory_value": 28,
+    "initial_mpc": 125,
+    "units_mpc": 125,
+    "promotions": 3,
+    "scs": 3
+   },
+   {
+    "mode": "BOT",
+    "faction": "UER",
+    "alliance": 1,
+    "strategy": "random",
+    "behavior": "random",
+    "territory_value": 28,
+    "initial_mpc": 125,
+    "units_mpc": 125,
+    "promotions": 3,
+    "scs": 3
+   },
+   {
+    "mode": "BOT",
+    "faction": "UE",
+    "alliance": 2,
+    "strategy": "random",
+    "behavior": "random",
+    "territory_value": 28,
+    "initial_mpc": 125,
+    "units_mpc": 125,
+    "promotions": 3,
+    "scs": 3
+   },
+   {
+    "mode": "BOT",
+    "faction": "GPC",
+    "alliance": 2,
+    "strategy": "random",
+    "behavior": "random",
+    "territory_value": 28,
+    "initial_mpc": 125,
+    "units_mpc": 125,
+    "promotions": 3,
+    "scs": 3
+   },
+   {"mode": "NOT_PLAYING", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "treacherous"},
+   {"mode": "NOT_PLAYING", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "random"}
+  ]
+ }
+}
