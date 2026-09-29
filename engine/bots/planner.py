@@ -3,9 +3,9 @@ The strategy bots' turn planner: decides a whole turn -- purchases, combat moves
 by working through objectives in priority order and committing the faction's resources to each.
 
 Primary objectives, in this order, every turn:
-    hold SCs -> capture SCs -> reinforce contested -> punish betrayers -> fill defensive gaps
+    hold SCs -> capture SCs -> reinforce contested -> punish betrayers -> empty land grab -> fill defensive gaps
 Secondary objectives, in an order drawn by the style's weights each turn (a weight of 0 skips one):
-    expand territory, hold frontier, control oceans, pursue the 1st / 2nd / 3rd SC target
+    expand territory, hold frontier, control oceans, pursue the 1st / 2nd / 3rd SC target, remote empty land grab
 A treacherous bot that has decided to withdraw first grabs allied territory (treasonous capture).
 
 Every objective rates the chance of success with the fast battle simulator (bots/battle_sim.py: 200
@@ -34,6 +34,10 @@ from .strategy_settings import weighted_order
 
 SC_BIAS = 8  # how much closer (in path-cost points) a Strategic Center purchase spot counts as, for where to buy
 
+# Units no Strategic Center objective (Capture SCs, Pursue an enemy SC, the leftovers' march on the SCs) buys,
+# moves or counts on: Submarines -- submerged, they can neither hit nor be hit by aircraft, and cannot take land.
+NO_SC_CAPTURE = (abilities.SUBMERGE,)
+
 DEFAULT_BUDGET = 3500  # simulated battles per planning pass: about 2-3 seconds in a busy mid-game
 
 
@@ -46,6 +50,15 @@ class Plan:
         self.combat = planner.combat_orders()
         self.noncombat = planner.noncombat_orders()
         self.notes = list(planner.notes)
+        # the strategy log's record (engine/bots/strategy_log.py): this pass's objectives in planning order
+        # [{no, id, name}] (secondaries in this turn's draw order; `skipped`: ones not planned at all, and why),
+        # what each unit and purchase is for, and every target an objective looked at, pursued or not, and why
+        self.objectives = list(planner.objective_order)
+        self.skipped = list(planner.skipped_objectives)
+        self.unit_why = dict(planner.unit_why)
+        self.purchase_why = list(planner.purchase_why)
+        self.attempts = list(planner.attempts)
+        self.stay = set(planner.stay)
         self.elapsed = time.time() - planner.started
         self.evaluations = planner.evaluations
 
@@ -98,6 +111,14 @@ class Planner:
         self.stubs = {}         # territory -> planned arrivals and purchases, as stand-in units
         self.treasury = self.gs.factions[faction].treasury_mpc if self.allow_purchase else 0
         self.notes = []
+        # the strategy log's record (never read by the planning itself)
+        self._objective = None     # the objective being planned
+        self._target = None        # ...and the territory it is working on
+        self.unit_why = {}         # unit_id -> (objective id, target): what each committed unit is for
+        self.purchase_why = []     # [(unit type, territory, objective id, target)], one per unit bought
+        self.attempts = []         # [{objective, target, outcome, reason}]: pursued, not needed, not pursued
+        self.objective_order = []  # [{no, id, name}]
+        self.skipped_objectives = []  # [{id, name, reason}]: secondaries not planned this pass
 
         self._stub_id = -1
         self._odds_cache = {}
@@ -109,6 +130,7 @@ class Planner:
         self._excluded_zones = excluded_naval_purchase_zones(self.data)
         self._purchase_spots = None
         self._sc_spots = set()
+        self._landmasses = {}
 
         self.my_units = {}  # unit_id -> (unit, territory)
         for tid, t in self.gs.territories.items():
@@ -187,14 +209,25 @@ class Planner:
 
     def snapshot(self):
         return (dict(self.claimed), dict(self.moves_combat), dict(self.moves_nc), set(self.stay),
-                dict(self.purchases), {t: list(v) for t, v in self.stubs.items()}, self.treasury)
+                dict(self.purchases), {t: list(v) for t, v in self.stubs.items()}, self.treasury,
+                dict(self.unit_why), list(self.purchase_why))
 
     def restore(self, snap):
         self.claimed, self.moves_combat, self.moves_nc, self.stay, self.purchases, self.stubs, self.treasury = (
             dict(snap[0]), dict(snap[1]), dict(snap[2]), set(snap[3]), dict(snap[4]), {t: list(v) for t, v in snap[5].items()}, snap[6])
+        self.unit_why, self.purchase_why = dict(snap[7]), list(snap[8])
 
     def note(self, text):
         self.notes.append(text)
+
+    def attempt(self, target, outcome, reason):
+        """The strategy log: the current objective looked at `target` -- 'pursued' (resources committed),
+        'not_needed' (safe already) or 'not_pursued' -- and why."""
+        self.attempts.append({'objective': self._objective, 'target': target, 'outcome': outcome, 'reason': reason})
+
+    @staticmethod
+    def _pct(x):
+        return f'{x:.0%}'
 
     # ==== movement reach =======================================================================
 
@@ -346,7 +379,7 @@ class Planner:
     def noncombat_orders(self):
         return [NonCombatMoveOrder(uid, dest) for uid, dest in sorted(self.moves_nc.items())]
 
-    def buy(self, tid, categories, name, prefer=None, only=None):
+    def buy(self, tid, categories, name, prefer=None, only=None, land_types=None, without=()):
         """Buys one unit for `tid` by the faction's unit odds among the categories allowed (or, with `prefer`,
         that type first if it can be bought; with `only`, none but those types), if the treasury and the deploy
         capacity allow it. Returns the stand-in unit, or None.
@@ -371,6 +404,10 @@ class Planner:
                     continue
                 if only is not None and t not in only:
                     continue
+                if land_types is not None and d['category'] == 'Land' and t not in land_types:
+                    continue
+                if any(abilities.has(self.unit_defs, t, a) for a in without):
+                    continue
                 candidates.append(t)
         if not candidates:
             return None
@@ -394,12 +431,38 @@ class Planner:
                 continue
             self.purchases = trial
             self.treasury = self.gs.factions[self.me].treasury_mpc - total
+            self.purchase_why.append((unit_type, tid, self._objective or name, self._target if self._target is not None else tid))
             stub = self._stub(unit_type)
             self.stubs.setdefault(tid, []).append(stub)
             return stub
         return None
 
-    def buy_toward(self, dist, categories, name, only=None):
+    def _landmass(self, tid):
+        """The land territories joined to `tid` by land."""
+        got = self._landmasses.get(tid)
+        if got is None:
+            got, stack = {tid}, [tid]
+            while stack:
+                for n in self.adjacency.get(stack.pop(), []):
+                    if self.is_land(n) and n not in got:
+                        got.add(n)
+                        stack.append(n)
+            for t in got:
+                self._landmasses[t] = got
+        return got
+
+    def _island_land_types(self, spot):
+        """The land unit types that may be bought at `spot` toward the current target: when the target is an
+        island and `spot` is not on it, only the amphibious ones (Mechanized Infantry) -- nothing else could
+        ever get there. None: no limit."""
+        target = self._target
+        if target is None or not self.is_land(target) or target not in deployment.islands(self.data):
+            return None
+        if self.is_land(spot) and spot in self._landmass(target):
+            return None
+        return tuple(t for t, d in self.unit_defs.items() if d['category'] == 'Land' and is_amphibious(d))
+
+    def buy_toward(self, dist, categories, name, only=None, without=()):
         """Buys one unit at a purchase spot near a target (`dist`: cost of the cheapest path from each square to
         the target), by the faction's unit odds among the categories. Strategic Centers are favoured spots: a unit
         bought there costs less (the SC price) and there is room for two more, and it is a garrison where it matters --
@@ -413,27 +476,40 @@ class Planner:
         spots = sorted(self._purchase_spots,
                        key=lambda t: (dist.get(t, 1 << 30) - (SC_BIAS if t in self._sc_spots else 0), t))
         for tid in spots[:10]:
-            stub = self.buy(tid, categories, name, only=only)
+            stub = self.buy(tid, categories, name, only=only, land_types=self._island_land_types(tid), without=without)
             if stub is not None:
                 return stub
         return None
 
-    def claim(self, u, objective):
+    def claim(self, u, objective, target=None):
         self.claimed[u.unit_id] = objective
+        self.unit_why[u.unit_id] = (self._objective or objective, target if target is not None else self._target)
 
     # ==== the builders ===========================================================================
 
     def secure(self, tid, name, limits, resources=('stay', 'purchase', 'nc'), categories=('Land', 'Air'), keep_on_fail=False):
+        prev, self._target = self._target, tid
+        try:
+            return self._secure(tid, name, limits, resources, categories, keep_on_fail)
+        finally:
+            self._target = prev
+
+    def _secure(self, tid, name, limits, resources, categories, keep_on_fail):
         """Make `tid` safe from the worst threat: commit the units in it, then purchases, then non-combat
         moves, until the hold chance passes the objective's max; if it can't reach the min, commit nothing."""
         lo, hi = limits
-        if not self.threats(tid) or self.out_of_time():
+        if not self.threats(tid):
+            self.attempt(tid, 'not_needed', 'not threatened')
+            return True
+        if self.out_of_time():
+            self.attempt(tid, 'not_pursued', 'out of planning budget')
             return True
         self._cut = (lo, hi)
         snap = self.snapshot()
         defenders = self.defenders_at(tid)
         p = self.hold_chance(tid, defenders)
         if p >= hi:
+            self.attempt(tid, 'not_needed', f'already safe: {self._pct(p)} >= max {self._pct(hi)}')
             return True
         if 'stay' in resources:
             here = sorted((u for u in self.mine_at(tid) if u.unit_id not in self.claimed and u.unit_id not in self.stay
@@ -441,7 +517,7 @@ class Planner:
             for k, u in enumerate(here):
                 if p >= hi or self.out_of_time():
                     break
-                self.claim(u, name)
+                self.claim(u, name, tid)
                 self.stay.add(u.unit_id)
                 defenders.append(u)
                 if self._recheck(k, p, hi):
@@ -467,7 +543,7 @@ class Planner:
             for k, (u, origin) in enumerate(movers):
                 if p >= hi or self.out_of_time():
                     break
-                self.claim(u, name)
+                self.claim(u, name, tid)
                 self.moves_nc[u.unit_id] = tid
                 defenders.append(u)
                 if self._recheck(k, p, hi):
@@ -477,11 +553,14 @@ class Planner:
         if p < lo:
             if keep_on_fail:  # defending as well as it can beats leaving the money unspent
                 self.note(f'{name}: {self.terrs[tid]["name"]} defended as far as possible ({p:.0%})')
+                self.attempt(tid, 'pursued', f'defended as far as possible: {self._pct(p)} < min {self._pct(lo)}')
                 return False
             self.restore(snap)
             self.note(f'{name}: {self.terrs[tid]["name"]} not held (only {p:.0%})')
+            self.attempt(tid, 'not_pursued', f'best hold chance {self._pct(p)} < min {self._pct(lo)}')
             return False
         self.note(f'{name}: {self.terrs[tid]["name"]} held at {p:.0%}')
+        self.attempt(tid, 'pursued', f'hold chance {self._pct(p)}')
         return True
 
     @staticmethod
@@ -501,12 +580,13 @@ class Planner:
             return 'defender'
         return None
 
-    def assess_assault(self, tid, categories, contest=False):
+    def assess_assault(self, tid, categories, contest=False, without=()):
         """Chance of taking `tid` with every unit that could reach it (for ordering targets); with `contest`, the
-        chance of at least forcing a contest (hanging on through 3 rounds)."""
+        chance of at least forcing a contest (hanging on through 3 rounds). `without`: abilities whose units
+        take no part."""
         defenders = self.enemies_at(tid)
-        attackers, crossed = self._attack_candidates(tid, categories)
-        attackers = self.mine_at(tid) + [u for u, _ in attackers]
+        attackers, crossed = self._attack_candidates(tid, categories, without)
+        attackers = [u for u in self.mine_at(tid) if not self._has_any(u, without)] + [u for u, _ in attackers]
         if self.is_land(tid) and not self._has_land(attackers):
             return 0.0
         bonus = self._bonus_side(tid, [u for u in attackers if self.category(u) == 'Land'], crossed)
@@ -514,10 +594,15 @@ class Planner:
             return self.contest_odds(attackers, defenders, self.kind(tid), bonus)
         return self.attacker_odds(attackers, defenders, self.kind(tid), bonus)
 
-    def _attack_candidates(self, tid, categories):
+    def _has_any(self, u, abilities_):
+        return any(abilities.has(self.unit_defs, u.unit_type, a) for a in abilities_)
+
+    def _attack_candidates(self, tid, categories, without=()):
         out, crossed = [], {}
         for uid, (u, origin) in self.my_units.items():
             if origin == tid or self.category(u) not in categories or not self.free_for(u, 'combat'):
+                continue
+            if self._has_any(u, without):
                 continue
             path = self.combat_paths(u, origin).get(tid)
             if path is None:
@@ -531,21 +616,34 @@ class Planner:
         out.sort(key=lambda c: (self.cost(c[0]), c[0].unit_id))
         return out, crossed
 
-    def assault(self, tid, name, limits, categories=('Land', 'Air'), purchase_infantry=False, min_is_contest=False):
+    def assault(self, tid, name, limits, categories=('Land', 'Air'), purchase_infantry=False, min_is_contest=False,
+                without=()):
+        prev, self._target = self._target, tid
+        try:
+            return self._assault(tid, name, limits, categories, purchase_infantry, min_is_contest, without)
+        finally:
+            self._target = prev
+
+    def _assault(self, tid, name, limits, categories, purchase_infantry, min_is_contest, without=()):
         """Take (or win the fight at) `tid` by combat movement: with every unit that could get there, if the
         chance is under the min give up; else add units cheapest-first until it passes the max. With
         `min_is_contest` (attacking a Strategic Center) the min risk is the chance the attack at least forces a
         contest -- hangs on through 3 rounds -- while the max is still the chance of total victory."""
         lo, hi = limits
-        if not self.allow_combat or self.out_of_time():
+        if not self.allow_combat:
+            return False
+        if self.out_of_time():
+            self.attempt(tid, 'not_pursued', 'out of planning budget')
             return False
         self._cut = (lo, hi)
         snap = self.snapshot()
         kind = self.kind(tid)
         defenders = self.enemies_at(tid)
-        present = [u for u in self.mine_at(tid) if u.unit_id not in self.moves_combat and u.unit_id not in self.moves_nc]
-        candidates, crossed = self._attack_candidates(tid, categories)
+        present = [u for u in self.mine_at(tid) if u.unit_id not in self.moves_combat and u.unit_id not in self.moves_nc
+                   and not self._has_any(u, without)]
+        candidates, crossed = self._attack_candidates(tid, categories, without)
         if not candidates and not present:
+            self.attempt(tid, 'not_pursued', self._why_no_attackers(tid, categories, without))
             return False
 
         def chance(units, fast=True):
@@ -563,8 +661,12 @@ class Planner:
                 return 0.0
             return self.contest_odds(units, defenders, kind, self._bonus_side(tid, land, crossed), fast=fast)
 
-        if candidates and floor(present + [u for u, _ in candidates]) < lo:
-            return False
+        if candidates:
+            best = floor(present + [u for u, _ in candidates])
+            if best < lo:
+                self.attempt(tid, 'not_pursued', f'best chance {self._pct(best)}{" to force a contest" if min_is_contest else ""}'
+                                                 f' < min {self._pct(lo)}')
+                return False
         attackers = list(present)
         chosen = []
         p = chance(attackers) if attackers else 0.0
@@ -579,6 +681,7 @@ class Planner:
             spare = [(u, path) for u, path in candidates if (u, path) not in chosen and self.category(u) == 'Land']
             if not spare:
                 self.restore(snap)
+                self.attempt(tid, 'not_pursued', 'no land unit can reach it to capture it')
                 return False
             chosen.append(spare[0])
             attackers.append(spare[0][0])
@@ -594,14 +697,17 @@ class Planner:
         if p_floor < lo:
             self.restore(snap)
             self.note(f'{name}: {self.terrs[tid]["name"]} not pursued ({p_floor:.0%}{" to force a contest" if min_is_contest else ""})')
+            self.attempt(tid, 'not_pursued', f'chance {self._pct(p_floor)}{" to force a contest" if min_is_contest else ""}'
+                                             f' < min {self._pct(lo)}')
             return False
         for u in present:
-            self.claim(u, name)
+            self.claim(u, name, tid)
             self.stay.add(u.unit_id)
         for u, path in chosen:
-            self.claim(u, name)
+            self.claim(u, name, tid)
             self.moves_combat[u.unit_id] = path
         self.note(f'{name}: attacking {self.terrs[tid]["name"]} with {len(attackers)} units at {p:.0%}')
+        self.attempt(tid, 'pursued', f'attack with {len(attackers)} units at {self._pct(p)}')
         return True
 
     # ==== the primary objectives =================================================================
@@ -617,6 +723,15 @@ class Planner:
         for _, tid in sorted(ranked):  # the most threatened first
             self.secure(tid, 'hold_sc', limits)
 
+    def _why_no_attackers(self, tid, categories, without=()):
+        """The strategy log: nobody can attack `tid` -- because no unit could reach it, or because the ones that
+        could are already committed to something else."""
+        for uid, (u, origin) in self.my_units.items():
+            if origin != tid and self.category(u) in categories and not self._has_any(u, without) \
+                    and self.combat_paths(u, origin).get(tid) is not None:
+                return 'every unit that could reach it is committed elsewhere'
+        return 'no units can reach it'
+
     def objective_capture_scs(self):
         if not self.allow_combat:
             return
@@ -627,11 +742,13 @@ class Planner:
         for tid in targets:
             if self.out_of_time():
                 break
-            ranked.append((-self.assess_assault(tid, ('Land', 'Air', 'Sea')), tid, self.assess_assault(tid, ('Land', 'Air', 'Sea'), contest=True)))
+            ranked.append((-self.assess_assault(tid, ('Land', 'Air', 'Sea'), without=NO_SC_CAPTURE), tid,
+                           self.assess_assault(tid, ('Land', 'Air', 'Sea'), contest=True, without=NO_SC_CAPTURE)))
         for neg, tid, contest in sorted(ranked):
             if contest < limits[0]:
+                self.attempt(tid, 'not_pursued', f'best chance {self._pct(contest)} to force a contest < min {self._pct(limits[0])}')
                 continue  # the min risk: the chance the attack at least forces a contest
-            self.assault(tid, 'capture_sc', limits, ('Land', 'Air', 'Sea'), min_is_contest=True)
+            self.assault(tid, 'capture_sc', limits, ('Land', 'Air', 'Sea'), min_is_contest=True, without=NO_SC_CAPTURE)
 
     def objective_reinforce_contested(self):
         if not self.allow_combat:
@@ -675,20 +792,27 @@ class Planner:
                     remaining_at_origin = [v for v in self.defenders_at(origin, claimed_only=False) if v.unit_id != u.unit_id]
                     movers.append((0 if u.unit_type in self.mustering else 1, 0 if remaining_at_origin else 1, self.cost(u), u.unit_id, u, origin))
             movers.sort(key=lambda m: m[:4])
+            self._target = tid
             filled = False
             # (units are moved only if that leaves nobody's territory empty behind them; else prefer buying)
             for pref, leaves_empty, _, _, u, origin in movers:
                 if leaves_empty:
                     continue
-                self.claim(u, 'fill_gap')
+                self.claim(u, 'fill_gap', tid)
                 self.moves_nc[u.unit_id] = tid
                 filled = True
+                self.attempt(tid, 'pursued', f'a {u.unit_type} moves in')
                 self.note(f'fill_gap: {self.terrs[tid]["name"]} garrisoned by a {u.unit_type}')
                 break
             if not filled and self.allow_purchase:
                 stub = self.buy(tid, ('Land',), 'fill_gap', prefer=self.mustering[0] if self.mustering else None)
                 if stub is not None:
                     self.note(f'fill_gap: {self.terrs[tid]["name"]} garrisoned by a purchased {stub.unit_type}')
+                    self.attempt(tid, 'pursued', f'a {stub.unit_type} is bought for it')
+                    filled = True
+            if not filled:
+                self.attempt(tid, 'not_pursued', 'no unit free to move in, and none could be bought')
+            self._target = None
 
     def objective_treasonous_capture(self):
         """A treacherous bot that has decided to withdraw takes allied land it can reach by non-combat move."""
@@ -712,9 +836,12 @@ class Planner:
                     movers.append((self.cost(u), u.unit_id, u))
             movers.sort(key=lambda m: m[:2])
             if not movers:
+                self.attempt(tid, 'not_pursued', 'no units can reach it')
                 continue
             everything = [u for _, _, u in movers]
-            if self.attacker_odds(everything, defenders, 'land') < limits[0]:
+            best = self.attacker_odds(everything, defenders, 'land')
+            if best < limits[0]:
+                self.attempt(tid, 'not_pursued', f'best chance {self._pct(best)} < min {self._pct(limits[0])}')
                 continue
             force = []
             p = 0.0
@@ -724,10 +851,12 @@ class Planner:
                 if p >= limits[1]:
                     break
             if not self._has_land(force):
+                self.attempt(tid, 'not_pursued', 'no land unit can reach it to take it')
                 continue
             for u in force:
-                self.claim(u, 'treasonous_capture')
+                self.claim(u, 'treasonous_capture', tid)
                 self.moves_nc[u.unit_id] = tid
+            self.attempt(tid, 'pursued', f'{len(force)} units move in ({self._pct(p)})')
             self.note(f'treasonous_capture: moving {len(force)} units into {self.terrs[tid]["name"]} ({p:.0%})')
 
     # ==== the secondary objectives ================================================================
@@ -739,9 +868,10 @@ class Planner:
         targets = []
         for tid, t in self.gs.territories.items():
             if self.is_land(tid) and self.capturable(t.owner) and not self.is_sc(tid):
-                targets.append((-self.value(tid), tid))
+                # empty territory first (a free capture for whoever can reach it), then the most valuable
+                targets.append((1 if self.enemies_at(tid) else 0, -self.value(tid), tid))
         failed = []
-        for _, tid in sorted(targets):
+        for _, _, tid in sorted(targets):
             if self.out_of_time():
                 break
             if not self.assault(tid, 'expand_territory', limits, ('Land', 'Air')):
@@ -761,6 +891,13 @@ class Planner:
         pass the objective's max. The purchases stay whether or not it gets there."""
         if not self.allow_purchase or self.out_of_time():
             return 0
+        prev, self._target = self._target, target
+        try:
+            return self._build_up_at(target, categories, name, limits)
+        finally:
+            self._target = prev
+
+    def _build_up_at(self, target, categories, name, limits):
         self._cut = limits
         kind = self.kind(target)
         dist = self.costs_from(target)[0]
@@ -779,6 +916,7 @@ class Planner:
                 p = self.attacker_odds(force, defenders, kind)
         if bought:
             self.note(f'{name}: {bought} units bought toward {self.terrs[target]["name"]}')
+            self.attempt(target, 'pursued', f'too strong for now: {bought} units bought toward it')
         return bought
 
     def objective_hold_frontier(self):
@@ -856,13 +994,14 @@ class Planner:
                     continue
                 target = targets[0]
                 path = paths[target]
-                self.claim(cruiser, name)
+                self.claim(cruiser, name, target)
                 self.moves_combat[cruiser.unit_id] = path
+                self.attempt(target, 'pursued', 'a Cruiser bombards it')
                 self.note(f'{name}: the Cruiser at {self.terrs[origin]["name"]} bombards {self.terrs[target]["name"]}')
                 for escort in fleet:
                     if abilities.has(self.unit_defs, escort.unit_type, abilities.BOMBARDMENT) or not self.free_for(escort, 'combat'):
                         continue
-                    self.claim(escort, name)
+                    self.claim(escort, name, target)
                     self.moves_combat[escort.unit_id] = path
 
     def _second_pass_fleets(self, limits):
@@ -898,8 +1037,9 @@ class Planner:
                     best = (score, dest)
             if best is not None:
                 for u in fleet:
-                    self.claim(u, 'control_oceans')
+                    self.claim(u, 'control_oceans', best[1])
                     self.moves_nc[u.unit_id] = best[1]
+                self.attempt(zone, 'pursued', f'the threatened fleet withdraws to {self.terrs[best[1]]["name"]}')
                 self.note(f'control_oceans: fleet at {self.terrs[zone]["name"]} withdraws to {self.terrs[best[1]]["name"]}')
 
     # -- pursuing Strategic Centers ---------------------------------------------------------------------
@@ -919,10 +1059,11 @@ class Planner:
             return costs['allied']
         return costs['enemy']
 
-    def costs_from(self, src):
+    def costs_from(self, src, land_only=False):
         """Cheapest path costs from `src` (the cost of a path is the sum of its squares' costs, the start
-        excluded), and each square's predecessor."""
-        got = self._costs.get(src)
+        excluded), and each square's predecessor. `land_only`: over land alone -- the paths an Infantry or
+        Armor, which can never enter the sea, can actually walk."""
+        got = self._costs.get((src, land_only))
         if got is not None:
             return got
         dist, prev = {src: 0}, {}
@@ -932,6 +1073,8 @@ class Planner:
             if d > dist.get(node, 1 << 30):
                 continue
             for n in self.adjacency.get(node, []):
+                if land_only and not self.is_land(n):
+                    continue
                 c = self.square_cost(n)
                 if c is None:
                     continue
@@ -940,8 +1083,15 @@ class Planner:
                     dist[n] = nd
                     prev[n] = node
                     heapq.heappush(heap, (nd, n))
-        self._costs[src] = (dist, prev)
-        return self._costs[src]
+        self._costs[(src, land_only)] = (dist, prev)
+        return self._costs[(src, land_only)]
+
+    def land_bound(self, u):
+        """A land unit that can never enter the sea (not amphibious): Infantry, Armor."""
+        return self.category(u) == 'Land' and not is_amphibious(self.unit_defs[u.unit_type])
+
+    def _maps_for(self, u, any_maps, land_maps):
+        return land_maps if self.land_bound(u) else any_maps
 
     def sc_targets(self):
         """The enemy Strategic Centers, easiest first, as (challenge number, target, the path from my nearest SC)."""
@@ -992,20 +1142,27 @@ class Planner:
         if self._sc_targets is None:
             self._sc_targets = self.sc_targets()
         ranks = [r for r in active if r < len(self._sc_targets)]
-        if rank not in ranks or self.out_of_time():
+        if rank not in ranks:
+            self.attempt(None, 'not_pursued', f'no enemy Strategic Center to pursue as target {rank + 1}')
+            return
+        if self.out_of_time():
+            self.attempt(None, 'not_pursued', 'out of planning budget')
             return
         number, target, path = self._sc_targets[rank]
+        self._target = target
         dist_maps = {r: self.costs_from(self._sc_targets[r][1])[0] for r in ranks}
+        land_maps = {r: self.costs_from(self._sc_targets[r][1], land_only=True)[0] for r in ranks}
         dist_to_target = dist_maps[rank]
         defenders = self._region_enemies(target)
         cand = []
         for uid, (u, origin) in self.my_units.items():
-            if u.unit_id in self.claimed:
+            if u.unit_id in self.claimed or self._has_any(u, NO_SC_CAPTURE):
                 continue
-            nearest = min(((dist_maps[r].get(origin, 1 << 30), r) for r in ranks))
+            maps = self._maps_for(u, dist_maps, land_maps)  # (an Infantry or Armor goes by land or not at all)
+            nearest = min(((maps[r].get(origin, 1 << 30), r) for r in ranks))
             if nearest[1] != rank or nearest[0] >= 1 << 30:
                 continue
-            cand.append((dist_to_target[origin], self.cost(u), u.unit_id, u, origin))
+            cand.append((maps[rank][origin], self.cost(u), u.unit_id, u, origin))
         cand.sort(key=lambda c: c[:3])
         self._cut = limits
         force = [c[3] for c in cand]
@@ -1015,7 +1172,7 @@ class Planner:
         bought = []
         k = 0
         while p < limits[1] and not self.out_of_time():
-            stub = self.buy_toward(dist_to_target, ('Land', 'Air', 'Sea'), name)
+            stub = self.buy_toward(dist_to_target, ('Land', 'Air', 'Sea'), name, without=NO_SC_CAPTURE)
             if stub is None:
                 break
             bought.append(stub)
@@ -1027,6 +1184,10 @@ class Planner:
         p = self.attacker_odds(fighters, defenders, 'land', fast=False) if fighters else 0.0
         if p < limits[0]:
             self.note(f'{name}: {self.terrs[target]["name"]} not yet ({p:.0%}); building up with {len(bought)} purchases')
+            self.attempt(target, 'pursued' if bought else 'not_pursued',
+                         f'force {self._pct(p)} < min {self._pct(limits[0])}: nobody advances yet'
+                         + (f'; {len(bought)} units bought toward it' if bought else ''))
+            self._target = None
             return
         moved = 0
         on_path = set(path)
@@ -1034,10 +1195,14 @@ class Planner:
             if self.out_of_time():
                 break
             origin = self.my_units[u.unit_id][1]
-            if self._advance(u, origin, target, dist_to_target, on_path, limits):
+            if self._advance(u, origin, target, self._maps_for(u, dist_maps, land_maps)[rank], on_path, limits):
                 moved += 1
         if moved:
             self.note(f'{name}: {moved} units advance on {self.terrs[target]["name"]} (challenge {number})')
+        self.attempt(target, 'pursued' if moved or bought else 'not_pursued',
+                     f'{moved} units advance, {len(bought)} bought (force {self._pct(p)})' if moved or bought
+                     else 'no unit could get closer')
+        self._target = None
 
     def objective_pursue_leftovers(self):
         """Whatever nobody claimed goes after the Strategic Centers, every turn, overkill welcome: every free
@@ -1047,17 +1212,23 @@ class Planner:
         if self._sc_targets is None:
             self._sc_targets = self.sc_targets()
         targets = self._sc_targets[:3]
-        if not targets or self.out_of_time():
+        if not targets:
+            self.attempt(None, 'not_pursued', 'no enemy Strategic Center to march on')
+            return
+        if self.out_of_time():
+            self.attempt(None, 'not_pursued', 'out of planning budget')
             return
         ranks = list(range(len(targets)))
         dist_maps = {r: self.costs_from(targets[r][1])[0] for r in ranks}
+        land_maps = {r: self.costs_from(targets[r][1], land_only=True)[0] for r in ranks}
         paths = {r: set(targets[r][2]) for r in ranks}
         limits = self.settings.limits(self.style, 'pursue_sc_1')
         moved = 0
         for uid, (u, origin) in sorted(self.my_units.items()):
-            if u.unit_id in self.claimed or self.out_of_time():
+            if u.unit_id in self.claimed or self.out_of_time() or self._has_any(u, NO_SC_CAPTURE):
                 continue
-            nearest = min((dist_maps[r].get(origin, 1 << 30), r) for r in ranks)
+            maps = self._maps_for(u, dist_maps, land_maps)  # (an Infantry or Armor goes by land or not at all)
+            nearest = min((maps[r].get(origin, 1 << 30), r) for r in ranks)
             if nearest[0] >= 1 << 30:
                 continue
             if self.is_land(origin) and self.owner(origin) == self.me and self.category(u) == 'Land':
@@ -1065,22 +1236,31 @@ class Planner:
                 if not others and any(self.category(v) == 'Land' for units in self.threats(origin).values() for v in units):
                     continue
             r = nearest[1]
-            if self._advance(u, origin, targets[r][1], dist_maps[r], paths[r], limits):
+            if self._advance(u, origin, targets[r][1], maps[r], paths[r], limits):
                 moved += 1
         bought, k = 0, 0
         while self.allow_purchase and not self.out_of_time():
             r = ranks[k % len(ranks)]
-            stub = self.buy_toward(dist_maps[r], ('Land', 'Air', 'Sea'), 'pursue_leftovers')
+            self._target = targets[r][1]
+            stub = self.buy_toward(dist_maps[r], ('Land', 'Air', 'Sea'), 'pursue_leftovers', without=NO_SC_CAPTURE)
             if stub is None:
                 # nothing more can be bought toward this target (spots full or the money is gone): try the others once
-                if all(self.buy_toward(dist_maps[q], ('Land', 'Air', 'Sea'), 'pursue_leftovers') is None for q in ranks):
+                if all(self._buy_toward_target(targets[q][1], dist_maps[q], 'pursue_leftovers') is None for q in ranks):
                     break
                 bought += 1
             else:
                 bought += 1
             k += 1
+        self._target = None
         if moved or bought:
             self.note(f'pursue_leftovers: {moved} more units advance, {bought} bought toward the Strategic Centers')
+            self.attempt(None, 'pursued', f'{moved} more units advance, {bought} bought toward the Strategic Centers')
+        else:
+            self.attempt(None, 'not_pursued', 'no free unit could advance and nothing more could be bought')
+
+    def _buy_toward_target(self, target, dist, name):
+        self._target = target
+        return self.buy_toward(dist, ('Land', 'Air', 'Sea'), name, without=NO_SC_CAPTURE)
 
     # -- Empty Land Grab ------------------------------------------------------------------------------
 
@@ -1116,7 +1296,47 @@ class Planner:
             out.append((d, -self.value(tid), tid))
         return sorted(out)
 
+    GRAB_HOPS = 3  # the new primary looks at undefended land this near my land (a blitz, plus a unit already
+                   # standing off it); whether a unit can really get there is combat_paths' call
+
     def objective_empty_land_grab(self):
+        """Primary: undefended enemy land any of my land units can take by combat move gets the cheapest one
+        that can reach it (ties: the one leaving the most of my units behind where it stands). Even the last
+        defender of a territory goes -- Fill Defensive Gaps, next, garrisons what it leaves empty. No
+        purchases, and no risk to weigh: there is nobody to fight."""
+        if not self.allow_combat:
+            return
+        targets = [(hops, tid) for hops, _, tid in self._undefended_land() if hops <= self.GRAB_HOPS]
+        if not targets:
+            self.attempt(None, 'not_needed', 'no undefended enemy land in reach')
+            return
+        for _, tid in targets:
+            if self.out_of_time():
+                self.attempt(tid, 'not_pursued', 'out of planning budget')
+                continue
+            best = None
+            for uid, (u, origin) in sorted(self.my_units.items()):
+                if self.category(u) != 'Land' or origin == tid or not self.free_for(u, 'combat'):
+                    continue
+                path = self.combat_paths(u, origin).get(tid)
+                if path is None:
+                    continue
+                behind = sum(1 for v in self.gs.territories[origin].units
+                             if v.owner == self.me and v.unit_id != uid
+                             and v.unit_id not in self.moves_combat and v.unit_id not in self.moves_nc)
+                key = (self.cost(u), -behind, len(path), uid)
+                if best is None or key < best[0]:
+                    best = (key, u, path)
+            if best is None:
+                self.attempt(tid, 'not_pursued', self._why_no_attackers(tid, ('Land',)))
+                continue
+            _, u, path = best
+            self.claim(u, 'empty_land_grab', tid)
+            self.moves_combat[u.unit_id] = path
+            self.note(f'empty_land_grab: a {u.unit_type} takes {self.terrs[tid]["name"]}')
+            self.attempt(tid, 'pursued', f'a {u.unit_type} takes it')
+
+    def objective_remote_empty_land_grab(self):
         """Mechanized Infantry take undefended territory. Looks for enemy land nobody is defending, nearest to
         my own land first and then by value; sends the nearest Mech Inf that can get there (never the last
         defender of a territory an enemy could walk into), and where none can and the target is within
@@ -1129,6 +1349,8 @@ class Planner:
         if not self.allow_combat and not self.allow_purchase:
             return
         sent = bought = 0
+        if not self._undefended_land():
+            self.attempt(None, 'not_needed', 'no undefended enemy land')
         for hops, _, tid in self._undefended_land():
             if self.out_of_time():
                 break
@@ -1148,15 +1370,24 @@ class Planner:
                         best = (u, path)
             if best is not None:
                 u, path = best
-                self.claim(u, 'empty_land_grab')
+                self.claim(u, 'remote_empty_land_grab', tid)
                 self.moves_combat[u.unit_id] = path
                 sent += 1
-                self.note(f'empty_land_grab: a Mech Inf takes {self.terrs[tid]["name"]}')
+                self.attempt(tid, 'pursued', f'a {u.unit_type} takes it')
+                self.note(f'remote_empty_land_grab: a Mech Inf takes {self.terrs[tid]["name"]}')
             elif self.allow_purchase and bought < self.GRAB_PURCHASES and hops <= self.GRAB_REACH:
-                stub = self.buy_toward(self.costs_from(tid)[0], ('Land',), 'empty_land_grab', only=self.blitzers)
+                self._target = tid
+                stub = self.buy_toward(self.costs_from(tid)[0], ('Land',), 'remote_empty_land_grab', only=self.blitzers)
+                self._target = None
                 if stub is not None:
                     bought += 1
-                    self.note(f'empty_land_grab: a Mech Inf bought toward {self.terrs[tid]["name"]}')
+                    self.note(f'remote_empty_land_grab: a Mech Inf bought toward {self.terrs[tid]["name"]}')
+                    self.attempt(tid, 'pursued', f'a {stub.unit_type} is bought toward it')
+                else:
+                    self.attempt(tid, 'not_pursued', 'no unit can reach it, and none could be bought toward it')
+            else:
+                self.attempt(tid, 'not_pursued', 'no unit can reach it' if not self.allow_purchase or hops <= self.GRAB_REACH
+                             else f'no unit can reach it, and it is too far ({hops} hops) to buy toward')
 
     def _region_enemies(self, target):
         out = []
@@ -1173,6 +1404,7 @@ class Planner:
             for dest, path in sorted(self.combat_paths(u, origin).items()):
                 if dest in on_path and dest != origin and self.enemies_at(dest) and dist_to_target.get(dest, 1 << 30) < here:
                     if self.assault(dest, 'pursue_sc', limits, ('Land', 'Air')) and u.unit_id in self.claimed:
+                        self.unit_why[u.unit_id] = (self._objective, target)  # (an attack on the way to the target)
                         return True
                     break
         if not self.free_for(u, 'nc'):
@@ -1186,7 +1418,7 @@ class Planner:
                 best = (d, dest)
         if best is None:
             return False
-        self.claim(u, 'pursue_sc')
+        self.claim(u, 'pursue_sc', target)
         self.moves_nc[u.unit_id] = best[1]
         return True
 
@@ -1203,6 +1435,7 @@ class Planner:
             'capture_sc': self.objective_capture_scs,
             'reinforce_contested': self.objective_reinforce_contested,
             'punish_betrayers': self.objective_punish_betrayers,
+            'empty_land_grab': self.objective_empty_land_grab,
             'fill_gaps': self.objective_fill_gaps,
             'treasonous_capture': self.objective_treasonous_capture,
             'pursue_leftovers': self.objective_pursue_leftovers,
@@ -1211,13 +1444,22 @@ class Planner:
             if step.get('when') == 'treasonous' and not treasonous:
                 continue
             self.give(step['budget_share'])
+            self._begin_objective(step['objective_id'])
             steps[step['objective_id']]()
         order = self.settings.secondary_order(self.style, self.rng)
         active = [int(n[-1]) - 1 for n in order if n.startswith('pursue_sc_')]
-        for name in order:
+        for oid in self.settings.secondary_ids():
+            if oid not in order:
+                self.skipped_objectives.append({'id': oid, 'name': self.settings.objective_name(oid),
+                                                'reason': f'weight 0 for the {self.style} style'})
+        for k, name in enumerate(order):
             self.give(self.settings.secondary_budget_share)
             if self.out_of_time():
+                for rest in order[k:]:
+                    self.skipped_objectives.append({'id': rest, 'name': self.settings.objective_name(rest),
+                                                    'reason': 'out of planning budget'})
                 break
+            self._begin_objective(name)
             if name == 'expand_territory':
                 self.objective_expand_territory()
             elif name == 'hold_frontier':
@@ -1226,9 +1468,18 @@ class Planner:
                 self.objective_control_oceans()
             elif name.startswith('pursue_sc_'):
                 self.objective_pursue_sc(int(name[-1]) - 1, active)
-            elif name == 'empty_land_grab':
-                self.objective_empty_land_grab()
+            elif name == 'remote_empty_land_grab':
+                self.objective_remote_empty_land_grab()
         for step in self.settings.final_order:
             self.give(step['budget_share'])
+            self._begin_objective(step['objective_id'])
             steps[step['objective_id']]()
+        self._objective = None
         return Plan(self)
+
+    def _begin_objective(self, oid):
+        """The strategy log: the next objective in this pass's planning order."""
+        self._objective = oid
+        self._target = None
+        self.objective_order.append({'no': len(self.objective_order) + 1, 'id': oid,
+                                     'name': self.settings.objective_name(oid)})

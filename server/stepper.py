@@ -111,7 +111,11 @@ Server -> client (always broadcast to watchers):
     Combat Resolution until the last battle.
     {"type": "phase_result", "faction": ..., "phase": ..., "events": [...]}
         What executing that phase actually logged (for Combat Resolution:
-        the roll-by-roll events and one battle_summary per battle).
+        the roll-by-roll events and one battle_summary per battle). A strategy bot's
+        turn also logs its Strategy Log (engine/bots/strategy_log.py): strategy_turn_start
+        with its Start of Turn, a strategy_phase after its Purchase, Combat Move and
+        Non-Combat Move, and strategy_turn_end (the turn review) after its Diplomacy --
+        the client shows them in the Strategy tab, not the Game Log.
     {"type": "state", "game_state": ...}   sent after every executed phase.
     {"type": "self_surrender_result", "faction": "NAA", "events": [...]}
         The events a "surrender" logged (self_surrender, faction_eliminated) -- shown in the Events box.
@@ -148,6 +152,8 @@ Settings actions, client -> server (handled by GameSession, not this class -- se
 import copy
 
 from engine.bots.alliance_policy import accepts_invite
+from engine.bots.strategy_bot import StrategyBot
+from engine.bots.strategy_log import StrategyLogger
 from engine.engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from engine.state import FactionMode, Phase
 from engine.turn_log import TurnLog
@@ -178,6 +184,7 @@ class PhaseStepper:
         self._alliance_plan_for = None  # (faction, global_turn) the current _alliance_plan belongs to
         self._invitation = None    # a bot's invitation to a human awaiting its answer: {from, to, answered}
         self._turn_announced = None  # (faction, global_turn) whose Start of Turn has been executed
+        self._strategy_logs = {}  # faction -> StrategyLogger, for each strategy bot (engine/bots/strategy_log.py)
 
     # ---- protocol entry points -------------------------------------------
 
@@ -328,10 +335,13 @@ class PhaseStepper:
         start = len(self.turn_log.events)
         messages = []
         stay = False  # True: the phase isn't over (more battles to fight), so don't advance it
+        log = self._strategy_log(faction)
         if queued == START_OF_TURN:
             # Announcement only: record it and go on to Purchase. GameState.phase doesn't move.
             self._turn_announced = self._turn_key(faction)
             self.turn_log.events.append(self._queue['events'][0])
+            if log is not None:
+                self.turn_log.events.append(log.turn_start())
             phase = None
         elif queued == RETURN_TO_BASE:
             # Its own step, ahead of the rest of Non-Combat Move: air units
@@ -345,7 +355,16 @@ class PhaseStepper:
             phase = None
         else:
             phase = gs.phase
+            logged = log is not None and faction in gs.active_factions() and                 phase in (Phase.PURCHASE, Phase.COMBAT_MOVE, Phase.NONCOMBAT_MOVE)
+            if logged:
+                log.before_commit(phase.value)
             stay = self._commit(faction, phase)
+            if logged:
+                event = log.phase(phase.value)
+                if event is not None:
+                    self.turn_log.events.append(event)
+            if log is not None and phase == Phase.DIPLOMACY:
+                self.turn_log.events.append(log.turn_end())
         messages.append({'type': 'phase_result', 'faction': faction, 'phase': queued,
                          'events': self.turn_log.events[start:]})
 
@@ -367,6 +386,16 @@ class PhaseStepper:
             self._skipped_before = _PHASES[before + 1:_PHASES.index(gs.phase)]
         self._plan_current_phase()
         return messages + [self._queue, self._state_message()]
+
+    def _strategy_log(self, faction):
+        """The Strategy Log of `faction` if it is a strategy bot (strategy_turn_start / strategy_phase /
+        strategy_turn_end events in the turn log: engine/bots/strategy_log.py), else None."""
+        bot = self.bots.get(faction)
+        if not isinstance(bot, StrategyBot):
+            return None
+        if faction not in self._strategy_logs:
+            self._strategy_logs[faction] = StrategyLogger(self.engine, bot)
+        return self._strategy_logs[faction]
 
     def _commit(self, faction, phase):
         """Executes the queued phase. `active` guards every branch: a faction can be eliminated at any

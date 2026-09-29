@@ -1,0 +1,60 @@
+{
+ "module_type": "ScenarioSetup",
+ "id": "Setup_002",
+ "name": "Heavyweight Battle",
+ "description": "Two great powers battle for global control.",
+ "generator_id": "GC72_Generator",
+ "settings": {
+  "allow_combat_first_turn": false,
+  "allow_noncombat_first_turn": true,
+  "can_rejoin": false,
+  "can_withdraw": true,
+  "max_alliance_size": 1,
+  "randomize_order": true,
+  "scenario": {
+   "kind": "new",
+   "neutral": {"promotions": 0, "scs": 1, "territory_value": 10, "units_mpc": 45},
+   "options": {
+    "extra_non_sc_units": 2,
+    "faction_weight": 100,
+    "infantry_in_every_territory": true,
+    "min_scs_to_avoid_surrender": 2,
+    "neutral_infantry_in_every_territory": true,
+    "sc_bonus": 2,
+    "sc_final_min_distance": 4,
+    "sc_min_distance": 3,
+    "surrender_income_multiplier": 2
+   }
+  },
+  "seats": [
+   {
+    "mode": "HUMAN",
+    "faction": "random",
+    "alliance": 0,
+    "strategy": "random",
+    "behavior": "random",
+    "territory_value": 60,
+    "initial_mpc": 200,
+    "units_mpc": 150,
+    "promotions": 3,
+    "scs": 5
+   },
+   {
+    "mode": "BOT",
+    "faction": "random",
+    "alliance": 0,
+    "strategy": "adversarial",
+    "behavior": "opportunistic",
+    "territory_value": 60,
+    "initial_mpc": 200,
+    "units_mpc": 150,
+    "promotions": 3,
+    "scs": 5
+   },
+   {"mode": "NOT_PLAYING", "faction": "random", "alliance": 0, "strategy": "variable", "behavior": "random"},
+   {"mode": "NOT_PLAYING", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "random"},
+   {"mode": "NOT_PLAYING", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "treacherous"},
+   {"mode": "NOT_PLAYING", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "random"}
+  ]
+ }
+}

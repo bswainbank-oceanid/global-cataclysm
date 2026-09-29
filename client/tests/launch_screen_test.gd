@@ -162,9 +162,9 @@ func _initialize() -> void:
 			{"key": "units_mpc", "min": 0, "max": 1000, "default": 100},
 			{"key": "promotions", "min": 0, "max": 20, "default": 0},
 			{"key": "scs", "min": 0, "max": 10, "default": 0}]})
-	_check(not screen._new_panel.visible and not screen._neutral_cells[0].visible, "a fixed scenario hides the new scenario's settings")
+	_check(not screen._sc_section.visible and not screen._neutral_cells[0].visible, "a fixed scenario hides the new scenario's settings")
 	screen.select_scenario("new")
-	_check(screen._new_panel.visible and screen._neutral_cells[0].visible, "a new scenario shows them, with a Neutral row")
+	_check(screen._sc_section.visible and screen._neutral_cells[0].visible, "a new scenario shows them, with a Neutral row")
 	_check((_row(screen, 2)["mode"] as OptionButton).item_count == 3 and screen._mode_of(_row(screen, 5)) == "NOT_PLAYING",
 		"seats are Human, Bot or Not playing")
 	var players: int = screen._players()
@@ -187,6 +187,46 @@ func _initialize() -> void:
 	_check(screen._territory_note.text.contains("scaled down"), "more than the map holds is flagged as scaled down: %s" % screen._territory_note.text)
 	screen.select_scenario("fixed")
 	_check(not screen.settings().has("scenario") and screen._mode_of(_row(screen, 5)) == "NONCOMBATANT", "back to the fixed scenario")
+
+
+	# Saved scenario setups: listed after the two built-in entries; picking one fills the screen.
+	_check(not screen._save_button.visible and not screen._info.visible, "the fixed scenario can't be saved and has no name")
+	screen.select_scenario("new")
+	_check(screen._save_button.visible and screen._save_button.disabled, "a new scenario can be saved once it has a name")
+	screen._name.text = "Duel"
+	screen._changed()
+	_check(not screen._save_button.disabled and screen._delete_button.disabled, "named: Save on, nothing saved to delete")
+	var saved: Dictionary = screen.setup()
+	_check(saved["id"] == null and saved["name"] == "Duel" and saved["settings"]["scenario"]["kind"] == "new", "Save sends a new setup")
+	var stored: Dictionary = saved["settings"].duplicate(true)
+	stored["seats"][1]["strategy"] = "adversarial"
+	stored["randomize_order"] = false
+	stored["scenario"]["options"]["sc_bonus"] = 4
+	screen.set_setups([{"id": "Setup_001", "name": "Duel", "description": "Two of us", "settings": stored}], "Setup_001")
+	_check(screen._scenario.item_count == 4 and screen._scenario.is_item_separator(2) and screen._scenario.get_item_text(3) == "Duel",
+		"saved setups follow a separator")
+	_check(str(screen._scenario.get_item_metadata(screen._scenario.selected)) == "Setup_001" and screen._setup_id == "Setup_001",
+		"the setup just saved is selected")
+	_check(not screen.saves_as_new() and screen._save_button.text == "Save Scenario Setup" and not screen._delete_button.disabled,
+		"the same name updates it, and it can be deleted")
+	screen.select_scenario("new")
+	_check(screen._setup_id == "" and screen._name.text == "", "New scenario is unnamed")
+	screen._scenario.select(3)
+	screen._scenario.item_selected.emit(3)
+	var back: Dictionary = screen.settings()
+	_check(screen._name.text == "Duel" and screen._description.text == "Two of us", "picking it shows its name and description")
+	_check(back["seats"][1]["strategy"] == "adversarial" and back["randomize_order"] == false, "...and its settings")
+	_check(back["scenario"]["options"]["sc_bonus"] == 4, "...including the scenario-wide options: %s" % str(back["scenario"]["options"]))
+	_check(back["seats"] == stored["seats"], "the seats come back as saved:
+%s
+%s" % [str(back["seats"]), str(stored["seats"])])
+	screen._name.text = "Duel II"
+	screen._changed()
+	_check(screen.saves_as_new() and screen._save_button.text == "Save as New Scenario Setup" and screen.setup()["id"] == "Setup_001",
+		"a new name saves a new setup")
+	screen.set_setups([], null)
+	_check(screen._setup_id == "" and screen._scenario.item_count == 2 and screen._is_new(), "after a delete: an unsaved new scenario")
+	screen.select_scenario("fixed")
 
 	print("launch screen test: failures=%d" % _failures)
 	quit(1 if _failures > 0 else 0)

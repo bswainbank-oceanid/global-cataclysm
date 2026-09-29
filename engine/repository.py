@@ -35,6 +35,7 @@ MODULE_DIRS = {
     'StrategyThresholdSet': 'strategy_threshold_set',
     'FactionWeightSet': 'faction_weight_set',
     'ScenarioGenerator': 'scenario_generator',
+    'ScenarioSetup': 'scenario_setup',
 }
 
 DEFAULT_SCENARIO_ID = 'GC72_Scenario'
@@ -84,6 +85,13 @@ class ModuleRepository:
         with open(path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(dumps(doc))
         self._cache[(module_type, module_id)] = doc
+
+    def delete(self, module_type, module_id):
+        """Removes a stored module (a no-op if there is none)."""
+        path = self.path(module_type, module_id)
+        if os.path.exists(path):
+            os.remove(path)
+        self._cache.pop((module_type, module_id), None)
 
     def clear_cache(self):
         self._cache.clear()
@@ -148,6 +156,9 @@ class OverlayRepository(ModuleRepository):
     def get(self, module_type, module_id):
         doc = self._docs.get((module_type, module_id))
         return doc if doc is not None else self.base.get(module_type, module_id)
+
+    def delete(self, module_type, module_id):
+        raise TypeError('an overlay repository is read-only: its modules live in memory only')
 
     def save(self, doc):
         raise TypeError('an overlay repository is read-only: its modules live in memory only')

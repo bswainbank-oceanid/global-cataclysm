@@ -50,20 +50,20 @@ from .repository import OverlayRepository
 
 # The scenario-wide options, in the order the launcher shows them: key -> (label, kind, min, max, help).
 OPTIONS = {
-    'faction_weight': ('Faction weight', 'int', 0, 100,
+    'faction_weight': ('Base map assignment weight', 'int', 0, 100,
                        "Extra draw weight a faction gets for territory that is its own on the base map."),
-    'sc_bonus': ('SC bonus', 'int', 0, 10, "What a Strategic Center adds to its territory's value."),
-    'sc_min_distance': ('SC min distance', 'int', 0, 12,
+    'sc_bonus': ('MPC bonus', 'int', 0, 10, "What a Strategic Center adds to its territory's value."),
+    'sc_min_distance': ('Minimum distance', 'int', 0, 12,
                         'Fewest steps between any two Strategic Centers (relaxed if they cannot all fit).'),
-    'sc_final_min_distance': ('Final SC min distance', 'int', 0, 12,
+    'sc_final_min_distance': ('Final SC min. distance', 'int', 0, 12,
                               "Fewest steps between one of each player's Strategic Centers and its others."),
-    'infantry_in_every_territory': ('Infantry everywhere', 'bool', None, None,
+    'infantry_in_every_territory': ('Infantry in each location', 'bool', None, None,
                                     "Start by putting an Infantry in each of a player's territories."),
-    'extra_non_sc_units': ('Extra non-SC units', 'int', 0, 100,
+    'neutral_infantry_in_every_territory': ('Neutral Infantry in each location', 'bool', None, None,
+                                            'Start by putting an Infantry in each Neutral territory.'),
+    'extra_non_sc_units': ('Min units in non-SC locations', 'int', 0, 100,
                            "Units bought at territories that are not Strategic Centers, after the Infantry; "
                            'the rest of the budget goes to the Strategic Centers.'),
-    'neutral_infantry_in_every_territory': ('Neutral Infantry everywhere', 'bool', None, None,
-                                            'Start by putting an Infantry in each Neutral territory.'),
     'min_scs_to_avoid_surrender': ('SCs to avoid surrender', 'int', 0, 10,
                                    'A faction with fewer Strategic Centers can be forced to surrender (by one holding one of its own).'),
     'surrender_income_multiplier': ('Surrender income multiple', 'num', 1, 10,

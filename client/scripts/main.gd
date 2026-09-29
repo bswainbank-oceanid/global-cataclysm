@@ -327,6 +327,8 @@ func _setup_launch_screen() -> void:
 	_launch = LaunchScreen.new()
 	add_child(_launch)
 	_launch.start_requested.connect(func(s: Dictionary): Net.send_msg({"type": "new_game", "settings": s}))
+	_launch.save_requested.connect(func(setup: Dictionary): Net.send_msg({"type": "save_setup", "setup": setup}))
+	_launch.delete_requested.connect(func(setup_id: String): Net.send_msg({"type": "delete_setup", "id": setup_id}))
 	_launch.resume_requested.connect(func():
 		Net.send_msg({"type": "watch"})
 		_launch.close())
@@ -343,7 +345,9 @@ func _on_launch_message(msg: Dictionary) -> void:
 	var kind := str(msg.get("type", ""))
 	if kind == "lobby":
 		if not Net.auto_watch:
-			_launch.open(bool(msg.get("game_running", false)), msg.get("new_scenario", {}))
+			_launch.open(bool(msg.get("game_running", false)), msg.get("new_scenario", {}), msg.get("setups", []))
+	elif kind == "setups":
+		_launch.set_setups(msg.get("setups", []), msg.get("selected"))
 	elif kind == "game_started":
 		_launch.close()
 	elif kind == "error" and _launch.visible:

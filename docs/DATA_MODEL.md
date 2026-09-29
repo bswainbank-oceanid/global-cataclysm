@@ -48,6 +48,7 @@ Source: `reference/GC Data Model.rtf`, plus the decisions recorded below.
 | RuleSet | `rule_set` | `GC72_Rules` | the rules (what `data/rules.json` held): combat, movement, purchase, production, promotion, victory, game-start defaults |
 | Scenario | `scenario` | `GC72_Scenario` | the ids of everything above that make one game, including a standard and a neutral setup |
 | ScenarioGenerator | `scenario_generator` | `GC72_Generator` | the launcher's New Scenario: the base scenario, the scenario-wide defaults, and each player seat's and the Neutral row's default settings |
+| ScenarioSetup | `scenario_setup` | (saved from the launcher) | a saved New Scenario setup: name, description, generator id and the launch screen's settings (not the map they deal) |
 
 ### Scenario
 
@@ -158,6 +159,26 @@ players and the Neutral pool, and the RuleSet with the chosen surrender threshol
 held in memory by an `OverlayRepository` on top of the base scenario's; the game
 reads them through its own `GameConfig`, and the server sends the client the
 game's starting owners, Strategic Centers and SC bonus with every `state` message.
+
+### Saved scenario setups (ScenarioSetup)
+
+The launch screen can save a New Scenario's settings under a name
+(`server/setups.py`): everything on the screen -- the seats, the Neutral row, the
+alliance and rule choices and the scenario-wide options -- but not the map they
+deal, which is new every game. Saved setups are listed in the launcher's scenario
+list after the fixed scenario and New scenario; picking one fills the screen with
+its settings. The server assigns the id (`Setup_001`, ...). Saving under the name it
+was saved with updates that setup; a new name makes a new one (names are unique).
+Only settings that could start a game are saved, and never a seed. The fixed
+scenario can't be saved.
+
+```json
+{"module_type": "ScenarioSetup", "id": "Setup_001", "name": "Duel", "description": "...",
+ "generator_id": "GC72_Generator",
+ "settings": {"scenario": {"kind": "new", "options": {...}, "neutral": {...}}, "seats": [...],
+              "randomize_order": true, "can_withdraw": true, "can_rejoin": false, "max_alliance_size": 3,
+              "allow_combat_first_turn": false, "allow_noncombat_first_turn": true}}
+```
 
 Land owned by the built-in Neutral faction (NEU) plays like a Neutral seat, but its
 Strategic Centers are real ones for whoever captures them; land owned by the

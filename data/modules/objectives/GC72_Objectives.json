@@ -8,6 +8,7 @@
   {"id": "capture_sc", "name": "Capture Strategic Centers", "kind": "primary"},
   {"id": "reinforce_contested", "name": "Reinforce contested territory", "kind": "primary"},
   {"id": "punish_betrayers", "name": "Punish betrayers", "kind": "primary"},
+  {"id": "empty_land_grab", "name": "Empty land grab", "kind": "primary"},
   {"id": "fill_gaps", "name": "Fill defensive gaps", "kind": "primary"},
   {"id": "treasonous_capture", "name": "Treasonous capture", "kind": "primary"},
   {"id": "expand_territory", "name": "Expand territory", "kind": "secondary"},
@@ -16,7 +17,7 @@
   {"id": "pursue_sc_1", "name": "Pursue nearest enemy SC", "kind": "secondary"},
   {"id": "pursue_sc_2", "name": "Pursue second enemy SC", "kind": "secondary"},
   {"id": "pursue_sc_3", "name": "Pursue third enemy SC", "kind": "secondary"},
-  {"id": "empty_land_grab", "name": "Grab empty land", "kind": "secondary"},
+  {"id": "remote_empty_land_grab", "name": "Remote empty land grab", "kind": "secondary"},
   {"id": "pursue_leftovers", "name": "Use leftover units", "kind": "final"}
  ]
 }
