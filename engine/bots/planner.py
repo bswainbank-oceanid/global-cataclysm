@@ -3,9 +3,9 @@ The strategy bots' turn planner: decides a whole turn -- purchases, combat moves
 by working through objectives in priority order and committing the faction's resources to each.
 
 Primary objectives, in this order, every turn:
-    hold SCs -> capture SCs -> reinforce contested -> punish betrayers -> fill defensive gaps
+    hold SCs -> capture SCs -> reinforce contested -> punish betrayers -> empty land grab -> fill defensive gaps
 Secondary objectives, in an order drawn by the style's weights each turn (a weight of 0 skips one):
-    expand territory, hold frontier, control oceans, pursue the 1st / 2nd / 3rd SC target
+    expand territory, hold frontier, control oceans, pursue the 1st / 2nd / 3rd SC target, remote empty land grab
 A treacherous bot that has decided to withdraw first grabs allied territory (treasonous capture).
 
 Every objective rates the chance of success with the fast battle simulator (bots/battle_sim.py: 200
@@ -1296,7 +1296,47 @@ class Planner:
             out.append((d, -self.value(tid), tid))
         return sorted(out)
 
+    GRAB_HOPS = 3  # the new primary looks at undefended land this near my land (a blitz, plus a unit already
+                   # standing off it); whether a unit can really get there is combat_paths' call
+
     def objective_empty_land_grab(self):
+        """Primary: undefended enemy land any of my land units can take by combat move gets the cheapest one
+        that can reach it (ties: the one leaving the most of my units behind where it stands). Even the last
+        defender of a territory goes -- Fill Defensive Gaps, next, garrisons what it leaves empty. No
+        purchases, and no risk to weigh: there is nobody to fight."""
+        if not self.allow_combat:
+            return
+        targets = [(hops, tid) for hops, _, tid in self._undefended_land() if hops <= self.GRAB_HOPS]
+        if not targets:
+            self.attempt(None, 'not_needed', 'no undefended enemy land in reach')
+            return
+        for _, tid in targets:
+            if self.out_of_time():
+                self.attempt(tid, 'not_pursued', 'out of planning budget')
+                continue
+            best = None
+            for uid, (u, origin) in sorted(self.my_units.items()):
+                if self.category(u) != 'Land' or origin == tid or not self.free_for(u, 'combat'):
+                    continue
+                path = self.combat_paths(u, origin).get(tid)
+                if path is None:
+                    continue
+                behind = sum(1 for v in self.gs.territories[origin].units
+                             if v.owner == self.me and v.unit_id != uid
+                             and v.unit_id not in self.moves_combat and v.unit_id not in self.moves_nc)
+                key = (self.cost(u), -behind, len(path), uid)
+                if best is None or key < best[0]:
+                    best = (key, u, path)
+            if best is None:
+                self.attempt(tid, 'not_pursued', self._why_no_attackers(tid, ('Land',)))
+                continue
+            _, u, path = best
+            self.claim(u, 'empty_land_grab', tid)
+            self.moves_combat[u.unit_id] = path
+            self.note(f'empty_land_grab: a {u.unit_type} takes {self.terrs[tid]["name"]}')
+            self.attempt(tid, 'pursued', f'a {u.unit_type} takes it')
+
+    def objective_remote_empty_land_grab(self):
         """Mechanized Infantry take undefended territory. Looks for enemy land nobody is defending, nearest to
         my own land first and then by value; sends the nearest Mech Inf that can get there (never the last
         defender of a territory an enemy could walk into), and where none can and the target is within
@@ -1330,18 +1370,18 @@ class Planner:
                         best = (u, path)
             if best is not None:
                 u, path = best
-                self.claim(u, 'empty_land_grab', tid)
+                self.claim(u, 'remote_empty_land_grab', tid)
                 self.moves_combat[u.unit_id] = path
                 sent += 1
                 self.attempt(tid, 'pursued', f'a {u.unit_type} takes it')
-                self.note(f'empty_land_grab: a Mech Inf takes {self.terrs[tid]["name"]}')
+                self.note(f'remote_empty_land_grab: a Mech Inf takes {self.terrs[tid]["name"]}')
             elif self.allow_purchase and bought < self.GRAB_PURCHASES and hops <= self.GRAB_REACH:
                 self._target = tid
-                stub = self.buy_toward(self.costs_from(tid)[0], ('Land',), 'empty_land_grab', only=self.blitzers)
+                stub = self.buy_toward(self.costs_from(tid)[0], ('Land',), 'remote_empty_land_grab', only=self.blitzers)
                 self._target = None
                 if stub is not None:
                     bought += 1
-                    self.note(f'empty_land_grab: a Mech Inf bought toward {self.terrs[tid]["name"]}')
+                    self.note(f'remote_empty_land_grab: a Mech Inf bought toward {self.terrs[tid]["name"]}')
                     self.attempt(tid, 'pursued', f'a {stub.unit_type} is bought toward it')
                 else:
                     self.attempt(tid, 'not_pursued', 'no unit can reach it, and none could be bought toward it')
@@ -1395,6 +1435,7 @@ class Planner:
             'capture_sc': self.objective_capture_scs,
             'reinforce_contested': self.objective_reinforce_contested,
             'punish_betrayers': self.objective_punish_betrayers,
+            'empty_land_grab': self.objective_empty_land_grab,
             'fill_gaps': self.objective_fill_gaps,
             'treasonous_capture': self.objective_treasonous_capture,
             'pursue_leftovers': self.objective_pursue_leftovers,
@@ -1427,8 +1468,8 @@ class Planner:
                 self.objective_control_oceans()
             elif name.startswith('pursue_sc_'):
                 self.objective_pursue_sc(int(name[-1]) - 1, active)
-            elif name == 'empty_land_grab':
-                self.objective_empty_land_grab()
+            elif name == 'remote_empty_land_grab':
+                self.objective_remote_empty_land_grab()
         for step in self.settings.final_order:
             self.give(step['budget_share'])
             self._begin_objective(step['objective_id'])

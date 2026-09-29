@@ -9,6 +9,7 @@
   {"objective_id": "capture_sc", "budget_share": 0.15},
   {"objective_id": "reinforce_contested", "budget_share": 0.1},
   {"objective_id": "punish_betrayers", "budget_share": 0.05},
+  {"objective_id": "empty_land_grab", "budget_share": 0.05},
   {"objective_id": "fill_gaps", "budget_share": 0.05},
   {"objective_id": "treasonous_capture", "budget_share": 0.1, "when": "treasonous"}
  ],

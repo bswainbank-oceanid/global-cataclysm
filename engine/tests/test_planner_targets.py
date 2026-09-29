@@ -7,7 +7,7 @@ import unittest
 from engine.bots.planner import Planner
 from engine.bots.strategy_settings import load_settings
 from engine.engine import GameEngine
-from engine.state import FactionMode
+from engine.state import FactionMode, Phase
 from engine.tests.test_engine import FakeData, make_state, make_unit
 
 # A mainland of four -- 1 (NAA's Strategic Center), 2 and 6 (NAA's), 5 (GPC's) -- and 4, an island Strategic
@@ -109,6 +109,53 @@ class TestExpandTerritory(unittest.TestCase):
             p.claim(u, 'hold_sc')
         p.assault(5, 'expand_territory', (0.5, 0.9))
         self.assertEqual(p.attempts[-1]['reason'], 'every unit that could reach it is committed elsewhere')
+
+
+class TestEmptyLandGrab(unittest.TestCase):
+    """The primary objective: undefended enemy land in reach gets the cheapest land unit that can take it."""
+
+    # 10 and 11 are NAA's, both next to 12 (GPC's, empty); 13 (GPC's) is two steps from 10 and holds an Armor.
+    MAP = {10: {'type': 'land', 'value': 2, 'name': 'West'}, 11: {'type': 'land', 'value': 2, 'name': 'East'},
+           12: {'type': 'land', 'value': 1, 'name': 'Gap'}, 13: {'type': 'land', 'value': 1, 'name': 'Fort'}}
+    ADJ = {10: [11, 12], 11: [10, 12], 12: [10, 11, 13], 13: [12]}
+
+    def plan(self, units, mode='full'):
+        data = FakeData(territories=self.MAP, adjacency=self.ADJ)
+        units.setdefault(13, [make_unit('Armor', 'GPC')])
+        gs = make_state(data, {10: 'NAA', 11: 'NAA', 12: 'GPC', 13: 'GPC'},
+                        {'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT}, units_by_territory=units)
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+        p = Planner(engine, 'NAA', load_settings(), 'Strategic', random.Random(1), mode, 1500)
+        p._begin_objective('empty_land_grab')
+        p.objective_empty_land_grab()
+        return p, engine
+
+    def test_the_cheapest_unit_that_can_reach_it_goes(self):
+        armor, inf = make_unit('Armor', 'NAA'), make_unit('Infantry', 'NAA')
+        p, engine = self.plan({10: [armor, inf]})
+        self.assertEqual(p.moves_combat, {inf.unit_id: [10, 12]})
+        self.assertEqual(p.unit_why[inf.unit_id], ('empty_land_grab', 12))
+        self.assertFalse(p.purchases)
+        engine.game_state.phase = Phase.COMBAT_MOVE
+        engine.submit_combat_moves('NAA', p.combat_orders())  # a legal move
+
+    def test_even_the_last_defender_goes(self):
+        inf = make_unit('Infantry', 'NAA')
+        p, _ = self.plan({11: [inf]})
+        self.assertEqual(p.moves_combat, {inf.unit_id: [11, 12]})
+
+    def test_ties_go_to_the_unit_that_leaves_the_most_behind(self):
+        lone, pair = make_unit('Infantry', 'NAA'), [make_unit('Infantry', 'NAA') for _ in range(2)]
+        p, _ = self.plan({11: [lone], 10: pair})
+        self.assertEqual(len(p.moves_combat), 1)
+        self.assertIn(next(iter(p.moves_combat)), {u.unit_id for u in pair})
+
+    def test_defended_land_is_not_a_target_and_the_non_combat_pass_does_nothing(self):
+        p, _ = self.plan({10: [make_unit('Infantry', 'NAA')]})
+        self.assertNotIn(13, [a['target'] for a in p.attempts])
+        p, _ = self.plan({10: [make_unit('Infantry', 'NAA')]}, mode='noncombat')
+        self.assertFalse(p.moves_combat)
 
 
 if __name__ == '__main__':

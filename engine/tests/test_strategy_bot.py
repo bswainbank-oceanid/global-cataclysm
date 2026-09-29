@@ -17,7 +17,7 @@ FACTIONS = ('NAA', 'AAC', 'UE', 'GPC', 'PAF', 'UER')
 UNITS = ('Infantry', 'Mechanized Infantry', 'Armor', 'Aircraft Carrier', 'Cruiser', 'Submarine', 'Bomber', 'Fighter')
 STYLES = ('Strategic', 'Defensive', 'Expansive', 'Controlling')
 ALL_STYLES = STYLES + ('Variable',)
-SECONDARY = ('expand_territory', 'hold_frontier', 'control_oceans', 'pursue_sc_1', 'pursue_sc_2', 'pursue_sc_3', 'empty_land_grab')
+SECONDARY = ('expand_territory', 'hold_frontier', 'control_oceans', 'pursue_sc_1', 'pursue_sc_2', 'pursue_sc_3', 'remote_empty_land_grab')
 
 
 class TestSettings(unittest.TestCase):
@@ -41,8 +41,8 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(self.s.thresholds['Strategic']['hold_sc'], {'min': 0.001, 'max': 75})
         self.assertEqual(self.s.thresholds['Controlling']['control_oceans'], {'weight': 10, 'min': 65, 'max': 95})
         self.assertEqual(self.s.limits('Defensive', 'hold_sc'), (0.00001, 0.75))
-        self.assertEqual(self.s.thresholds['Expansive']['empty_land_grab'], {'weight': 10})
-        self.assertIn('empty_land_grab', SECONDARY)
+        self.assertEqual(self.s.thresholds['Expansive']['remote_empty_land_grab'], {'weight': 3})
+        self.assertIn('remote_empty_land_grab', SECONDARY)
 
     def test_a_weight_of_zero_is_never_drawn(self):
         rng = random.Random(1)
@@ -89,7 +89,8 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(self.s.variable_styles, ('Variable',))
         self.assertEqual(self.s.secondary, SECONDARY)
         self.assertEqual([step['objective_id'] for step in self.s.primary_order],
-                         ['hold_sc', 'capture_sc', 'reinforce_contested', 'punish_betrayers', 'fill_gaps', 'treasonous_capture'])
+                         ['hold_sc', 'capture_sc', 'reinforce_contested', 'punish_betrayers', 'empty_land_grab', 'fill_gaps',
+                          'treasonous_capture'])
         self.assertEqual(self.s.unit_weights['UER']['Infantry'], 5)
 
 
@@ -246,8 +247,8 @@ class TestPlanner(unittest.TestCase):
 
 
 
-class TestEmptyLandGrab(unittest.TestCase):
-    """The secondary objective: Mechanized Infantry take undefended enemy land."""
+class TestRemoteEmptyLandGrab(unittest.TestCase):
+    """The secondary objective: Mechanized Infantry take undefended enemy land (bought toward it when none can reach)."""
 
     def setUp(self):
         modes = {f: FactionMode.NONCOMBATANT for f in FACTIONS}
@@ -264,7 +265,7 @@ class TestEmptyLandGrab(unittest.TestCase):
 
     def test_the_weight_is_a_secondary_objective_like_the_others(self):
         for style in ALL_STYLES:
-            self.assertGreater(load_settings().thresholds['Strategic' if style == 'Variable' else style]['empty_land_grab']['weight'], 0)
+            self.assertGreater(load_settings().thresholds['Strategic' if style == 'Variable' else style]['remote_empty_land_grab']['weight'], 0)
 
     def test_undefended_land_is_found_nearest_first(self):
         p = planner_for(self.engine)
@@ -285,9 +286,9 @@ class TestEmptyLandGrab(unittest.TestCase):
     def test_a_mech_inf_in_reach_goes_to_take_it(self):
         self.with_mech()
         p = planner_for(self.engine)
-        p.objective_empty_land_grab()
+        p.objective_remote_empty_land_grab()
         self.assertEqual(p.moves_combat[self.mech.unit_id][-1], 13)
-        self.assertEqual(p.claimed[self.mech.unit_id], 'empty_land_grab')
+        self.assertEqual(p.claimed[self.mech.unit_id], 'remote_empty_land_grab')
         self.gs.phase = Phase.COMBAT_MOVE
         self.gs.active_faction = 'NAA'
         self.engine.submit_combat_moves('NAA', p.combat_orders())  # and it is a legal move
@@ -296,12 +297,12 @@ class TestEmptyLandGrab(unittest.TestCase):
         put(self.gs, 21, 'Infantry', 'NAA', 2)
         put(self.gs, 21, 'Armor', 'NAA', 1)
         p = planner_for(self.engine)
-        p.objective_empty_land_grab()
+        p.objective_remote_empty_land_grab()
         self.assertEqual({tid for tid in p.moves_combat}, set())
 
     def test_with_no_mech_inf_in_reach_one_is_bought_toward_it(self):
         p = planner_for(self.engine)
-        p.objective_empty_land_grab()
+        p.objective_remote_empty_land_grab()
         self.assertTrue(p.purchases)
         self.assertEqual({t for (t, _) in p.purchases}, {'Mechanized Infantry'})
         self.engine._resolve_and_cost(p.purchase_orders(), 'NAA')   # everything bought is legal
@@ -314,7 +315,7 @@ class TestEmptyLandGrab(unittest.TestCase):
         put(self.gs, 12, 'Armor', 'GPC', 1)
         self.gs.territories[12].owner = 'GPC'
         p = planner_for(self.engine)
-        p.objective_empty_land_grab()
+        p.objective_remote_empty_land_grab()
         # England's only defender is the Mech Inf and an enemy Armor can walk in: it stays (a purchase stands in instead)
         if self.mech.unit_id in p.moves_combat:
             self.assertTrue(p.threats(21) == {} or any(v.unit_id != self.mech.unit_id for v in p.defenders_at(21, claimed_only=False)))
@@ -346,7 +347,7 @@ class TestEmptyLandGrabReach(unittest.TestCase):
         p = planner_for(engine)
         hops = {tid: h for h, _, tid in p._undefended_land()}
         self.assertEqual((hops[6], hops[7], hops[8]), (5, 6, 7))
-        p.objective_empty_land_grab()
+        p.objective_remote_empty_land_grab()
         bought_at = {tid for (t, tid), q in p.purchases.items() if t == 'Mechanized Infantry' for _ in range(q)}
         self.assertEqual(bought_at, {1})   # NAA's only territory is the only legal purchase spot in this graph
         total_bought = sum(q for (t, _), q in p.purchases.items() if t == 'Mechanized Infantry')
@@ -385,7 +386,7 @@ class TestEmptyLandGrabSeaDeploy(unittest.TestCase):
         dist = p.costs_from(4)[0]
         self.assertLess(dist[3], dist[1])  # the sea square is genuinely the cheaper way to the island
         self.assertTrue(p.sea_zone_safe(3))
-        stub = p.buy_toward(dist, ('Land',), 'empty_land_grab', only=('Mechanized Infantry',))
+        stub = p.buy_toward(dist, ('Land',), 'remote_empty_land_grab', only=('Mechanized Infantry',))
         self.assertIsNotNone(stub)
         self.assertEqual(list(p.purchases.keys()), [('Mechanized Infantry', 3)])
         engine._resolve_and_cost(p.purchase_orders(), 'NAA')  # a legal order: Mech Inf may deploy to sea
@@ -396,7 +397,7 @@ class TestEmptyLandGrabSeaDeploy(unittest.TestCase):
         dist = p.costs_from(4)[0]
         self.assertLess(dist[3], dist[1])       # still the shorter path...
         self.assertFalse(p.sea_zone_safe(3))    # ...but it is not safe to land an undefended Transport there
-        stub = p.buy_toward(dist, ('Land',), 'empty_land_grab', only=('Mechanized Infantry',))
+        stub = p.buy_toward(dist, ('Land',), 'remote_empty_land_grab', only=('Mechanized Infantry',))
         self.assertIsNotNone(stub)
         self.assertEqual(list(p.purchases.keys()), [('Mechanized Infantry', 1)])  # falls back to the land spot
 
@@ -404,13 +405,13 @@ class TestEmptyLandGrabSeaDeploy(unittest.TestCase):
         engine, gs = self._diamond_engine()
         p = planner_for(engine)
         for unit_type in ('Infantry', 'Armor'):
-            self.assertIsNone(p.buy(3, ('Land',), 'empty_land_grab', only=(unit_type,)))
+            self.assertIsNone(p.buy(3, ('Land',), 'remote_empty_land_grab', only=(unit_type,)))
 
     def test_the_reach_end_to_end_through_the_objective(self):
-        # The same diamond, run through objective_empty_land_grab as a bot actually would.
+        # The same diamond, run through objective_remote_empty_land_grab as a bot actually would.
         engine, gs = self._diamond_engine()
         p = planner_for(engine)
-        p.objective_empty_land_grab()
+        p.objective_remote_empty_land_grab()
         self.assertEqual(list(p.purchases.keys()), [('Mechanized Infantry', 3)])
         engine._resolve_and_cost(p.purchase_orders(), 'NAA')
 

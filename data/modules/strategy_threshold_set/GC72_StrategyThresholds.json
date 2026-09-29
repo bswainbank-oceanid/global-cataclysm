@@ -19,7 +19,7 @@
     {"objective_id": "pursue_sc_1", "min_risk": 60, "max_risk": 90, "weight": 10},
     {"objective_id": "pursue_sc_2", "min_risk": 60, "max_risk": 90, "weight": 3},
     {"objective_id": "pursue_sc_3", "min_risk": 60, "max_risk": 90, "weight": 2},
-    {"objective_id": "empty_land_grab", "min_risk": null, "max_risk": null, "weight": 8}
+    {"objective_id": "remote_empty_land_grab", "min_risk": null, "max_risk": null, "weight": 4}
    ]
   },
   {
@@ -31,12 +31,12 @@
     {"objective_id": "reinforce_contested", "min_risk": 1, "max_risk": 95, "weight": null},
     {"objective_id": "punish_betrayers", "min_risk": 1, "max_risk": 80, "weight": null},
     {"objective_id": "expand_territory", "min_risk": 60, "max_risk": 90, "weight": 5},
-    {"objective_id": "hold_frontier", "min_risk": 5, "max_risk": 95, "weight": 10},
+    {"objective_id": "hold_frontier", "min_risk": 5, "max_risk": 95, "weight": 8},
     {"objective_id": "control_oceans", "min_risk": 60, "max_risk": 80, "weight": 2},
-    {"objective_id": "pursue_sc_1", "min_risk": 60, "max_risk": 90, "weight": 5},
+    {"objective_id": "pursue_sc_1", "min_risk": 60, "max_risk": 90, "weight": 4},
     {"objective_id": "pursue_sc_2", "min_risk": 60, "max_risk": 90, "weight": 0},
     {"objective_id": "pursue_sc_3", "min_risk": 60, "max_risk": 90, "weight": 0},
-    {"objective_id": "empty_land_grab", "min_risk": null, "max_risk": null, "weight": 5}
+    {"objective_id": "remote_empty_land_grab", "min_risk": null, "max_risk": null, "weight": 3}
    ]
   },
   {
@@ -53,7 +53,7 @@
     {"objective_id": "pursue_sc_1", "min_risk": 60, "max_risk": 90, "weight": 7},
     {"objective_id": "pursue_sc_2", "min_risk": 60, "max_risk": 90, "weight": 2},
     {"objective_id": "pursue_sc_3", "min_risk": 60, "max_risk": 90, "weight": 0},
-    {"objective_id": "empty_land_grab", "min_risk": null, "max_risk": null, "weight": 10}
+    {"objective_id": "remote_empty_land_grab", "min_risk": null, "max_risk": null, "weight": 3}
    ]
   },
   {
@@ -70,7 +70,7 @@
     {"objective_id": "pursue_sc_1", "min_risk": 60, "max_risk": 90, "weight": 7},
     {"objective_id": "pursue_sc_2", "min_risk": 60, "max_risk": 90, "weight": 3},
     {"objective_id": "pursue_sc_3", "min_risk": 60, "max_risk": 90, "weight": 2},
-    {"objective_id": "empty_land_grab", "min_risk": null, "max_risk": null, "weight": 8}
+    {"objective_id": "remote_empty_land_grab", "min_risk": null, "max_risk": null, "weight": 4}
    ]
   },
   {
