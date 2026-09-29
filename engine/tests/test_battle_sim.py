@@ -120,6 +120,19 @@ class TestFastEstimatorAgreesWithTheResolver(unittest.TestCase):
             fast = battle_sim.estimate(att(), dfn(), kind, UNIT_DEFS, RULES, random.Random(10), 800, bonus, max_rounds=3)
             self.assertAlmostEqual(held / n, fast.attacker_wins + fast.contested, delta=0.06, msg=name)
 
+    def test_a_capture_needs_a_land_unit_left_standing(self):
+        # Bombers and one Infantry against one Infantry: the attack nearly always wipes the defender out, but
+        # the attacking Infantry often dies too -- and aircraft alone cannot take the territory
+        a = [mk(i, 'Bomber', 'A') for i in range(1, 5)] + [mk(9, 'Infantry', 'A')]
+        d = [mk(20, 'Infantry', 'B')]
+        free = battle_sim.estimate(a, d, 'land', UNIT_DEFS, RULES, random.Random(3), 2000)
+        taken = battle_sim.estimate(a, d, 'land', UNIT_DEFS, RULES, random.Random(3), 2000, capture=True)
+        self.assertGreater(free.attacker_wins, 0.97)
+        self.assertLess(taken.attacker_wins, free.attacker_wins - 0.05)
+        self.assertAlmostEqual(taken.attacker_wins + taken.neither + taken.defender_wins, 1.0, places=6)
+        bombers_only = battle_sim.estimate(a[:4], d, 'land', UNIT_DEFS, RULES, random.Random(3), 500, capture=True)
+        self.assertEqual(bombers_only.attacker_wins, 0.0)
+
     def test_the_obvious_cases(self):
         strong = [mk(i, 'Armor', 'A') for i in range(1, 7)]
         weak = [mk(20, 'Infantry', 'B')]

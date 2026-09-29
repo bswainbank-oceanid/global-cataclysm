@@ -111,6 +111,32 @@ class TestExpandTerritory(unittest.TestCase):
         self.assertEqual(p.attempts[-1]['reason'], 'every unit that could reach it is committed elsewhere')
 
 
+class TestHoldChance(unittest.TestCase):
+    """A defense is judged by the next turn's real battle: captured only within its 3 rounds, and only with a
+    land unit of the attacker's left standing."""
+
+    def test_surviving_the_three_rounds_holds_it(self):
+        # 12 Infantry at NAA's capital against 6 Armor next door: a long fight lost, but seldom within 3 rounds
+        engine, gs = game({1: [make_unit('Infantry', 'NAA') for _ in range(12)],
+                           2: [make_unit('Armor', 'GPC') for _ in range(6)]},
+                          owners={1: 'NAA', 2: 'GPC', 6: 'NAA', 4: 'GPC', 5: 'GPC'})
+        p = planner(engine)
+        defenders = p.defenders_at(1, claimed_only=False)
+        three = p.hold_chance(1, defenders, fast=False)
+        attackers = p.threats(1)['GPC']
+        unlimited = 1.0 - p.attacker_odds(attackers, defenders, 'land', fast=False)
+        self.assertGreater(three, unlimited + 0.2)
+
+    def test_aircraft_that_clear_the_defenders_do_not_capture(self):
+        # a Fighter wing and one Infantry against a lone defender: often the Infantry falls too, and then
+        # nothing takes the territory
+        engine, gs = game({1: [make_unit('Infantry', 'NAA')],
+                           2: [make_unit('Fighter', 'GPC') for _ in range(4)] + [make_unit('Infantry', 'GPC')]},
+                          owners={1: 'NAA', 2: 'GPC', 6: 'NAA', 4: 'GPC', 5: 'GPC'})
+        p = planner(engine)
+        self.assertGreater(p.hold_chance(1, p.defenders_at(1, claimed_only=False), fast=False), 0.05)
+
+
 class TestEmptyLandGrab(unittest.TestCase):
     """The primary objective: undefended enemy land in reach gets the cheapest land unit that can take it."""
 

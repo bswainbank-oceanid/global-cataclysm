@@ -101,6 +101,7 @@ class Planner:
         self.terrs = self.data.territories()
         self.adjacency = self.data.adjacency()
         self.rules = self.data.rules()
+        self.battle_rounds = (self.rules.get('combat') or {}).get('rounds_per_battle', 3)  # a defense's horizon
 
         # the ledger
         self.claimed = {}       # unit_id -> objective that committed it
@@ -287,19 +288,21 @@ class Planner:
     def _sig(units):
         return tuple(sorted((u.unit_type, u.current_hp, u.promotions, u.xp) for u in units))
 
-    def attacker_odds(self, attackers, defenders, kind, bonus=None, fast=True, cut=None, samples=None):
-        """The chance the attackers eliminate every defender and survive, run without a round limit."""
+    def attacker_odds(self, attackers, defenders, kind, bonus=None, fast=True, cut=None, samples=None, max_rounds=None):
+        """The chance the attackers eliminate every defender and survive -- over land, with a land unit left to
+        take the territory -- run without a round limit, or within `max_rounds` (the rest counts as not won)."""
         if not attackers:
             return 0.0 if defenders else 1.0
         if not defenders:
-            return 1.0
+            return 1.0 if kind != 'land' or self._has_land(attackers) else 0.0
         samples = samples or (self.fast_samples if fast else self.samples)
         cut = cut if cut is not None else self._cut
-        key = (kind, bonus, samples, self._sig(attackers), self._sig(defenders))
+        key = (kind, bonus, samples, max_rounds, self._sig(attackers), self._sig(defenders))
         got = self._odds_cache.get(key)
         if got is None:
             self.evaluations += 1
-            odds = battle_sim.estimate(attackers, defenders, kind, self.unit_defs, self.rules, self.rng, samples, bonus, cut=cut)
+            odds = battle_sim.estimate(attackers, defenders, kind, self.unit_defs, self.rules, self.rng, samples, bonus, cut=cut,
+                                       max_rounds=max_rounds, capture=kind == 'land')
             self.sims_used += odds.samples
             got = odds.attacker_wins
             self._odds_cache[key] = got
@@ -347,8 +350,10 @@ class Planner:
         return out
 
     def hold_chance(self, tid, defenders, fast=True, samples=None):
-        """1 - the chance the worst single threat takes `tid` (destroys the defenders, and for land brings a
-        land unit to capture it) -- 1.0 when nothing can reach it."""
+        """1 - the chance the worst single threat takes `tid` next turn: destroys the defenders within the real
+        battle's rounds (the rule set's combat.rounds_per_battle -- a battle still going after them only leaves it
+        contested, and still ours) and, for land, with a land unit left standing to capture it. 1.0 when nothing
+        can reach it."""
         threats = self.threats(tid)
         if not threats:
             return 1.0
@@ -360,7 +365,8 @@ class Planner:
             if kind == 'land' and not self._has_land(attackers):
                 continue  # aircraft alone cannot take land
             cut = [1.0 - c for c in self._cut] if self._cut else None
-            worst = max(worst, self.attacker_odds(attackers, defenders, kind, fast=fast, cut=cut, samples=samples))
+            worst = max(worst, self.attacker_odds(attackers, defenders, kind, fast=fast, cut=cut, samples=samples,
+                                                  max_rounds=self.battle_rounds))
         return 1.0 - worst
 
     # ==== resources ============================================================================
