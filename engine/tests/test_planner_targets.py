@@ -220,6 +220,23 @@ class TestLandingOnAMovingCarrier(unittest.TestCase):
         self.assertEqual((where[fighter.unit_id], where[carrier.unit_id]), (33, 33))
 
 
+class TestNonCombatOrderSequence(unittest.TestCase):
+    def test_aircraft_move_before_a_carrier_can_sweep_them_along(self):
+        # 20 NAA's island; 21 and 23 sea zones: the carrier sails 21 -> 23 while its fighter flies home to 20
+        carrier, fighter = make_unit('Aircraft Carrier', 'NAA'), make_unit('Fighter', 'NAA')
+        m = TestControlOceans
+        data = FakeData(territories=m.MAP, adjacency=m.ADJ)
+        gs = make_state(data, {20: 'NAA', 22: 'GPC', 25: 'NAA'}, {'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT},
+                        units_by_territory={21: [carrier, fighter]}, phase=Phase.NONCOMBAT_MOVE)
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        p = Planner(engine, 'NAA', load_settings(), 'Strategic', random.Random(1), 'noncombat', 1500)
+        p.moves_nc = {carrier.unit_id: 23, fighter.unit_id: 20}
+        self.assertEqual([o.unit_id for o in p.noncombat_orders()], [fighter.unit_id, carrier.unit_id])
+        engine.submit_noncombat_moves('NAA', p.noncombat_orders())  # (the other way round, the fighter's is illegal)
+
+
 class TestEmptyLandGrab(unittest.TestCase):
     """The primary objective: undefended enemy land in reach gets the cheapest land unit that can take it."""
 

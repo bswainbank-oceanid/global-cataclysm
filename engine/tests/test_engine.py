@@ -1,3 +1,4 @@
+import copy
 import random
 import unittest
 
@@ -380,6 +381,33 @@ class TestBombardmentEscorts(unittest.TestCase):
         self.assertIsNone(getattr(escort, 'bombard_target', None), 'an escort never attacks -- no bombard_target of its own')
         self.assertEqual(cruiser.bombard_target, 2)
         self.assertIsNone(gs.territories[2].contested_by)
+
+    def test_checked_alone_within_its_batch_an_escort_before_its_cruiser_is_legal(self):
+        # (a bot checks its plan one order at a time: `batch` is the whole plan)
+        engine, gs, cruiser, escort, defender = self._setup()
+        plan = [CombatMoveOrder(escort.unit_id, [1, 2]), CombatMoveOrder(cruiser.unit_id, [1, 2])]
+        working = copy.deepcopy(gs)
+        with self.assertRaises(ValueError):
+            engine._execute_combat_moves([plan[0]], 'NAA', copy.deepcopy(gs))  # alone, it escorts nothing
+        for order in plan:
+            engine._execute_combat_moves([order], 'NAA', working, batch=plan)
+        moved = next(u for u in working.territories[1].units if u.unit_id == cruiser.unit_id)
+        self.assertEqual(moved.bombard_target, 2)
+
+    def test_checked_alone_within_its_batch_a_carrier_leaves_aircraft_with_their_own_orders(self):
+        data = FakeData(territories={1: {'type': 'sea'}, 2: {'type': 'sea'}, 3: {'type': 'sea'}},
+                        adjacency={1: [2, 3], 2: [1], 3: [1]})
+        carrier, fighter = make_unit('Aircraft Carrier', 'NAA'), make_unit('Fighter', 'NAA')
+        gs = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.COMBAT_MOVE,
+                        units_by_territory={1: [carrier, fighter], 2: [make_unit('Submarine', 'AAC')],
+                                            3: [make_unit('Cruiser', 'AAC')]})
+        engine = GameEngine(gs, data)
+        plan = [CombatMoveOrder(carrier.unit_id, [1, 2]), CombatMoveOrder(fighter.unit_id, [1, 3])]
+        working = copy.deepcopy(gs)
+        for order in plan:
+            engine._execute_combat_moves([order], 'NAA', working, batch=plan)  # the fighter is not swept to 2
+        where = {u.unit_id: tid for tid, t in working.territories.items() for u in t.units}
+        self.assertEqual((where[carrier.unit_id], where[fighter.unit_id]), (2, 3))
 
     def test_an_aircraft_carrier_can_escort_too(self):
         engine, gs, cruiser, escort, defender = self._setup(escort_type='Aircraft Carrier')

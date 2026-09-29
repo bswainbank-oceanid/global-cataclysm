@@ -70,7 +70,9 @@ class StrategyBot(RandomBot):
         orders = []
         for order in self._plan.combat:
             try:
-                self.engine._execute_combat_moves([order], self.faction, working)
+                # (checked one at a time, but as part of the whole plan: a carrier leaves behind the aircraft
+                # with orders of their own, and a bombarding Cruiser's escorts are legal)
+                self.engine._execute_combat_moves([order], self.faction, working, batch=self._plan.combat)
             except ValueError:
                 continue
             orders.append(order)

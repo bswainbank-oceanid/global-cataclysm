@@ -684,7 +684,7 @@ class GameEngine:
                 options[u.unit_id] = {'unit_type': u.unit_type, 'territory_id': tid, 'destinations': sorted(legal)}
         return options
 
-    def _execute_combat_moves(self, orders, faction, game_state):
+    def _execute_combat_moves(self, orders, faction, game_state, batch=None):
         """Runs `orders` against `game_state`, relocating each unit
         along its validated path and applying every consequence as it
         goes -- so a LATER order in the same list can legitimately
@@ -708,10 +708,15 @@ class GameEngine:
         simply relocated to the carrier's destination and marked
         has_moved_combat -- nothing else is needed to make it an actual
         combatant, since Combat Resolution's gather_battle_units already
-        includes anyone physically present, however they got there."""
+        includes anyone physically present, however they got there.
+
+        `batch`: the whole list `orders` belongs to, when `orders` is only part of it -- a caller checking
+        a plan one order at a time (a bot) passes the full plan, so the ride-along exclusion and the
+        bombardment lookahead below see every order, as they will when the plan is submitted whole."""
         unit_defs = self.data.units()
         terrs = self.data.territories()
-        units_with_own_order = {o.unit_id for o in orders}
+        batch = orders if batch is None else batch
+        units_with_own_order = {o.unit_id for o in batch}
         # the rule set's combat.cruiser_bombardment: every land territory some
         # Cruiser of `faction`'s ALSO in this batch is bombarding -- what lets
         # another selected Sea unit's own order target that same land this
@@ -720,7 +725,7 @@ class GameEngine:
         # orders, before any of them are actually processed -- an escort's
         # own order can legally come before OR after its Cruiser's.
         bombarded_this_batch = set()
-        for o in orders:
+        for o in batch:
             mover, _ = self._find_unit(game_state, o.unit_id, faction)
             if self._has(mover.unit_type, abilities.BOMBARDMENT) and len(o.path) >= 2 and terrs[o.path[-1]]['type'] == 'land':
                 bombarded_this_batch.add(o.path[-1])

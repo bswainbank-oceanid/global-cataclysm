@@ -385,10 +385,13 @@ class Planner:
         return [CombatMoveOrder(uid, list(path)) for uid, path in sorted(self.moves_combat.items())]
 
     def noncombat_orders(self):
-        """In unit id order, except where the order matters (nc_rank: 0 before the rest, 2 after): an aircraft
-        landing on a carrier that is about to sail goes first, one landing where a carrier is sailing to, last."""
-        return [NonCombatMoveOrder(uid, dest) for uid, dest in
-                sorted(self.moves_nc.items(), key=lambda m: (self.nc_rank.get(m[0], 1), m[0]))]
+        """Aircraft first, then the rest, each in unit id order -- a carrier sailing in Non-Combat Move sweeps
+        along every aircraft still in its zone, so the ones with orders of their own must be gone by then (an
+        aircraft landing on a carrier about to sail goes early for the same reason, and rides along). Last: an
+        aircraft landing where a carrier is sailing to (nc_rank 2), once it is there."""
+        def rank(uid):
+            return self.nc_rank.get(uid, 0 if self.category(self.my_units[uid][0]) == 'Air' else 1)
+        return [NonCombatMoveOrder(uid, dest) for uid, dest in sorted(self.moves_nc.items(), key=lambda m: (rank(m[0]), m[0]))]
 
     def buy(self, tid, categories, name, prefer=None, only=None, land_types=None, without=()):
         """Buys one unit for `tid` by the faction's unit odds among the categories allowed (or, with `prefer`,
