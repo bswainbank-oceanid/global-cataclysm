@@ -102,7 +102,7 @@ class Planner:
         self.terrs = self.data.territories()
         self.adjacency = self.data.adjacency()
         self.rules = self.data.rules()
-        self.battle_rounds = (self.rules.get('combat') or {}).get('rounds_per_battle', 3)  # a defense's horizon
+        self.battle_rounds = (self.rules.get('combat') or {}).get('rounds_per_battle', 3)  # a fleet's safety horizon
 
         # the ledger
         self.claimed = {}       # unit_id -> objective that committed it
@@ -352,10 +352,12 @@ class Planner:
         return out
 
     def hold_chance(self, tid, defenders, fast=True, samples=None):
-        """1 - the chance the worst single threat takes `tid` next turn: destroys the defenders within the real
-        battle's rounds (the rule set's combat.rounds_per_battle -- a battle still going after them only leaves it
-        contested, and still ours) and, for land, with a land unit left standing to capture it. 1.0 when nothing
-        can reach it."""
+        """1 - the chance the worst single threat takes `tid`. 1.0 when nothing can reach it.
+        Land (Hold SCs, Hold frontier -- the defensive objectives' risk measure): if the battle ran on to
+        completion (no round limit), the attacker destroys the defenders and ends with a land unit of its own
+        still standing to capture it; defenders wiped out by aircraft alone still hold it.
+        Sea (a fleet's safety): the attacker destroys the fleet within the real battle's rounds (the rule
+        set's combat.rounds_per_battle); a fleet still afloat after them has survived the turn."""
         threats = self.threats(tid)
         if not threats:
             return 1.0
@@ -368,7 +370,7 @@ class Planner:
                 continue  # aircraft alone cannot take land
             cut = [1.0 - c for c in self._cut] if self._cut else None
             worst = max(worst, self.attacker_odds(attackers, defenders, kind, fast=fast, cut=cut, samples=samples,
-                                                  max_rounds=self.battle_rounds))
+                                                  max_rounds=None if kind == 'land' else self.battle_rounds))
         return 1.0 - worst
 
     # ==== resources ============================================================================

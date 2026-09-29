@@ -112,20 +112,36 @@ class TestExpandTerritory(unittest.TestCase):
 
 
 class TestHoldChance(unittest.TestCase):
-    """A defense is judged by the next turn's real battle: captured only within its 3 rounds, and only with a
-    land unit of the attacker's left standing."""
+    """The defensive objectives judge land by the battle fought to completion, lost only if the attacker ends
+    with a land unit standing; a fleet's safety is judged by the next turn's real battle, its 3 rounds."""
 
-    def test_surviving_the_three_rounds_holds_it(self):
-        # 12 Infantry at NAA's capital against 6 Armor next door: a long fight lost, but seldom within 3 rounds
+    def test_land_is_judged_by_the_battle_fought_to_completion(self):
+        # 12 Infantry at NAA's capital against 6 Armor next door: a long fight lost, though seldom within 3 rounds
         engine, gs = game({1: [make_unit('Infantry', 'NAA') for _ in range(12)],
                            2: [make_unit('Armor', 'GPC') for _ in range(6)]},
                           owners={1: 'NAA', 2: 'GPC', 6: 'NAA', 4: 'GPC', 5: 'GPC'})
         p = planner(engine)
         defenders = p.defenders_at(1, claimed_only=False)
-        three = p.hold_chance(1, defenders, fast=False)
         attackers = p.threats(1)['GPC']
-        unlimited = 1.0 - p.attacker_odds(attackers, defenders, 'land', fast=False)
-        self.assertGreater(three, unlimited + 0.2)
+        hold = p.hold_chance(1, defenders, fast=False)
+        to_completion = 1.0 - p.attacker_odds(attackers, defenders, 'land', fast=False)
+        three_rounds = 1.0 - p.attacker_odds(attackers, defenders, 'land', fast=False, max_rounds=3)
+        self.assertAlmostEqual(hold, to_completion, delta=0.1)
+        self.assertLess(hold, three_rounds - 0.2)
+
+    def test_a_fleet_is_judged_by_the_three_rounds(self):
+        m = TestControlOceans
+        data = FakeData(territories=m.MAP, adjacency=m.ADJ)
+        gs = make_state(data, {20: 'NAA', 22: 'GPC', 25: 'NAA'}, {'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT},
+                        units_by_territory={23: [make_unit('Aircraft Carrier', 'NAA') for _ in range(4)],
+                                            21: [make_unit('Cruiser', 'GPC') for _ in range(4)]})
+        gs.active_faction = 'NAA'
+        p = planner(GameEngine(gs, data))
+        fleet = p.defenders_at(23, claimed_only=False)
+        attackers = p.threats(23)['GPC']
+        hold = p.hold_chance(23, fleet, fast=False)
+        to_completion = 1.0 - p.attacker_odds(attackers, fleet, 'sea', fast=False)
+        self.assertGreater(hold, to_completion + 0.2)
 
     def test_aircraft_that_clear_the_defenders_do_not_capture(self):
         # a Fighter wing and one Infantry against a lone defender: often the Infantry falls too, and then
