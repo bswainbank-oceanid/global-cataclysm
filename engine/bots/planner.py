@@ -941,14 +941,18 @@ class Planner:
         return any(self.is_land(t) and self.owner(t) == self.me for t, d in dist.items() if d <= hops)
 
     def objective_control_oceans(self):
+        """Every enemy stack at sea within 3 spaces of my land -- ships, and land units crossing the water as
+        Transports -- biggest first: attacked with the ships and aircraft (from land or carrier) that can reach
+        it, when the odds are good enough; the ones that are not are built up against. Idle Cruisers bombard,
+        threatened fleets withdraw, and aircraft nobody has a job for land on my carriers."""
         limits = self.settings.limits(self.style, 'control_oceans')
         stacks = []
         for tid in self.terrs:
             if self.is_land(tid):
                 continue
-            ships = [u for u in self.enemies_at(tid) if self.category(u) == 'Sea']
-            if ships and self._my_land_within(tid, 3):
-                stacks.append((-sum(self.cost(u) for u in ships), tid))
+            at_sea = self.enemies_at(tid)  # (a land unit at sea is a Transport: a target like any ship)
+            if at_sea and self._my_land_within(tid, 3):
+                stacks.append((-sum(self.cost(u) for u in at_sea), tid))
         below = []
         for _, tid in sorted(stacks):
             if self.out_of_time():
@@ -962,6 +966,50 @@ class Planner:
             self._build_up(tid, ('Sea', 'Air'), 'control_oceans', limits)
         self._bombard_idle_cruisers('control_oceans', limits)
         self._second_pass_fleets(limits)
+        self._land_idle_aircraft_on_carriers()
+
+    def _land_idle_aircraft_on_carriers(self):
+        """Non-Combat Move: every aircraft of mine that nothing has claimed flies to one of my carriers with
+        room that stays where it is this turn -- among several it can reach, the one nearest enemy units
+        (then the nearest to it). An aircraft already on a carrier stays."""
+        moving = set(self.moves_nc) | set(self.moves_combat)
+        room = {}
+        for tid in self.terrs:
+            if self.is_land(tid):
+                continue
+            here = self.mine_at(tid)
+            carriers = [u for u in here if u.unit_id not in moving
+                        and abilities.has(self.unit_defs, u.unit_type, abilities.CARRIER_AIR_WING)]
+            if not carriers:
+                continue
+            capacity = sum(abilities.param(self.unit_defs, u.unit_type, abilities.CARRIER_AIR_WING, 'capacity', 0)
+                           for u in carriers)
+            aboard = sum(1 for u in here if self.category(u) == 'Air' and u.unit_id not in moving)
+            coming = sum(1 for uid, dest in self.moves_nc.items() if dest == tid and self.category(self.my_units[uid][0]) == 'Air')
+            if capacity - aboard - coming > 0:
+                room[tid] = capacity - aboard - coming
+        if not room:
+            return
+        enemy_near = {}
+        for tid in room:
+            dist = graph_distances(tid, self.data)
+            enemy_near[tid] = min((d for t, d in dist.items() if self.enemies_at(t)), default=1 << 30)
+        for uid, (u, origin) in sorted(self.my_units.items()):
+            if self.category(u) != 'Air' or not self.free_for(u, 'nc'):
+                continue
+            if not self.is_land(origin) and any(abilities.has(self.unit_defs, c.unit_type, abilities.CARRIER_AIR_WING)
+                                                for c in self.mine_at(origin)):
+                continue  # already on a carrier
+            options = [t for t in room if room[t] > 0 and t in self.nc_dests(u, origin)]
+            if not options:
+                continue
+            origin_dist = graph_distances(origin, self.data)
+            dest = min(options, key=lambda t: (enemy_near[t], origin_dist.get(t, 1 << 30), t))
+            self.claim(u, 'control_oceans', dest)
+            self.moves_nc[uid] = dest
+            room[dest] -= 1
+            self.note(f'control_oceans: an idle {u.unit_type} lands on the carrier at {self.terrs[dest]["name"]}')
+            self.attempt(dest, 'pursued', f'an idle {u.unit_type} lands on the carrier here')
 
     def _bombard_idle_cruisers(self, name, limits):
         """the rule set's combat.cruiser_bombardment: a Cruiser left with no worthwhile enemy fleet

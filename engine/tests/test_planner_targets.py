@@ -137,6 +137,48 @@ class TestHoldChance(unittest.TestCase):
         self.assertGreater(p.hold_chance(1, p.defenders_at(1, claimed_only=False), fast=False), 0.05)
 
 
+class TestControlOceans(unittest.TestCase):
+    """Enemy Transports at sea are Control Oceans targets like ships, for aircraft from land too; aircraft left
+    with nothing to do land on a carrier, the one nearest the enemy."""
+
+    # 20: NAA's island, with sea zone 21 beside it; 22: GPC's coast beyond 21. Sea zones 23 and 24 run away
+    # from the enemy (21 - 23 - 24), and 25 is NAA's mainland, next to 24.
+    MAP = {20: {'type': 'land', 'value': 2, 'name': 'Isle'}, 21: {'type': 'sea', 'name': 'Strait'},
+           22: {'type': 'land', 'value': 3, 'name': 'Coast'}, 23: {'type': 'sea', 'name': 'Bay'},
+           24: {'type': 'sea', 'name': 'Far Sea'}, 25: {'type': 'land', 'value': 3, 'name': 'Home'}}
+    ADJ = {20: [21, 23], 21: [20, 22, 23], 22: [21], 23: [20, 21, 24], 24: [23, 25], 25: [24]}
+
+    def plan(self, units, mode='full'):
+        data = FakeData(territories=self.MAP, adjacency=self.ADJ)
+        gs = make_state(data, {20: 'NAA', 22: 'GPC', 25: 'NAA'}, {'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT},
+                        units_by_territory=units)
+        gs.active_faction = 'NAA'
+        p = Planner(GameEngine(gs, data), 'NAA', load_settings(), 'Controlling', random.Random(2), mode, 1500)
+        p._begin_objective('control_oceans')
+        p.objective_control_oceans()
+        return p
+
+    def test_an_island_fighter_attacks_an_enemy_transport(self):
+        fighter = make_unit('Fighter', 'NAA')
+        p = self.plan({20: [fighter], 21: [make_unit('Mechanized Infantry', 'GPC')], 22: [make_unit('Infantry', 'GPC')]})
+        self.assertEqual(p.moves_combat.get(fighter.unit_id), [20, 21])
+        self.assertEqual(p.unit_why[fighter.unit_id], ('control_oceans', 21))
+
+    def test_an_idle_aircraft_lands_on_the_carrier_nearest_the_enemy(self):
+        fighter = make_unit('Fighter', 'NAA')
+        p = self.plan({25: [fighter], 23: [make_unit('Aircraft Carrier', 'NAA')], 24: [make_unit('Aircraft Carrier', 'NAA')],
+                       22: [make_unit('Infantry', 'GPC')]}, mode='noncombat')
+        self.assertEqual(p.moves_nc.get(fighter.unit_id), 23)  # 23 is nearer the enemy at 22 than 24 is
+
+    def test_a_carrier_takes_no_more_than_it_holds_and_one_already_aboard_stays(self):
+        carrier = make_unit('Aircraft Carrier', 'NAA')
+        aboard = [make_unit('Fighter', 'NAA') for _ in range(2)]
+        idle = [make_unit('Fighter', 'NAA') for _ in range(2)]
+        p = self.plan({23: [carrier] + aboard, 25: idle, 22: [make_unit('Infantry', 'GPC')]}, mode='noncombat')
+        self.assertFalse(any(u.unit_id in p.moves_nc for u in aboard))
+        self.assertEqual(sum(1 for u in idle if p.moves_nc.get(u.unit_id) == 23), 1)  # room for one more
+
+
 class TestEmptyLandGrab(unittest.TestCase):
     """The primary objective: undefended enemy land in reach gets the cheapest land unit that can take it."""
 
