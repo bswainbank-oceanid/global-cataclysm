@@ -7,9 +7,9 @@
   },
   "strategy_6bot": {
     "setup": "dfe089697b8a387bcff92ec553a9a02979b3f871",
-    "log": "0cf68479192fac18adcbf8ec75e71653ae815f36",
-    "final": "971fecb29f90ef6b9a98cfe7c6cdb3b531388338",
-    "events": 730
+    "log": "f4ca730e7f320b10173b720965539ed6b8a27df3",
+    "final": "1219551b0ac97ea262b6a83d10cc7e279170c1db",
+    "events": 745
   },
   "strategy_3bot_neutral": {
     "setup": "00d2ddee6e021c1c70e92eb6d88616c1f8d39713",
@@ -31,8 +31,8 @@
   },
   "new_scenario_3bot": {
     "setup": "3a2bbe90652a2631adc7914dde8da4f8598ed0ab",
-    "log": "9f6b453c8f2d299031200cea2feacc1ec4e04725",
-    "final": "b7c878517ce9d6ecde64bbb1f80ae46fd11aeaba",
-    "events": 2157
+    "log": "7b8da9861ea8d40458bcbcfee4e412bf2f3f8f43",
+    "final": "e4ac66decb46082df8e6e3e3840d4af5626fcc91",
+    "events": 1994
   }
 }
