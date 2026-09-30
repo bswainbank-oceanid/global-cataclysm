@@ -21,8 +21,9 @@ The deal:
      that faction's on the base map -- skipping any that would take it over its territory value,
      until every faction is full or nothing is left. The Neutral pool then draws the same way
      (value + 1) up to its territory value; whatever remains is Noncombatant.
-  2. Strategic Centers. Round by round, each faction draws one of its territories (value + 1)
-     at least sc_min_distance steps (the adjacency graph, land and sea) from every Strategic
+  2. Strategic Centers. Round by round, each faction draws one of its territories -- weighted
+     value + 1, + faction_weight if it is one of that faction's Strategic Centers on the base map, or
+     + half of it if it is one of the faction's other territories there -- at least sc_min_distance steps (the adjacency graph, land and sea) from every Strategic
      Center placed so far, its last one also at least sc_final_min_distance from its own others;
      then the Neutral ones, sc_min_distance from all. A deal that cannot place them all is
      retried; if it keeps failing, the distances are relaxed one step at a time (reported).
@@ -51,7 +52,9 @@ from .repository import OverlayRepository
 # The scenario-wide options, in the order the launcher shows them: key -> (label, kind, min, max, help).
 OPTIONS = {
     'faction_weight': ('Base map assignment weight', 'int', 0, 100,
-                       "Extra draw weight a faction gets for territory that is its own on the base map."),
+                       "Extra draw weight a faction gets for territory that is its own on the base map; for its "
+                       "Strategic Centers, the full weight at its own base-map Strategic Centers and half at its "
+                       "other base-map territory."),
     'sc_bonus': ('MPC bonus', 'int', 0, 10, "What a Strategic Center adds to its territory's value."),
     'sc_min_distance': ('Minimum distance', 'int', 0, 12,
                         'Fewest steps between any two Strategic Centers (relaxed if they cannot all fit).'),
@@ -276,7 +279,7 @@ def place_strategic_centers(base, seats, owner, options, rng):
     notes = []
     while True:
         for _ in range(SC_ATTEMPTS):
-            placed = _try_scs(terrs, dist, seats, owner, neutral_id, min_d, final_d, rng)
+            placed = _try_scs(terrs, dist, seats, owner, neutral_id, min_d, final_d, rng, options['faction_weight'])
             if placed is not None:
                 if (min_d, final_d) != (options['sc_min_distance'], options['sc_final_min_distance']):
                     notes.append(f'Strategic Center distances relaxed to {min_d} (final {final_d}) to fit them all')
@@ -287,7 +290,17 @@ def place_strategic_centers(base, seats, owner, options, rng):
         min_d, final_d = max(0, min_d - 1), max(0, final_d - 1)
 
 
-def _try_scs(terrs, dist, seats, owner, neutral_id, min_d, final_d, rng):
+def _sc_weight(terr, faction, faction_weight):
+    """A faction's draw weight for a Strategic Center at one of its territories: value + 1, + the base map
+    assignment weight if it is one of the faction's Strategic Centers on the base map, + half of it if it is
+    one of the faction's other territories there."""
+    weight = terr['value'] + 1
+    if terr.get('faction') == faction:
+        weight += faction_weight if terr.get('strategic_center') else faction_weight / 2
+    return weight
+
+
+def _try_scs(terrs, dist, seats, owner, neutral_id, min_d, final_d, rng, faction_weight=0):
     players = list(seats['players'])
     placed, own = [], {f: [] for f in players}
     holdings = {f: [t for t, o in owner.items() if o == f] for f in players}
@@ -300,7 +313,7 @@ def _try_scs(terrs, dist, seats, owner, neutral_id, min_d, final_d, rng):
             cands = [t for t in holdings[f] if t not in placed
                      and all(dist[t].get(s, 999) >= min_d for s in placed)
                      and (not final or all(dist[t].get(s, 999) >= final_d for s in own[f]))]
-            pick = _weighted(rng, cands, lambda t: terrs[t]['value'] + 1)
+            pick = _weighted(rng, cands, lambda t: _sc_weight(terrs[t], f, faction_weight))
             if pick is None:
                 return None
             placed.append(pick)

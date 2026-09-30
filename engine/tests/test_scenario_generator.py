@@ -101,6 +101,26 @@ class TestStrategicCenters(unittest.TestCase):
         self.assertEqual(sorted(cfg.sc_assignment['locations']), sorted(scs))
         self.assertEqual(cfg.sc_bonus(), options['sc_bonus'])
 
+    def test_the_sc_weight_favours_a_factions_base_scs_then_its_base_territory(self):
+        sc = {'value': 3, 'faction': 'NAA', 'strategic_center': True}
+        own = {'value': 3, 'faction': 'NAA'}
+        other = {'value': 3, 'faction': 'GPC', 'strategic_center': True}
+        self.assertEqual([gen._sc_weight(t, 'NAA', 6) for t in (sc, own, other)], [10, 7, 4])
+
+    def test_the_sc_draw_follows_that_weight(self):
+        # one territory deal, then the Strategic Center step alone, with and without the weight
+        b, options, _, _, report = deal(PLAYERS_6, seed=4)
+        terrs, owner = b.territories(), report['owner']
+        seats, _ = gen.resolve_seats(b, generator()['seat_defaults'], generator()['neutral_defaults'], PLAYERS_6, {}, None)
+        dist = gen._distances(b.adjacency())
+        def base_sc_picks(weight):
+            hits = 0
+            for seed in range(40):
+                placed = gen._try_scs(terrs, dist, seats, owner, 'NEU', 0, 0, random.Random(seed), weight)
+                hits += sum(1 for t in placed if terrs[t].get('faction') == owner[t] and terrs[t].get('strategic_center'))
+            return hits
+        self.assertGreater(base_sc_picks(30), base_sc_picks(0) * 1.3)
+
     def test_impossible_distances_are_relaxed_and_reported(self):
         _, _, _, _, report = deal(PLAYERS_6, sc_min_distance=12, sc_final_min_distance=12)
         self.assertEqual(len(report['strategic_centers']), 18)
