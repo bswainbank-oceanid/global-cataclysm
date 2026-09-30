@@ -38,8 +38,8 @@ class TestSettings(unittest.TestCase):
     def test_a_few_known_cells(self):
         self.assertEqual(self.s.unit_weights['NAA']['Mechanized Infantry'], 6)
         self.assertEqual(self.s.strategy_weights['GPC']['Controlling'], 7)
-        self.assertEqual(self.s.thresholds['Strategic']['hold_sc'], {'min': 0.001, 'max': 75})
-        self.assertEqual(self.s.thresholds['Controlling']['control_oceans'], {'weight': 10, 'min': 65, 'max': 95})
+        self.assertEqual(self.s.thresholds['Strategic']['hold_sc'], {'min': 0.001, 'max': 65})
+        self.assertEqual(self.s.thresholds['Controlling']['control_oceans'], {'weight': 10, 'min': 55, 'max': 80})
         self.assertEqual(self.s.limits('Defensive', 'hold_sc'), (0.00001, 0.75))
         self.assertEqual(self.s.thresholds['Expansive']['remote_empty_land_grab'], {'weight': 3})
         self.assertIn('remote_empty_land_grab', SECONDARY)
