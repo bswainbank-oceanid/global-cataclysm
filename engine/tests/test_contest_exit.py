@@ -81,6 +81,25 @@ class TestLeavingAContest(unittest.TestCase):
         self.assertEqual(set(engine.legal_combat_move_options('NAA')[cruiser.unit_id]['destinations']), {7})
 
 
+class TestQuietSeaContests(unittest.TestCase):
+    """A sea zone's contest ends at Capture Territory once no two hostile sides have units there."""
+
+    def capture(self, units):
+        engine, gs = board(units, contested={4: {'NAA', 'AAC'}})
+        gs.phase = Phase.CAPTURE
+        engine.process_capture_territory('NAA')
+        return gs.territories[4].contested_by
+
+    def test_an_empty_sea_zone_is_no_longer_contested(self):
+        self.assertIsNone(self.capture({}))
+
+    def test_nor_is_one_with_a_single_side_left(self):
+        self.assertIsNone(self.capture({4: [make_unit('Cruiser', 'AAC')]}))
+
+    def test_hostile_fleets_still_facing_each_other_stay_contested(self):
+        self.assertEqual(self.capture({4: [make_unit('Cruiser', 'AAC'), make_unit('Cruiser', 'NAA')]}), {'NAA', 'AAC'})
+
+
 class TestBotsInAContest(unittest.TestCase):
     def plan(self, units, contested):
         engine, gs = board(units, contested)

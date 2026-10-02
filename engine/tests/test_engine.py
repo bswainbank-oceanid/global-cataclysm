@@ -2786,11 +2786,14 @@ class TestCaptureTerritory(unittest.TestCase):
         gs = make_state(
             data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, phase=Phase.CAPTURE,
             contested={1: {'NAA', 'AAC'}},
+            units_by_territory={1: [make_unit('Cruiser', 'NAA'), make_unit('Cruiser', 'AAC')]},
         )
         engine = GameEngine(gs, data)
         engine.process_capture_territory('NAA')  # should not raise
         self.assertIsNone(gs.territories[1].owner)
-        self.assertEqual(gs.territories[1].contested_by, {'NAA', 'AAC'}, 'sea contested status is Combat Resolution\'s concern, not this phase\'s')
+        # a live sea fight is Combat Resolution's concern, not this phase's (only a contest nobody is left to
+        # fight is ended here: engine.tests.test_contest_exit.TestQuietSeaContests)
+        self.assertEqual(gs.territories[1].contested_by, {'NAA', 'AAC'})
 
     def test_wrong_phase_is_rejected(self):
         data = FakeData(territories={1: {'type': 'land'}}, adjacency={})

@@ -1750,6 +1750,20 @@ class GameEngine:
         if self.turn_log is not None:
             self.turn_log.record_aircraft_lost(faction, lost)
 
+    def _settle_quiet_sea_contests(self):
+        """Ends every sea zone's contest that has no fight left in it: no units there of two sides hostile to
+        each other (everyone left, or only one side -- with its allies -- remains). A land contest is settled by
+        Capture Territory itself; a sea contest otherwise ends only in a battle, and nobody fights where nobody
+        is -- so a zone both fleets left (by movement.contested_combat_move_rule, say, or aircraft flying home
+        after a drawn battle) would stay contested for good. Run every Capture Territory phase."""
+        terrs = self.data.territories()
+        for tid, t in self.game_state.territories.items():
+            if not t.contested_by or terrs[tid]['type'] != 'sea':
+                continue
+            owners = sorted({u.owner for u in t.units})
+            if not any(not _is_ally_or_self(self.game_state, a, b) for i, a in enumerate(owners) for b in owners[i + 1:]):
+                t.contested_by = None
+
     def process_capture_territory(self, faction):
         """The automated Capture Territory phase -- no player choice, no
         staging (phase_confirmation.scope), a single direct call like
@@ -1787,6 +1801,7 @@ class GameEngine:
 
         terrs = self.data.territories()
         unit_defs = self.data.units()
+        self._settle_quiet_sea_contests()
         for tid, t in self.game_state.territories.items():
             if terrs[tid]['type'] != 'land':
                 continue
