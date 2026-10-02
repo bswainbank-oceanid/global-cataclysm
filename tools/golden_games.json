@@ -25,9 +25,9 @@
   },
   "fixed_order_2bot": {
     "setup": "5f9cad4bc46b19e052f0439ebc50ee1856682d76",
-    "log": "edf45bef32ccda6e957917c2e77655e8bd3116e8",
-    "final": "e881be309851eb1ec69c56e54f607de9098174a9",
-    "events": 875
+    "log": "6532670aadf8ebdff724749ff4f2798ee1fe7244",
+    "final": "3c1a7121d69220e5ab16ea0b306e7bd007bb463b",
+    "events": 3491
   },
   "new_scenario_3bot": {
     "setup": "92cf37bf03bc8888007bb0979e55a0fea2f189e5",

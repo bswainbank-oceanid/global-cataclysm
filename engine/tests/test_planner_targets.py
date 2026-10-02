@@ -236,6 +236,28 @@ class TestLandingOnAMovingCarrier(unittest.TestCase):
         self.assertEqual((where[fighter.unit_id], where[carrier.unit_id]), (33, 33))
 
 
+class TestCarrierRoomWhilePursuing(unittest.TestCase):
+    def test_aircraft_advancing_on_a_target_never_overfill_a_carrier(self):
+        # the carrier at 33 holds 2 of its 3 aircraft already: of the two fighters at 30 heading for 36, one fits
+        m = TestLandingOnAMovingCarrier
+        data = FakeData(territories=m.MAP, adjacency=m.ADJ)
+        fighters = [make_unit('Fighter', 'NAA') for _ in range(2)]
+        gs = make_state(data, {30: 'NAA', 36: 'GPC'}, {'NAA': FactionMode.BOT, 'GPC': FactionMode.BOT},
+                        units_by_territory={30: fighters, 36: [make_unit('Infantry', 'GPC')],
+                                            33: [make_unit('Aircraft Carrier', 'NAA')] + [make_unit('Fighter', 'NAA') for _ in range(2)]},
+                        phase=Phase.NONCOMBAT_MOVE)
+        gs.active_faction = 'NAA'
+        engine = GameEngine(gs, data)
+        engine.process_return_to_base('NAA')
+        p = Planner(engine, 'NAA', load_settings(), 'Strategic', random.Random(1), 'noncombat', 1500)
+        dist = p.costs_from(36)[0]
+        self.assertEqual(p.air_room(33), 1)
+        moved = [p._advance(f, 30, 36, dist, set(), (0.6, 0.9)) for f in fighters]
+        self.assertEqual(moved, [True, False])
+        self.assertEqual(p.air_room(33), 0)
+        engine.submit_noncombat_moves('NAA', p.noncombat_orders())  # the plan is legal as a whole
+
+
 class TestNonCombatOrderSequence(unittest.TestCase):
     def test_aircraft_move_before_a_carrier_can_sweep_them_along(self):
         # 20 NAA's island; 21 and 23 sea zones: the carrier sails 21 -> 23 while its fighter flies home to 20

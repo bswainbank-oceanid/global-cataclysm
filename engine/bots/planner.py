@@ -1511,10 +1511,13 @@ class Planner:
         if not self.free_for(u, 'nc'):
             return False
         best = None
+        air = self.category(u) == 'Air'
         for dest in sorted(self.nc_dests(u, origin)):
             d = dist_to_target.get(dest)
             if d is None or d >= here:
                 continue
+            if air and not self.is_land(dest) and self.air_room(dest) <= 0:
+                continue  # every place on my carriers there is already taken or planned for
             if best is None or d < best[0]:
                 best = (d, dest)
         if best is None:
@@ -1522,6 +1525,21 @@ class Planner:
         self.claim(u, 'pursue_sc', target)
         self.moves_nc[u.unit_id] = best[1]
         return True
+
+    def air_room(self, zone):
+        """Places left for more of my aircraft on my carriers in sea zone `zone` as the plan stands: the capacity
+        of my carriers there that stay (and of any being deployed there this turn), less my aircraft there that
+        stay and those the plan already lands there. A non-combat air move checks one aircraft against the board
+        alone, so without this several planned to the same carrier could overfill it."""
+        units = list(self.gs.territories[zone].units) + list(self.gs.territories[zone].pending_deployment)
+        leaving = set(self.moves_nc) | set(self.moves_combat)
+        capacity = sum(abilities.param(self.unit_defs, v.unit_type, abilities.CARRIER_AIR_WING, 'capacity', 0)
+                       for v in units if v.owner == self.me and v.unit_id not in leaving
+                       and abilities.has(self.unit_defs, v.unit_type, abilities.CARRIER_AIR_WING))
+        aboard = sum(1 for v in units if v.owner == self.me and v.unit_id not in leaving and self.category(v) == 'Air')
+        coming = sum(1 for uid, dest in self.moves_nc.items()
+                     if dest == zone and self.category(self.my_units[uid][0]) == 'Air' and self.my_units[uid][1] != zone)
+        return capacity - aboard - coming
 
     _sc_targets = None
 
