@@ -5,7 +5,7 @@
  "description": "Three great factions have aligned to destroy America and the North American Alliance!",
  "generator_id": "GC72_Generator",
  "settings": {
-  "allow_combat_first_turn": false,
+  "allow_combat_first_turn": true,
   "allow_noncombat_first_turn": true,
   "can_rejoin": false,
   "can_withdraw": false,
@@ -20,13 +20,49 @@
     "infantry_in_every_territory": true,
     "min_scs_to_avoid_surrender": 2,
     "neutral_infantry_in_every_territory": true,
-    "sc_bonus": 4,
+    "sc_bonus": 3,
     "sc_final_min_distance": 4,
     "sc_min_distance": 2,
     "surrender_income_multiplier": 2
    }
   },
   "seats": [
+   {
+    "mode": "BOT",
+    "faction": "GPC",
+    "alliance": 1,
+    "strategy": "random",
+    "behavior": "random",
+    "territory_value": 28,
+    "initial_mpc": 125,
+    "units_mpc": 125,
+    "promotions": 1,
+    "scs": 2
+   },
+   {
+    "mode": "BOT",
+    "faction": "UER",
+    "alliance": 1,
+    "strategy": "random",
+    "behavior": "random",
+    "territory_value": 28,
+    "initial_mpc": 125,
+    "units_mpc": 125,
+    "promotions": 1,
+    "scs": 2
+   },
+   {
+    "mode": "BOT",
+    "faction": "AAC",
+    "alliance": 1,
+    "strategy": "random",
+    "behavior": "random",
+    "territory_value": 28,
+    "initial_mpc": 125,
+    "units_mpc": 125,
+    "promotions": 1,
+    "scs": 2
+   },
    {
     "mode": "HUMAN",
     "faction": "NAA",
@@ -38,42 +74,6 @@
     "units_mpc": 125,
     "promotions": 6,
     "scs": 4
-   },
-   {
-    "mode": "BOT",
-    "faction": "UER",
-    "alliance": 2,
-    "strategy": "random",
-    "behavior": "random",
-    "territory_value": 28,
-    "initial_mpc": 125,
-    "units_mpc": 125,
-    "promotions": 1,
-    "scs": 2
-   },
-   {
-    "mode": "BOT",
-    "faction": "UE",
-    "alliance": 2,
-    "strategy": "random",
-    "behavior": "random",
-    "territory_value": 28,
-    "initial_mpc": 125,
-    "units_mpc": 125,
-    "promotions": 1,
-    "scs": 2
-   },
-   {
-    "mode": "BOT",
-    "faction": "GPC",
-    "alliance": 2,
-    "strategy": "random",
-    "behavior": "random",
-    "territory_value": 28,
-    "initial_mpc": 125,
-    "units_mpc": 125,
-    "promotions": 1,
-    "scs": 2
    },
    {"mode": "NOT_PLAYING", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "treacherous"},
    {"mode": "NOT_PLAYING", "faction": "random", "alliance": 0, "strategy": "random", "behavior": "random"}

@@ -13,15 +13,15 @@
   "randomize_order": true,
   "scenario": {
    "kind": "new",
-   "neutral": {"promotions": 0, "scs": 1, "units_mpc": 50},
+   "neutral": {"promotions": 0, "scs": 1, "units_mpc": 31},
    "options": {
     "extra_non_sc_units": 2,
     "faction_weight": 100,
     "infantry_in_every_territory": true,
     "min_scs_to_avoid_surrender": 2,
     "neutral_infantry_in_every_territory": true,
-    "sc_bonus": 5,
-    "sc_final_min_distance": 4,
+    "sc_bonus": 3,
+    "sc_final_min_distance": 5,
     "sc_min_distance": 3,
     "surrender_income_multiplier": 2
    }
