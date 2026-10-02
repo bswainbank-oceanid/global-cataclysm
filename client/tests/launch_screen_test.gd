@@ -228,5 +228,15 @@ func _initialize() -> void:
 	_check(screen._setup_id == "" and screen._scenario.item_count == 2 and screen._is_new(), "after a delete: an unsaved new scenario")
 	screen.select_scenario("fixed")
 
+	# Rounds until armistice proposal: under Rules, default 10, 0..100, sent and restored.
+	_check(int(screen.settings()["armistice_rounds"]) == 10, "armistice rounds default to 10")
+	_check(screen._armistice_rounds.max_value == 100.0 and screen._armistice_rounds.min_value == 0.0, "0 to 100")
+	screen._armistice_rounds.value = 25
+	_check(int(screen.settings()["armistice_rounds"]) == 25, "the chosen rounds are sent")
+	var restored: Dictionary = screen.settings()
+	restored["armistice_rounds"] = 40
+	screen.apply_settings(restored)
+	_check(int(screen.settings()["armistice_rounds"]) == 40, "a saved setup restores it")
+
 	print("launch screen test: failures=%d" % _failures)
 	quit(1 if _failures > 0 else 0)

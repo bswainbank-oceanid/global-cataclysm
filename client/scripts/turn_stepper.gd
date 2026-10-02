@@ -137,8 +137,14 @@ func _on_message(msg: Dictionary) -> void:
 			# A Propose Armistice offer is out and awaiting an answer from every human it names (bots
 			# already answered, synchronously, before this ever arrives -- see server/session.py). "from"
 			# is null when a pure SPECTATOR proposed it (nobody's own faction -- see propose_armistice).
-			GameStore.set_armistice({"from": msg["from"], "awaiting": msg["awaiting"]})
-			log_line.emit("[color=#ffd23f]%s proposes an armistice -- awaiting: %s[/color]" % [_proposer_name(msg["from"]), ", ".join(msg["awaiting"])])
+			# "automatic_after": the game itself proposed it, that many rounds in (the setup's 'Rounds until
+			# armistice proposal').
+			GameStore.set_armistice({"from": msg["from"], "awaiting": msg["awaiting"], "automatic_after": msg.get("automatic_after")})
+			if msg.get("automatic_after") != null:
+				log_line.emit("[color=#ffd23f]%d rounds played: the game proposes an armistice -- awaiting: %s[/color]" % [
+					int(msg["automatic_after"]), ", ".join(msg["awaiting"])])
+			else:
+				log_line.emit("[color=#ffd23f]%s proposes an armistice -- awaiting: %s[/color]" % [_proposer_name(msg["from"]), ", ".join(msg["awaiting"])])
 		"armistice_resolved":
 			GameStore.set_armistice({})
 			if bool(msg.get("accepted", false)):
@@ -147,8 +153,11 @@ func _on_message(msg: Dictionary) -> void:
 				if _is_my_own_proposal(msg.get("from")):
 					GameStore.set_armistice_cooldown_until_round(int(msg.get("cooldown_until_round", -1)))
 				var by := str(msg.get("declined_by", ""))
-				announced.emit([{"title": "Armistice declined", "color": Color(1.0, 0.6, 0.5),
-					"body": "%s declined %s's armistice proposal. The game goes on." % [_name(by), _proposer_name(msg.get("from"))]}])
+				var body := "%s declined %s's armistice proposal. The game goes on." % [_name(by), _proposer_name(msg.get("from"))]
+				if msg.get("automatic_after") != null:
+					body = "%s declined the armistice the game proposed. The game goes on; it will be proposed again in round %d." % [
+						_name(by), int(msg.get("next_round", 0))]
+				announced.emit([{"title": "Armistice declined", "color": Color(1.0, 0.6, 0.5), "body": body}])
 		"error":
 			_awaiting = false
 			log_line.emit("[color=#ff7060]server: %s[/color]" % str(msg.get("message", "")))
@@ -217,7 +226,9 @@ func _announce(events: Array) -> void:
 				for p in e.get("participants", []):
 					names.append(_name(str(p)))
 				items.append({"title": "Armistice agreed", "color": HudStyle.GOLD,
-					"body": "%s proposed an armistice, and everyone agreed: %s.\n\nThe game ends here; nobody is declared the winner." % [_proposer_name(e.get("faction")), ", ".join(names)]})
+					"body": ("After %d rounds the game proposed an armistice" % int(e["automatic_after"]) if e.get("automatic_after") != null
+						else "%s proposed an armistice" % _proposer_name(e.get("faction")))
+						+ (", and everyone agreed: %s.\n\nThe game ends here; nobody is declared the winner." % ", ".join(names))})
 			"faction_eliminated":
 				var f := str(e["faction"])
 				if not surrendered.has(f):

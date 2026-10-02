@@ -236,6 +236,9 @@ _HUMAN_DECISION_PHASES = (Phase.PURCHASE, Phase.COMBAT_MOVE, Phase.NONCOMBAT_MOV
 # A proposer whose armistice was declined can't propose another for this many rounds (measured against
 # GameState.round_number -- see _handle_propose_armistice's cooldown check).
 ARMISTICE_COOLDOWN_ROUNDS = 5
+# The automatic armistice proposal (GameState.armistice_after_rounds): when one is declined, the game
+# proposes again this many rounds later.
+ARMISTICE_REPEAT_ROUNDS = 5
 
 
 class GameSession:
@@ -264,6 +267,11 @@ class GameSession:
         # _handle_propose_armistice) -> GameState.round_number at the moment their LAST proposal was
         # declined. Checked (and enforced) by _handle_propose_armistice, set by _resolve_armistice.
         self._armistice_cooldown = {}
+        # The automatic armistice proposal: the round in which the game next proposes one by itself (it is
+        # made as that round begins, once every faction has played GameState.armistice_after_rounds rounds),
+        # or None (the setting is 0: never).
+        after = engine.game_state.armistice_after_rounds
+        self._auto_armistice_round = after + 1 if after else None
 
     def connect(self, faction):
         """A client just identified itself as `faction` ("join"). Pure
@@ -311,7 +319,8 @@ class GameSession:
         if msg_type == 'next':
             if self._armistice is not None:
                 return [{'type': 'error', 'message': "an armistice proposal is awaiting an answer"}]
-            return self.stepper.next()
+            messages = self.stepper.next()
+            return messages + self._maybe_propose_armistice()
         if msg_type == 'surrender':
             return self._handle_self_surrender(faction)
         if msg_type == 'propose_armistice':
@@ -409,6 +418,23 @@ class GameSession:
             return [{'type': 'armistice_proposed', 'from': faction or None, 'awaiting': sorted(pending)}]
         return self._resolve_armistice(accepted=True)
 
+    def _maybe_propose_armistice(self):
+        """The automatic armistice proposal: once GameState.armistice_after_rounds rounds have been played
+        (as the next round begins) the game itself proposes an armistice -- exactly like a spectator's
+        proposal: every bot accepts at once, every human is asked. Declined, it is proposed again
+        ARMISTICE_REPEAT_ROUNDS rounds later. [] when it isn't time (or a proposal is already pending)."""
+        gs = self.engine.game_state
+        due = self._auto_armistice_round
+        if due is None or gs.game_over or self._armistice is not None or gs.round_number < due:
+            return []
+        active = gs.active_factions()
+        pending = {c for c in active if gs.factions[c].mode == FactionMode.HUMAN}
+        played = gs.round_number - 1
+        self._armistice = {'from': None, 'pending': pending, 'accepted': set(active) - pending, 'automatic_after': played}
+        if pending:
+            return [{'type': 'armistice_proposed', 'from': None, 'awaiting': sorted(pending), 'automatic_after': played}]
+        return self._resolve_armistice(accepted=True)
+
     def _handle_respond_armistice(self, faction, accept):
         """A HUMAN's answer to a pending armistice proposal."""
         info = self._armistice
@@ -421,7 +447,10 @@ class GameSession:
         info['pending'].discard(faction)
         info['accepted'].add(faction)
         if info['pending']:
-            return [{'type': 'armistice_proposed', 'from': info['from'], 'awaiting': sorted(info['pending'])}]
+            message = {'type': 'armistice_proposed', 'from': info['from'], 'awaiting': sorted(info['pending'])}
+            if info.get('automatic_after') is not None:
+                message['automatic_after'] = info['automatic_after']
+            return [message]
         return self._resolve_armistice(accepted=True)
 
     def _resolve_armistice(self, accepted, declined_by=None):
@@ -431,13 +460,18 @@ class GameSession:
         message carries 'cooldown_until_round' so the client can reflect it without guessing."""
         info = self._armistice
         self._armistice = None
+        automatic = info.get('automatic_after')
         if not accepted:
             round_number = self.engine.game_state.round_number
+            if automatic is not None:  # the game's own proposal: asked again later, and nobody's cooldown
+                self._auto_armistice_round = round_number + ARMISTICE_REPEAT_ROUNDS
+                return [{'type': 'armistice_resolved', 'from': None, 'accepted': False, 'declined_by': declined_by,
+                         'events': [], 'automatic_after': automatic, 'next_round': self._auto_armistice_round}]
             self._armistice_cooldown[info['from']] = round_number
             return [{'type': 'armistice_resolved', 'from': info['from'], 'accepted': False, 'declined_by': declined_by,
                      'events': [], 'cooldown_until_round': round_number + ARMISTICE_COOLDOWN_ROUNDS}]
         start = len(self.turn_log.events)
-        self.engine.end_by_armistice(info['from'], sorted(info['accepted']))
+        self.engine.end_by_armistice(info['from'], sorted(info['accepted']), automatic)
         events = self.turn_log.events[start:]
         self.stepper.invalidate_queue()
         return [{'type': 'armistice_resolved', 'from': info['from'], 'accepted': True, 'declined_by': None, 'events': events},

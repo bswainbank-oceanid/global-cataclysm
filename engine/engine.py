@@ -1907,7 +1907,7 @@ class GameEngine:
         self._eliminate(faction)
         gs.game_over = self.would_game_end()
 
-    def end_by_armistice(self, proposer, participants):
+    def end_by_armistice(self, proposer, participants, automatic_after=None):
         """The Settings 'Propose Armistice' action, once every other active faction has accepted it
         (a bot always does; a human is asked): ends the game right here, immediately -- not one of the
         ordinary ways a game ends (victory.game_end_rule), and not gated to any phase, since a proposal
@@ -1918,7 +1918,7 @@ class GameEngine:
             raise ValueError('the game is already over')
         self.game_state.game_over = True
         if self.turn_log is not None:
-            self.turn_log.record_armistice(self.game_state.global_turn, proposer, sorted(participants))
+            self.turn_log.record_armistice(self.game_state.global_turn, proposer, sorted(participants), automatic_after)
 
     def _eliminate(self, code):
         """Takes `code` out of the game: eliminated, its units (and purchases waiting to deploy)

@@ -51,6 +51,8 @@ const OPTION_SECTIONS := {
 	"neutral_infantry_in_every_territory": "starting", "extra_non_sc_units": "starting",
 }
 const HOLD_SECONDS := 1.0
+const DEFAULT_ARMISTICE_ROUNDS := 10  # (server/lobby.py's DEFAULT_ARMISTICE_ROUNDS / MAX_ARMISTICE_ROUNDS)
+const MAX_ARMISTICE_ROUNDS := 100
 const ROW_H := 30.0
 const HEAD_H := 18.0
 const LABEL_W := 205.0  # a section's labels
@@ -85,6 +87,7 @@ var _can_rejoin: CheckBox
 var _max_alliance: OptionButton
 var _combat_first: CheckBox
 var _noncombat_first: CheckBox
+var _armistice_rounds: SpinBox
 var _max_pref := 3  # the maximum alliance size the player asked for
 var _max_size := 3  # ...as offered: kept within 2 .. players-1 for the players there are
 var _message: Label
@@ -262,6 +265,15 @@ func _build_sections(parent: VBoxContainer) -> void:
 	_section_row("rules", "First turn non-combat moves:", _noncombat_first, "Non-Combat Moves allowed on a faction's first turn.")
 	_combat_first = _checkbox(false)
 	_section_row("rules", "First turn combat moves:", _combat_first, "Combat Moves allowed on a faction's first turn.")
+	_armistice_rounds = SpinBox.new()
+	_armistice_rounds.min_value = 0
+	_armistice_rounds.max_value = MAX_ARMISTICE_ROUNDS
+	_armistice_rounds.step = 1
+	_armistice_rounds.value = DEFAULT_ARMISTICE_ROUNDS
+	_armistice_rounds.update_on_text_changed = true
+	_armistice_rounds.custom_minimum_size = Vector2(90, 26)
+	_section_row("rules", "Rounds until armistice proposal:", _armistice_rounds,
+		"After this many rounds the game proposes an armistice: bots always accept, and human players can choose to continue. If it is declined, it is proposed again every 5 rounds. 0: never.")
 
 
 ## A label and its control, in `section`. Returns both (to show or hide together).
@@ -521,6 +533,7 @@ func settings() -> Dictionary:
 		s["scenario"] = {"kind": "new", "options": new_options(), "neutral": neutral}
 	s["allow_combat_first_turn"] = _combat_first.button_pressed
 	s["allow_noncombat_first_turn"] = _noncombat_first.button_pressed
+	s["armistice_rounds"] = int(_armistice_rounds.value)
 	if Dbg.args.has("combat_first_turn"):
 		s["dev"] = {"combat_first_turn": true}  # scripted runs only: the rules skip it
 	return s
@@ -840,6 +853,7 @@ func apply_settings(s: Dictionary) -> void:
 	_can_rejoin.button_pressed = bool(s.get("can_rejoin", false))
 	_combat_first.button_pressed = bool(s.get("allow_combat_first_turn", false))
 	_noncombat_first.button_pressed = bool(s.get("allow_noncombat_first_turn", true))
+	_armistice_rounds.set_value_no_signal(float(s.get("armistice_rounds", DEFAULT_ARMISTICE_ROUNDS)))
 	_max_pref = maxi(1, int(s.get("max_alliance_size", 3)))
 	_max_size = _max_pref
 	_loading = false

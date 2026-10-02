@@ -86,7 +86,7 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
                       allow_noncombat_moves_first_turn=True, max_alliance_size=2,
                       can_withdraw_from_alliances=True, can_rejoin_alliances=False,
                       alliance_strategies=None, alliance_behaviors=None, rng=None,
-                      starting_alliances=None, data_module=None):
+                      starting_alliances=None, data_module=None, armistice_after_rounds=0):
     """faction_modes: {faction_code: FactionMode}, one entry per faction in the game -- every
     faction of the scenario, or (a generated scenario) only those playing: a faction left out has no
     place in the game at all, so it may own no land. data_module: the game's configuration
@@ -152,6 +152,7 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
         max_alliance_size=max_alliance_size,
         can_withdraw_from_alliances=can_withdraw_from_alliances,
         can_rejoin_alliances=can_rejoin_alliances,
+        armistice_after_rounds=armistice_after_rounds,
     )
 
     # The built-in factions: Neutral (owns land the faction assignment leaves unassigned or gives it by

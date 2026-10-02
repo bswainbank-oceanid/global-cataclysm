@@ -22,6 +22,7 @@ Settings (the "new_game" message's "settings"):
      "max_alliance_size": 3,                             # most factions in one alliance (default 3; 1 .. players-1; 1 = no alliances and no Alliances phase)
      "allow_combat_first_turn": false,                   # may a faction make Combat Moves on its first turn (default false)
      "allow_noncombat_first_turn": true,                 # ...and Non-Combat Moves (default true)
+     "armistice_rounds": 10,                             # rounds until the game proposes an armistice (0-100, default 10; 0 = never)
      "seed": 12345,                                      # optional: a seeded game replays exactly (setup, bots AND dice)
      "dev": {"combat_first_turn": false}}                # optional, testing only
 
@@ -102,6 +103,8 @@ PLAYER_MODES = ('HUMAN', 'BOT')
 BOT_AIS = ('strategy', 'random', 'claude')
 DEFAULT_BOT_AI = 'strategy'
 DEFAULT_MAX_ALLIANCE_SIZE = 3
+DEFAULT_ARMISTICE_ROUNDS = 10  # the game proposes an armistice once this many rounds are played (0: never)
+MAX_ARMISTICE_ROUNDS = 100
 
 
 class LobbyError(ValueError):
@@ -171,6 +174,11 @@ def check_settings(settings):
     for key in ('randomize_order', 'can_withdraw', 'can_rejoin', 'allow_combat_first_turn', 'allow_noncombat_first_turn'):
         if key in settings and not isinstance(settings[key], bool):
             problems.append(f'{key} must be true or false')
+    rounds = settings.get('armistice_rounds', DEFAULT_ARMISTICE_ROUNDS)
+    if isinstance(rounds, float) and rounds.is_integer():
+        rounds = int(rounds)
+    if isinstance(rounds, bool) or not isinstance(rounds, int) or not 0 <= rounds <= MAX_ARMISTICE_ROUNDS:
+        problems.append(f'armistice_rounds must be a whole number from 0 to {MAX_ARMISTICE_ROUNDS}')
     max_size = settings.get('max_alliance_size', DEFAULT_MAX_ALLIANCE_SIZE)
     size_ok = isinstance(max_size, int) and not isinstance(max_size, bool)
     if not size_ok:
@@ -268,6 +276,7 @@ def build_session(settings, rng=None):
         allow_combat_moves_first_turn=bool(settings.get('allow_combat_first_turn', False) or settings.get('dev', {}).get('combat_first_turn', False)),
         allow_noncombat_moves_first_turn=bool(settings.get('allow_noncombat_first_turn', True)),
         data_module=config,
+        armistice_after_rounds=int(settings.get('armistice_rounds', DEFAULT_ARMISTICE_ROUNDS)),
     )
     turn_log = TurnLog()
     # The dice come from the same seed as everything else, so a seeded game replays exactly. `stats`

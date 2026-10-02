@@ -232,11 +232,15 @@ class TurnLog:
         pairing as a forced 'surrender'."""
         self.events.append({'kind': 'self_surrender', 'turn': turn, 'round': round_number, 'faction': faction})
 
-    def record_armistice(self, turn, proposer, participants):
+    def record_armistice(self, turn, proposer, participants, automatic_after=None):
         """The Settings 'Propose Armistice' action succeeded: every faction in `participants` (the
         proposer, plus everyone who accepted) agreed to end the game right here -- not a win for anyone
-        (GameEngine.end_by_armistice)."""
-        self.events.append({'kind': 'armistice', 'turn': turn, 'faction': proposer, 'participants': list(participants)})
+        (GameEngine.end_by_armistice). `automatic_after`: the game itself proposed it, after that many
+        rounds (the 'Rounds until armistice proposal' setting) -- the proposer is then None."""
+        event = {'kind': 'armistice', 'turn': turn, 'faction': proposer, 'participants': list(participants)}
+        if automatic_after is not None:
+            event['automatic_after'] = automatic_after
+        self.events.append(event)
 
     def record_alliance_joined(self, turn, faction, target, tag, new_alliance):
         self.events.append({

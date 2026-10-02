@@ -81,7 +81,12 @@ func _sync() -> void:
 	var proposer := "[b]%s[/b]" % GameData.factions[str(from)].name if from != null and GameData.factions.has(str(from)) else "A spectator"
 	_title.text = "%s proposes an armistice" % (str(from) if from != null else "A spectator")
 	var text := "%s proposes ending the game right here, immediately -- an armistice." % proposer
+	var after = GameStore.armistice.get("automatic_after")
+	if after != null:  # the game's own proposal (the setup's 'Rounds until armistice proposal')
+		_title.text = "%d rounds played: armistice proposed" % int(after)
+		text = "%d rounds have been played, so the game proposes ending it right here -- an armistice." % int(after)
 	text += "\n\nNobody wins: the game simply stops, and the Game Over report shows how everyone stood when it did."
-	text += "\n\nIf anyone declines, the proposal falls through and the game continues as normal."
+	text += "\n\nIf anyone declines, the proposal falls through and the game continues as normal." if after == null \
+		else "\n\nThe bots have accepted. If you decline, the game continues, and an armistice is proposed again in 5 rounds."
 	_body.text = text
 	_panel.tooltip_text = "Answer to continue"
