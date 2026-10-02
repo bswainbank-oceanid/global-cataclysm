@@ -158,7 +158,8 @@ func _add_alliance_options() -> void:
 	_content.add_child(HudStyle.label("Surrender", 12, HudStyle.TEXT))
 	var demands: Array = ha.get("surrender", [])
 	if demands.is_empty():
-		var none := HudStyle.label("Nobody can be forced to surrender: you need more than twice a faction's income, or one of the Strategic Centers of a faction down to one or none.", 11, HudStyle.TEXT_DIM)
+		var none := HudStyle.label("Nobody can be forced to surrender: you need more than %s a faction's income, or one of the Strategic Centers of a faction down to %s." % [
+			EventText.income_multiple(), EventText.few_scs()], 11, HudStyle.TEXT_DIM)
 		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_content.add_child(none)
 	for d in demands:

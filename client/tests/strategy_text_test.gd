@@ -52,5 +52,17 @@ func _initialize() -> void:
 	_check(end.contains("UER · ROUND 5 · END OF TURN"), end)
 	_check(end.contains("Purchases deployed elsewhere or lost") and end.contains("deploy to Italy instead"), end)
 
+	# The surrender reasons follow the game's own rule (GameData, from the server's scenario block).
+	var game_data = root.get_node("GameData")
+	var both := ["income", "strategic_center"]
+	_check(_plain(event_text.surrender_reasons(both)) == "its income is more than twice theirs and it controls one of their Strategic Centers while they hold one or none",
+		_plain(event_text.surrender_reasons(both)))
+	game_data.apply_scenario({"surrender": {"income_multiplier": 1.5, "min_strategic_centers": 3}})
+	_check(_plain(event_text.surrender_reasons(both)) == "its income is more than 1.5 times theirs and it controls one of their Strategic Centers while they hold 2 or fewer",
+		_plain(event_text.surrender_reasons(both)))
+	game_data.apply_scenario({"surrender": {"income_multiplier": 3, "min_strategic_centers": 1}})
+	_check(event_text.income_multiple() == "3 times" and event_text.few_scs() == "none", "%s / %s" % [event_text.income_multiple(), event_text.few_scs()])
+	game_data.apply_scenario({"surrender": {"income_multiplier": 2, "min_strategic_centers": 2}})
+
 	print("strategy text test: failures=%d" % _failures)
 	quit(1 if _failures > 0 else 0)

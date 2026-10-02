@@ -214,13 +214,32 @@ static func deploy_change(e: Dictionary) -> String:
 	return "[color=#ffb35c]%s bought for %s deploy to %s instead[/color] (%s)" % [what, _terr(e["from"]), _terr(e["to"]), why]
 
 
-## Why a surrender may be demanded, in words.
+## Why a surrender may be demanded, in words -- by the game's own surrender rule (GameData).
 static func surrender_reasons(reasons: Array) -> String:
 	var bits := []
 	for r in reasons:
 		match str(r):
 			"income":
-				bits.append("its income is more than twice theirs")
+				bits.append("its income is more than %s theirs" % income_multiple())
 			"strategic_center":
-				bits.append("it controls one of their Strategic Centers while they hold one or none")
+				bits.append("it controls one of their Strategic Centers while they hold %s" % few_scs())
 	return " and ".join(bits)
+
+
+## The surrender rule's income multiple in words: "twice", "1.5 times", "3 times".
+static func income_multiple() -> String:
+	var m: float = GameData.surrender_income_multiplier
+	if is_equal_approx(m, 2.0):
+		return "twice"
+	var text := str(int(m)) if is_equal_approx(m, roundf(m)) else ("%.2f" % m).rstrip("0").rstrip(".")
+	return "%s times" % text
+
+
+## "Fewer than N Strategic Centers" in words: "one or none" (N 2), "none" (N 1), "4 or fewer" (N 5).
+static func few_scs() -> String:
+	var n: int = GameData.surrender_min_scs
+	if n <= 1:
+		return "none"
+	if n == 2:
+		return "one or none"
+	return "%d or fewer" % (n - 1)

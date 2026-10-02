@@ -258,3 +258,14 @@ class TestBuildGameReport(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestScenarioBlock(unittest.TestCase):
+    def test_the_surrender_rule_goes_to_the_client(self):
+        from server.lobby import build_session
+        from server.report import scenario_block
+        bot = {'mode': 'BOT', 'faction': 'random', 'alliance': 0, 'strategy': 'random', 'behavior': 'random'}
+        out = {'mode': 'NOT_PLAYING', 'faction': 'random', 'alliance': 0}
+        session, _ = build_session({'seats': [bot, bot] + [out] * 4, 'seed': 1, 'scenario': {
+            'kind': 'new', 'options': {'surrender_income_multiplier': 1.5, 'min_scs_to_avoid_surrender': 3}}})
+        self.assertEqual(scenario_block(session.engine)['surrender'], {'income_multiplier': 1.5, 'min_strategic_centers': 3})

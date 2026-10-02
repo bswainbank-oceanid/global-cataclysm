@@ -171,14 +171,19 @@ def build_game_report(engine, turn_log, bots):
 def scenario_block(engine):
     """The game's own starting map for the client -- its synced files describe the default scenario, but
     a generated one deals territory and Strategic Centers afresh: {sc_bonus, territories: {land id:
-    {faction: starting owner, strategic_center}}, notes}."""
+    {faction: starting owner, strategic_center}}, notes, surrender: {income_multiplier,
+    min_strategic_centers}} -- the last the game's surrender rule (victory.surrender_rule), for the
+    client's wording of it."""
     data = engine.data
     terrs = data.territories()
     config = data.config() if hasattr(data, 'config') else data
     generated = (config.scenario.get('generated') or {}) if hasattr(config, 'scenario') else {}
+    surrender = (data.rules().get('victory') or {}).get('surrender_rule') or {}
     return {
         'sc_bonus': data.sc_bonus(),
         'territories': {str(tid): {'faction': t.get('faction'), 'strategic_center': bool(t.get('strategic_center'))}
                         for tid, t in terrs.items() if t['type'] == 'land'},
         'notes': list(generated.get('notes', [])),
+        'surrender': {'income_multiplier': surrender.get('income_multiplier', 2),
+                      'min_strategic_centers': surrender.get('min_strategic_centers', 2)},
     }

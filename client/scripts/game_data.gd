@@ -19,6 +19,11 @@ var neutral_id := "NEU"  # the faction that owns land no faction is assigned to
 var neutral_color := Color("#7E8378")  # every Neutral faction's land and units are drawn in this
 var noncombatant_id := "NCB"  # the faction that owns Noncombatant land
 var sc_bonus := 2  # what a Strategic Center adds to its value (the game's own: see apply_scenario)
+# The game's surrender rule (see apply_scenario): a faction can force another's surrender when its income
+# is more than surrender_income_multiplier times theirs, or when they hold fewer than
+# surrender_min_scs Strategic Centers and it holds one of theirs.
+var surrender_income_multiplier := 2.0
+var surrender_min_scs := 2
 var units := {}         # {"units": {unit type -> stats, incl. abilities {id: params}}, "category_icons": {...}}
 var map_wraps := true   # the map is a cylinder (east-west wrap) rather than flat
 
@@ -129,11 +134,14 @@ func owner_order() -> Array[String]:
 
 ## The game's own starting map, from the server (a generated scenario deals territory and
 ## Strategic Centers afresh): each land territory's starting owner and Strategic Center flag,
-## and the SC bonus. Territory values and shapes never change.
+## the SC bonus and the surrender rule. Territory values and shapes never change.
 func apply_scenario(block: Dictionary) -> void:
 	if block.is_empty():
 		return
 	sc_bonus = int(block.get("sc_bonus", sc_bonus))
+	var surrender: Dictionary = block.get("surrender", {})
+	surrender_income_multiplier = float(surrender.get("income_multiplier", surrender_income_multiplier))
+	surrender_min_scs = int(surrender.get("min_strategic_centers", surrender_min_scs))
 	var terrs: Dictionary = block.get("territories", {})
 	for key in terrs:
 		var tid := int(key)
