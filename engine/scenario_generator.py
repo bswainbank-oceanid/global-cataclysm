@@ -51,7 +51,7 @@ from .repository import OverlayRepository
 
 # The scenario-wide options, in the order the launcher shows them: key -> (label, kind, min, max, help).
 OPTIONS = {
-    'faction_weight': ('Base map assignment weight', 'int', 0, 100,
+    'faction_weight': ('Base map assignment weight', 'int', 0, 250,
                        "Extra draw weight a faction gets for territory that is its own on the base map; for its "
                        "Strategic Centers, the full weight at its own base-map Strategic Centers and half at its "
                        "other base-map territory."),
