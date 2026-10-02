@@ -135,6 +135,11 @@ class Planner:
         self._sc_spots = set()
         self._landmasses = {}
 
+        # movement.contested_combat_move_rule: my units that began this Combat Move in a contest may only leave it
+        # by the non-combat rules. The bots leave them to fight it out -- all but Transports, which head for
+        # safety (_transports_to_safety).
+        self.in_contest = engine.contested_at_combat_move_start(faction) if self.allow_combat else frozenset()
+
         self.my_units = {}  # unit_id -> (unit, territory)
         for tid, t in self.gs.territories.items():
             for u in t.units:
@@ -259,7 +264,8 @@ class Planner:
         if u.unit_id in self.claimed:
             return False
         if how == 'combat':
-            return self.allow_combat and not u.has_moved_combat
+            # (a unit in a contest is left to fight it out: see in_contest)
+            return self.allow_combat and not u.has_moved_combat and self.my_units.get(u.unit_id, (u, None))[1] not in self.in_contest
         if u.has_moved_noncombat:
             return False
         return self.category(u) == 'Air' or not u.has_moved_combat
@@ -1535,6 +1541,7 @@ class Planner:
             'treasonous_capture': self.objective_treasonous_capture,
             'pursue_leftovers': self.objective_pursue_leftovers,
         }
+        self._transports_to_safety()
         for step in self.settings.primary_order:
             if step.get('when') == 'treasonous' and not treasonous:
                 continue
@@ -1571,6 +1578,38 @@ class Planner:
             steps[step['objective_id']]()
         self._objective = None
         return Plan(self)
+
+    def _transports_to_safety(self):
+        """Before any objective: every Transport of mine (a land unit at sea) that began this Combat Move in a
+        contested sea zone leaves it, by the non-combat rules, for the safest place in reach -- my own or an
+        ally's uncontested land first, then a sea zone with nobody else's units in it and no contest; nearest
+        first. With nowhere safe in reach it stays. Logged under 'transport_safety' (not one of the numbered
+        objectives)."""
+        if not self.allow_combat:
+            return
+        self._objective, self._target = 'transport_safety', None
+        for uid, (u, origin) in sorted(self.my_units.items()):
+            if self.is_land(origin) or self.category(u) != 'Land' or origin not in self.in_contest or u.has_moved_combat:
+                continue
+            safe = []
+            for dest, path in self.engine._contest_exit_paths(u, origin, self.gs).items():
+                t = self.gs.territories[dest]
+                if t.contested_by:
+                    continue
+                if self.is_land(dest):
+                    if self.allied(t.owner):
+                        safe.append((0, len(path), dest, path))
+                elif not any(not self.allied(v.owner) for v in t.units):
+                    safe.append((1, len(path), dest, path))
+            if not safe:
+                self.attempt(origin, 'not_pursued', f'no safe place in reach for the {u.unit_type} at sea')
+                continue
+            _, _, dest, path = min(safe)
+            self.claim(u, 'transport_safety', dest)
+            self.moves_combat[uid] = list(path)
+            self.note(f'transport_safety: the {u.unit_type} at {self.terrs[origin]["name"]} withdraws to {self.terrs[dest]["name"]}')
+            self.attempt(dest, 'pursued', f'the {u.unit_type} at {self.terrs[origin]["name"]} withdraws here')
+        self._objective = None
 
     def _begin_objective(self, oid):
         """The strategy log: the next objective in this pass's planning order."""

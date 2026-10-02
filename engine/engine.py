@@ -80,7 +80,7 @@ from .movement import (
     BombardmentTrace, _is_ally_or_self, _trace_bombardment_movement, aircraft_at, carrier_capacity, carrier_room,
     find_emergency_landing,
     legal_air_move_destinations, legal_combat_move_continuations, legal_combat_move_paths,
-    legal_noncombat_move_destinations, trace_combat_move,
+    legal_contest_exit_paths, legal_noncombat_move_destinations, trace_combat_move,
 )
 from .state import Phase, FactionMode, UnitInstance, is_amphibious
 from .turn_log import TurnLog
@@ -161,6 +161,7 @@ class GameEngine:
         # omit it for an unseeded (OS-entropy) one, same as before.
         self._combat_rng = combat_rng or random.Random()
         self._staged_purchases = {}  # faction_code -> [PurchaseOrder, ...]
+        self._contest_starts = {}  # (faction, global_turn) -> contested places at that Combat Move's start
         self._purchases_confirmed = set()
         self._staged_combat_moves = {}  # faction_code -> [CombatMoveOrder, ...]
         self._combat_moves_confirmed = set()
@@ -610,13 +611,17 @@ class GameEngine:
         gs = game_state or self.game_state  # a working copy, e.g. with staged moves applied
         terrs = self.data.territories()
         unit_defs = self.data.units()
+        in_contest = self.contested_at_combat_move_start(faction)
         options = {}
         for tid, t in gs.territories.items():
             for u in t.units:
                 if u.owner != faction or u.has_moved_combat:
                     continue
                 category = unit_defs[u.unit_type]['category']
-                if category == 'Air':
+                if tid in in_contest:  # movement.contested_combat_move_rule: leave by the non-combat rules
+                    destinations = self._contest_exit_paths(u, tid, gs)
+                    continuations = {}
+                elif category == 'Air':
                     legal = legal_air_move_destinations(u.unit_type, faction, tid, 'combat', gs, self.data)
                     destinations = {dest: [tid, dest] for dest in legal}
                     continuations = {}
@@ -628,6 +633,25 @@ class GameEngine:
                 options[u.unit_id] = {'unit_type': u.unit_type, 'territory_id': tid,
                                        'destinations': destinations, 'continuations': continuations}
         return options
+
+    def contested_at_combat_move_start(self, faction):
+        """The territories and sea zones that were contested when `faction`'s Combat Move began this turn
+        (movement.contested_combat_move_rule): a unit of `faction`'s starting in one of them may only leave
+        it by the non-combat rules. Taken from the real board the first time it is asked for in a turn --
+        staged moves never touch the real board, so that is the phase's starting position."""
+        key = (faction, self.game_state.global_turn)
+        if key not in self._contest_starts:
+            self._contest_starts = {key: frozenset(tid for tid, t in self.game_state.territories.items() if t.contested_by)}
+        return self._contest_starts[key]
+
+    def _contest_exit_paths(self, unit, origin_id, game_state):
+        """{destination: path} for `unit` leaving a contest it began Combat Move in: a land or sea unit by
+        the non-combat movement rules at its combat-move range, an aircraft by the non-combat landing rules."""
+        if self.data.units()[unit.unit_type]['category'] == 'Air':
+            legal = legal_air_move_destinations(unit.unit_type, unit.owner, origin_id, 'noncombat', game_state, self.data,
+                                                unit.unit_id)
+            return {dest: [origin_id, dest] for dest in legal}
+        return legal_contest_exit_paths(unit.unit_type, unit.owner, origin_id, game_state, self.data)
 
     def legal_noncombat_move_options(self, faction, game_state=None):
         """{unit_id: {'unit_type': ..., 'territory_id': origin_id,
@@ -717,6 +741,7 @@ class GameEngine:
         terrs = self.data.territories()
         batch = orders if batch is None else batch
         units_with_own_order = {o.unit_id for o in batch}
+        in_contest = self.contested_at_combat_move_start(faction)
         # the rule set's combat.cruiser_bombardment: every land territory some
         # Cruiser of `faction`'s ALSO in this batch is bombarding -- what lets
         # another selected Sea unit's own order target that same land this
@@ -742,6 +767,24 @@ class GameEngine:
             dest_id = order.path[-1]
             origin_state = game_state.territories[origin_id]
             dest_state = game_state.territories[dest_id]
+
+            if origin_id in in_contest:
+                # movement.contested_combat_move_rule: a unit that began Combat Move in a contest leaves it by
+                # the non-combat rules -- no new fight, no capture -- and that is its only move this turn.
+                if self._contest_exit_paths(unit, origin_id, game_state).get(dest_id) is None:
+                    raise ValueError(f'{dest_id} is not a legal destination for unit {order.unit_id}, which began this '
+                                     f'Combat Move in contested {origin_id}: only its own, allied or contested places, '
+                                     f'by the non-combat rules')
+                riders = []
+                if self._has(unit.unit_type, abilities.CARRIER_AIR_WING):
+                    riders = [u for u in origin_state.units if u.owner == faction and u.unit_id not in units_with_own_order
+                              and unit_defs[u.unit_type]['category'] == 'Air'][:self._capacity(unit.unit_type)]
+                for mover in [unit] + riders:
+                    origin_state.units.remove(mover)
+                    dest_state.units.append(mover)
+                    mover.has_moved_combat = True
+                    mover.has_moved_noncombat = True
+                continue
 
             if category == 'Air':
                 if len(order.path) != 2:

@@ -763,6 +763,17 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
     return CombatMoveTrace(entered_en_route=entered_en_route, final_kind=final_kind, crossed_water=water_active)
 
 
+def legal_contest_exit_paths(unit_type, owner, origin_id, game_state, data_module):
+    """movement.contested_combat_move_rule: {destination_id: path} for a LAND or SEA unit that began its
+    faction's Combat Move in a contested territory or sea zone -- the non-combat rules (own, allied or
+    contested places only; never through or into enemy land or enemy-held water, so it starts no new
+    fight) at the unit's COMBAT-move range. Aircraft there use legal_air_move_destinations' non-combat
+    landing rules instead."""
+    _, paths = _reachable_destinations(origin_id, owner, unit_type, 'noncombat', game_state, data_module, with_paths=True,
+                                       budget_override=_base_move(unit_type, 'combat', data_module.units()))
+    return paths
+
+
 def legal_noncombat_move_destinations(unit_type, owner, origin_id, game_state, data_module):
     """Territories/sea zones `owner`'s `unit_type` unit, currently at
     `origin_id`, could legally end a non-combat move at."""
