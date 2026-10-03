@@ -1,8 +1,8 @@
 """The Underdog alliance strategy and behaviour (engine/bots/alliance_policy.py): a group's strength is its total
 income and total unit value, against the strongest other group on the board (each alliance one group, each
-unallied player its own). It joins only an alliance weaker than that on both counts (under 100% of it with a
-human in the alliance, under 130% with bots only), invites only factions that keep the alliance under 100%,
-and plans -- like Treacherous -- to withdraw once its alliance is above it on either count."""
+unallied player its own). It joins only an alliance under 130% of that on both counts, invites only factions
+that keep the alliance under 100%, and plans -- like Treacherous -- to withdraw once its alliance is above 130%
+of it on either count -- humans or bots alike."""
 import random
 import unittest
 from unittest import mock
@@ -56,11 +56,11 @@ class TestJoining(UnderdogTest):
         engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)})
         self.assertFalse(policy.accepts_invite(engine, 'NAA', 'UE'))  # 20 >= 1.3 x 15
 
-    def test_with_a_human_it_must_stay_weaker(self):
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (21, 21), 'PAF': (5, 5)}, humans=('UE',))
-        self.assertTrue(policy.accepts_invite(engine, 'NAA', 'UE'))   # 20 < 21
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (19, 19), 'PAF': (5, 5)}, humans=('UE',))
-        self.assertFalse(policy.accepts_invite(engine, 'NAA', 'UE'))  # under 130%, but a human is in it
+    def test_with_a_human_the_same_130_percent(self):
+        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (17, 17), 'PAF': (5, 5)}, humans=('UE',))
+        self.assertTrue(policy.accepts_invite(engine, 'NAA', 'UE'))   # 20 < 1.3 x 17
+        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)}, humans=('UE',))
+        self.assertFalse(policy.accepts_invite(engine, 'NAA', 'UE'))  # 20 >= 1.3 x 15
 
     def test_both_measures_must_be_under(self):
         engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (25, 10), 'PAF': (5, 5)})
@@ -94,9 +94,11 @@ class TestWithdrawing(UnderdogTest):
         engine, _ = self.game({'NAA': (10, 5), 'UE': (10, 5), 'GPC': (15, 30), 'PAF': (5, 5)}, alliances=allied)
         self.assertTrue(policy.underdog_wants_out(engine, 'NAA'))   # income alone is enough
 
-    def test_with_a_human_it_leaves_once_stronger_than_every_other_group(self):
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (19, 19), 'PAF': (5, 5)},
-                              humans=('UE',), alliances={'NAA': 'A1', 'UE': 'A1'})
+    def test_with_a_human_it_leaves_above_the_same_130_percent(self):
+        allied = {'NAA': 'A1', 'UE': 'A1'}
+        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (16, 16), 'PAF': (5, 5)}, humans=('UE',), alliances=allied)
+        self.assertFalse(policy.underdog_wants_out(engine, 'NAA'))  # 20 <= 1.3 x 16: stays, human or not
+        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)}, humans=('UE',), alliances=allied)
         self.assertTrue(policy.underdog_wants_out(engine, 'NAA'))
 
     def test_it_plans_at_turn_start_and_withdraws_at_diplomacy(self):

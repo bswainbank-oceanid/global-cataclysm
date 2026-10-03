@@ -46,9 +46,8 @@ Six strategies (game_start setting, per bot):
 - underdog: allies only to stay the underdog -- by strength, a group's total income
   (territory MPC) and total unit value (UV), compared with the strongest other group on
   the board (each alliance one group, each unallied active player its own). It accepts an
-  invitation only if the alliance it would form is weaker on BOTH counts than the
-  strongest other group -- strictly, when that alliance would hold a human; under 130% of
-  it, when only bots. It invites (rotating, as above) only a faction whose joining keeps
+  invitation only if the alliance it would form is under 130% of the strongest other
+  group on BOTH counts, humans or bots. It invites (rotating, as above) only a faction whose joining keeps
   the alliance under 100% of the strongest other group on both counts, a human included.
   See _underdog_fits.
 - variable (added this session): re-rolls to one of the four CONCRETE
@@ -83,8 +82,7 @@ withdrawing is simply never possible then):
 - underdog: plans at the START of its own turn (like treacherous: the
   turn's Non-Combat Move then makes its treasonous captures) to withdraw at
   Diplomacy if its alliance has become the favourite -- its income OR unit
-  value above the strongest other group's (above 130% of it, when the
-  alliance holds no human). Also always withdraws if the game would
+  value above 130% of the strongest other group's, humans or bots. Also always withdraws if the game would
   otherwise end on its own turn. See underdog_wants_out.
 - variable (added this session): same re-roll-every-turn idea as the
   variable strategy above, over the three concrete behaviors -- a turn
@@ -108,10 +106,10 @@ MAX_INVITE_DECLINES = 5
 STRATEGIES = ('aggressive', 'passive', 'counterweight', 'independent', 'adversarial', 'underdog', 'variable')
 BEHAVIORS = ('loyal', 'opportunistic', 'treacherous', 'underdog', 'variable')
 
-# Underdog: an alliance of bots only may be up to this much of the strongest other group's strength
-# (income and unit value) when joining, and becomes the favourite -- time to leave -- above it. An
-# alliance holding a human uses 1.0; so does every invitation.
-UNDERDOG_BOT_MARGIN = 1.3
+# Underdog: an alliance may be up to this much of the strongest other group's strength (income and unit
+# value) when joining, and becomes the favourite -- time to leave -- above it, whether it holds a human or
+# not. An invitation keeps the alliance under 1.0 of it.
+UNDERDOG_MARGIN = 1.3
 
 # What a 'variable' bot's own per-turn re-roll picks from (reroll_alliance_
 # strategy/reroll_alliance_behavior) -- everything in STRATEGIES/BEHAVIORS
@@ -258,11 +256,6 @@ def _strongest_other(engine, members):
     return (max((s[0] for s in strengths), default=0), max((s[1] for s in strengths), default=0))
 
 
-def _has_human(engine, members):
-    gs = engine.game_state
-    return any(gs.factions[m].mode == FactionMode.HUMAN for m in members)
-
-
 def _underdog_fits(engine, members, margin):
     """An alliance of `members` stays the underdog: its income AND its unit value both under `margin` times
     the strongest other group's."""
@@ -273,12 +266,11 @@ def _underdog_fits(engine, members, margin):
 
 def underdog_wants_out(engine, faction):
     """The underdog behaviour's withdrawal plan, made at the start of `faction`'s turn: its alliance has
-    become the favourite -- income OR unit value above the strongest other group's (above 130% of it when
-    the alliance holds no human)."""
+    become the favourite -- income OR unit value above 130% of the strongest other group's."""
     members = engine._alliance_members(faction)
     if len(members) < 2:
         return False
-    margin = 1.0 if _has_human(engine, members) else UNDERDOG_BOT_MARGIN
+    margin = UNDERDOG_MARGIN
     income, units = _group_strength(engine, members)
     top_income, top_units = _strongest_other(engine, members)
     return income > margin * top_income or units > margin * top_units
@@ -339,7 +331,7 @@ def accepts_invite(engine, faction, inviter):
         return not _alliance_has_human(engine, inviter)
     if strategy == 'underdog':
         joined = engine._alliance_members(inviter) | engine._alliance_members(faction)
-        return _underdog_fits(engine, joined, 1.0 if _has_human(engine, joined) else UNDERDOG_BOT_MARGIN)
+        return _underdog_fits(engine, joined, UNDERDOG_MARGIN)
     if strategy in ('aggressive', 'passive'):
         return True
 
