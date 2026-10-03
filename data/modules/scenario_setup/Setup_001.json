@@ -7,9 +7,10 @@
  "settings": {
   "allow_combat_first_turn": false,
   "allow_noncombat_first_turn": true,
+  "armistice_rounds": 10,
   "can_rejoin": false,
   "can_withdraw": true,
-  "max_alliance_size": 3,
+  "max_alliance_size": 2,
   "randomize_order": true,
   "scenario": {
    "kind": "new",
@@ -23,7 +24,7 @@
     "sc_bonus": 3,
     "sc_final_min_distance": 5,
     "sc_min_distance": 3,
-    "surrender_income_multiplier": 2
+    "surrender_income_multiplier": 2.5
    }
   },
   "seats": [
@@ -44,7 +45,7 @@
     "faction": "random",
     "alliance": 0,
     "strategy": "adversarial",
-    "behavior": "opportunistic",
+    "behavior": "variable",
     "territory_value": 45,
     "initial_mpc": 225,
     "units_mpc": 200,
