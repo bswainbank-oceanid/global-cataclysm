@@ -53,6 +53,15 @@ var _scroll: ScrollContainer
 var _result: RichTextLabel
 var _button: Button
 var _panel: PanelContainer
+var _frame_tag: Label  # names what the frame highlights (see _apply_frame)
+# The frame's highlights: [colour, tag] per BattleModel.highlight() -- the air superiority round, and each
+# first-round combat bonus by its reason (engine.engine's ROUND1_*), under the names players know them by.
+const FRAMES := {
+	"air": [Color(0.45, 0.78, 1.0), "AIR SUPERIORITY ROUND"],
+	"amphibious landing": [Color(0.25, 0.85, 0.7), "AMPHIBIOUS LANDING BONUS"],
+	"sea-deploy ambush": [Color(1.0, 0.62, 0.2), "BLOCKADE BONUS"],
+	"former-ally territory reclaim": [Color(0.95, 0.3, 0.3), "BETRAYAL BONUS"],
+}
 
 
 func _ready() -> void:
@@ -80,6 +89,11 @@ func _ready() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
 	_panel.add_child(v)
+
+	_frame_tag = HudStyle.label("", 13, HudStyle.GOLD)
+	_frame_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_frame_tag.visible = false
+	v.add_child(_frame_tag)
 
 	_title = HudStyle.label("", 15, HudStyle.GOLD)
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -206,6 +220,7 @@ func receive_events(events: Array) -> void:
 	if _model == null:
 		return
 	_model.load_events(events)
+	_apply_frame()  # (the rounds are known now: an air superiority round first, say)
 	if _want_press:
 		_want_press = false
 		_do_press()
@@ -298,6 +313,7 @@ func _play_reactions() -> void:
 ## The button's label and the text box: what the last pulse did, then what happens next
 ## (or, once the battle is over, its summary).
 func _refresh_texts() -> void:
+	_apply_frame()
 	var action := _model.next_action({"attacker": Settings.resolve_attacker, "defender": Settings.resolve_defender})
 	if not _button.disabled:
 		_button.text = str(action["label"])
@@ -311,6 +327,23 @@ func _refresh_texts() -> void:
 	_result.text = "\n".join(lines)
 	# The end state is read from the bottom (the summary); otherwise from the top.
 	_result.scroll_to_line(maxi(_result.get_line_count() - 1, 0) if _model.finished else 0)
+
+
+## The frame shows what makes the round on show special: the air superiority round, or a first-round
+## combat bonus (FRAMES) -- a coloured, thicker border with a glow, and a tag naming it; plain gold otherwise.
+func _apply_frame() -> void:
+	var kind := _model.highlight() if _model != null else ""
+	var style: Array = FRAMES.get(kind, [])
+	var box := HudStyle.box(HudStyle.GOLD, Color(0.07, 0.085, 0.11), 2)
+	if not style.is_empty():
+		var colour: Color = style[0]
+		box = HudStyle.box(colour, Color(0.07, 0.085, 0.11), 5)
+		box.shadow_color = Color(colour.r, colour.g, colour.b, 0.55)
+		box.shadow_size = 14
+		_frame_tag.text = str(style[1]) if kind == "air" else "%s -- %s, round 1" % [style[1], _model.bonus_holder()]
+		_frame_tag.add_theme_color_override("font_color", colour.lightened(0.25))
+	_frame_tag.visible = not style.is_empty()
+	_panel.add_theme_stylebox_override("panel", box)
 
 
 # ---- layout -------------------------------------------------------------------

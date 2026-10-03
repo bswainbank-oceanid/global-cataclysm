@@ -50,6 +50,9 @@ var prev_lines: Array = [] # what the latest pulse did, as BBCode lines
 var round_label := ""
 var bonus_side := ""       # who gets the first-round combat bonus ("attacker" | "defender" | "")
 var bonus_reason := ""     # ...and why (amphibious landing, sea-deploy ambush, ...)
+# engine.engine's ROUND1_* reasons -> what the board calls them
+const BONUS_NAMES := {"amphibious landing": "amphibious landing", "sea-deploy ambush": "blockade",
+	"former-ally territory reclaim": "betrayal"}
 var _damaged_this_round := {}  # unit_id -> true once it has dealt damage this round (its XP is in)
 var _round_closed := false
 
@@ -136,6 +139,25 @@ func factions_by_side() -> Dictionary:
 	return out
 
 
+## What the board's frame highlights for the round on show (or, before the first, the one about to be
+## fought): "air" (the air superiority round), the first-round bonus's reason (round 1, when one side has
+## it: "amphibious landing", "sea-deploy ambush", "former-ally territory reclaim"), or "" (nothing).
+func highlight() -> String:
+	if finished or rounds.is_empty():
+		return ""
+	var r := int(rounds[maxi(round_index, 0)]["round"])
+	if r == 0:
+		return "air"
+	if r == 1 and bonus_side != "":
+		return bonus_reason
+	return ""
+
+
+## Whose bonus it is, for the frame's tag: "Defender (GPC)".
+func bonus_holder() -> String:
+	return "%s (%s)" % [bonus_side.capitalize(), " / ".join(factions_by_side()[bonus_side])] if bonus_side != "" else ""
+
+
 func round_title() -> String:
 	if finished:
 		return "Battle over"
@@ -149,7 +171,12 @@ func round_title() -> String:
 ## "Defender (GPC) bonus: amphibious landing"
 func _bonus_text() -> String:
 	var who: Array = factions_by_side()[bonus_side]
-	return "%s (%s) bonus: %s" % [bonus_side.capitalize(), " / ".join(who), bonus_reason]
+	return "%s (%s) bonus: %s" % [bonus_side.capitalize(), " / ".join(who), bonus_name()]
+
+
+## The first-round bonus by the name players know it by (the engine's reasons are more literal).
+func bonus_name() -> String:
+	return str(BONUS_NAMES.get(bonus_reason, bonus_reason))
 
 
 # ---- the press ---------------------------------------------------------------------

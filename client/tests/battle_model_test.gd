@@ -123,6 +123,29 @@ func _initialize() -> void:
 	if not mb.finished and mb.round_index >= 1 and int(mb.rounds[mb.round_index]["round"]) >= 2:
 		_check(not mb.round_title().contains("bonus"), "later rounds carry no bonus: " + mb.round_title())
 
+	# The frame's highlight: the air superiority round, then round 1's bonus (by the players' name), then nothing.
+	var hd = JSON.parse_string(FileAccess.get_file_as_string(path))
+	hd["preview"]["round1_bonus"] = {"side": "attacker", "reason": "sea-deploy ambush"}
+	var mh := BattleModel.from_preview(hd["preview"])
+	mh.load_events(hd["events"])
+	var first := int(mh.rounds[0]["round"])
+	_check(mh.highlight() == ("air" if first == 0 else "sea-deploy ambush"), "before the first round: %s" % mh.highlight())
+	_check(mh.bonus_name() == "blockade" and mh.round_title().contains("blockade"), "the ambush is called a blockade: " + mh.round_title())
+	var hguard := 0
+	while not mh.finished and hguard < 20:
+		mh.press(_all(BattleModel.Resolve.ROUND))
+		hguard += 1
+		if mh.finished:
+			break
+		var r := int(mh.rounds[mh.round_index]["round"])
+		var want := "air" if r == 0 else ("sea-deploy ambush" if r == 1 else "")
+		_check(mh.highlight() == want, "round %d highlights %s, not %s" % [r, want, mh.highlight()])
+	_check(mh.highlight() == "", "nothing once the battle is over")
+	var nd = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var nb := BattleModel.from_preview(nd["preview"])
+	nb.load_events(nd["events"])
+	_check(nb.highlight() == ("air" if first == 0 else ""), "no bonus: only an air round is highlighted")
+
 	# XP shows the moment a unit deals damage (promotion waits for the round's end).
 	m = _load(path)
 	var xp_checked := false
