@@ -129,7 +129,8 @@
   {
    "location_id": 28,
    "units": [
-    {"id": "UE-007", "unit_type_id": "Infantry", "faction_id": "UE"}
+    {"id": "UE-007", "unit_type_id": "Infantry", "faction_id": "UE"},
+    {"id": "UE-012", "unit_type_id": "Infantry", "faction_id": "UE"}
    ]
   },
   {
@@ -177,12 +178,6 @@
     {"id": "AAC-005", "unit_type_id": "Infantry", "faction_id": "AAC"},
     {"id": "AAC-006", "unit_type_id": "Infantry", "faction_id": "AAC"},
     {"id": "AAC-007", "unit_type_id": "Mechanized Infantry", "faction_id": "AAC"}
-   ]
-  },
-  {
-   "location_id": 38,
-   "units": [
-    {"id": "UE-012", "unit_type_id": "Infantry", "faction_id": "UE"}
    ]
   },
   {

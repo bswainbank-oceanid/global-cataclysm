@@ -99,8 +99,7 @@
    "location_id": 28,
    "units": [
     {"id": "UE-008", "unit_type_id": "Armor", "faction_id": "UE"},
-    {"id": "UE-009", "unit_type_id": "Bomber", "faction_id": "UE"},
-    {"id": "UE-010", "unit_type_id": "Infantry", "faction_id": "UE"}
+    {"id": "UE-009", "unit_type_id": "Bomber", "faction_id": "UE"}
    ]
   },
   {
@@ -140,6 +139,18 @@
    "units": [
     {"id": "AAC-002", "unit_type_id": "Fighter", "faction_id": "AAC"},
     {"id": "AAC-003", "unit_type_id": "Infantry", "faction_id": "AAC"}
+   ]
+  },
+  {
+   "location_id": 38,
+   "units": [
+    {"id": "NEU-001", "unit_type_id": "Infantry", "faction_id": "NEU"}
+   ]
+  },
+  {
+   "location_id": 39,
+   "units": [
+    {"id": "UE-010", "unit_type_id": "Infantry", "faction_id": "UE"}
    ]
   },
   {

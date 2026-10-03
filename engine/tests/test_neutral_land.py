@@ -20,6 +20,8 @@ from engine.state import FactionMode
 ALASKA = 6          # a UER territory in GC72
 NORWAY = 7          # a UER Strategic Center
 
+SWITZERLAND = 38
+
 
 class TestNeutralLand(unittest.TestCase):
     def setUp(self):
@@ -38,7 +40,7 @@ class TestNeutralLand(unittest.TestCase):
         if norway is None:
             norway = {'location_id': NORWAY, 'units': []}
             setup['locations'].append(norway)
-        norway['units'].append({'id': 'NEU-001', 'unit_type_id': 'Infantry', 'faction_id': 'NEU'})
+        norway['units'].append({'id': 'NEU-T01', 'unit_type_id': 'Infantry', 'faction_id': 'NEU'})  # (NEU-001: Switzerland's)
         self.repo.save(setup)
         self.repo.clear_cache()
         data.use_scenario(repository=self.repo)
@@ -72,13 +74,15 @@ class TestNeutralLand(unittest.TestCase):
         self.assertEqual(gs.factions['NEU'].turns_taken, 0)
 
 
-class TestNoNeutralFactionWithoutNeutralLand(unittest.TestCase):
-    def test_gc72_has_no_unassigned_land(self):
+class TestGC72NeutralLand(unittest.TestCase):
+    def test_switzerland_is_the_neutral_factions_with_its_infantry(self):
         data.use_scenario()
-        self.assertEqual(data.unassigned_land(), [])
+        self.assertEqual(data.unassigned_land(), [])  # (it is assigned to the Neutral faction by id)
         gs = build_game_state({c: FactionMode.BOT for c in data.factions()}, rng=random.Random(1))
-        self.assertNotIn('NEU', gs.factions)
-
+        self.assertEqual(gs.territories[SWITZERLAND].owner, 'NEU')
+        self.assertEqual(gs.factions['NEU'].mode, FactionMode.NEUTRAL)
+        self.assertNotIn('NEU', gs.active_factions())
+        self.assertEqual([(u.owner, u.unit_type) for u in gs.territories[SWITZERLAND].units], [('NEU', 'Infantry')])
 
 if __name__ == '__main__':
     unittest.main()

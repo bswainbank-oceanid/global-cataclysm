@@ -54,15 +54,16 @@ class TestTerritory(unittest.TestCase):
     def test_the_default_split_and_the_scale_down(self):
         b, g = base(), generator()
         seats, notes = gen.resolve_seats(b, g['seat_defaults'], g['neutral_defaults'], PLAYERS_3, {}, None)
-        self.assertEqual([v['territory_value'] for v in seats['players'].values()], [50, 50, 50])
-        self.assertEqual(seats['neutral']['territory_value'], 0)
+        total = gen.land_value_total(b)  # 152 on GC72
+        self.assertEqual([v['territory_value'] for v in seats['players'].values()], [total // 3] * 3)
+        self.assertEqual(seats['neutral']['territory_value'], total - 3 * (total // 3))  # whatever the players leave
         self.assertEqual(notes, [])
         seats, notes = gen.resolve_seats(b, g['seat_defaults'], g['neutral_defaults'], ['NAA', 'GPC'],
                                          {'NAA': {'territory_value': 150}, 'GPC': {'territory_value': 100}},
                                          {'territory_value': 50})
         self.assertLessEqual(sum(v['territory_value'] for v in seats['players'].values())
-                             + seats['neutral']['territory_value'], 150)
-        self.assertEqual(seats['players']['NAA']['territory_value'], 75)
+                             + seats['neutral']['territory_value'], total)
+        self.assertEqual(seats['players']['NAA']['territory_value'], 150 * total // 300)  # scaled by total / 300 asked
         self.assertTrue(notes)
 
     def test_the_neutral_pool_and_noncombatant_land(self):

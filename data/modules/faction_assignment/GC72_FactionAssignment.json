@@ -32,7 +32,7 @@
   {"location_id": 33, "faction_id": "GPC", "sea_deployment_location_id": 45},
   {"location_id": 34, "faction_id": "GPC", "sea_deployment_location_id": 45},
   {"location_id": 37, "faction_id": "AAC", "sea_deployment_location_id": 48},
-  {"location_id": 38, "faction_id": "UE", "sea_deployment_location_id": null},
+  {"location_id": 38, "faction_id": "NEU", "sea_deployment_location_id": null},
   {"location_id": 39, "faction_id": "UE", "sea_deployment_location_id": 60},
   {"location_id": 40, "faction_id": "UE", "sea_deployment_location_id": 60},
   {"location_id": 41, "faction_id": "UE", "sea_deployment_location_id": 42},

@@ -16,6 +16,9 @@ base_path = args.base or tool_data.root_path(tool_data.map_meta()['image'])
 
 spaces = tool_data.spaces()
 faction_colors_hex = {k: v['color'] for k, v in tool_data.factions().items()}
+# the built-in Neutral and Noncombatant factions, for land the faction assignment gives them
+for builtin in (tool_data.config().neutral_faction(), tool_data.config().noncombatant_faction()):
+    faction_colors_hex.setdefault(builtin['id'], builtin['color'])
 
 def hex_to_bgr(h):
     h = h.lstrip('#')
@@ -163,6 +166,12 @@ ICON_FN = {
     'GPC': icon_gpc, 'PAF': icon_paf, 'AAC': icon_aac,
 }
 
+
+def icon_plain(img, cx, cy, r, color):
+    """A faction with no icon of its own (the built-in Neutral and Noncombatant factions): a plain disc."""
+    cv2.circle(img, (cx, cy), max(2, int(r * 0.7)), color, -1, lineType=cv2.LINE_AA)
+    cv2.circle(img, (cx, cy), max(2, int(r * 0.7)), (0, 0, 0), 1, lineType=cv2.LINE_AA)
+
 def draw_id_name_label(img, cx, cy, sid, name, above=False):
     """Every space gets this: plain black lettering, 'id. name', no box.
     Placed above the space's point for sea spaces, below it for land (so
@@ -249,7 +258,7 @@ for sp in spaces:
     icon_cx = x0 + pad_x + icon_d // 2
     icon_cy = (y0 + y1) // 2
     icon_color = lighten(accent, 0.6)
-    ICON_FN[fac](img, icon_cx, icon_cy, icon_d // 2, icon_color)
+    ICON_FN.get(fac, icon_plain)(img, icon_cx, icon_cy, icon_d // 2, icon_color)
 
     cursor_x = x0 + pad_x + icon_d + gap
     base_y = icon_cy + max(th_fac, th_val) // 2

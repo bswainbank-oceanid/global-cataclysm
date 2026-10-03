@@ -147,7 +147,7 @@ Settings come at two levels:
   Neutral row has no initial MPC). A player starts with its initial MPC, buys its
   starting units with its units MPC out of it, and keeps the rest; initial MPC is
   at least units MPC. The seats' territory values together may be at most the
-  map's total land value (150 on GC72) -- more is scaled down before the deal --
+  map's total land value (152 on GC72) -- more is scaled down before the deal --
   and the rest of the map is Noncombatant. A player's territory value left at its
   default is the total split evenly among the players; the Neutral one, what they
   leave.
