@@ -112,15 +112,18 @@ func _load_factions() -> void:
 		factions[code] = {
 			"name": d["factions"][code]["name"],
 			"color": Color(d["factions"][code]["color"]),
+			"icon": str(d["factions"][code].get("icon", "") if d["factions"][code].get("icon") != null else ""),
 		}
 		faction_order.append(code)
 	var n: Dictionary = d.get("neutral", {})
 	neutral_id = str(n.get("id", neutral_id))
 	neutral_color = Color(str(n.get("color", neutral_color.to_html())))
-	factions[neutral_id] = {"name": str(n.get("name", "Neutral")), "color": neutral_color}
+	factions[neutral_id] = {"name": str(n.get("name", "Neutral")), "color": neutral_color,
+		"icon": str(n.get("icon", "") if n.get("icon") != null else "")}
 	var nc: Dictionary = d.get("noncombatant", {})
 	noncombatant_id = str(nc.get("id", noncombatant_id))
-	factions[noncombatant_id] = {"name": str(nc.get("name", "Noncombatant")), "color": Color(str(nc.get("color", "#EDDEAD")))}
+	factions[noncombatant_id] = {"name": str(nc.get("name", "Noncombatant")), "color": Color(str(nc.get("color", "#EDDEAD"))),
+		"icon": str(nc.get("icon", "") if nc.get("icon") != null else "")}
 
 
 ## Every faction that can own units or land, in display order: the playable ones, then the

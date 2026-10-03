@@ -139,13 +139,15 @@ class GameConfig:
         """{id, name, color}: the colour every Neutral faction is drawn in, and the faction that owns land
         the faction assignment leaves unassigned."""
         n = self.faction_set.get('neutral') or {}
-        return {'id': n.get('id', 'NEU'), 'name': n.get('name', 'Neutral'), 'color': n.get('color', '#7E8378')}
+        return {'id': n.get('id', 'NEU'), 'name': n.get('name', 'Neutral'), 'color': n.get('color', '#7E8378'),
+                'icon': n.get('icon')}
 
     def noncombatant_faction(self):
         """{id, name, color}: the faction that owns land a faction assignment gives to Noncombatant (it
         plays like a Noncombatant seat: no units, no turns, impassable)."""
         n = self.faction_set.get('noncombatant') or {}
-        return {'id': n.get('id', 'NCB'), 'name': n.get('name', 'Noncombatant'), 'color': n.get('color', '#EDDEAD')}
+        return {'id': n.get('id', 'NCB'), 'name': n.get('name', 'Noncombatant'), 'color': n.get('color', '#EDDEAD'),
+                'icon': n.get('icon')}
 
     def unassigned_land(self):
         """Land locations the faction assignment gives no faction: the Neutral faction's."""

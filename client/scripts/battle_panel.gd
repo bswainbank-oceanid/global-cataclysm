@@ -54,6 +54,9 @@ var _result: RichTextLabel
 var _button: Button
 var _panel: PanelContainer
 var _frame_tag: Label  # names what the frame highlights (see _apply_frame)
+var _title_row: HBoxContainer
+var _owner_icon: Control  # the icon of the faction controlling the battle's territory (none at sea)
+var _side_icons := {}  # "attacker" / "defender" -> HBoxContainer of that side's faction icons
 # The frame's highlights: [colour, tag] per BattleModel.highlight() -- the air superiority round, and each
 # first-round combat bonus by its reason (engine.engine's ROUND1_*), under the names players know them by.
 const FRAMES := {
@@ -95,9 +98,15 @@ func _ready() -> void:
 	_frame_tag.visible = false
 	v.add_child(_frame_tag)
 
+	_title_row = HBoxContainer.new()  # the controlling faction's icon, then the title
+	_title_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_title_row.add_theme_constant_override("separation", 8)
+	v.add_child(_title_row)
+	_owner_icon = Control.new()
+	_title_row.add_child(_owner_icon)
 	_title = HudStyle.label("", 15, HudStyle.GOLD)
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(_title)
+	_title_row.add_child(_title)
 
 	var sides := HBoxContainer.new()
 	sides.add_theme_constant_override("separation", 6)
@@ -149,9 +158,17 @@ func _side_box(side: String) -> Control:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 0)
 	box.add_child(v)
+	var head_row := HBoxContainer.new()  # the side's faction icons, then "Attacker - GPC"
+	head_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	head_row.add_theme_constant_override("separation", 6)
+	v.add_child(head_row)
+	var icons := HBoxContainer.new()
+	icons.add_theme_constant_override("separation", 3)
+	head_row.add_child(icons)
+	_side_icons[side] = icons
 	var head := HudStyle.label("", 14)
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(head)
+	head_row.add_child(head)
 	_side_labels[side] = head
 	var options := HBoxContainer.new()
 	options.add_theme_constant_override("separation", 3)
@@ -241,9 +258,20 @@ func _set_header() -> void:
 	else:
 		lines.append("Sea Zone")
 	_title.text = "\n".join(lines)
+	# the controlling faction's icon beside the title (none at sea, or unowned)
+	_owner_icon.get_parent().remove_child(_owner_icon)
+	_owner_icon.queue_free()
+	_owner_icon = FactionIcons.make(owner, 26) if owner != "" else Control.new()
+	_title_row.add_child(_owner_icon)
+	_title_row.move_child(_owner_icon, 0)
 	var by_side := _model.factions_by_side()
 	_side_labels["attacker"].text = "Attacker - " + " / ".join(by_side["attacker"])
 	_side_labels["defender"].text = "Defender - " + " / ".join(by_side["defender"])
+	for side in _side_icons:
+		for c in _side_icons[side].get_children():
+			c.queue_free()
+		for code in by_side[side]:
+			_side_icons[side].add_child(FactionIcons.make(str(code), 24))
 
 
 ## Dev/scripted: press the board's button `n` times, letting the server answer

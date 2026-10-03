@@ -73,7 +73,9 @@ def main():
     shutil.copy2(ROOT / config.map_info()['image'], CLIENT / 'assets' / 'base_map.png')
     icons = {d['icon'] for d in config.units().values() if d.get('icon')}
     icons |= {f['icon'] for f in config.factions().values() if f.get('icon')}
+    icons |= {f['icon'] for f in (config.neutral_faction(), config.noncombatant_faction()) if f.get('icon')}
     for icon in sorted(icons):
+        (icon_dir / icon).parent.mkdir(parents=True, exist_ok=True)  # (faction icons sit in a subfolder)
         shutil.copy2(ROOT / 'assets' / 'icons' / icon, icon_dir / icon)
     print(f'synced {config.scenario_id}: {len(files)} data files, the map image and {len(icons)} icons into {CLIENT}')
 

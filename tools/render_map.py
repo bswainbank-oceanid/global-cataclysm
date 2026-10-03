@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import tool_data
 from map_geometry import label_land, territory_labels
+import faction_icons
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--scenario', default=tool_data.DEFAULT_SCENARIO_ID)
@@ -19,6 +20,12 @@ faction_colors_hex = {k: v['color'] for k, v in tool_data.factions().items()}
 # the built-in Neutral and Noncombatant factions, for land the faction assignment gives them
 for builtin in (tool_data.config().neutral_faction(), tool_data.config().noncombatant_faction()):
     faction_colors_hex.setdefault(builtin['id'], builtin['color'])
+# each faction's icon (the faction set's `icon`: assets/icons/factions/<name>.svg, drawn from tools/faction_icons.py)
+FACTION_ICONS = {k: v.get('icon') for k, v in tool_data.factions().items()}
+_fset = tool_data.config().faction_set
+for _key in ('neutral', 'noncombatant'):
+    if _fset.get(_key):
+        FACTION_ICONS[_fset[_key].get('id')] = _fset[_key].get('icon')
 
 def hex_to_bgr(h):
     h = h.lstrip('#')
@@ -102,75 +109,37 @@ def draw_star(img, cx, cy, r_out, r_in, fill_color, outline_color=(0, 0, 0)):
 # for legibility at map scale.
 # ---------------------------------------------------------------------
 
-def icon_naa(img, cx, cy, r, color):
-    # compass star (4 long + 4 short spikes)
-    pts = []
-    for k in range(8):
-        ang = -np.pi / 2 + k * np.pi / 4
-        rad = r if k % 2 == 0 else r * 0.45
-        pts.append([int(cx + rad * np.cos(ang)), int(cy + rad * np.sin(ang))])
-    pts = np.array([pts], dtype=np.int32)
-    cv2.fillPoly(img, pts, color, lineType=cv2.LINE_AA)
-    cv2.polylines(img, pts, True, (0, 0, 0), 1, lineType=cv2.LINE_AA)
-
-def icon_ue(img, cx, cy, r, color):
-    # gear: ring of teeth + hollow center
-    cv2.circle(img, (cx, cy), int(r * 0.85), color, -1, lineType=cv2.LINE_AA)
-    for k in range(8):
-        ang = k * np.pi / 4
-        tx = int(cx + r * 1.05 * np.cos(ang))
-        ty = int(cy + r * 1.05 * np.sin(ang))
-        cv2.circle(img, (tx, ty), max(1, int(r * 0.22)), color, -1, lineType=cv2.LINE_AA)
-    cv2.circle(img, (cx, cy), max(1, int(r * 0.35)), (20, 20, 20), -1, lineType=cv2.LINE_AA)
-    cv2.circle(img, (cx, cy), int(r * 0.85), (0, 0, 0), 1, lineType=cv2.LINE_AA)
-
-def icon_uer(img, cx, cy, r, color):
-    draw_star(img, cx, cy, r, r * 0.42, color)
-
-def icon_gpc(img, cx, cy, r, color):
-    # rising sun over a wave
-    cv2.circle(img, (cx, cy - int(r * 0.15)), int(r * 0.6), color, -1, lineType=cv2.LINE_AA)
-    cv2.circle(img, (cx, cy - int(r * 0.15)), int(r * 0.6), (0, 0, 0), 1, lineType=cv2.LINE_AA)
-    pts = np.array([[
-        [int(cx - r), int(cy + r * 0.55)],
-        [int(cx - r * 0.4), int(cy + r * 0.15)],
-        [int(cx), int(cy + r * 0.55)],
-        [int(cx + r * 0.4), int(cy + r * 0.15)],
-        [int(cx + r), int(cy + r * 0.55)],
-    ]], dtype=np.int32)
-    cv2.polylines(img, pts, False, color, max(1, int(r * 0.18)), lineType=cv2.LINE_AA)
-
-def icon_paf(img, cx, cy, r, color):
-    # baobab: round canopy + short trunk
-    cv2.circle(img, (cx, cy - int(r * 0.25)), int(r * 0.7), color, -1, lineType=cv2.LINE_AA)
-    cv2.circle(img, (cx, cy - int(r * 0.25)), int(r * 0.7), (0, 0, 0), 1, lineType=cv2.LINE_AA)
-    cv2.rectangle(img, (cx - max(1, int(r * 0.12)), cy), (cx + max(1, int(r * 0.12)), cy + int(r * 0.7)), color, -1)
-
-def icon_aac(img, cx, cy, r, color):
-    # condor: simple chevron wings + body dot
-    pts = np.array([[
-        [int(cx - r), int(cy + r * 0.1)],
-        [int(cx - r * 0.25), int(cy - r * 0.35)],
-        [int(cx), int(cy)],
-        [int(cx + r * 0.25), int(cy - r * 0.35)],
-        [int(cx + r), int(cy + r * 0.1)],
-        [int(cx + r * 0.25), int(cy + r * 0.05)],
-        [int(cx), int(cy + r * 0.35)],
-        [int(cx - r * 0.25), int(cy + r * 0.05)],
-    ]], dtype=np.int32)
-    cv2.fillPoly(img, pts, color, lineType=cv2.LINE_AA)
-    cv2.polylines(img, pts, True, (0, 0, 0), 1, lineType=cv2.LINE_AA)
-
-ICON_FN = {
-    'NAA': icon_naa, 'UE': icon_ue, 'UER': icon_uer,
-    'GPC': icon_gpc, 'PAF': icon_paf, 'AAC': icon_aac,
-}
+def draw_faction_icon(img, name, cx, cy, r, color):
+    """Faction icon `name` (tools/faction_icons.py -- the same shapes as the game's SVGs), radius `r`, in `color`."""
+    def px(x, y):
+        return [int(cx + x * r), int(cy + y * r)]
+    for s in faction_icons.ICONS[name]:
+        fill = (20, 20, 20) if s.get('hole') else color
+        outline = s.get('outline', True)
+        if 'circle' in s:
+            x, y, rr = s['circle']
+            cv2.circle(img, tuple(px(x, y)), max(1, int(rr * r)), fill, -1, lineType=cv2.LINE_AA)
+            if outline:
+                cv2.circle(img, tuple(px(x, y)), max(1, int(rr * r)), (0, 0, 0), 1, lineType=cv2.LINE_AA)
+        elif 'polygon' in s:
+            pts = np.array([[px(x, y) for x, y in s['polygon']]], dtype=np.int32)
+            cv2.fillPoly(img, pts, fill, lineType=cv2.LINE_AA)
+            if outline:
+                cv2.polylines(img, pts, True, (0, 0, 0), 1, lineType=cv2.LINE_AA)
+        elif 'rect' in s:
+            x0, y0, x1, y1 = s['rect']
+            cv2.rectangle(img, tuple(px(x0, y0)), tuple(px(x1, y1)), fill, -1)
+        else:
+            pts = np.array([[px(x, y) for x, y in s['polyline']]], dtype=np.int32)
+            cv2.polylines(img, pts, False, color, max(1, int(r * s['width'])), lineType=cv2.LINE_AA)
 
 
-def icon_plain(img, cx, cy, r, color):
-    """A faction with no icon of its own (the built-in Neutral and Noncombatant factions): a plain disc."""
-    cv2.circle(img, (cx, cy), max(2, int(r * 0.7)), color, -1, lineType=cv2.LINE_AA)
-    cv2.circle(img, (cx, cy), max(2, int(r * 0.7)), (0, 0, 0), 1, lineType=cv2.LINE_AA)
+def icon_name(faction):
+    """The icon a faction is drawn with: its faction-set icon's file name, else the plain one."""
+    file = (FACTION_ICONS.get(faction) or '').rsplit('/', 1)[-1]
+    name = file[:-4] if file.endswith('.svg') else ''
+    return name if name in faction_icons.ICONS else faction_icons.DEFAULT_ICON
+
 
 def draw_id_name_label(img, cx, cy, sid, name, above=False):
     """Every space gets this: plain black lettering, 'id. name', no box.
@@ -258,7 +227,7 @@ for sp in spaces:
     icon_cx = x0 + pad_x + icon_d // 2
     icon_cy = (y0 + y1) // 2
     icon_color = lighten(accent, 0.6)
-    ICON_FN.get(fac, icon_plain)(img, icon_cx, icon_cy, icon_d // 2, icon_color)
+    draw_faction_icon(img, icon_name(fac), icon_cx, icon_cy, icon_d // 2, icon_color)
 
     cursor_x = x0 + pad_x + icon_d + gap
     base_y = icon_cy + max(th_fac, th_val) // 2
