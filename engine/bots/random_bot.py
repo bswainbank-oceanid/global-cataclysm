@@ -407,8 +407,12 @@ class RandomBot:
         had been fixed that way from the start."""
         gs = self.engine.game_state
         fstate = gs.factions[self.faction]
-        if alliance_policy.effective_alliance_behavior(gs, self.faction) == 'treacherous' and fstate.alliance is not None:
+        behavior = alliance_policy.effective_alliance_behavior(gs, self.faction)
+        if behavior == 'treacherous' and fstate.alliance is not None:
             fstate.pending_treacherous_withdrawal = self.rng.random() < 0.15
+        elif behavior == 'underdog' and fstate.alliance is not None:
+            # (no dice: it plans to leave once its alliance has become the favourite -- alliance_policy)
+            fstate.pending_treacherous_withdrawal = alliance_policy.underdog_wants_out(self.engine, self.faction)
 
     def take_alliance_phase(self):
         self.commit_alliance_phase(self.plan_alliance_phase())

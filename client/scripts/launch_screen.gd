@@ -37,8 +37,8 @@ const NEW_MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Not playing", "NOT_PLA
 const FIXED := "fixed"  # the scenario list's entries: FIXED, NEW, or a saved setup's id
 const NEW := "new"
 const ALLIANCES := ["None", "Alliance 1", "Alliance 2", "Alliance 3"]
-const STRATEGIES := ["random", "aggressive", "passive", "counterweight", "independent", "adversarial", "variable"]
-const BEHAVIORS := ["random", "loyal", "opportunistic", "treacherous", "variable"]
+const STRATEGIES := ["random", "aggressive", "passive", "counterweight", "independent", "adversarial", "underdog", "variable"]
+const BEHAVIORS := ["random", "loyal", "opportunistic", "treacherous", "underdog", "variable"]
 # A new scenario's seat settings: [key, header, width]; the Neutral row has no initial MPC.
 const SEAT_KEYS := [["territory_value", "Territory", 84], ["initial_mpc", "Initial MPC", 84], ["units_mpc", "Units MPC", 84],
 	["promotions", "Promotions", 84], ["scs", "SCs", 70]]
