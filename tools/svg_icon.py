@@ -1,5 +1,5 @@
 """
-Reads a simple icon SVG -- <path> (M/m, L/l, H/h, V/v, C/c, Z/z) and <circle> elements, under <g> groups with
+Reads a simple icon SVG -- <path> (M/m, L/l, H/h, V/v, C/c, Z/z), <polygon> and <circle> elements, under <g> groups with
 translate/scale transforms, as traced icons are -- into polygons, so tools can draw it with OpenCV without an
 SVG library. Curves are flattened into short segments. Coordinates come back in the SVG's viewBox space.
 
@@ -118,6 +118,9 @@ def load(path):
         a, d, e, f = tf
         if tag == 'path':
             contours = [[(a * px + e, d * py + f) for px, py in c] for c in _path_contours(el.get('d', ''))]
+        elif tag in ('polygon', 'polyline'):
+            nums = [float(n) for n in _NUM.findall(el.get('points', ''))]
+            contours = [[(a * nums[k] + e, d * nums[k + 1] + f) for k in range(0, len(nums) - 1, 2)]]
         elif tag == 'circle':
             c = _circle(float(el.get('cx', 0)), float(el.get('cy', 0)), float(el.get('r', 0)))
             contours = [[(a * px + e, d * py + f) for px, py in c]]

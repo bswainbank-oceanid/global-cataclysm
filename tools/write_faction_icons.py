@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import faction_icons  # noqa: E402
 import tool_data  # noqa: E402
 
-DIR = 'faction'  # under assets/icons
+DIR = 'faction2'  # under assets/icons
 
 
 def main():

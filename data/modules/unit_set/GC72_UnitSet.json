@@ -22,7 +22,7 @@
    "land_order": 1,
    "sea_order": null,
    "display_order": 1,
-   "icon": "units/badge/person.svg",
+   "icon": "units2/person.svg",
    "plural": "Infantry",
    "abilities": [
     {"id": "mustering"},
@@ -46,7 +46,7 @@
    "land_order": 2,
    "sea_order": null,
    "display_order": 2,
-   "icon": "units/badge/apc.svg",
+   "icon": "units2/apc.svg",
    "plural": "Mechanized Infantry",
    "abilities": [
     {"id": "amphibious", "params": {"transport_unit": "Transport"}},
@@ -69,7 +69,7 @@
    "land_order": 3,
    "sea_order": null,
    "display_order": 3,
-   "icon": "units/badge/battle-tank.svg",
+   "icon": "units2/battle-tank.svg",
    "plural": "Armor",
    "abilities": []
   },
@@ -89,7 +89,7 @@
    "land_order": 4,
    "sea_order": 2,
    "display_order": 4,
-   "icon": "units/badge/jet-fighter.svg",
+   "icon": "units2/jet-fighter.svg",
    "plural": "Fighters",
    "abilities": [
     {"id": "air_superiority", "params": {"attack_die": "D10", "damage": 3, "triggers_round": true}},
@@ -112,7 +112,7 @@
    "land_order": 5,
    "sea_order": 3,
    "display_order": 5,
-   "icon": "units/badge/bomber.svg",
+   "icon": "units2/bomber.svg",
    "plural": "Bombers",
    "abilities": [
     {"id": "air_superiority", "params": {"attack_die": "D6", "damage": 1, "triggers_round": false}},
@@ -135,7 +135,7 @@
    "land_order": null,
    "sea_order": 5,
    "display_order": 8,
-   "icon": "units/badge/carrier.svg",
+   "icon": "units2/carrier.svg",
    "plural": "Aircraft Carriers",
    "abilities": [
     {"id": "carrier_air_wing", "params": {"capacity": 3}}
@@ -157,7 +157,7 @@
    "land_order": null,
    "sea_order": 1,
    "display_order": 6,
-   "icon": "units/badge/submarine.svg",
+   "icon": "units2/submarine.svg",
    "plural": "Submarines",
    "abilities": [
     {"id": "submerge"}
@@ -179,7 +179,7 @@
    "land_order": null,
    "sea_order": 4,
    "display_order": 7,
-   "icon": "units/badge/cruiser.svg",
+   "icon": "units2/cruiser.svg",
    "plural": "Cruisers",
    "abilities": [
     {"id": "bombardment"}
@@ -201,7 +201,7 @@
    "land_order": null,
    "sea_order": null,
    "display_order": null,
-   "icon": "units/badge/cargo-ship.svg",
+   "icon": "units2/cargo-ship.svg",
    "plural": "Transports",
    "abilities": [
     {"id": "transport"}
