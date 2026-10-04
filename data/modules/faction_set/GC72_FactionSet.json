@@ -3,14 +3,14 @@
  "id": "GC72_FactionSet",
  "name": "GC72 factions",
  "_note": "neutral: the one colour every Neutral faction's land and units are drawn in, and the faction that owns land the faction assignment gives to Neutral (or leaves unassigned): it plays as a Neutral seat -- its units defend, it takes no turns, its land can be captured, and its Strategic Centers are real ones for whoever captures them. noncombatant: the faction that owns land the faction assignment gives to Noncombatant: no units, no turns, impassable.",
- "neutral": {"id": "NEU", "name": "Neutral", "color": "#7E8378", "icon": "faction2/neutral.svg"},
- "noncombatant": {"id": "NCB", "name": "Noncombatant", "color": "#EDDEAD", "icon": "faction2/neutral.svg"},
+ "neutral": {"id": "NEU", "name": "Neutral", "color": "#7E8378", "icon": "faction/neutral.svg"},
+ "noncombatant": {"id": "NCB", "name": "Noncombatant", "color": "#EDDEAD", "icon": "faction/neutral.svg"},
  "factions": [
-  {"id": "NAA", "name": "North Atlantic Alliance", "color": "#1E4C7C", "icon": "faction2/naa.svg"},
-  {"id": "UE", "name": "United Europe", "color": "#A5822F", "icon": "faction2/ue.svg"},
-  {"id": "UER", "name": "Union of Eurasian Republics", "color": "#8C2A2A", "icon": "faction2/uer.svg"},
-  {"id": "GPC", "name": "Greater Pacific Commonwealth", "color": "#5B3466", "icon": "faction2/gpc.svg"},
-  {"id": "PAF", "name": "Pan-African Federation", "color": "#3F6B35", "icon": "faction2/paf.svg"},
-  {"id": "AAC", "name": "Andean-Atlantic Confederation", "color": "#C1621F", "icon": "faction2/aac.svg"}
+  {"id": "NAA", "name": "North Atlantic Alliance", "color": "#1E4C7C", "icon": "faction/naa.svg"},
+  {"id": "UE", "name": "United Europe", "color": "#A5822F", "icon": "faction/ue.svg"},
+  {"id": "UER", "name": "Union of Eurasian Republics", "color": "#8C2A2A", "icon": "faction/uer.svg"},
+  {"id": "GPC", "name": "Greater Pacific Commonwealth", "color": "#5B3466", "icon": "faction/gpc.svg"},
+  {"id": "PAF", "name": "Pan-African Federation", "color": "#3F6B35", "icon": "faction/paf.svg"},
+  {"id": "AAC", "name": "Andean-Atlantic Confederation", "color": "#C1621F", "icon": "faction/aac.svg"}
  ]
 }
