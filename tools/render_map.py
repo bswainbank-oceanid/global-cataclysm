@@ -115,7 +115,8 @@ _SVG_CACHE = {}
 
 def draw_faction_icon(img, faction, cx, cy, r, color):
     """Faction `faction`'s icon -- its SVG file, the one the game shows (the faction set's `icon`, under
-    assets/icons) -- `r` in radius, its light shapes in `color` and dark ones dark, outlined."""
+    assets/icons) -- `r` in radius, its light shapes in `color` and dark ones dark; flat, no outline
+    (the style guide's faction symbols)."""
     file = FACTION_ICONS.get(faction) or 'faction/neutral.svg'
     if file not in _SVG_CACHE:
         _SVG_CACHE[file] = svg_icon.load(tool_data.root_path(os.path.join('assets', 'icons', file)))
@@ -129,8 +130,6 @@ def draw_faction_icon(img, faction, cx, cy, r, color):
         dark = (sh['fill'] or '').lower() in ('#141414', '#000', '#000000')
         if sh['fill'] not in (None, 'none'):
             cv2.fillPoly(img, polys, (20, 20, 20) if dark else color, lineType=cv2.LINE_AA)
-        if sh['stroke'] not in (None, 'none'):
-            cv2.polylines(img, polys, True, (0, 0, 0), 1, lineType=cv2.LINE_AA)
 
 
 def draw_id_name_label(img, cx, cy, sid, name, above=False):

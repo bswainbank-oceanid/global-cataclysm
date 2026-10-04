@@ -6,11 +6,11 @@
  "neutral": {"id": "NEU", "name": "Neutral", "color": "#7E8378", "icon": "faction/neutral.svg"},
  "noncombatant": {"id": "NCB", "name": "Noncombatant", "color": "#EDDEAD", "icon": "faction/neutral.svg"},
  "factions": [
-  {"id": "NAA", "name": "North Atlantic Alliance", "color": "#1E4C7C", "icon": "faction/naa.svg"},
-  {"id": "UE", "name": "United Europe", "color": "#A5822F", "icon": "faction/ue.svg"},
-  {"id": "UER", "name": "Union of Eurasian Republics", "color": "#8C2A2A", "icon": "faction/uer.svg"},
-  {"id": "GPC", "name": "Greater Pacific Commonwealth", "color": "#5B3466", "icon": "faction/gpc.svg"},
-  {"id": "PAF", "name": "Pan-African Federation", "color": "#3F6B35", "icon": "faction/paf.svg"},
-  {"id": "AAC", "name": "Andean-Atlantic Confederation", "color": "#C1621F", "icon": "faction/aac.svg"}
+  {"id": "NAA", "name": "North Atlantic Alliance", "color": "#173F78", "icon": "faction/naa.svg"},
+  {"id": "UE", "name": "United Europe", "color": "#B68A20", "icon": "faction/ue.svg"},
+  {"id": "UER", "name": "Union of Eurasian Republics", "color": "#A92B29", "icon": "faction/uer.svg"},
+  {"id": "GPC", "name": "Greater Pacific Commonwealth", "color": "#6A3788", "icon": "faction/gpc.svg"},
+  {"id": "PAF", "name": "Pan-African Federation", "color": "#3C7A35", "icon": "faction/paf.svg"},
+  {"id": "AAC", "name": "Andean-Atlantic Confederation", "color": "#D8781B", "icon": "faction/aac.svg"}
  ]
 }
