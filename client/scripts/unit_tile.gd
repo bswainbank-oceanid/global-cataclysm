@@ -241,13 +241,19 @@ func _draw_package(offset: Vector2, owner_col: Color) -> void:
 
 	# XP pips under the unit (a top-rank unit has nothing left to earn: all gold).
 	var xp := XP_PIPS if ranks >= max_rank() else mini(int(unit.get("xp", 0)), XP_PIPS)
-	var pip := 4.0
-	var gap := 2.0
+	# (on paper: bigger pips, solid navy when earned and an empty navy square when not)
+	var pip := 6.0 if on_paper else 4.0
+	var gap := 1.5 if on_paper else 2.0
 	var row_w := XP_PIPS * pip + (XP_PIPS - 1) * gap
 	var px := offset.x + ICON_POS.x + (ICON - row_w) * 0.5
-	var py := offset.y + ICON_POS.y + ICON + 6.0
+	var py := offset.y + ICON_POS.y + ICON + (4.0 if on_paper else 6.0)
 	for i in XP_PIPS:
 		var r := Rect2(px + i * (pip + gap), py, pip, pip)
+		if on_paper:
+			draw_rect(r, GCTheme.NAVY)
+			if i >= xp:  # (a filled hollow: an outline drawn at the board's 0.8 scale comes out uneven)
+				draw_rect(r.grow(-1.5), GCTheme.PAPER)
+			continue
 		if i < xp:
 			draw_rect(r, Color(1.0, 0.82, 0.25))
 		else:
@@ -262,18 +268,28 @@ func _draw_package(offset: Vector2, owner_col: Color) -> void:
 	var rows := ceili(float(total) / columns)
 	var box_gap := 2.0 if rows <= 5 else 1.0
 	var box_h := (ICON - box_gap * (rows - 1)) / rows
-	var box_w := HP_W if columns == 1 else 6.0
+	var box_w := (HP_W + 1.0 if on_paper else HP_W) if columns == 1 else 6.0
 	var x0 := HP_X if columns == 1 else 37.5
 	for i in total:  # i = 0 is the bottom box of the first column
 		var col := i / rows
 		var row := i % rows
 		var y := offset.y + ICON_POS.y + ICON - (row + 1) * box_h - row * box_gap
 		var r := Rect2(offset.x + x0 + col * (box_w + 1.0), y, box_w, box_h)
-		draw_rect(r, (GCTheme.NAVY if on_paper else Color.WHITE) if i < hp else Color(0.9, 0.15, 0.15))
+		if on_paper:
+			# solid navy = HP left, a red box = HP lost; no outline, so the paper gaps keep them apart
+			draw_rect(r, GCTheme.NAVY if i < hp else GCTheme.RED)
+			continue
+		draw_rect(r, Color.WHITE if i < hp else Color(0.9, 0.15, 0.15))
 		if box_h >= 4.0:
 			draw_rect(r, Color(0, 0, 0, 0.85), false, 1.0)
 	if total >= HP_TEXT_FROM:
 		var text := "%d/%d" % [hp, total]
+		if on_paper:  # beside the HP boxes, under the icon's right edge: clear of the XP pips
+			var font := GCTheme.font("display")
+			var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+			draw_string(font, offset + Vector2(HP_X + HP_W + 1.0 - w, ICON_POS.y - 2.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
+				GCTheme.NAVY if hp > 0 else GCTheme.RED)
+			return
 		var at := offset + Vector2(ICON_POS.x - 1.0, 62.0)
 		draw_string_outline(ThemeDB.fallback_font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, 3, Color(0, 0, 0, 0.9))
 		draw_string(ThemeDB.fallback_font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE if hp > 0 else Color(1.0, 0.4, 0.35))
