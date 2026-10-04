@@ -34,7 +34,7 @@ func _ready() -> void:
 
 	_panel = PanelContainer.new()
 	_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	_panel.add_theme_stylebox_override("panel", HudStyle.box(HudStyle.GOLD, Color(0.07, 0.085, 0.11), 3))
+	HudStyle.paper_sheet(_panel)
 	_panel.custom_minimum_size = Vector2(900, 0)
 	center.add_child(_panel)
 
@@ -48,7 +48,7 @@ func _ready() -> void:
 	head.add_child(_title)
 	var minimize := Button.new()
 	minimize.text = "Minimize"
-	minimize.focus_mode = Control.FOCUS_NONE
+	HudStyle.secondary(minimize)
 	minimize.tooltip_text = "Put the report aside; a small tab reopens it"
 	minimize.pressed.connect(func(): GameStore.toggle_game_over_report_minimized())
 	head.add_child(minimize)
@@ -67,14 +67,10 @@ func _ready() -> void:
 
 	_tab = Button.new()
 	_tab.text = "Game Over Report  ▲"
-	_tab.focus_mode = Control.FOCUS_NONE
+	HudStyle.primary(_tab)
 	_tab.mouse_filter = Control.MOUSE_FILTER_STOP
 	_tab.custom_minimum_size = Vector2(200, 36)
 	_tab.tooltip_text = "Reopen the Game Over report"
-	_tab.add_theme_stylebox_override("normal", HudStyle.box(HudStyle.GOLD, Color(0.16, 0.14, 0.05), 2))
-	_tab.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.24, 0.2, 0.06), 2))
-	_tab.add_theme_color_override("font_color", HudStyle.GOLD)
-	_tab.add_theme_color_override("font_hover_color", Color.WHITE)
 	_tab.pressed.connect(func(): GameStore.toggle_game_over_report_minimized())
 	_tab.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	_tab.position -= Vector2(16, 16)
@@ -118,7 +114,7 @@ func _rebuild(report: Array) -> void:
 
 func _add_row(row: Dictionary) -> void:
 	var code := str(row.get("faction", ""))
-	var col: Color = GameData.factions[code].color.lightened(0.3) if GameData.factions.has(code) else HudStyle.TEXT
+	var col: Color = GameData.factions[code].color if GameData.factions.has(code) else HudStyle.TEXT
 	_cell(code, col)
 	_cell(_or_dash(row.get("victory_status")), col)
 	var reasons: Array = row.get("elimination_reason", []) if row.get("elimination_reason") != null else []

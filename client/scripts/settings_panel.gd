@@ -21,7 +21,7 @@ const HOLD_SECONDS := 3.0
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(320, 0)
-	add_theme_stylebox_override("panel", HudStyle.box(HudStyle.GOLD, Color(0.07, 0.085, 0.11), 2))
+	HudStyle.paper_sheet(self)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
 	add_child(v)
@@ -58,15 +58,15 @@ func _ready() -> void:
 	v.add_child(HSeparator.new())
 	v.add_child(HudStyle.label("Game", 13))
 	v.add_child(HudStyle.label("Hold the whole way to confirm -- these can't be undone.", 11, HudStyle.TEXT_DIM))
-	_surrender_btn = _hold_button(v, "Hold to surrender", Color(1.0, 0.55, 0.45))
+	_surrender_btn = _hold_button(v, "Hold to surrender", true)
 	_surrender_btn.activated.connect(func(): Stepper.surrender())
-	_armistice_btn = _hold_button(v, "Hold to propose armistice", HudStyle.GOLD)
+	_armistice_btn = _hold_button(v, "Hold to propose armistice", false)
 	_armistice_btn.activated.connect(func(): Stepper.propose_armistice())
 
 	v.add_child(HSeparator.new())
 	var new_game := Button.new()
 	new_game.text = "New game..."
-	new_game.focus_mode = Control.FOCUS_NONE
+	HudStyle.secondary(new_game)
 	new_game.tooltip_text = "Back to the launch screen (the running game stays until you start another)"
 	new_game.pressed.connect(func(): new_game_pressed.emit())
 	v.add_child(new_game)
@@ -76,20 +76,15 @@ func _ready() -> void:
 	_sync()
 
 
-func _hold_button(parent: Control, text: String, colour: Color) -> HoldButton:
+func _hold_button(parent: Control, text: String, primary: bool) -> HoldButton:
 	var b := HoldButton.new()
 	b.text = text
 	b.hold_seconds = HOLD_SECONDS
-	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(0, 36)
-	b.add_theme_font_size_override("font_size", 13)
-	b.add_theme_color_override("font_color", colour)
-	b.add_theme_color_override("font_hover_color", Color.WHITE)
-	b.add_theme_color_override("font_disabled_color", HudStyle.TEXT_DIM)
-	b.add_theme_stylebox_override("normal", HudStyle.box(colour.darkened(0.3), Color(0.12, 0.14, 0.18), 2))
-	b.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.2, 0.22, 0.27), 2))
-	b.add_theme_stylebox_override("pressed", HudStyle.box(colour, Color(0.24, 0.26, 0.3), 2))
-	b.add_theme_stylebox_override("disabled", HudStyle.box(HudStyle.EDGE, HudStyle.BG, 1))
+	if primary:
+		HudStyle.primary(b)
+	else:
+		HudStyle.secondary(b)
 	parent.add_child(b)
 	return b
 

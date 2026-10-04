@@ -1,34 +1,96 @@
 class_name HudStyle
 extends RefCounted
-## Shared look for HUD panels: dark slate boxes with a coloured edge.
+## Shared helpers for the HUD, on top of the game's themes (GCTheme: the style guide's navy chrome and
+## cream paper). Labels and buttons take a ROLE here and the theme around them decides its colours, so
+## the same code reads right on a navy panel or a paper one.
+##
+## The colour constants below keep their old names. As label colours they stand for roles:
+## TEXT the theme's text, TEXT_DIM secondary text (DimLabel), GOLD a heading (HeadingLabel: condensed
+## capitals). Used directly (drawing, a box edge) they are the chrome's own colours.
 
-const BG := Color(0.085, 0.105, 0.135)
-const BG_HEADER := Color(0.13, 0.155, 0.19)
-const EDGE := Color(0.26, 0.31, 0.38)
-const TEXT := Color(0.9, 0.93, 0.96)
-const TEXT_DIM := Color(0.6, 0.66, 0.74)
-const GOLD := Color(1.0, 0.82, 0.25)
+const BG := GCTheme.NAVY
+const BG_HEADER := GCTheme.NAVY_LIGHT
+const EDGE := GCTheme.NAVY_EDGE
+const TEXT := GCTheme.CREAM
+const TEXT_DIM := GCTheme.CREAM_DIM
+const GOLD := GCTheme.WHITE       # (headings: drawn on the chrome, white)
+const ACCENT := GCTheme.RED_LIGHT  # conflict, alerts, emphasis
+const RED := GCTheme.RED
 
 
+## A flat box (kept for the places that colour one themselves): `bg` fill, `edge` border.
 static func box(edge: Color = EDGE, bg: Color = BG, edge_w: int = 1) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.border_color = edge
-	sb.set_border_width_all(edge_w)
-	sb.set_corner_radius_all(3)
-	sb.content_margin_left = 8
-	sb.content_margin_right = 8
-	sb.content_margin_top = 5
-	sb.content_margin_bottom = 5
-	return sb
+	return GCTheme.box(bg, edge, edge_w)
 
 
+## A label of `size` in a role: TEXT (the theme's text), TEXT_DIM (secondary), GOLD (a heading in
+## condensed capitals), ACCENT (red, condensed) -- or any other colour, set as it is.
 static func label(text: String = "", size: int = 13, color: Color = TEXT) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
+	if color == TEXT:
+		pass
+	elif color == TEXT_DIM:
+		l.theme_type_variation = "DimLabel"
+	elif color == GOLD:
+		l.theme_type_variation = "TitleLabel" if size >= 20 else "HeadingLabel"
+		l.uppercase = true
+		l.add_theme_font_size_override("font_size", size + 2)  # (condensed capitals read smaller)
+	elif color == ACCENT:
+		l.theme_type_variation = "AccentLabel"
+		l.uppercase = true
+	else:
+		l.add_theme_color_override("font_color", color)
 	return l
+
+
+## A heading: condensed capitals over a 3px rule (red: a conflict section).
+static func heading(text: String, size: int = 15, red_rule := false) -> Control:
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	v.add_child(label(text, size, GOLD))
+	var rule := HSeparator.new()
+	if red_rule:
+		rule.theme_type_variation = "RedRule"
+	rule.add_theme_constant_override("separation", 4)
+	v.add_child(rule)
+	return v
+
+
+## A primary button: red, condensed capitals (Start Game, Next, Roll, OK). The helpers capitalise the
+## button's text as it stands; text set later is the caller's to capitalise.
+static func primary(b: Button) -> Button:
+	b.theme_type_variation = "PrimaryButton"
+	b.focus_mode = Control.FOCUS_NONE
+	b.text = b.text.to_upper()
+	return b
+
+
+## A secondary button: navy (Resume, Delete, ...). The theme's plain Button already is; this clears any
+## earlier role.
+static func secondary(b: Button) -> Button:
+	b.theme_type_variation = ""
+	b.focus_mode = Control.FOCUS_NONE
+	b.text = b.text.to_upper()
+	return b
+
+
+## A tab or radio-style choice: red when chosen, navy otherwise.
+static func tab(b: Button, chosen: bool) -> Button:
+	b.theme_type_variation = "TabButtonOn" if chosen else "TabButton"
+	b.focus_mode = Control.FOCUS_NONE
+	b.text = b.text.to_upper()
+	return b
+
+
+## A whole paper sheet (the launch screen, a modal panel): cream, a heavy navy frame and offset shadow;
+## everything in it uses the paper theme.
+static func paper_sheet(p: Control) -> Control:
+	p.theme = GCTheme.paper()
+	if p is PanelContainer:
+		(p as PanelContainer).theme_type_variation = "SheetPanel"
+	return p
 
 
 ## A five-point star's outline, centred on `c` (y grows downwards, one point up).
@@ -40,38 +102,6 @@ static func star_points(c: Vector2, r_outer: float, r_inner_ratio: float = 0.5) 
 	return pts
 
 
-static var _box_icons := {}
-
-
-## A visible checkbox: Godot's default icons vanish (unchecked) or blur (checked) on
-## these dark panels, so draw our own -- an outlined square, gold-ticked when checked.
-static func style_checkbox(c: CheckBox) -> void:
-	if _box_icons.is_empty():
-		for state in ["checked", "unchecked"]:
-			for disabled in [false, true]:
-				_box_icons["%s_%s" % [state, disabled]] = _make_box(state == "checked", disabled)
-	c.add_theme_icon_override("checked", _box_icons["checked_false"])
-	c.add_theme_icon_override("unchecked", _box_icons["unchecked_false"])
-	c.add_theme_icon_override("checked_disabled", _box_icons["checked_true"])
-	c.add_theme_icon_override("unchecked_disabled", _box_icons["unchecked_true"])
-	c.add_theme_color_override("font_disabled_color", TEXT_DIM)
-
-
-static func _make_box(checked: bool, disabled: bool) -> ImageTexture:
-	var n := 18
-	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
-	var edge := Color(0.42, 0.47, 0.55) if disabled else Color(0.8, 0.85, 0.92)
-	var fill := Color(0.09, 0.105, 0.135)
-	for y in n:
-		for x in n:
-			var on_edge: bool = x < 2 or y < 2 or x >= n - 2 or y >= n - 2
-			img.set_pixel(x, y, edge if on_edge else fill)
-	if checked:
-		var tick := Color(0.55, 0.5, 0.3) if disabled else GOLD
-		for i in 4:  # the short stroke down-right, then the long stroke up-right
-			for t in 2:
-				img.set_pixel(4 + i, 9 + i + t, tick)
-		for i in 7:
-			for t in 2:
-				img.set_pixel(7 + i, 12 - i + t, tick)
-	return ImageTexture.create_from_image(img)
+## Check boxes take their square icons from the theme now (GCTheme); kept so the callers need no change.
+static func style_checkbox(_c: CheckBox) -> void:
+	pass

@@ -75,10 +75,10 @@ static func _move_lines(orders: Array, dest_of: Callable) -> String:
 ## purchase_remove).
 static func describe_editable_purchase(orders: Array, total: int, treasury: int) -> String:
 	if orders.is_empty():
-		return "[color=#7f8ea0]  (nothing bought yet: pick a territory and use + )[/color]"
+		return "[color=#a9b4b8]  (nothing bought yet: pick a territory and use + )[/color]"
 	var lines := []
 	for o in orders:
-		lines.append("  %dx %s at %s  [color=#c9a227]%d MCP[/color]  [url=dec:%s:%d][color=#ff8a7a][b] [ - ] [/b][/color][/url]" % [
+		lines.append("  %dx %s at %s  [color=#c9a227]%d MCP[/color]  [url=dec:%s:%d][color=#e3483f][b] [ - ] [/b][/color][/url]" % [
 			int(o["qty"]), o["unit_type"], _terr(o["deploy_at"]), int(o["cost"]), o["unit_type"], int(o["deploy_at"])])
 	lines.append("[b]Total %d of %d MCP[/b]" % [total, treasury])
 	return "\n".join(lines)
@@ -206,7 +206,7 @@ static func deploy_change(e: Dictionary) -> String:
 	var reason := str(e.get("reason", ""))
 	if str(e["kind"]) == "deploy_lost":
 		var at := _terr(e["territory_id"])
-		return "[color=#ff8a7a]%s bought for %s are lost[/color] (%s was lost this turn, and no adjacent territory is still held)" % [
+		return "[color=#e3483f]%s bought for %s are lost[/color] (%s was lost this turn, and no adjacent territory is still held)" % [
 			what, at, at]
 	var why := "%s was lost this turn" % _terr(e["from"]) if reason == "territory_lost" \
 		else "no room on an own Aircraft Carrier there: back to the land that paid for them" if reason == "no_carrier_room" \

@@ -26,7 +26,7 @@ func _ready() -> void:
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 	_panel = PanelContainer.new()
-	_panel.add_theme_stylebox_override("panel", HudStyle.box(HudStyle.GOLD, Color(0.07, 0.085, 0.11), 3))
+	HudStyle.paper_sheet(_panel)
 	_panel.custom_minimum_size = Vector2(430, 0)
 	center.add_child(_panel)
 	var v := VBoxContainer.new()
@@ -46,27 +46,24 @@ func _ready() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 14)
 	v.add_child(row)
-	var accept := _button("Accept", Color(0.5, 1.0, 0.6))
+	var accept := _button("Accept", true)
 	accept.pressed.connect(func(): answered.emit(true))
 	row.add_child(accept)
-	var decline := _button("Decline", Color(1.0, 0.6, 0.5))
+	var decline := _button("Decline", false)
 	decline.pressed.connect(func(): answered.emit(false))
 	row.add_child(decline)
 	GameStore.armistice_changed.connect(_sync)
 	_sync()
 
 
-func _button(text: String, colour: Color) -> Button:
+func _button(text: String, primary: bool) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(150, 40)
-	b.add_theme_font_size_override("font_size", 15)
-	b.add_theme_color_override("font_color", colour)
-	b.add_theme_color_override("font_hover_color", Color.WHITE)
-	b.add_theme_stylebox_override("normal", HudStyle.box(colour.darkened(0.3), Color(0.12, 0.14, 0.18), 2))
-	b.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.2, 0.22, 0.27), 2))
-	b.add_theme_stylebox_override("pressed", HudStyle.box(colour, Color(0.24, 0.26, 0.3), 2))
+	if primary:
+		HudStyle.primary(b)
+	else:
+		HudStyle.secondary(b)
 	return b
 
 

@@ -12,7 +12,7 @@ var _row: HBoxContainer
 
 
 func _ready() -> void:
-	add_theme_stylebox_override("panel", HudStyle.box(HudStyle.EDGE, Color(0.06, 0.075, 0.1)))
+	add_theme_stylebox_override("panel", GCTheme.box(GCTheme.NAVY_DARK, GCTheme.NAVY_LIGHT, 2))
 	_row = HBoxContainer.new()
 	_row.add_theme_constant_override("separation", 8)
 	add_child(_row)
@@ -29,7 +29,7 @@ func _rebuild() -> void:
 		_row.add_child(_faction_panel(code))
 	var settings := Button.new()
 	settings.text = "Settings"
-	settings.focus_mode = Control.FOCUS_NONE
+	HudStyle.secondary(settings)
 	settings.custom_minimum_size = Vector2(84, 0)
 	settings.tooltip_text = "Playback settings"
 	settings.pressed.connect(settings_pressed.emit)
@@ -43,13 +43,22 @@ func _title_block() -> Control:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 1)
 	p.add_child(v)
-	v.add_child(HudStyle.label("Global Cataclysm: 1972", 15, HudStyle.GOLD))
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 6)
+	var mark := TextureRect.new()
+	mark.texture = load("res://assets/logo/mark.svg")
+	mark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	mark.custom_minimum_size = Vector2(20, 20)
+	head.add_child(mark)
+	head.add_child(HudStyle.label("Global Cataclysm 1972", 15, HudStyle.GOLD))
+	v.add_child(head)
 	if GameStore.state.is_empty():
 		v.add_child(HudStyle.label("waiting for game...", 12, HudStyle.TEXT_DIM))
 		return p
 	var active := str(GameStore.state.get("active_faction", ""))
 	if GameStore.state.get("game_over", false):
-		v.add_child(HudStyle.label("GAME OVER", 15, Color(1.0, 0.45, 0.4)))
+		v.add_child(HudStyle.label("GAME OVER", 15, HudStyle.ACCENT))
 		return p
 	v.add_child(HudStyle.label("Round %d" % GameStore.round_number(), 13))
 	if active != "":
@@ -96,7 +105,7 @@ func _faction_panel(code: String) -> Control:
 
 	var allies := GameStore.allies_of(code)
 	if eliminated:
-		v.add_child(HudStyle.label("ELIMINATED", 11, Color(1.0, 0.45, 0.4)))
+		v.add_child(HudStyle.label("ELIMINATED", 11, HudStyle.ACCENT))
 		p.modulate = Color(1, 1, 1, 0.55)
 	else:
 		v.add_child(HudStyle.label("Allies: " + (", ".join(allies) if not allies.is_empty() else "none"), 11, HudStyle.TEXT_DIM))

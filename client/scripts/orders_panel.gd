@@ -32,15 +32,7 @@ func _ready() -> void:
 	button = HoldButton.new()
 	button.custom_minimum_size = Vector2(0, 46)
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button.focus_mode = Control.FOCUS_NONE
-	button.add_theme_font_size_override("font_size", 15)
-	button.add_theme_color_override("font_color", HudStyle.GOLD)
-	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_color_override("font_disabled_color", HudStyle.TEXT_DIM)
-	button.add_theme_stylebox_override("normal", HudStyle.box(HudStyle.GOLD, Color(0.16, 0.14, 0.05), 2))
-	button.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.24, 0.2, 0.06), 2))
-	button.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, Color(0.3, 0.25, 0.08), 2))
-	button.add_theme_stylebox_override("disabled", HudStyle.box(HudStyle.EDGE, HudStyle.BG, 1))
+	HudStyle.primary(button)
 	button_row.add_child(button)
 
 	resolve_button = Button.new()
@@ -48,15 +40,7 @@ func _ready() -> void:
 	resolve_button.tooltip_text = "Fight this battle without opening the battle board"
 	resolve_button.visible = false
 	resolve_button.custom_minimum_size = Vector2(90, 46)
-	resolve_button.focus_mode = Control.FOCUS_NONE
-	resolve_button.add_theme_font_size_override("font_size", 15)
-	resolve_button.add_theme_color_override("font_color", HudStyle.GOLD)
-	resolve_button.add_theme_color_override("font_hover_color", Color.WHITE)
-	resolve_button.add_theme_color_override("font_disabled_color", HudStyle.TEXT_DIM)
-	resolve_button.add_theme_stylebox_override("normal", HudStyle.box(HudStyle.GOLD, Color(0.16, 0.14, 0.05), 2))
-	resolve_button.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.24, 0.2, 0.06), 2))
-	resolve_button.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, Color(0.3, 0.25, 0.08), 2))
-	resolve_button.add_theme_stylebox_override("disabled", HudStyle.box(HudStyle.EDGE, HudStyle.BG, 1))
+	HudStyle.secondary(resolve_button)
 	resolve_button.pressed.connect(Stepper.resolve_pending_battle)
 	button_row.add_child(resolve_button)
 
@@ -125,7 +109,7 @@ func _add_alliance_options() -> void:
 	status_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_content.add_child(status_l)
 	if ha["game_would_end"]:
-		var warn := HudStyle.label("Every remaining faction is allied, or you are the only one left: the game ends at the end of this phase.", 11, Color(1.0, 0.6, 0.45))
+		var warn := HudStyle.label("Every remaining faction is allied, or you are the only one left: the game ends at the end of this phase.", 11, GCTheme.RED_LIGHT)
 		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_content.add_child(warn)
 
@@ -182,14 +166,8 @@ func _choice(text: String, faction: String, selected: bool, enabled: bool, tip: 
 	b.tooltip_text = tip
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(0, 26)
-	b.add_theme_font_size_override("font_size", 12)
-	var edge := HudStyle.GOLD if selected else HudStyle.EDGE
-	var bg := Color(0.2, 0.17, 0.06) if selected else Color(0.11, 0.13, 0.17)
-	b.add_theme_stylebox_override("normal", HudStyle.box(edge, bg, 2 if selected else 1))
-	b.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.2, 0.22, 0.27), 1))
-	b.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, bg, 2))
-	b.add_theme_stylebox_override("disabled", HudStyle.box(Color(0.16, 0.19, 0.24), Color(0.09, 0.105, 0.135), 1))
-	b.add_theme_color_override("font_color", HudStyle.GOLD if selected else HudStyle.TEXT)
+	b.add_theme_font_size_override("font_size", 13)
+	b.theme_type_variation = "TabButtonOn" if selected else "TabButton"
 	if hold:
 		(b as HoldButton).activated.connect(action)
 	else:
@@ -224,7 +202,7 @@ func _add_move_summary() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	row.add_child(HudStyle.label("Selected %d" % selected, 13, Color.WHITE if selected > 0 else HudStyle.TEXT_DIM))
-	row.add_child(HudStyle.label("Targets %d" % targets, 13, Color(0.55, 1.0, 0.6) if targets > 0 else HudStyle.TEXT_DIM))
+	row.add_child(HudStyle.label("Targets %d" % targets, 13, Color.WHITE if targets > 0 else HudStyle.TEXT_DIM))
 	row.add_child(HudStyle.label("Queued %d" % GameStore.human_move["orders"].size(), 13, HudStyle.GOLD))
 	_content.add_child(row)
 
@@ -303,10 +281,6 @@ func _step_button(text: String, enabled: bool, action: Callable) -> Button:
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(26, 20)
 	b.add_theme_font_size_override("font_size", 14)
-	b.add_theme_stylebox_override("normal", HudStyle.box(HudStyle.EDGE, Color(0.13, 0.16, 0.2), 1))
-	b.add_theme_stylebox_override("hover", HudStyle.box(HudStyle.GOLD, Color(0.2, 0.17, 0.06), 1))
-	b.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, Color(0.3, 0.25, 0.08), 1))
-	b.add_theme_stylebox_override("disabled", HudStyle.box(Color(0.16, 0.19, 0.24), Color(0.09, 0.105, 0.135), 1))
 	b.pressed.connect(action)
 	return b
 
@@ -318,5 +292,5 @@ func _add_budget() -> void:
 	row.add_theme_constant_override("separation", 12)
 	row.add_child(HudStyle.label("Budget %d MCP" % int(hp["treasury"]), 13))
 	row.add_child(HudStyle.label("Queued %d" % int(hp["total_cost"]), 13, HudStyle.GOLD))
-	row.add_child(HudStyle.label("Left %d" % left, 13, Color(0.55, 1.0, 0.6) if left > 0 else Color(1.0, 0.55, 0.5)))
+	row.add_child(HudStyle.label("Left %d" % left, 13, Color.WHITE if left > 0 else GCTheme.RED_LIGHT))
 	_content.add_child(row)

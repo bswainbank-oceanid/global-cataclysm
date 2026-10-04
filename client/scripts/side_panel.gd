@@ -109,7 +109,7 @@ func _on_move_changed() -> void:
 
 
 func _sync_next() -> void:
-	_next.text = Stepper.button_text
+	_next.text = Stepper.button_text.to_upper()
 	_next.disabled = not Stepper.button_active
 	_next.hold_seconds = 1.0 if Stepper.needs_hold else 0.0
 	_next.tooltip_text = "Hold for 1 second to submit (mouse or Space)" if Stepper.needs_hold else "Step to the next phase (Space)"
@@ -168,7 +168,7 @@ func show_queue(header: String, skipped: Array, events: Array) -> void:
 	_queue_head.text = "Queued  -  %s" % header
 	_queue.clear()
 	for phase in skipped:
-		_queue.append_text("[color=#7f8ea0]%s skipped (not allowed on a faction's first turn)[/color]\n" % GameStore.PHASE_LABELS.get(phase, phase))
+		_queue.append_text("[color=#a9b4b8]%s skipped (not allowed on a faction's first turn)[/color]\n" % GameStore.PHASE_LABELS.get(phase, phase))
 	if GameStore.human_move_active():
 		_queue.append_text(_move_queue_text() + "\n")
 		return
@@ -183,7 +183,7 @@ func show_queue(header: String, skipped: Array, events: Array) -> void:
 			_queue.append_text(line + "\n")
 			shown += 1
 	if shown == 0:
-		_queue.append_text("[color=#7f8ea0]  (nothing queued)[/color]\n")
+		_queue.append_text("[color=#a9b4b8]  (nothing queued)[/color]\n")
 
 
 ## The player's queued moves, one line per (from, to) group with a [ - ] link that
@@ -192,7 +192,7 @@ func show_queue(header: String, skipped: Array, events: Array) -> void:
 func _move_queue_text() -> String:
 	var orders: Array = GameStore.human_move["orders"]
 	if orders.is_empty():
-		return "[color=#7f8ea0]  (no moves queued: select units, then drag them to a highlighted target)[/color]"
+		return "[color=#a9b4b8]  (no moves queued: select units, then drag them to a highlighted target)[/color]"
 	var groups := {}
 	var keys := []
 	for o in orders:
@@ -205,11 +205,11 @@ func _move_queue_text() -> String:
 	for key in keys:
 		var g: Array = groups[key]
 		var open: bool = _expanded.get(key, false)
-		lines.append("  [url=exp:%s]%s[/url] %s: %s > %s  [url=recall:%s][color=#ff8a7a][b] [ - ] [/b][/color][/url]" % [
+		lines.append("  [url=exp:%s]%s[/url] %s: %s > %s  [url=recall:%s][color=#e3483f][b] [ - ] [/b][/color][/url]" % [
 			key, "v" if open else ">", EventText._tally(g), EventText._terr(g[0]["from"]), EventText._terr(g[0]["dest"]), key])
 		if open:
 			for o in g:
-				lines.append("      %s #%d  [url=recall1:%d][color=#ff8a7a][b] [ - ] [/b][/color][/url]" % [o["unit_type"], int(o["unit_id"]), int(o["unit_id"])])
+				lines.append("      %s #%d  [url=recall1:%d][color=#e3483f][b] [ - ] [/b][/color][/url]" % [o["unit_type"], int(o["unit_id"]), int(o["unit_id"])])
 	return "\n".join(lines)
 
 
@@ -242,7 +242,7 @@ func _sync_log_tabs() -> void:
 
 
 func log_events(header: String, events: Array) -> void:
-	log_line("[color=#ffd23f]%s[/color]" % header)
+	log_line("[b][color=#fffdf8]%s[/color][/b]" % header)
 	var shown := 0
 	for e in events:
 		if str(e.get("kind", "")).begins_with("strategy_"):
@@ -254,7 +254,7 @@ func log_events(header: String, events: Array) -> void:
 			log_line(line)
 			shown += 1
 	if shown == 0:
-		log_line("[color=#7f8ea0]  (nothing happened)[/color]")
+		log_line("[color=#a9b4b8]  (nothing happened)[/color]")
 
 
 func show_space(tid: int) -> void:
@@ -292,7 +292,7 @@ func show_space(tid: int) -> void:
 		_detail.add_child(HudStyle.label(", ".join(bits), 12))
 	var contested = _territory_field(tid, "contested_by")
 	if contested != null and not contested.is_empty():
-		_detail.add_child(HudStyle.label("CONTESTED: " + ", ".join(contested), 12, Color(1.0, 0.5, 0.4)))
+		_detail.add_child(HudStyle.label("Contested: " + ", ".join(contested), 12, HudStyle.ACCENT))
 
 	var by_owner := {}
 	for u in GameStore.units_at(tid):

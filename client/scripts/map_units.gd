@@ -210,15 +210,15 @@ func _draw_value_marker(tid: int, c: Vector2) -> void:
 		var pts := HudStyle.star_points(c, STAR_R)
 		draw_colored_polygon(pts, Color(1.0, 0.82, 0.25))
 		pts.append(pts[0])
-		draw_polyline(pts, Color(0, 0, 0, 0.85), 1.5)
+		draw_polyline(pts, Color(GCTheme.NAVY_DARK, 0.85), 1.5)
 		r = STAR_DISC_R
-	draw_circle(c, r + 1.0, Color(0, 0, 0, 0.85))
+	draw_circle(c, r + 1.0, Color(GCTheme.NAVY_DARK, 0.85))
 	draw_circle(c, r, col)
 	var font := ThemeDB.fallback_font
 	var text := str(GameStore.display_value(tid))  # income/deploy value: SC bonus included
 	var at := Vector2(c.x - r, c.y + 3.6)
 	if text_col == Color.WHITE:
-		draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_CENTER, r * 2.0, 10, 3, Color(0, 0, 0, 0.9))
+		draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_CENTER, r * 2.0, 10, 3, Color(GCTheme.NAVY_DARK, 0.9))
 	draw_string(font, at, text, HORIZONTAL_ALIGNMENT_CENTER, r * 2.0, 10, text_col)
 
 
@@ -261,7 +261,7 @@ func _group_size(by_type: Dictionary) -> Vector2:
 func _draw_group(pos: Vector2, owner: String, by_type: Dictionary, size: Vector2, dark := false) -> void:
 	var col: Color = GameStore.display_color(owner)
 	# Queued purchases get a white border to set them apart from units on the board.
-	draw_rect(Rect2(pos - Vector2(1.5, 1.5), size + Vector2(3, 3)), Color(1, 1, 1, 0.95) if dark else Color(0, 0, 0, 0.85))
+	draw_rect(Rect2(pos - Vector2(1.5, 1.5), size + Vector2(3, 3)), Color(1, 1, 1, 0.95) if dark else Color(GCTheme.NAVY_DARK, 0.85))
 	draw_rect(Rect2(pos, size), col.darkened(0.5) if dark else col.lightened(0.05))
 	match _style():
 		Style.FLAG:
@@ -304,7 +304,7 @@ func _promotion_star(c: Vector2, r: float, rank := 1) -> void:
 	var pts := HudStyle.star_points(c, r if rank < 2 else r * 1.5)
 	draw_colored_polygon(pts, Color(1.0, 0.82, 0.25))
 	pts.append(pts[0])
-	draw_polyline(pts, Color(0, 0, 0, 0.9), 1.0)
+	draw_polyline(pts, Color(GCTheme.NAVY_DARK, 0.9), 1.0)
 	if rank >= 2:
 		var font := ThemeDB.fallback_font
 		var text := str(rank)
@@ -319,5 +319,5 @@ func _glyph(unit_type: String, p: Vector2, px: float) -> void:
 
 func _count(text: String, baseline: Vector2, size: int) -> void:
 	var font := ThemeDB.fallback_font
-	draw_string_outline(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 3, Color(0, 0, 0, 0.9))
+	draw_string_outline(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 3, Color(GCTheme.NAVY_DARK, 0.9))
 	draw_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color.WHITE)

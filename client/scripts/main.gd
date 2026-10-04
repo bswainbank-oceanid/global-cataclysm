@@ -20,6 +20,9 @@ var _launch: LaunchScreen
 
 
 func _ready() -> void:
+	# the style guide's look (GCTheme): navy chrome for the whole window; paper panels set their own
+	get_tree().root.theme = GCTheme.chrome()
+	RenderingServer.set_default_clear_color(GCTheme.NAVY_DARK)
 	var root := VBoxContainer.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_theme_constant_override("separation", 6)
@@ -70,8 +73,8 @@ func _ready() -> void:
 	_hover_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_hover_label.position = Vector2(10, -26)
 	_hover_label.add_theme_font_size_override("font_size", 13)
-	_hover_label.add_theme_color_override("font_color", Color.WHITE)
-	_hover_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	_hover_label.add_theme_color_override("font_color", GCTheme.WHITE)
+	_hover_label.add_theme_color_override("font_outline_color", GCTheme.NAVY_DARK)
 	_hover_label.add_theme_constant_override("outline_size", 4)
 	_hover_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	map_area.add_child(_hover_label)
@@ -251,9 +254,9 @@ func _start_view() -> void:
 				await get_tree().create_timer(0.3).timeout
 	if Dbg.args.has("announce_test"):  # --announce_test: show one of each announcement (for screenshots)
 		Stepper.announced.emit([
-			{"title": "UE eliminated", "color": Color(0.9, 0.75, 0.3), "body": "[b]United Europe[/b] (UE) has been eliminated. It held one Strategic Center or fewer, so it is out of the game and all of its units are removed from the board."},
-			{"title": "New alliance", "color": Color(0.4, 0.6, 1.0), "body": "[b]North Atlantic Alliance[/b] (NAA) and [b]Greater Pacific Commonwealth[/b] (GPC) have formed an alliance."},
-			{"title": "Game over", "color": Color(0.4, 0.6, 1.0), "body": "[b]North Atlantic Alliance[/b] (NAA) is the last faction standing, and wins the game."}])
+			{"title": "UE eliminated", "color": GameData.factions["UE"].color, "body": "[b]United Europe[/b] (UE) has been eliminated. It held one Strategic Center or fewer, so it is out of the game and all of its units are removed from the board."},
+			{"title": "New alliance", "color": GameData.factions["NAA"].color, "body": "[b]North Atlantic Alliance[/b] (NAA) and [b]Greater Pacific Commonwealth[/b] (GPC) have formed an alliance."},
+			{"title": "Game over", "color": GameData.factions["NAA"].color, "body": "[b]North Atlantic Alliance[/b] (NAA) is the last faction standing, and wins the game."}])
 
 	await _scripted_input()
 	Dbg.scene_ready = true
@@ -418,7 +421,7 @@ func _setup_move_dragging() -> void:
 	_cam.move_drag.connect(_on_move_drag)
 	GameStore.move_changed.connect(_refresh_move_targets)
 	_tile_drag_label = PanelContainer.new()
-	_tile_drag_label.add_theme_stylebox_override("panel", HudStyle.box(HudStyle.GOLD, Color(0.16, 0.14, 0.05), 2))
+	_tile_drag_label.add_theme_stylebox_override("panel", GCTheme.box(GCTheme.NAVY_DARK, GCTheme.CREAM, 2))
 	_tile_drag_label.add_child(HudStyle.label("moving", 13, HudStyle.GOLD))
 	_tile_drag_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tile_drag_label.z_index = 200

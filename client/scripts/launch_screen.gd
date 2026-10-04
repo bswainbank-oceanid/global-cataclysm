@@ -112,22 +112,41 @@ func _ready() -> void:
 	visible = false
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
-	bg.color = Color(0.045, 0.06, 0.085)
+	bg.color = GCTheme.NAVY_DARK
 	add_child(bg)
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# the poster behind the sheet (a title screen: the one place texture belongs)
+	var art := TextureRect.new()
+	art.texture = load("res://assets/logo/splash.png")
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	art.modulate = Color(0.55, 0.55, 0.55)
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(art)
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var center := CenterContainer.new()
 	add_child(center)
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", HudStyle.box(HudStyle.GOLD, Color(0.07, 0.085, 0.11), 2))
+	HudStyle.paper_sheet(panel)
 	center.add_child(panel)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
 	panel.add_child(v)
 
-	var title := HudStyle.label("Global Cataclysm: 1972", 26, HudStyle.GOLD)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# the wordmark: GLOBAL CATACLYSM 1972, CATACLYSM in red
+	var title := HBoxContainer.new()
+	title.alignment = BoxContainer.ALIGNMENT_CENTER
+	title.add_theme_constant_override("separation", 12)
+	for word in ["Global", "Cataclysm", "1972"]:
+		var w := HudStyle.label(word, 34, HudStyle.GOLD)
+		if word == "Cataclysm":
+			w.add_theme_color_override("font_color", GCTheme.RED)
+		title.add_child(w)
 	v.add_child(title)
+	var rule := HSeparator.new()
+	rule.theme_type_variation = "RedRule"
+	v.add_child(rule)
 	var scenario_row := HBoxContainer.new()
 	scenario_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	scenario_row.add_theme_constant_override("separation", 10)
@@ -149,7 +168,7 @@ func _ready() -> void:
 	v.add_child(HSeparator.new())
 	_build_sections(v)
 
-	_message = HudStyle.label("", 12, Color(1.0, 0.6, 0.5))
+	_message = HudStyle.label("", 12, GCTheme.RED)
 	_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_message.custom_minimum_size = Vector2(760, 34)
 	v.add_child(_message)
@@ -172,7 +191,7 @@ func _ready() -> void:
 	_resume = _button("Resume current game")
 	_resume.activated.connect(func(): resume_requested.emit())
 	buttons.add_child(_resume)
-	_start = _button("Start Game")
+	_start = HudStyle.primary(_button("Start Game"))
 	_start.activated.connect(func():
 		_save()
 		start_requested.emit(settings()))
@@ -430,14 +449,7 @@ func _button(text: String) -> HoldButton:
 	b.text = text
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(220, 44)
-	b.add_theme_font_size_override("font_size", 15)
-	b.add_theme_color_override("font_color", HudStyle.GOLD)
-	b.add_theme_color_override("font_hover_color", Color.WHITE)
-	b.add_theme_color_override("font_disabled_color", HudStyle.TEXT_DIM)
-	b.add_theme_stylebox_override("normal", HudStyle.box(HudStyle.GOLD, Color(0.16, 0.14, 0.05), 2))
-	b.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.24, 0.2, 0.06), 2))
-	b.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, Color(0.3, 0.25, 0.08), 2))
-	b.add_theme_stylebox_override("disabled", HudStyle.box(HudStyle.EDGE, HudStyle.BG, 1))
+	HudStyle.secondary(b)
 	return b
 
 
@@ -606,7 +618,7 @@ func _changed() -> void:
 			var code := str(fac_o.get_item_metadata(k))
 			fac_o.set_item_disabled(k, taken.has(code) and taken[code] != i)
 		var f := _faction_of(row)
-		(row["chip"] as ColorRect).color = GameData.factions[f].color if f != "random" else Color(0.3, 0.34, 0.4)
+		(row["chip"] as ColorRect).color = GameData.factions[f].color if f != "random" else GCTheme.GRAY
 		var player: bool = mode == "HUMAN" or mode == "BOT"
 		(row["alliance"] as OptionButton).disabled = not player or _max_size < 2
 		if _max_size < 2:
@@ -633,7 +645,7 @@ func _refresh_save_buttons(p: Array) -> void:
 	_delete_button.visible = _is_new()
 	_delete_button.disabled = _setup_id == ""
 	_save_button.disabled = _name.text.strip_edges() == "" or not p.is_empty()
-	_save_button.text = "Save as New Scenario Setup" if _setup_id != "" and saves_as_new() else "Save Scenario Setup"
+	_save_button.text = ("Save as New Scenario Setup" if _setup_id != "" and saves_as_new() else "Save Scenario Setup").to_upper()
 	if _setup_id == "":
 		_id_label.text = "assigned when saved"
 	elif saves_as_new():

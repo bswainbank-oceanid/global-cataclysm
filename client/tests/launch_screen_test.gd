@@ -207,7 +207,7 @@ func _initialize() -> void:
 		"saved setups follow a separator")
 	_check(str(screen._scenario.get_item_metadata(screen._scenario.selected)) == "Setup_001" and screen._setup_id == "Setup_001",
 		"the setup just saved is selected")
-	_check(not screen.saves_as_new() and screen._save_button.text == "Save Scenario Setup" and not screen._delete_button.disabled,
+	_check(not screen.saves_as_new() and screen._save_button.text == "SAVE SCENARIO SETUP" and not screen._delete_button.disabled,
 		"the same name updates it, and it can be deleted")
 	screen.select_scenario("new")
 	_check(screen._setup_id == "" and screen._name.text == "", "New scenario is unnamed")
@@ -222,7 +222,7 @@ func _initialize() -> void:
 %s" % [str(back["seats"]), str(stored["seats"])])
 	screen._name.text = "Duel II"
 	screen._changed()
-	_check(screen.saves_as_new() and screen._save_button.text == "Save as New Scenario Setup" and screen.setup()["id"] == "Setup_001",
+	_check(screen.saves_as_new() and screen._save_button.text == "SAVE AS NEW SCENARIO SETUP" and screen.setup()["id"] == "Setup_001",
 		"a new name saves a new setup")
 	screen.set_setups([], null)
 	_check(screen._setup_id == "" and screen._scenario.item_count == 2 and screen._is_new(), "after a delete: an unsaved new scenario")

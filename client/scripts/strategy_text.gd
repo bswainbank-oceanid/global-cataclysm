@@ -8,10 +8,10 @@ extends RefCounted
 const PHASES := {"PURCHASE": "Purchase", "COMBAT_MOVE": "Combat Moves", "NONCOMBAT_MOVE": "Non-Combat Moves",
 	"DEPLOY_INCOME": "Deploy"}
 const STATS := [["territory_mpc", "Territory MPC"], ["unit_value", "Unit value"], ["unit_count", "Units"], ["scs", "SCs"]]
-const DIM := "#7f8ea0"
-const WARN := "#ff8a7a"
-const HEAD := "#ffd23f"  # a section heading: turn start, a phase, end of turn
-const SUB := "#e8c872"   # a turn review's sub-heading
+const DIM := "#a9b4b8"
+const WARN := "#e3483f"
+const HEAD := "#fffdf8"  # a section heading: turn start, a phase, end of turn
+const SUB := "#f4ebdd"   # a turn review's sub-heading
 
 
 static func describe(e: Dictionary) -> String:
@@ -109,7 +109,7 @@ static func _objective(o: Dictionary, target) -> String:
 	var no = o.get("no")
 	var head := ("#%d " % int(no)) if no != null else ""
 	var t := "" if target == null else " (%s)" % EventText._terr(target)
-	return "[color=#ffd23f]%s%s[/color]%s" % [head, str(o.get("name", o.get("id", "?"))), t]
+	return "[color=#fffdf8]%s%s[/color]%s" % [head, str(o.get("name", o.get("id", "?"))), t]
 
 
 static func _count(unit_type: String, n: int) -> String:

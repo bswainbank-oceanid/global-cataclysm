@@ -39,9 +39,9 @@ func _initialize() -> void:
 
 	# (the window listens to the stepper, so it already has them)
 	_check(window.visible and store.announcement_open, "the panel opens and holds the game")
-	_check(window._ok.text == "OK  (3 more)", "and says how many more are waiting: %s" % window._ok.text)
+	_check(window._ok.text == "OK  (3 MORE)", "and says how many more are waiting: %s" % window._ok.text)
 	window.acknowledge()
-	_check(window.visible and window._ok.text == "OK  (2 more)", "OK moves on to the next")
+	_check(window.visible and window._ok.text == "OK  (2 MORE)", "OK moves on to the next")
 	window.acknowledge()
 	window.acknowledge()
 	_check(window.visible and window._ok.text == "OK", "the last one has a plain OK")

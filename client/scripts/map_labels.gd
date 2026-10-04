@@ -9,7 +9,7 @@ extends Node2D
 const LAND_FULL_NAME_ZOOM := 0.75
 const SEA_MIN_ZOOM := 0.55
 const LAND_MIN_ZOOM := 0.55
-const FONT_SIZE := 12
+const FONT_SIZE := 13
 
 var zoom := 1.0
 
@@ -23,7 +23,7 @@ func set_zoom(z: float) -> void:
 
 
 func _draw() -> void:
-	var font := ThemeDB.fallback_font
+	var font := GCTheme.font("display")  # the style guide's territory label: condensed capitals
 	var inv := 1.0 / zoom
 	for copy in [-1, 0, 1]:
 		for tid in GameData.territories:
@@ -38,12 +38,15 @@ func _draw() -> void:
 				continue
 			var text := str(tid)
 			if zoom >= LAND_FULL_NAME_ZOOM:
-				text = str(t["name"]) if noncombatant else "%d. %s" % [tid, t["name"]]
+				text = (str(t["name"]) if noncombatant else "%d. %s" % [tid, t["name"]]).to_upper()
 			var p: Vector2 = GameData.label_points[tid] + Vector2(copy * GameData.map_w, 0)
 			draw_set_transform(p, 0.0, Vector2(inv, inv))
 			var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
 			var pos := Vector2(-w * 0.5, FONT_SIZE * 0.35)
-			var fill := Color(0.02, 0.2, 0.33, 0.95) if is_sea else Color(1, 1, 1, 0.97)
-			var outline := Color(0.86, 0.97, 1.0, 0.9) if is_sea else Color(0, 0, 0, 0.9)
+			# land: white on a navy edge and a hard 1px navy shadow; sea: navy on a cream edge
+			var fill := Color(GCTheme.NAVY, 0.95) if is_sea else GCTheme.WHITE
+			var outline := Color(GCTheme.CREAM, 0.85) if is_sea else Color(GCTheme.NAVY_DARK, 0.9)
+			if not is_sea:
+				draw_string_outline(font, pos + Vector2(1, 1), text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, 3, GCTheme.NAVY_DARK)
 			draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, 3, outline)
 			draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, fill)

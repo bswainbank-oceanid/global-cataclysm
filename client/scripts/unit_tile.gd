@@ -38,6 +38,7 @@ var committed := false     # queued to move: drawn with an arrow badge; clicking
 var drag_payload := {}     # non-empty: this tile can start a move drag carrying this payload
 var rolling := false       # the battle board: this unit's roll is the one on show
 var must_land := false     # an aircraft that must land this Non-Combat Move or crash: a red pulse
+var on_paper := false      # on a paper sheet (the battle board): a bare silhouette in the owner's colour
 var _shake_x := 0.0        # the battle board's reactions: a roll shakes the unit side to side,
 var _bounce_y := 0.0       # and a hit bounces it up and down (drawn as an offset; the layout is untouched)
 var _shake_tween: Tween
@@ -197,9 +198,15 @@ func _draw_mark() -> void:
 			draw_line(box.position + pair[0], box.position + pair[1], col, 3.5, true)
 
 
-## A unit's icon on its owner's colour, at `offset` within the tile.
+## A unit's icon on its owner's colour, at `offset` within the tile -- or, on paper, the silhouette itself in
+## that colour (the style guide: colour says who owns it, shape what it is).
 func _draw_icon(unit_type: String, offset: Vector2, owner_col: Color) -> void:
 	var icon_rect := Rect2(ICON_POS + offset, Vector2(ICON, ICON))
+	if on_paper:
+		var silhouette := UnitIcons.get_icon(unit_type)
+		if silhouette != null:
+			draw_texture_rect(silhouette, icon_rect.grow(1), false, owner_col)
+		return
 	draw_rect(icon_rect.grow(1.5), Color(0, 0, 0, 0.85))
 	draw_rect(icon_rect, owner_col.lightened(0.05))
 	var tex := UnitIcons.get_icon(unit_type)
@@ -262,7 +269,7 @@ func _draw_package(offset: Vector2, owner_col: Color) -> void:
 		var row := i % rows
 		var y := offset.y + ICON_POS.y + ICON - (row + 1) * box_h - row * box_gap
 		var r := Rect2(offset.x + x0 + col * (box_w + 1.0), y, box_w, box_h)
-		draw_rect(r, Color.WHITE if i < hp else Color(0.9, 0.15, 0.15))
+		draw_rect(r, (GCTheme.NAVY if on_paper else Color.WHITE) if i < hp else Color(0.9, 0.15, 0.15))
 		if box_h >= 4.0:
 			draw_rect(r, Color(0, 0, 0, 0.85), false, 1.0)
 	if total >= HP_TEXT_FROM:

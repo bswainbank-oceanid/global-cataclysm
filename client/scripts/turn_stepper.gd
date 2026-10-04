@@ -54,7 +54,7 @@ func _ready() -> void:
 			_refresh())
 	Net.raw_message.connect(_on_message)
 	Net.disconnected.connect(func():
-		log_line.emit("[color=#ff7060]disconnected from server[/color]")
+		log_line.emit("[color=#e3483f]disconnected from server[/color]")
 		_awaiting = false
 		_refresh())
 
@@ -141,10 +141,10 @@ func _on_message(msg: Dictionary) -> void:
 			# armistice proposal').
 			GameStore.set_armistice({"from": msg["from"], "awaiting": msg["awaiting"], "automatic_after": msg.get("automatic_after")})
 			if msg.get("automatic_after") != null:
-				log_line.emit("[color=#ffd23f]%d rounds played: the game proposes an armistice -- awaiting: %s[/color]" % [
+				log_line.emit("[color=#fffdf8]%d rounds played: the game proposes an armistice -- awaiting: %s[/color]" % [
 					int(msg["automatic_after"]), ", ".join(msg["awaiting"])])
 			else:
-				log_line.emit("[color=#ffd23f]%s proposes an armistice -- awaiting: %s[/color]" % [_proposer_name(msg["from"]), ", ".join(msg["awaiting"])])
+				log_line.emit("[color=#fffdf8]%s proposes an armistice -- awaiting: %s[/color]" % [_proposer_name(msg["from"]), ", ".join(msg["awaiting"])])
 		"armistice_resolved":
 			GameStore.set_armistice({})
 			if bool(msg.get("accepted", false)):
@@ -157,10 +157,10 @@ func _on_message(msg: Dictionary) -> void:
 				if msg.get("automatic_after") != null:
 					body = "%s declined the armistice the game proposed. The game goes on; it will be proposed again in round %d." % [
 						_name(by), int(msg.get("next_round", 0))]
-				announced.emit([{"title": "Armistice declined", "color": Color(1.0, 0.6, 0.5), "body": body}])
+				announced.emit([{"title": "Armistice declined", "color": GCTheme.RED, "body": body}])
 		"error":
 			_awaiting = false
-			log_line.emit("[color=#ff7060]server: %s[/color]" % str(msg.get("message", "")))
+			log_line.emit("[color=#e3483f]server: %s[/color]" % str(msg.get("message", "")))
 		"game_started":
 			reset()
 		"game_over":
@@ -181,7 +181,7 @@ static func _name(code: String) -> String:
 
 
 static func _color(code: String) -> Color:
-	return GameData.factions[code].color.lightened(0.2) if GameData.factions.has(code) else HudStyle.GOLD
+	return GameData.factions[code].color if GameData.factions.has(code) else GCTheme.NAVY
 
 
 ## An armistice proposal's "from"/"faction" is null when a pure SPECTATOR proposed it (nobody's
@@ -225,7 +225,7 @@ func _announce(events: Array) -> void:
 				var names := []
 				for p in e.get("participants", []):
 					names.append(_name(str(p)))
-				items.append({"title": "Armistice agreed", "color": HudStyle.GOLD,
+				items.append({"title": "Armistice agreed", "color": GCTheme.NAVY,
 					"body": ("After %d rounds the game proposed an armistice" % int(e["automatic_after"]) if e.get("automatic_after") != null
 						else "%s proposed an armistice" % _proposer_name(e.get("faction")))
 						+ (", and everyone agreed: %s.\n\nThe game ends here; nobody is declared the winner." % ", ".join(names))})
@@ -266,11 +266,11 @@ func game_over_announcement() -> Dictionary:
 	if GameStore.game_ended_by_armistice():
 		# The "Armistice agreed" announcement (above, from the 'armistice' turn_log event) already
 		# named the participants; this one just marks that the game itself is over now.
-		return {"title": "Game over", "color": HudStyle.GOLD,
+		return {"title": "Game over", "color": GCTheme.NAVY,
 			"body": "The game has ended by armistice: every remaining faction agreed to stop here. See the Game Over report for the final standings."}
 	var left: Array = GameStore.active_factions()
 	var body := ""
-	var color := HudStyle.GOLD
+	var color := GCTheme.NAVY
 	if left.size() == 1:
 		body = "%s is the last faction standing, and wins the game." % _name(str(left[0]))
 		color = _color(str(left[0]))

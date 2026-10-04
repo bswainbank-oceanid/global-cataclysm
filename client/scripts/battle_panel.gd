@@ -60,10 +60,10 @@ var _side_icons := {}  # "attacker" / "defender" -> HBoxContainer of that side's
 # The frame's highlights: [colour, tag] per BattleModel.highlight() -- the air superiority round, and each
 # first-round combat bonus by its reason (engine.engine's ROUND1_*), under the names players know them by.
 const FRAMES := {
-	"air": [Color(0.45, 0.78, 1.0), "AIR SUPERIORITY ROUND"],
-	"amphibious landing": [Color(0.25, 0.85, 0.7), "AMPHIBIOUS LANDING BONUS"],
-	"sea-deploy ambush": [Color(1.0, 0.62, 0.2), "BLOCKADE BONUS"],
-	"former-ally territory reclaim": [Color(0.95, 0.3, 0.3), "BETRAYAL BONUS"],
+	"air": [Color("#2E6E9E"), "AIR SUPERIORITY ROUND"],
+	"amphibious landing": [Color("#1F7A6A"), "AMPHIBIOUS LANDING BONUS"],
+	"sea-deploy ambush": [Color("#B8620E"), "BLOCKADE BONUS"],
+	"former-ally territory reclaim": [GCTheme.RED, "BETRAYAL BONUS"],
 }
 
 
@@ -76,7 +76,7 @@ func _ready() -> void:
 		if visible and _model != null:  # a Resolve change alters what the button will do
 			_refresh_texts())
 	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.55)
+	dim.color = Color(GCTheme.NAVY_DARK, 0.6)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(dim)
@@ -86,7 +86,7 @@ func _ready() -> void:
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(center)
 	_panel = PanelContainer.new()
-	_panel.add_theme_stylebox_override("panel", HudStyle.box(HudStyle.GOLD, Color(0.07, 0.085, 0.11), 2))
+	HudStyle.paper_sheet(_panel)
 	center.add_child(_panel)
 
 	var v := VBoxContainer.new()
@@ -130,22 +130,14 @@ func _ready() -> void:
 	_result.custom_minimum_size = Vector2(TABLE_W, NARRATION_H)
 	_result.add_theme_font_size_override("normal_font_size", 13)
 	_result.add_theme_font_size_override("bold_font_size", 13)
-	_result.add_theme_stylebox_override("normal", HudStyle.box(HudStyle.EDGE, Color(0.09, 0.105, 0.135), 1))
+	_result.add_theme_stylebox_override("normal", GCTheme.box(GCTheme.WHITE, GCTheme.NAVY, 2))
 	v.add_child(_result)
 
 	_button = Button.new()
 	_button.text = "Next Roll"
 	_button.custom_minimum_size = Vector2(220, 40)
-	_button.focus_mode = Control.FOCUS_NONE
 	_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_button.add_theme_font_size_override("font_size", 15)
-	_button.add_theme_color_override("font_color", HudStyle.GOLD)
-	_button.add_theme_color_override("font_hover_color", Color.WHITE)
-	_button.add_theme_color_override("font_disabled_color", HudStyle.TEXT_DIM)
-	_button.add_theme_stylebox_override("normal", HudStyle.box(HudStyle.GOLD, Color(0.16, 0.14, 0.05), 2))
-	_button.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.24, 0.2, 0.06), 2))
-	_button.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, Color(0.3, 0.25, 0.08), 2))
-	_button.add_theme_stylebox_override("disabled", HudStyle.box(HudStyle.EDGE, HudStyle.BG, 1))
+	HudStyle.primary(_button)
 	_button.pressed.connect(_on_button)
 	v.add_child(_button)
 
@@ -154,7 +146,7 @@ func _ready() -> void:
 func _side_box(side: String) -> Control:
 	var box := PanelContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.add_theme_stylebox_override("panel", HudStyle.box())
+	box.add_theme_stylebox_override("panel", GCTheme.box(GCTheme.WHITE, GCTheme.NAVY, 2))
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 0)
 	box.add_child(v)
@@ -185,11 +177,7 @@ func _side_box(side: String) -> Control:
 		r.focus_mode = Control.FOCUS_NONE
 		r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		r.add_theme_font_size_override("font_size", 12)
-		r.add_theme_stylebox_override("normal", HudStyle.box(Color(0.2, 0.24, 0.3), Color(0.09, 0.105, 0.135), 1))
-		r.add_theme_stylebox_override("hover", HudStyle.box(HudStyle.EDGE, Color(0.12, 0.14, 0.18), 1))
-		r.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, Color(0.2, 0.17, 0.06), 1))
-		r.add_theme_stylebox_override("hover_pressed", HudStyle.box(HudStyle.GOLD, Color(0.2, 0.17, 0.06), 1))
-		r.add_theme_color_override("font_pressed_color", HudStyle.GOLD)
+		r.theme_type_variation = "RadioButton"
 		r.button_pressed = mode == current
 		r.pressed.connect(func():
 			if side == "attacker":
@@ -221,6 +209,7 @@ func open(preview: Dictionary) -> void:
 	_dice.clear()
 	for id in _model.unit_order:
 		var tile := UnitTile.for_battle(_model.units[id])
+		tile.on_paper = true
 		tile.toggle_mode = false
 		tile.scale = Vector2(TILE_SCALE, TILE_SCALE)
 		_table.add_child(tile)
@@ -261,7 +250,7 @@ func _set_header() -> void:
 	# the controlling faction's icon beside the title (none at sea, or unowned)
 	_owner_icon.get_parent().remove_child(_owner_icon)
 	_owner_icon.queue_free()
-	_owner_icon = FactionIcons.make(owner, 36) if owner != "" else Control.new()
+	_owner_icon = FactionIcons.make(owner, 36, true) if owner != "" else Control.new()
 	_title_row.add_child(_owner_icon)
 	_title_row.move_child(_owner_icon, 0)
 	var by_side := _model.factions_by_side()
@@ -271,7 +260,7 @@ func _set_header() -> void:
 		for c in _side_icons[side].get_children():
 			c.queue_free()
 		for code in by_side[side]:
-			_side_icons[side].add_child(FactionIcons.make(str(code), 30))
+			_side_icons[side].add_child(FactionIcons.make(str(code), 30, true))
 
 
 ## Dev/scripted: press the board's button `n` times, letting the server answer
@@ -296,7 +285,7 @@ func _on_button() -> void:
 	if not _model.events_loaded:
 		_want_press = true
 		_button.disabled = true
-		_button.text = "Rolling..."
+		_button.text = "ROLLING..."
 		roll_requested.emit()
 		return
 	_do_press()
@@ -344,7 +333,7 @@ func _refresh_texts() -> void:
 	_apply_frame()
 	var action := _model.next_action({"attacker": Settings.resolve_attacker, "defender": Settings.resolve_defender})
 	if not _button.disabled:
-		_button.text = str(action["label"])
+		_button.text = str(action["label"]).to_upper()
 	var lines := []
 	if not _model.prev_lines.is_empty():
 		lines.append("[b]Last:[/b] " + "\n".join(_model.prev_lines))
@@ -358,20 +347,17 @@ func _refresh_texts() -> void:
 
 
 ## The frame shows what makes the round on show special: the air superiority round, or a first-round
-## combat bonus (FRAMES) -- a coloured, thicker border with a glow, and a tag naming it; plain gold otherwise.
+## combat bonus (FRAMES) -- a coloured, heavier border and a tag naming it; the sheet's navy frame otherwise.
 func _apply_frame() -> void:
 	var kind := _model.highlight() if _model != null else ""
 	var style: Array = FRAMES.get(kind, [])
-	var box := HudStyle.box(HudStyle.GOLD, Color(0.07, 0.085, 0.11), 2)
+	_panel.remove_theme_stylebox_override("panel")  # the paper sheet's own navy frame
 	if not style.is_empty():
 		var colour: Color = style[0]
-		box = HudStyle.box(colour, Color(0.07, 0.085, 0.11), 5)
-		box.shadow_color = Color(colour.r, colour.g, colour.b, 0.55)
-		box.shadow_size = 14
+		_panel.add_theme_stylebox_override("panel", GCTheme.box(GCTheme.PAPER, colour, 7, 10, Vector4(14, 12, 14, 12)))
 		_frame_tag.text = str(style[1]) if kind == "air" else "%s -- %s, round 1" % [style[1], _model.bonus_holder()]
-		_frame_tag.add_theme_color_override("font_color", colour.lightened(0.25))
+		_frame_tag.add_theme_color_override("font_color", colour)
 	_frame_tag.visible = not style.is_empty()
-	_panel.add_theme_stylebox_override("panel", box)
 
 
 # ---- layout -------------------------------------------------------------------
@@ -567,8 +553,8 @@ func _draw_table() -> void:
 	if _model == null or _row_y.is_empty():
 		return
 	var t := _table
-	var line := Color(0.55, 0.62, 0.72)
-	var text := HudStyle.TEXT
+	var line := GCTheme.NAVY
+	var text := GCTheme.NAVY
 	var uw := _units_col_w()
 	# Start of each column, then the right edge: defL | unitsL | roll | unitsR | defR
 	var col_x := [0.0, COL_DEF, COL_DEF + uw, COL_DEF + uw + COL_ROLL, COL_DEF + 2.0 * uw + COL_ROLL, TABLE_W]
@@ -576,13 +562,14 @@ func _draw_table() -> void:
 	var body_bottom: float = _row_y.back() + _row_h.back()
 
 	# Header rows.
-	t.draw_rect(Rect2(0, 0, TABLE_W, body_top), Color(0.13, 0.155, 0.19))
-	_centered(t, "Attacker", Rect2(col_x[0], 0, col_x[2] - col_x[0], HEADER_H), 14, text)
-	_centered(t, _model.round_title(), Rect2(col_x[2], 0, col_x[3] - col_x[2], HEADER_H), 14, HudStyle.GOLD)
-	_centered(t, "Defender", Rect2(col_x[3], 0, col_x[5] - col_x[3], HEADER_H), 14, text)
-	var labels := ["Defense", "Units", "Roll", "Units", "Defense"]
+	t.draw_rect(Rect2(0, 0, TABLE_W, HEADER_H), GCTheme.NAVY)
+	t.draw_rect(Rect2(0, HEADER_H, TABLE_W, HEADER_H), GCTheme.CREAM)
+	_centered(t, "ATTACKER", Rect2(col_x[0], 0, col_x[2] - col_x[0], HEADER_H), 16, GCTheme.CREAM, true)
+	_centered(t, _model.round_title().to_upper(), Rect2(col_x[2], 0, col_x[3] - col_x[2], HEADER_H), 16, GCTheme.WHITE, true)
+	_centered(t, "DEFENDER", Rect2(col_x[3], 0, col_x[5] - col_x[3], HEADER_H), 16, GCTheme.CREAM, true)
+	var labels := ["DEFENSE", "UNITS", "ROLL", "UNITS", "DEFENSE"]
 	for i in 5:
-		_centered(t, labels[i], Rect2(col_x[i], HEADER_H, col_x[i + 1] - col_x[i], HEADER_H), 12, HudStyle.TEXT_DIM)
+		_centered(t, labels[i], Rect2(col_x[i], HEADER_H, col_x[i + 1] - col_x[i], HEADER_H), 13, GCTheme.GRAY, true)
 
 	# Body: row lines and the defense numbers.
 	for i in _rows.size():
@@ -598,12 +585,12 @@ func _draw_table() -> void:
 			_golden_defense(t, Rect2(col_x[0], y, COL_DEF, h), d)
 			_golden_defense(t, Rect2(col_x[4], y, COL_DEF, h), d)
 			continue
-		_centered(t, d, Rect2(col_x[0], y, COL_DEF, h), 15, text)
-		_centered(t, d, Rect2(col_x[4], y, COL_DEF, h), 15, text)
+		_centered(t, d, Rect2(col_x[0], y, COL_DEF, h), 20, text, true)
+		_centered(t, d, Rect2(col_x[4], y, COL_DEF, h), 20, text, true)
 	for x in col_x:
 		t.draw_line(Vector2(x, body_top), Vector2(x, body_bottom), line, 1.0)
 	t.draw_line(Vector2(0, body_bottom), Vector2(TABLE_W, body_bottom), line, 1.0)
-	t.draw_rect(Rect2(0, 0, TABLE_W, body_bottom), line, false, 1.5)
+	t.draw_rect(Rect2(1, 1, TABLE_W - 2, body_bottom - 1), line, false, 2.0)
 
 
 ## The defense box of an 11 -- a rare occasion, so a shimmering golden box: a light band sweeps
@@ -624,10 +611,10 @@ func _golden_defense(t: Control, cell: Rect2, label: String) -> void:
 	var pulse := 0.5 + 0.5 * sin(now * TAU / 1.2)
 	t.draw_rect(box, Color(1.0, 0.93, 0.55, 0.65 + 0.35 * pulse), false, 3.0)
 	t.draw_rect(box.grow(-3.0), Color(0.45, 0.28, 0.0, 0.55), false, 1.0)
-	_centered(t, label, box, 20, Color(0.22, 0.12, 0.0))
+	_centered(t, label, box, 22, Color(0.22, 0.12, 0.0), true)
 
 
-func _centered(t: Control, s: String, r: Rect2, size: int, col: Color) -> void:
-	var font := ThemeDB.fallback_font
+func _centered(t: Control, s: String, r: Rect2, size: int, col: Color, display := false) -> void:
+	var font: Font = GCTheme.font("display") if display else GCTheme.font("body")
 	var w := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 	t.draw_string(font, Vector2(r.position.x + (r.size.x - w) * 0.5, r.position.y + r.size.y * 0.5 + size * 0.35), s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)

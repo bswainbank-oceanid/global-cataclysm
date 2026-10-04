@@ -26,6 +26,7 @@ func _ready() -> void:
 	add_child(center)
 	_panel = PanelContainer.new()
 	_panel.custom_minimum_size = Vector2(460, 0)
+	HudStyle.paper_sheet(_panel)
 	center.add_child(_panel)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
@@ -48,14 +49,8 @@ func _ready() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	v.add_child(row)
 	_ok = Button.new()
-	_ok.focus_mode = Control.FOCUS_NONE
 	_ok.custom_minimum_size = Vector2(170, 40)
-	_ok.add_theme_font_size_override("font_size", 15)
-	_ok.add_theme_color_override("font_color", HudStyle.GOLD)
-	_ok.add_theme_color_override("font_hover_color", Color.WHITE)
-	_ok.add_theme_stylebox_override("normal", HudStyle.box(HudStyle.GOLD, Color(0.16, 0.14, 0.05), 2))
-	_ok.add_theme_stylebox_override("hover", HudStyle.box(Color.WHITE, Color(0.24, 0.2, 0.06), 2))
-	_ok.add_theme_stylebox_override("pressed", HudStyle.box(HudStyle.GOLD, Color(0.3, 0.25, 0.08), 2))
+	HudStyle.primary(_ok)
 	_ok.pressed.connect(acknowledge)
 	row.add_child(_ok)
 	Stepper.announced.connect(add)
@@ -89,13 +84,11 @@ func _show_next() -> void:
 		_hide()
 		return
 	var a: Dictionary = _queue[0]
-	var col: Color = a.get("color", HudStyle.GOLD)
-	_panel.add_theme_stylebox_override("panel", HudStyle.box(col, Color(0.07, 0.085, 0.11), 3))
-	_accent.color = col
+	_accent.color = a.get("color", GCTheme.NAVY)  # (the band: the faction's colour; navy for the game's own news)
 	_title.text = str(a["title"])
 	_body.text = str(a["body"])
 	var more := _queue.size() - 1
-	_ok.text = "OK" if more == 0 else "OK  (%d more)" % more
+	_ok.text = "OK" if more == 0 else "OK  (%d MORE)" % more
 	visible = true
 	GameStore.announcement_open = true
 	if Dbg.args.has("shot"):
