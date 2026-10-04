@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<defs><clipPath id="sq"><rect width="64" height="64" rx="6"/></clipPath></defs>
+<g clip-path="url(#sq)">
+<rect width="64" height="64" fill="#F4EBDD"/>
+<polygon fill="#C92A24" points="32.0,50.0 -45.3,29.3 -39.6,14.3"/><polygon fill="#C92A24" points="32.0,50.0 -31.0,0.7 -19.8,-10.9"/><polygon fill="#C92A24" points="32.0,50.0 -6.6,-20.1 8.2,-26.4"/><polygon fill="#C92A24" points="32.0,50.0 24.0,-29.6 40.0,-29.6"/><polygon fill="#C92A24" points="32.0,50.0 55.8,-26.4 70.6,-20.1"/><polygon fill="#C92A24" points="32.0,50.0 83.8,-10.9 95.0,0.7"/><polygon fill="#C92A24" points="32.0,50.0 103.6,14.3 109.3,29.3"/>
+<circle cx="32" cy="50" r="25" fill="#F4EBDD"/>
+<circle cx="32" cy="50" r="22" fill="#0B2433"/>
+<polygon fill="#0B2433" points="32,4 34,9 34,12 47,16 47,18 34,17 33,20 36,22 36,23 28,23 28,22 31,20 30,17 17,18 17,16 30,12 30,9"/>
+<path fill="none" stroke="#F4EBDD" stroke-width="2.5" d="M13,41 Q32,33 51,41"/>
+<rect x="0" y="50" width="64" height="14" fill="#0B2433"/>
+<rect x="4" y="54" width="56" height="3" fill="#F4EBDD"/>
+</g>
+</svg>

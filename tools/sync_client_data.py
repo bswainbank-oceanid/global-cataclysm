@@ -11,7 +11,8 @@ files the client reads:
   territory_shapes.json  each location's boundary polygons
   factions.json          faction name, color, icon, in faction-set order; the Neutral colour/faction
   units.json             unit types with stats, abilities, icon, display and battle order
-plus the map image (as assets/base_map.png) and the unit icons.
+plus the map image (as assets/base_map.png), the unit and faction icons, the fonts (assets/fonts) and the
+logo artwork (assets/logo, renamed by LOGO_FILES).
 
 Run: python tools/sync_client_data.py [--scenario GC72_Scenario]
 """
@@ -22,6 +23,16 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# assets/logo file -> its name in client/assets/logo
+LOGO_FILES = {
+    '01_global-cataclysm-splash-1920x1080.png': 'splash.png',
+    'Global Cataclysm 1972 - start 1024x1024.png': 'start.png',
+    'Vintage Global Defense Poster Icon 512x512.png': 'icon_512.png',
+    'Vintage Global Defense Poster Icon 256x256.png': 'icon_256.png',
+    'Vintage Global Defense Poster Icon 64x64.png': 'icon_64.png',
+    'Vintage Global Defense Poster Icon 32x32.png': 'icon_32.png',
+    'global-cataclysm-mark.svg': 'mark.svg',
+}
 CLIENT = ROOT / 'client'
 sys.path.insert(0, str(ROOT))
 
@@ -77,7 +88,17 @@ def main():
     for icon in sorted(icons):
         (icon_dir / icon).parent.mkdir(parents=True, exist_ok=True)  # (faction icons sit in a subfolder)
         shutil.copy2(ROOT / 'assets' / 'icons' / icon, icon_dir / icon)
-    print(f'synced {config.scenario_id}: {len(files)} data files, the map image and {len(icons)} icons into {CLIENT}')
+    # the style guide's fonts (assets/fonts) and the logo artwork (assets/logo), under the names the client loads
+    font_dir = CLIENT / 'assets' / 'fonts'
+    font_dir.mkdir(parents=True, exist_ok=True)
+    for font in sorted((ROOT / 'assets' / 'fonts').glob('*.ttf')):
+        shutil.copy2(font, font_dir / font.name)
+    logo_dir = CLIENT / 'assets' / 'logo'
+    logo_dir.mkdir(parents=True, exist_ok=True)
+    for src, dest in LOGO_FILES.items():
+        shutil.copy2(ROOT / 'assets' / 'logo' / src, logo_dir / dest)
+    print(f'synced {config.scenario_id}: {len(files)} data files, the map image, {len(icons)} icons, the fonts and the logo '
+          f'into {CLIENT}')
 
 
 if __name__ == '__main__':
