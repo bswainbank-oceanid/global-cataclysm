@@ -261,7 +261,7 @@ func _set_header() -> void:
 	# the controlling faction's icon beside the title (none at sea, or unowned)
 	_owner_icon.get_parent().remove_child(_owner_icon)
 	_owner_icon.queue_free()
-	_owner_icon = FactionIcons.make(owner, 26) if owner != "" else Control.new()
+	_owner_icon = FactionIcons.make(owner, 36) if owner != "" else Control.new()
 	_title_row.add_child(_owner_icon)
 	_title_row.move_child(_owner_icon, 0)
 	var by_side := _model.factions_by_side()
@@ -271,7 +271,7 @@ func _set_header() -> void:
 		for c in _side_icons[side].get_children():
 			c.queue_free()
 		for code in by_side[side]:
-			_side_icons[side].add_child(FactionIcons.make(str(code), 24))
+			_side_icons[side].add_child(FactionIcons.make(str(code), 30))
 
 
 ## Dev/scripted: press the board's button `n` times, letting the server answer

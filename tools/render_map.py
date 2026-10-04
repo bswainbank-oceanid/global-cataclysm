@@ -1,9 +1,10 @@
 import argparse
+import os
 import cv2
 import numpy as np
 import tool_data
 from map_geometry import label_land, territory_labels
-import faction_icons
+import svg_icon
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--scenario', default=tool_data.DEFAULT_SCENARIO_ID)
@@ -20,7 +21,7 @@ faction_colors_hex = {k: v['color'] for k, v in tool_data.factions().items()}
 # the built-in Neutral and Noncombatant factions, for land the faction assignment gives them
 for builtin in (tool_data.config().neutral_faction(), tool_data.config().noncombatant_faction()):
     faction_colors_hex.setdefault(builtin['id'], builtin['color'])
-# each faction's icon (the faction set's `icon`: assets/icons/factions/<name>.svg, drawn from tools/faction_icons.py)
+# each faction's icon: the faction set's `icon`, a file under assets/icons (drawn by draw_faction_icon)
 FACTION_ICONS = {k: v.get('icon') for k, v in tool_data.factions().items()}
 _fset = tool_data.config().faction_set
 for _key in ('neutral', 'noncombatant'):
@@ -109,36 +110,27 @@ def draw_star(img, cx, cy, r_out, r_in, fill_color, outline_color=(0, 0, 0)):
 # for legibility at map scale.
 # ---------------------------------------------------------------------
 
-def draw_faction_icon(img, name, cx, cy, r, color):
-    """Faction icon `name` (tools/faction_icons.py -- the same shapes as the game's SVGs), radius `r`, in `color`."""
-    def px(x, y):
-        return [int(cx + x * r), int(cy + y * r)]
-    for s in faction_icons.ICONS[name]:
-        fill = (20, 20, 20) if s.get('hole') else color
-        outline = s.get('outline', True)
-        if 'circle' in s:
-            x, y, rr = s['circle']
-            cv2.circle(img, tuple(px(x, y)), max(1, int(rr * r)), fill, -1, lineType=cv2.LINE_AA)
-            if outline:
-                cv2.circle(img, tuple(px(x, y)), max(1, int(rr * r)), (0, 0, 0), 1, lineType=cv2.LINE_AA)
-        elif 'polygon' in s:
-            pts = np.array([[px(x, y) for x, y in s['polygon']]], dtype=np.int32)
-            cv2.fillPoly(img, pts, fill, lineType=cv2.LINE_AA)
-            if outline:
-                cv2.polylines(img, pts, True, (0, 0, 0), 1, lineType=cv2.LINE_AA)
-        elif 'rect' in s:
-            x0, y0, x1, y1 = s['rect']
-            cv2.rectangle(img, tuple(px(x0, y0)), tuple(px(x1, y1)), fill, -1)
-        else:
-            pts = np.array([[px(x, y) for x, y in s['polyline']]], dtype=np.int32)
-            cv2.polylines(img, pts, False, color, max(1, int(r * s['width'])), lineType=cv2.LINE_AA)
+_SVG_CACHE = {}
 
 
-def icon_name(faction):
-    """The icon a faction is drawn with: its faction-set icon's file name, else the plain one."""
-    file = (FACTION_ICONS.get(faction) or '').rsplit('/', 1)[-1]
-    name = file[:-4] if file.endswith('.svg') else ''
-    return name if name in faction_icons.ICONS else faction_icons.DEFAULT_ICON
+def draw_faction_icon(img, faction, cx, cy, r, color):
+    """Faction `faction`'s icon -- its SVG file, the one the game shows (the faction set's `icon`, under
+    assets/icons) -- `r` in radius, its light shapes in `color` and dark ones dark, outlined."""
+    file = FACTION_ICONS.get(faction) or 'faction/neutral.svg'
+    if file not in _SVG_CACHE:
+        _SVG_CACHE[file] = svg_icon.load(tool_data.root_path(os.path.join('assets', 'icons', file)))
+    (vx, vy, vw, vh), shapes = _SVG_CACHE[file]
+    k = 2.0 * r / max(vw, vh)
+    for sh in shapes:
+        polys = [np.array([[int(round(cx + (x - vx - vw / 2) * k)), int(round(cy + (y - vy - vh / 2) * k))]
+                           for x, y in c], dtype=np.int32) for c in sh['contours'] if len(c) > 2]
+        if not polys:
+            continue
+        dark = (sh['fill'] or '').lower() in ('#141414', '#000', '#000000')
+        if sh['fill'] not in (None, 'none'):
+            cv2.fillPoly(img, polys, (20, 20, 20) if dark else color, lineType=cv2.LINE_AA)
+        if sh['stroke'] not in (None, 'none'):
+            cv2.polylines(img, polys, True, (0, 0, 0), 1, lineType=cv2.LINE_AA)
 
 
 def draw_id_name_label(img, cx, cy, sid, name, above=False):
@@ -227,7 +219,7 @@ for sp in spaces:
     icon_cx = x0 + pad_x + icon_d // 2
     icon_cy = (y0 + y1) // 2
     icon_color = lighten(accent, 0.6)
-    draw_faction_icon(img, icon_name(fac), icon_cx, icon_cy, icon_d // 2, icon_color)
+    draw_faction_icon(img, fac, icon_cx, icon_cy, icon_d // 2, icon_color)
 
     cursor_x = x0 + pad_x + icon_d + gap
     base_y = icon_cy + max(th_fac, th_val) // 2

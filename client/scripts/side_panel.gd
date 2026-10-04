@@ -282,7 +282,7 @@ func show_space(tid: int) -> void:
 	facts.add_child(HudStyle.label(kind, 12, HudStyle.TEXT_DIM))
 	if owner != "" and GameData.factions.has(owner):
 		# who controls it: the faction's icon, then its code
-		facts.add_child(FactionIcons.make(owner, 18))
+		facts.add_child(FactionIcons.make(owner, 26))
 		facts.add_child(HudStyle.label("controlled by " + owner, 12, GameData.factions[owner].color.lightened(0.45)))
 	_detail.add_child(facts)
 	if t["type"] == "land":
@@ -318,7 +318,7 @@ func show_space(tid: int) -> void:
 					GameStore.set_all_move_selected(not GameStore.all_move_selected()))
 		var head_row := HBoxContainer.new()
 		head_row.add_theme_constant_override("separation", 5)
-		var icon := FactionIcons.make(code, 16)
+		var icon := FactionIcons.make(code, 20)
 		icon.modulate = Color.WHITE  # (on the faction-coloured strip: white reads best)
 		head_row.add_child(icon)
 		head_row.add_child(HudStyle.label(caption, 12, Color.WHITE))

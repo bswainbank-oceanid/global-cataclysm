@@ -1,8 +1,8 @@
 """
-The faction icons, once: each faction's glyph as a few simple shapes on a unit square (-1..1, y down),
-from which tools/write_faction_icons.py writes the SVG files the game shows (assets/icons/factions/*.svg,
-named by each faction's `icon` in the faction set) and tools/render_map.py draws exports/map.png -- so the
-two never differ.
+Icons for factions without artwork of their own -- today just the built-in Neutral and Noncombatant
+factions' plain disc -- as a few simple shapes on a unit square (-1..1, y down), from which
+tools/write_faction_icons.py writes the SVG file (assets/icons/faction/neutral.svg). The playable factions'
+icons are artwork (assets/icons/faction/<code>.svg). The game and tools/render_map.py both draw the SVG files.
 
 A shape is a dict: {'circle': (cx, cy, r)}, {'polygon': [(x, y), ...]}, {'polyline': [...], 'width': w}
 (an open line), or {'rect': (x0, y0, x1, y1)}; 'hole': True fills it dark (the gear's centre). Shapes are filled
@@ -17,22 +17,7 @@ def _points(n, r_out, r_in, start=-math.pi / 2):
 
 
 ICONS = {
-    # compass star: 4 long and 4 short points
-    'naa': [{'polygon': _points(8, 1.0, 0.45)}],
-    # gear: a disc with 8 teeth and a hollow centre
-    'ue': ([{'circle': (1.05 * math.cos(k * math.pi / 4), 1.05 * math.sin(k * math.pi / 4), 0.22), 'outline': False}
-            for k in range(8)]
-           + [{'circle': (0, 0, 0.85)}, {'circle': (0, 0, 0.35), 'hole': True}]),
-    # five-pointed star
-    'uer': [{'polygon': _points(10, 1.0, 0.42)}],
-    # rising sun over a wave
-    'gpc': [{'circle': (0, -0.15, 0.6)},
-            {'polyline': [(-1, 0.55), (-0.4, 0.15), (0, 0.55), (0.4, 0.15), (1, 0.55)], 'width': 0.18}],
-    # baobab: round canopy on a short trunk
-    'paf': [{'rect': (-0.12, 0, 0.12, 0.7), 'outline': False}, {'circle': (0, -0.25, 0.7)}],
-    # condor: chevron wings and a body
-    'aac': [{'polygon': [(-1, 0.1), (-0.25, -0.35), (0, 0), (0.25, -0.35), (1, 0.1), (0.25, 0.05), (0, 0.35), (-0.25, 0.05)]}],
-    # the built-in Neutral and Noncombatant factions: a plain disc
+    # the built-in Neutral and Noncombatant factions (no artwork of their own): a plain disc
     'neutral': [{'circle': (0, 0, 0.7)}],
 }
 
