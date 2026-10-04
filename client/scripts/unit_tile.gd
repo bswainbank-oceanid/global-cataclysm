@@ -156,8 +156,11 @@ func _draw() -> void:
 	else:
 		# The transport itself: a regular-size icon, with no XP or HP of its own.
 		_draw_icon(GameData.transport_unit(str(unit["unit_type"])), Vector2.ZERO, owner_col)
-		draw_rect(CARGO_BOX, owner_col.darkened(0.6))
-		draw_rect(CARGO_BOX, Color(1, 1, 1, 0.9), false, 1.5)
+		if on_paper:  # just a frame in the owner's colour round the carried unit: the paper shows through
+			draw_rect(CARGO_BOX, owner_col, false, 1.5)
+		else:
+			draw_rect(CARGO_BOX, owner_col.darkened(0.6))
+			draw_rect(CARGO_BOX, Color(1, 1, 1, 0.9), false, 1.5)
 		_draw_package(CARGO_OFFSET, owner_col)
 	_draw_mark()
 	if dimmed or committed:
