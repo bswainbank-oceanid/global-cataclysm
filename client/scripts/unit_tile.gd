@@ -241,7 +241,7 @@ func _draw_package(offset: Vector2, owner_col: Color) -> void:
 
 	# XP pips under the unit (a top-rank unit has nothing left to earn: all gold).
 	var xp := XP_PIPS if ranks >= max_rank() else mini(int(unit.get("xp", 0)), XP_PIPS)
-	# (on paper: bigger pips, solid navy when earned and an empty navy square when not)
+	# (on paper: bigger pips, navy squares, yellow inside when earned)
 	var pip := 6.0 if on_paper else 4.0
 	var gap := 1.5 if on_paper else 2.0
 	var row_w := XP_PIPS * pip + (XP_PIPS - 1) * gap
@@ -250,9 +250,10 @@ func _draw_package(offset: Vector2, owner_col: Color) -> void:
 	for i in XP_PIPS:
 		var r := Rect2(px + i * (pip + gap), py, pip, pip)
 		if on_paper:
+			# a navy square, yellow inside when earned (drawn filled: an outline at the board's 0.8 scale
+			# comes out uneven)
 			draw_rect(r, GCTheme.NAVY)
-			if i >= xp:  # (a filled hollow: an outline drawn at the board's 0.8 scale comes out uneven)
-				draw_rect(r.grow(-1.5), GCTheme.PAPER)
+			draw_rect(r.grow(-1.0), Color(1.0, 0.82, 0.25) if i < xp else GCTheme.PAPER)
 			continue
 		if i < xp:
 			draw_rect(r, Color(1.0, 0.82, 0.25))
