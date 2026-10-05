@@ -107,8 +107,9 @@ class Store:
         creating the file, its folder and its tables if they are missing."""
         if str(path) != ':memory:':
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-        # autocommit off by hand: each write is its own transaction unless inside transaction()
-        self._db = sqlite3.connect(str(path), isolation_level=None)
+        # autocommit off by hand: each write is its own transaction unless inside transaction(). Any thread
+        # may use it (the server runs a game's steps on a worker thread), one at a time: callers serialize.
+        self._db = sqlite3.connect(str(path), isolation_level=None, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._db.execute('PRAGMA foreign_keys = ON')
         if str(path) != ':memory:':

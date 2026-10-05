@@ -19,7 +19,11 @@ at a time with {"type": "next"}; a human faction's orders arrive as
 simultaneous games, persistence, real auth (a "join" message is trusted
 at face value for now).
 
-Run: python -m server.app [--host HOST] [--port PORT]
+Multi-player mode (--multi): many games at once, players logged in, games saved as they go and loaded
+back when the server starts -- server/hub.py's protocol, over MultiServer below. The player database is
+server_data/global_cataclysm.sqlite3 unless --db says otherwise.
+
+Run: python -m server.app [--host HOST] [--port PORT] [--multi [--db PATH]]
 A minimal scripted client for manual testing: python -m server.test_client
 """
 import argparse
@@ -38,7 +42,9 @@ from engine.state import FactionMode
 from engine.stats import GameStats
 from engine.turn_log import TurnLog
 from .host import GameHost
+from .hub import Hub
 from .session import GameSession
+from .store import DEFAULT_PATH, Store
 
 logger = logging.getLogger('server')
 
@@ -125,6 +131,85 @@ class Server:
             await asyncio.gather(*(ws.send(payload) for ws in targets), return_exceptions=True)
 
 
+class MultiServer:
+    """The sockets around a Hub. The hub isn't safe to use from two places at once, so every call into it
+    holds `lock`; a game's steps (a bot thinking can take seconds) run on a worker thread, so the server
+    keeps answering while they do. One runner task steps every game that can move on, a step from each
+    in turn, until none can, then sleeps until a message wakes it."""
+
+    def __init__(self, hub):
+        self.hub = hub
+        self.sockets = {}  # connection key -> websocket
+        self.lock = asyncio.Lock()
+        self.wake = asyncio.Event()
+        self._next_key = 0
+
+    async def handle_connection(self, websocket):
+        self._next_key += 1
+        key = f'c{self._next_key}'
+        self.sockets[key] = websocket
+        try:
+            async with self.lock:
+                deliveries = self.hub.connect(key)
+            await self._deliver(deliveries)
+            async for raw in websocket:
+                try:
+                    msg = json.loads(raw)
+                except (json.JSONDecodeError, TypeError):
+                    await websocket.send(json.dumps({'type': 'error', 'message': 'malformed JSON'}))
+                    continue
+                async with self.lock:
+                    deliveries = await asyncio.to_thread(self.hub.handle, key, msg)
+                await self._deliver(deliveries)
+                self.wake.set()
+        except websockets.ConnectionClosed:
+            pass
+        finally:
+            self.sockets.pop(key, None)
+            async with self.lock:
+                self.hub.disconnect(key)
+
+    async def run_games(self):
+        while True:
+            await self.wake.wait()
+            self.wake.clear()
+            while True:
+                async with self.lock:
+                    ready = self.hub.runnable()
+                if not ready:
+                    break
+                for game_id in ready:
+                    async with self.lock:
+                        try:
+                            deliveries = await asyncio.to_thread(self.hub.step, game_id)
+                        except Exception:  # (a game that breaks mustn't stop the others)
+                            logger.exception('game %s failed a step', game_id)
+                            self.hub.sessions.pop(game_id, None)
+                            deliveries = []
+                    await self._deliver(deliveries)
+
+    async def _deliver(self, deliveries):
+        sends = []
+        for keys, msg in deliveries:
+            payload = json.dumps(msg)
+            sends += [self.sockets[k].send(payload) for k in keys if k in self.sockets]
+        if sends:
+            await asyncio.gather(*sends, return_exceptions=True)
+
+
+async def main_multi(host, port, db):
+    server = MultiServer(Hub(Store(db)))
+    for game_id, problem in server.hub.load_problems.items():
+        logger.warning("game %s wasn't loaded: %s", game_id, problem)
+    logger.info('%d live game(s) loaded', len(server.hub.sessions))
+    runner = asyncio.create_task(server.run_games())
+    server.wake.set()  # (games loaded mid-run carry on)
+    async with websockets.serve(server.handle_connection, host, port):
+        logger.info('listening on ws://%s:%s (multi-player)', host, port)
+        await asyncio.Future()
+    runner.cancel()
+
+
 async def main(host, port, demo, human, combat_first_turn, seed=None):
     game_host = GameHost(_build_demo_session(human, combat_first_turn, seed) if demo else None)
     server = Server(game_host)
@@ -144,10 +229,16 @@ if __name__ == '__main__':
                         help="with --demo: the faction a player controls (default: the first demo faction); 'none' = both bots")
     parser.add_argument('--combat-first-turn', action='store_true',
                         help='dev/testing: allow Combat Move on a faction\'s first turn (the rules skip it)')
+    parser.add_argument('--multi', action='store_true',
+                        help='multi-player mode: logins, many games at once, games saved (server/hub.py)')
+    parser.add_argument('--db', default=str(DEFAULT_PATH), help='with --multi: the player database (default: %(default)s)')
     parser.add_argument('--seed', type=int, default=None,
                         help='with --demo: seed the game (bots and dice) so it replays exactly')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(message)s')
+    if args.multi:
+        asyncio.run(main_multi(args.host, args.port, args.db))
+        raise SystemExit(0)
     human = demo_factions()[0] if args.human is None else (None if args.human == 'none' else args.human)
     if human is not None and human not in demo_factions():
         parser.error(f'--human must be one of {", ".join(demo_factions())} or none')
