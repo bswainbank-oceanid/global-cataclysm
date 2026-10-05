@@ -345,6 +345,8 @@ factions, units with abilities and icons, adjacency) plus the map image.
 | `tools/sync_client_data.py` | the scenario's modules -> `client/data` |
 | `tools/golden_games.py` | seeded full-game digests, to prove a refactor changed nothing |
 | `tools/set_admin.py` | turns a player's admin flag on or off in the player database (`--list`: who is an admin) |
+| `tools/launcher.py` | starts the game as a player does: syncs the client data, starts the server in the background if it isn't running, opens the game window (what the shortcut runs) |
+| `tools/make_shortcut.py` | makes the "Global Cataclysm 1972" desktop and Start menu shortcuts (and `assets/logo/global-cataclysm.ico`) |
 
 Tools find the modules through `tools/tool_data.py` and take `--scenario`
 (default `GC72_Scenario`). See `docs/PIPELINE.md` for the editing workflow.
