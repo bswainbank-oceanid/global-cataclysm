@@ -14,6 +14,8 @@ var _surrender_btn: HoldButton
 var _armistice_btn: HoldButton
 signal new_game_pressed
 
+var _new_game: Button
+
 # Much longer than an ordinary Diplomacy hold (orders_panel.gd's 0.8s): these are
 # irreversible and can end the game, so a stray click must never fire them.
 const HOLD_SECONDS := 3.0
@@ -65,6 +67,7 @@ func _ready() -> void:
 
 	v.add_child(HSeparator.new())
 	var new_game := Button.new()
+	_new_game = new_game
 	new_game.text = "New game..."
 	HudStyle.secondary(new_game)
 	new_game.tooltip_text = "Back to the launch screen (the running game stays until you start another)"
@@ -99,6 +102,13 @@ func _check(parent: Control, text: String, setter: Callable) -> CheckBox:
 		Settings.commit())
 	parent.add_child(c)
 	return c
+
+
+## A multi-player game: the launch-screen button goes back to the main menu instead.
+func set_multi(on: bool) -> void:
+	_new_game.text = "MAIN MENU" if on else "NEW GAME..."
+	_new_game.tooltip_text = ("Back to the main menu (the game carries on, and waits for you when it needs you)" if on
+		else "Back to the launch screen (the running game stays until you start another)")
 
 
 func _sync() -> void:

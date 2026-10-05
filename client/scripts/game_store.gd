@@ -11,6 +11,7 @@ signal move_changed  # the human player's move queue, options or selection chang
 signal purchase_changed  # the human player's purchase queue/options changed
 signal armistice_changed  # a Propose Armistice proposal (in flight, or awaiting this human's own answer) changed
 signal game_over_report_changed  # the Game Over report arrived, or its minimize/restore state was toggled
+signal waiting_changed  # a multi-player game's "waiting for" changed
 
 var human_move := {}      # the human's Combat/Non-Combat Move in progress: {kind, faction, options{uid: {unit_type, origin, dests{dest: path}, continuations{first_hop: {dest: path}}}}, orders[{unit_id, unit_type, from, dest, path?}]}
 var tile_drag_armed := false  # a selected unit tile was pressed: a move drag may follow (see main.gd)
@@ -62,6 +63,12 @@ var game_over_report_minimized := false  # the Game Over report panel's minimize
 # armistice_resolved's cooldown_until_round, only when the declined proposal was this client's own
 # (see TurnStepper._is_my_own_proposal).
 var armistice_cooldown_until_round := -1
+# A multi-player game (server/hub.py): several humans may be seated, so "the player's" factions are the
+# ones this player holds (my_factions), not every HUMAN one. Off for the one-game launcher's games.
+var multi_game := false
+var my_factions: Array = []
+var game_info := {}        # the game entered: server/games.py's summary (id, code, scenario, host_name, ...)
+var waiting_for: Array = []  # the factions the game is waiting on (server: "waiting")
 
 
 func set_state(new_state: Dictionary, scenario := {}) -> void:
@@ -148,6 +155,7 @@ func reset() -> void:
 	armistice_cooldown_until_round = -1
 	game_over_report = []
 	game_over_report_minimized = false
+	waiting_for = []
 	move_origin = -1
 	move_selected.clear()
 	queued_step = ""
@@ -180,8 +188,11 @@ func is_neutral(code: String) -> bool:
 	return code == GameData.neutral_id or faction_state(code).get("mode", "") == "NEUTRAL"
 
 
-## A "player" faction is one in HUMAN mode; in a bot-vs-bot game there is none.
+## A "player" faction is this player's own: in a multi-player game one whose seat they hold, otherwise
+## one in HUMAN mode (the one-game launcher seats at most one). In a bot-vs-bot game there is none.
 func is_player(code: String) -> bool:
+	if multi_game:
+		return my_factions.has(code)
 	return faction_state(code).get("mode", "") == "HUMAN"
 
 
@@ -192,13 +203,31 @@ func has_player() -> bool:
 	return false
 
 
-## The one HUMAN faction's code, "" if this is a bot-vs-bot game (has_player() is false then).
-## At most one is ever seated (server/lobby.py), so there's no ambiguity to resolve.
+## The player's faction's code -- the first still in play when they hold several -- "" if they hold none
+## (a bot-vs-bot game, or watching a multi-player one; has_player() is false then).
 func human_faction() -> String:
+	var first := ""
 	for code in state.get("factions", {}):
 		if is_player(code):
-			return code
-	return ""
+			if not bool(faction_state(code).get("eliminated", false)):
+				return code
+			if first == "":
+				first = code
+	return first
+
+
+## Enters (or, with an empty `info`, leaves) a multi-player game: which of its factions are this player's.
+func set_multi_game(info: Dictionary, mine: Array) -> void:
+	multi_game = not info.is_empty()
+	game_info = info
+	my_factions = mine.duplicate()
+	waiting_for = []
+	state_changed.emit()
+
+
+func set_waiting_for(factions: Array) -> void:
+	waiting_for = factions.duplicate()
+	waiting_changed.emit()
 
 
 # ---- Settings actions: Surrender / Propose Armistice ------------------------------
@@ -216,7 +245,17 @@ func set_armistice(info: Dictionary) -> void:
 ## else proposed it (proposing counts as agreeing, so a proposer is never asked to
 ## answer their own; see server/session.py's _handle_propose_armistice).
 func armistice_pending() -> bool:
-	return not armistice.is_empty() and (armistice.get("awaiting", []) as Array).has(human_faction())
+	return armistice_faction() != ""
+
+
+## The faction of this player's that a pending armistice proposal is still asking ("" if none).
+func armistice_faction() -> String:
+	if armistice.is_empty():
+		return ""
+	for code in armistice.get("awaiting", []):
+		if is_player(str(code)):
+			return str(code)
+	return ""
 
 
 func set_armistice_cooldown_until_round(round_num: int) -> void:

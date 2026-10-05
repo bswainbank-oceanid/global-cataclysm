@@ -7,6 +7,12 @@ extends Node
 ##
 ## The same pattern will carry player turns: orders picked in the upper
 ## right panel land in the queue, and Next executes them.
+##
+## FEED MODE (a multi-player game, server/hub.py): the server runs ahead by itself and broadcasts each
+## step as it goes -- phase_result, the next phase_queue, state -- numbered. Those are kept in an inbox
+## and played back one step per Next (or by themselves, per Settings) exactly as if they were the reply
+## to a "next"; only the player's OWN decisions go to the server, as "end_phase". A step that hasn't
+## arrived yet (a bot thinking, another player deciding) is simply waited for.
 
 signal changed
 signal queue_shown(header: String, skipped: Array, events: Array)
@@ -44,6 +50,12 @@ var _held_result: Dictionary = {}
 var _edit_orders: Array = []  # the human's staged purchase as last sent/received: [{unit_type, qty, deploy_at}]
 var _awaiting := false  # a `next` is in flight; the reply is the next queue
 var _was_human_eliminated := false  # tracks the transition for _check_auto_spectate (fires once, not every state)
+var feed_mode := false   # a multi-player game: play back the server's feed (see above)
+var _inbox: Array = []   # feed steps received but not yet played back, oldest first
+var _feed_seq := 0       # the last feed message taken in
+var _feed_epoch := ""
+
+const DECISION_PHASES := ["PURCHASE", "COMBAT_MOVE", "NONCOMBAT_MOVE", "DIPLOMACY"]
 
 
 func _ready() -> void:
@@ -52,11 +64,71 @@ func _ready() -> void:
 			_auto = not _should_pause(_last_queue)  # a live change applies to the phase waiting now
 			_playing = _auto
 			_refresh())
-	Net.raw_message.connect(_on_message)
+	Net.raw_message.connect(_on_raw)
 	Net.disconnected.connect(func():
 		log_line.emit("[color=#e3483f]disconnected from server[/color]")
 		_awaiting = false
 		_refresh())
+
+
+## Everything from the server comes here first: in feed mode a step's messages wait in the inbox until
+## playback reaches them; otherwise (and for replies to this client alone) straight through.
+func _on_raw(msg: Dictionary) -> void:
+	if not feed_mode:
+		_on_message(msg)
+		return
+	var kind := str(msg.get("type", ""))
+	if kind == "feed":
+		_apply_feed(msg)
+		return
+	if kind in ["entered_game", "left_game", "my_games", "open_games", "game_lobby", "scenarios", "chat",
+			"logged_in", "logged_out", "hello", "game_launched", "game_cancelled", "left_lobby"]:
+		return  # (the launcher's, not the game's)
+	if msg.has("seq"):
+		if str(msg.get("epoch", "")) == _feed_epoch and int(msg["seq"]) <= _feed_seq:
+			return  # seen already
+		_feed_epoch = str(msg.get("epoch", ""))
+		_feed_seq = int(msg["seq"])
+		if kind == "phase_result" or not _inbox.is_empty():
+			_inbox.append(msg)
+			_pump()
+			return
+	_on_message(msg)
+
+
+## Entering a multi-player game: the picture as it stands (its state, the step waiting now).
+func _apply_feed(msg: Dictionary) -> void:
+	_feed_epoch = str(msg.get("epoch", ""))
+	_feed_seq = int(msg.get("seq", 0))
+	_inbox = []
+	_on_message({"type": "state", "game_state": msg["state"]["game_state"], "scenario": msg["state"].get("scenario", {})})
+	if msg.get("queue") != null:
+		_on_message(msg["queue"])
+	GameStore.set_waiting_for(msg.get("waiting_for", []))
+	if msg.get("game_over") != null:
+		_on_message({"type": "game_over", "report": msg["game_over"]})
+	_refresh()
+
+
+## Plays back the next step from the inbox once Next (or Settings) has asked for it: its phase_result and
+## everything after it up to the next step's.
+func _pump() -> void:
+	if not _awaiting or _inbox.is_empty():
+		return
+	var first := true
+	while not _inbox.is_empty():
+		var m: Dictionary = _inbox[0]
+		if not first and str(m.get("type", "")) == "phase_result":
+			break
+		_inbox.pop_front()
+		first = false
+		_on_message(m)
+	_refresh()
+
+
+## The queued step is one of this player's own decisions (their Purchase, moves or Diplomacy).
+func _is_my_decision() -> bool:
+	return GameStore.is_player(_queued_faction) and DECISION_PHASES.has(_queued_phase)
 
 
 func _on_message(msg: Dictionary) -> void:
@@ -158,6 +230,8 @@ func _on_message(msg: Dictionary) -> void:
 					body = "%s declined the armistice the game proposed. The game goes on; it will be proposed again in round %d." % [
 						_name(by), int(msg.get("next_round", 0))]
 				announced.emit([{"title": "Armistice declined", "color": GCTheme.RED, "body": body}])
+		"waiting":
+			GameStore.set_waiting_for(msg.get("for", []))
 		"error":
 			_awaiting = false
 			log_line.emit("[color=#e3483f]server: %s[/color]" % str(msg.get("message", "")))
@@ -310,8 +384,10 @@ func _refresh() -> void:
 	elif _playing:
 		button_text = "Pausing..." if _pause_requested else "Pause"
 		button_active = not _pause_requested
+	elif feed_mode and _inbox.is_empty() and _someone_elses_decision():
+		button_text = "Waiting for %s..." % ", ".join(GameStore.waiting_for if not GameStore.waiting_for.is_empty() else [_queued_faction])
 	elif _queued_phase != "" and not _awaiting:
-		needs_hold = GameStore.is_player(_queued_faction) and ["PURCHASE", "COMBAT_MOVE", "NONCOMBAT_MOVE", "DIPLOMACY"].has(_queued_phase)
+		needs_hold = GameStore.is_player(_queued_faction) and DECISION_PHASES.has(_queued_phase)
 		if needs_hold:
 			button_text = "Hold to submit  -  %s" % _header(_queued_faction, _queued_phase)
 		elif _queued_phase == "START_OF_TURN":
@@ -325,6 +401,16 @@ func _refresh() -> void:
 	else:
 		button_text = "Connecting..." if not Net.is_open() else "Waiting for server..."
 	changed.emit()
+
+
+## Feed mode: the game is held up by another player (their phase, or their answer to something).
+func _someone_elses_decision() -> bool:
+	if _is_my_decision() or game_over:
+		return false
+	for f in GameStore.waiting_for:
+		if not GameStore.is_player(str(f)):
+			return true
+	return false
 
 
 ## True if the player controls any participant in `battle` (attackers/
@@ -578,6 +664,7 @@ func reset() -> void:
 
 
 func _queue_reset() -> void:
+	_inbox = []
 	_last_queue = {}
 	_queued_faction = ""
 	_queued_phase = ""
@@ -669,7 +756,7 @@ func propose_armistice() -> void:
 ## The human's own answer to someone ELSE's pending armistice proposal.
 func respond_armistice(accept: bool) -> void:
 	if GameStore.armistice_pending():
-		Net.send_msg({"type": "respond_armistice", "faction": GameStore.human_faction(), "accept": accept})
+		Net.send_msg({"type": "respond_armistice", "faction": GameStore.armistice_faction(), "accept": accept})
 
 
 ## When the human's own faction is eliminated, default to letting the rest of the game
@@ -758,7 +845,12 @@ func advance() -> void:
 
 func _do_advance() -> void:
 	_awaiting = true
-	Net.send_msg({"type": "next"})
+	if not feed_mode:
+		Net.send_msg({"type": "next"})
+	elif _is_my_decision():
+		Net.send_msg({"type": "end_phase", "faction": _queued_faction})
+	else:
+		_pump()  # the step's results are here already, or on their way
 	_refresh()
 
 

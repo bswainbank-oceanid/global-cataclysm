@@ -30,9 +30,11 @@ extends Node
 ##   --bombardment_rolls=<n> press n times through paused bombardments (fire, then continue)
 ##   --wheel=x,y,steps       inject mouse-wheel steps at a screen point (+ = zoom in)
 ##   --drag=x1,y1,x2,y2      inject a left-button drag between two screen points
-##   --click=x,y             inject a left click at a screen point
+##   --click=x,y[;x,y;w30;...]  inject left clicks at screen points (w<n>: wait n frames between)
 ##   (injected input runs in that order: wheel, drag, click)
 ##   --strategy_log     show (and open) the Strategy Log tab
+##   --profile=<name>   keep this client's login apart (user://login_<name>.cfg): two players on one machine
+##   --dev_user=<name>  log in to a multi-player server as <name>@dev.local (registered the first time)
 ## Other scripts read `Dbg.args` for the scene-setup ones.
 
 var args := {}

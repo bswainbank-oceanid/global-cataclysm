@@ -19,6 +19,8 @@ var _view_before_battles := {}  # the camera before the first auto-zoom to a bat
 var _launch: LaunchScreen
 var _login: LoginScreen
 var _menu: MainMenu
+var _my_games: MyGamesScreen
+var _settings_panel: SettingsPanel
 
 
 func _ready() -> void:
@@ -147,9 +149,13 @@ func _ready() -> void:
 	settings_panel.offset_right = -10
 	add_child(settings_panel)
 	_top.settings_pressed.connect(func(): settings_panel.visible = not settings_panel.visible)
+	_settings_panel = settings_panel
 	settings_panel.new_game_pressed.connect(func():
 		settings_panel.visible = false
-		Net.send_msg({"type": "lobby"}))  # the reply reopens the launch screen
+		if Account.multi:  # a multi-player game: back to the main menu (the game goes on without you)
+			_leave_multi_game()
+		else:
+			Net.send_msg({"type": "lobby"}))  # the reply reopens the launch screen
 	Stepper.log_line.connect(_side.log_line)
 	Stepper.queue_shown.connect(_side.show_queue)
 	Stepper.executed.connect(_side.log_events)
@@ -306,8 +312,18 @@ func _inject_all() -> void:
 		if not Dbg.args.has("drag_hold"):  # --drag_hold: leave the button pressed (to capture the drag in progress)
 			_inject_button(b, false)
 			await get_tree().process_frame
-	if Dbg.args.has("click"):  # x,y  or several: x,y;x,y;...
+	if Dbg.args.has("click"):  # x,y  or several: x,y;x,y;...  (w<n> waits n frames; h<s> holds submit; n: Next)
 		for spot in str(Dbg.args["click"]).split(";"):
+			if spot.begins_with("w"):
+				for i in int(spot.substr(1)):
+					await get_tree().process_frame
+				continue
+			if spot.begins_with("h"):  # h<seconds>: hold the submit button
+				await _side.debug_hold(float(spot.substr(1)))
+				continue
+			if spot == "n":  # press the Next button
+				Stepper.button_pressed()
+				continue
 			var c: PackedStringArray = spot.split(",")
 			var p := Vector2(float(c[0]), float(c[1]))
 			_inject_button(p, true)
@@ -343,9 +359,23 @@ func _setup_launch_screen() -> void:
 	add_child(_login)
 	_menu = MainMenu.new()
 	add_child(_menu)
+	_my_games = MyGamesScreen.new()
+	add_child(_my_games)
 	Account.changed.connect(_on_account_changed)
-	for sig in [_menu.resume_pressed, _menu.join_pressed, _menu.new_game_pressed, _menu.scenarios_pressed]:
+	_menu.resume_pressed.connect(func():
+		_menu.close()
+		_my_games.open())
+	_my_games.back_pressed.connect(func():
+		_my_games.close()
+		_menu.open())
+	_my_games.game_picked.connect(func(g: Dictionary):
+		if str(g.get("status", "")) == "live":
+			Net.send_msg({"type": "enter_game", "game_id": g["id"]})
+		else:
+			_my_games.show_problem("Game lobbies are being built next."))
+	for sig in [_menu.join_pressed, _menu.new_game_pressed, _menu.scenarios_pressed]:
 		(sig as Signal).connect(func(): _menu._say("That part of the launcher is being built next."))
+	Net.raw_message.connect(_on_multi_message)
 	Stepper.game_reset.connect(func():
 		_side.reset_logs()
 		_world.arrows.reset()
@@ -361,13 +391,42 @@ func _on_account_changed() -> void:
 	_launch.close()
 	if Account.is_logged_in():
 		_login.close()
-		_menu.open()
+		if not GameStore.multi_game:
+			_menu.open()
 	elif Account.is_checking():
 		_login.close()
 		_menu.close()
 	else:
 		_menu.close()
 		_login.open()
+
+
+## The multi-player launcher's replies (server/hub.py).
+func _on_multi_message(msg: Dictionary) -> void:
+	if not Account.multi:
+		return
+	match str(msg.get("type", "")):
+		"my_games":
+			_my_games.set_games(msg.get("games", []))
+		"entered_game":
+			Stepper.feed_mode = true
+			Stepper.reset()
+			GameStore.set_multi_game(msg.get("game", {}), msg.get("my_factions", []))
+			for screen in [_menu, _my_games, _login]:
+				screen.close()
+			_settings_panel.set_multi(true)
+		"error":
+			if _my_games.visible:
+				_my_games.show_problem(str(msg.get("message", "")))
+
+
+## Back to the main menu from a multi-player game (it carries on on the server).
+func _leave_multi_game() -> void:
+	Net.send_msg({"type": "leave_game"})
+	Stepper.feed_mode = false
+	Stepper.reset()
+	GameStore.set_multi_game({}, [])
+	_menu.open()
 
 
 func _on_launch_message(msg: Dictionary) -> void:
