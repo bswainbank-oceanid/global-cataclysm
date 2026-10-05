@@ -17,6 +17,8 @@ var _tile_drag_travel := 0.0
 var _tile_dragging := false
 var _view_before_battles := {}  # the camera before the first auto-zoom to a battle: {pos, zoom}
 var _launch: LaunchScreen
+var _login: LoginScreen
+var _menu: MainMenu
 
 
 func _ready() -> void:
@@ -336,12 +338,36 @@ func _setup_launch_screen() -> void:
 		Net.send_msg({"type": "watch"})
 		_launch.close())
 	Net.raw_message.connect(_on_launch_message)
+	# A multi-player server (server/hub.py) greets with "hello" instead: log in, then the main menu.
+	_login = LoginScreen.new()
+	add_child(_login)
+	_menu = MainMenu.new()
+	add_child(_menu)
+	Account.changed.connect(_on_account_changed)
+	for sig in [_menu.resume_pressed, _menu.join_pressed, _menu.new_game_pressed, _menu.scenarios_pressed]:
+		(sig as Signal).connect(func(): _menu._say("That part of the launcher is being built next."))
 	Stepper.game_reset.connect(func():
 		_side.reset_logs()
 		_world.arrows.reset()
 		_view_before_battles = {}
 		_world.set_move_targets([], -1)
 		_fit_whole_map())
+
+
+## A multi-player server: the login screen until logged in, then the main menu.
+func _on_account_changed() -> void:
+	if not Account.multi:
+		return
+	_launch.close()
+	if Account.is_logged_in():
+		_login.close()
+		_menu.open()
+	elif Account.is_checking():
+		_login.close()
+		_menu.close()
+	else:
+		_menu.close()
+		_login.open()
 
 
 func _on_launch_message(msg: Dictionary) -> void:

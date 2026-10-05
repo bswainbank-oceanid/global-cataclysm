@@ -1,6 +1,7 @@
 extends Node
 ## Playback settings (autoload "Settings"): when the watcher stops and waits
-## for the Next button. Read by TurnStepper; edited in SettingsPanel; kept in
+## for the Next button; and the Display Settings (full screen). Read by
+## TurnStepper; edited in SettingsPanel (Display: MainMenu); kept in
 ## user://settings.cfg (scripted screenshot runs use the defaults and never
 ## write it).
 ##
@@ -22,6 +23,7 @@ var strategy_log := false                # show the bots' Strategy Log tab besid
 # remembered per side of the board between battles.
 var resolve_attacker := BattleModel.Resolve.UNIT_TYPE
 var resolve_defender := BattleModel.Resolve.UNIT_TYPE
+var fullscreen := false                  # Display Settings: the window fills the screen
 
 
 func _ready() -> void:
@@ -47,11 +49,14 @@ func _ready() -> void:
 	strategy_log = bool(cfg.get_value("log", "strategy", strategy_log))
 	resolve_attacker = int(cfg.get_value("battle", "resolve_attacker", resolve_attacker))
 	resolve_defender = int(cfg.get_value("battle", "resolve_defender", resolve_defender))
+	fullscreen = bool(cfg.get_value("display", "fullscreen", fullscreen))
+	_apply_display()
 
 
 ## Call after changing a field: notifies listeners and saves.
 func commit() -> void:
 	changed.emit()
+	_apply_display()
 	if Dbg.args.has("shot"):
 		return
 	var cfg := ConfigFile.new()
@@ -62,4 +67,13 @@ func commit() -> void:
 	cfg.set_value("log", "strategy", strategy_log)
 	cfg.set_value("battle", "resolve_attacker", resolve_attacker)
 	cfg.set_value("battle", "resolve_defender", resolve_defender)
+	cfg.set_value("display", "fullscreen", fullscreen)
 	cfg.save(PATH)
+
+
+func _apply_display() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var want := DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED
+	if DisplayServer.window_get_mode() != want:
+		DisplayServer.window_set_mode(want)
