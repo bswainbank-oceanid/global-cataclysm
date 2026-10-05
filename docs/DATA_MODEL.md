@@ -345,6 +345,7 @@ factions, units with abilities and icons, adjacency) plus the map image.
 | `tools/sync_client_data.py` | the scenario's modules -> `client/data` |
 | `tools/golden_games.py` | seeded full-game digests, to prove a refactor changed nothing |
 | `tools/set_admin.py` | turns a player's admin flag on or off in the player database (`--list`: who is an admin) |
+| `tools/import_history.py` | `reference/GC_ 1972 History.odt` -> `data/history.json`, the back story the client's History screen shows |
 | `tools/launcher.py` | starts the game as a player does: syncs the client data, starts the server in the background if it isn't running, opens the game window (what the shortcut runs) |
 | `tools/make_shortcut.py` | makes the "Global Cataclysm 1972" desktop and Start menu shortcuts, and "(Player 2)" ones with their own saved login (`--profile player2`), with their icons in `assets/logo` |
 

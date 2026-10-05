@@ -21,6 +21,7 @@ var _login: LoginScreen
 var _menu: MainMenu
 var _my_games: MyGamesScreen
 var _available: AvailableGamesScreen
+var _history: HistoryScreen
 var _lobby: GameLobbyScreen
 var _scenarios_for := ""
 var _reconnecting := ""  # multi-player: the connection was lost; where the player was ("game", "lobby", ...)
@@ -393,6 +394,14 @@ func _setup_launch_screen() -> void:
 	add_child(_available)
 	_lobby = GameLobbyScreen.new()
 	add_child(_lobby)
+	_history = HistoryScreen.new()
+	add_child(_history)
+	_menu.history_pressed.connect(func():
+		_menu.close()
+		_history.open())
+	_history.back_pressed.connect(func():
+		_history.close()
+		_menu.open())
 	_menu.join_pressed.connect(func():
 		_menu.close()
 		_available.open())

@@ -11,6 +11,8 @@ files the client reads:
   territory_shapes.json  each location's boundary polygons
   factions.json          faction name, color, icon, in faction-set order; the Neutral colour/faction
   units.json             unit types with stats, abilities, icon, display and battle order
+  history.json           the game's back story, for the History screen (data/history.json, written by
+                         tools/import_history.py)
 plus the map image (as assets/base_map.png), the unit and faction icons, the fonts (assets/fonts) and the
 logo artwork (assets/logo, renamed by LOGO_FILES).
 
@@ -81,6 +83,7 @@ def main():
         with open(data_dir / name, 'w', encoding='utf-8') as f:
             json.dump(doc, f, ensure_ascii=False, indent=1)
             f.write('\n')
+    shutil.copy2(ROOT / 'data' / 'history.json', data_dir / 'history.json')  # (tools/import_history.py)
     shutil.copy2(ROOT / config.map_info()['image'], CLIENT / 'assets' / 'base_map.png')
     icons = {d['icon'] for d in config.units().values() if d.get('icon')}
     icons |= {f['icon'] for f in config.factions().values() if f.get('icon')}
