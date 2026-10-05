@@ -108,7 +108,13 @@ func _on_move_changed() -> void:
 	show_queue_again()
 
 
+## The Next button wears the colours of the faction whose step is queued -- with a gold rim when that
+## faction is the player's own.
+const YOURS_RIM := Color(1.0, 0.82, 0.25)
+
+
 func _sync_next() -> void:
+	_style_next(Stepper.queued_faction())
 	_next.text = Stepper.button_text.to_upper()
 	_next.disabled = not Stepper.button_active
 	_next.hold_seconds = 1.0 if Stepper.needs_hold else 0.0
@@ -327,6 +333,29 @@ func show_space(tid: int) -> void:
 		_detail.add_child(_tiles_for(tid, units, mine))
 	if GameStore.human_move_active():
 		_add_incoming_section(tid)
+
+
+func _style_next(faction: String) -> void:
+	if faction == "" or not GameData.factions.has(faction):
+		for s in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
+			_next.remove_theme_stylebox_override(s)  # (the theme's red primary button)
+		for c in ["font_color", "font_hover_color", "font_pressed_color", "font_disabled_color"]:
+			_next.remove_theme_color_override(c)
+		return
+	var col: Color = GameData.factions[faction].color
+	var mine := GameStore.is_player(faction)
+	var rim: Color = YOURS_RIM if mine else col.darkened(0.45)
+	var w := 4 if mine else 2
+	var pad := Vector4(12, 5, 12, 5)
+	_next.add_theme_stylebox_override("normal", GCTheme.box(col, rim, w, w + 2, pad))
+	_next.add_theme_stylebox_override("hover", GCTheme.box(col.lightened(0.12), rim, w, w + 2, pad))
+	_next.add_theme_stylebox_override("pressed", GCTheme.box(col.darkened(0.12), rim, w, w, pad))
+	_next.add_theme_stylebox_override("hover_pressed", GCTheme.box(col.darkened(0.12), rim, w, w, pad))
+	_next.add_theme_stylebox_override("disabled", GCTheme.box(col.darkened(0.5), rim.darkened(0.3), w, w + 2, pad))
+	_next.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	for c in ["font_color", "font_hover_color", "font_pressed_color"]:
+		_next.add_theme_color_override(c, GCTheme.WHITE)
+	_next.add_theme_color_override("font_disabled_color", GCTheme.CREAM_DIM)
 
 
 ## The unit tiles of one faction in a space. For the player's own units in a move

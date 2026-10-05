@@ -164,7 +164,10 @@ func _draw() -> void:
 		_draw_package(CARGO_OFFSET, owner_col)
 	_draw_mark()
 	if dimmed or committed:
-		draw_rect(Rect2(ICON_POS - Vector2(2, 2), Vector2(ICON, ICON) + Vector2(4, 4)), Color(0.05, 0.07, 0.1, 0.62))
+		var shade := Color(0.05, 0.07, 0.1, 0.62)
+		draw_rect(Rect2(ICON_POS - Vector2(2, 2), Vector2(ICON, ICON) + Vector2(4, 4)), shade)
+		if in_transport:  # the unit it carries is the one queued: grey it too
+			draw_rect(CARGO_BOX, shade)
 	if committed:
 		# an arrow badge on the icon, and a small x in the corner: click to recall
 		var c := ICON_POS + Vector2(ICON, ICON) * 0.5

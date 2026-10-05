@@ -135,6 +135,11 @@ func _pump() -> void:
 	_refresh()
 
 
+## Whose step is queued now ("" before the first one).
+func queued_faction() -> String:
+	return "" if game_over else _queued_faction
+
+
 ## The queued step is one of this player's own decisions (their Purchase, moves or Diplomacy).
 func _is_my_decision() -> bool:
 	return GameStore.is_player(_queued_faction) and DECISION_PHASES.has(_queued_phase)

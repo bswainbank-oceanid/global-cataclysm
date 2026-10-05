@@ -54,6 +54,8 @@ var _result: RichTextLabel
 var _button: Button
 var _panel: PanelContainer
 var _frame_tag: Label  # names what the frame highlights (see _apply_frame)
+var _frame_banner: PanelContainer  # ...on a solid band of the frame's colour
+var _frame_colour := Color(0, 0, 0, 0)  # the special round's colour while one is on show (alpha 0: none)
 var _title_row: HBoxContainer
 var _owner_icon: Control  # the icon of the faction controlling the battle's territory (none at sea)
 var _side_icons := {}  # "attacker" / "defender" -> HBoxContainer of that side's faction icons
@@ -93,10 +95,14 @@ func _ready() -> void:
 	v.add_theme_constant_override("separation", 6)
 	_panel.add_child(v)
 
-	_frame_tag = HudStyle.label("", 13, HudStyle.GOLD)
+	_frame_banner = PanelContainer.new()
+	_frame_banner.visible = false
+	v.add_child(_frame_banner)
+	_frame_tag = HudStyle.label("", 20)
+	_frame_tag.add_theme_color_override("font_color", GCTheme.WHITE)  # (white on the round's colour)
+	_frame_tag.add_theme_font_override("font", GCTheme.font("display_black"))
 	_frame_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_frame_tag.visible = false
-	v.add_child(_frame_tag)
+	_frame_banner.add_child(_frame_tag)
 
 	_title_row = HBoxContainer.new()  # the controlling faction's icon, then the title
 	_title_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -347,17 +353,21 @@ func _refresh_texts() -> void:
 
 
 ## The frame shows what makes the round on show special: the air superiority round, or a first-round
-## combat bonus (FRAMES) -- a coloured, heavier border and a tag naming it; the sheet's navy frame otherwise.
+## combat bonus (FRAMES) -- a heavy border in its colour, a banner of that colour naming it, and the chart's
+## header band in it too; the sheet's navy frame otherwise.
 func _apply_frame() -> void:
 	var kind := _model.highlight() if _model != null else ""
 	var style: Array = FRAMES.get(kind, [])
 	_panel.remove_theme_stylebox_override("panel")  # the paper sheet's own navy frame
+	_frame_colour = Color(0, 0, 0, 0)
 	if not style.is_empty():
 		var colour: Color = style[0]
-		_panel.add_theme_stylebox_override("panel", GCTheme.box(GCTheme.PAPER, colour, 7, 10, Vector4(14, 12, 14, 12)))
-		_frame_tag.text = str(style[1]) if kind == "air" else "%s -- %s, round 1" % [style[1], _model.bonus_holder()]
-		_frame_tag.add_theme_color_override("font_color", colour)
-	_frame_tag.visible = not style.is_empty()
+		_frame_colour = colour
+		_panel.add_theme_stylebox_override("panel", GCTheme.box(GCTheme.PAPER, colour, 12, 16, Vector4(18, 14, 18, 14)))
+		_frame_banner.add_theme_stylebox_override("panel", GCTheme.box(colour, colour.darkened(0.35), 2, 4, Vector4(12, 6, 12, 6)))
+		_frame_tag.text = (str(style[1]) if kind == "air" else "%s  -  %s, round 1" % [style[1], _model.bonus_holder()]).to_upper()
+	_frame_banner.visible = not style.is_empty()
+	_table.queue_redraw()  # (its header band takes the round's colour)
 
 
 # ---- layout -------------------------------------------------------------------
@@ -562,7 +572,7 @@ func _draw_table() -> void:
 	var body_bottom: float = _row_y.back() + _row_h.back()
 
 	# Header rows.
-	t.draw_rect(Rect2(0, 0, TABLE_W, HEADER_H), GCTheme.NAVY)
+	t.draw_rect(Rect2(0, 0, TABLE_W, HEADER_H), _frame_colour if _frame_colour.a > 0 else GCTheme.NAVY)
 	t.draw_rect(Rect2(0, HEADER_H, TABLE_W, HEADER_H), GCTheme.CREAM)
 	_centered(t, "ATTACKER", Rect2(col_x[0], 0, col_x[2] - col_x[0], HEADER_H), 16, GCTheme.CREAM, true)
 	_centered(t, _model.round_title().to_upper(), Rect2(col_x[2], 0, col_x[3] - col_x[2], HEADER_H), 16, GCTheme.WHITE, true)
