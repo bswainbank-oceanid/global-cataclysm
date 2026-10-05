@@ -105,8 +105,13 @@ func _initialize() -> void:
 	_pick(screen, 2, "mode", 3)
 	_check(screen.settings()["seats"][2]["alliance"] == 0, "non-players send no alliance")
 
-	# Bots always play the heuristic AI: no choice is offered or sent (the server's default).
-	_check(not screen.settings()["seats"][1].has("ai") and not _row(screen, 1).has("ai"), "no Bot AI choice")
+	# A bot plays the heuristic AI unless its Bot type says otherwise (only bots can choose).
+	_check(screen.settings()["seats"][1]["ai"] == "strategy", "a bot plays the heuristic AI by default")
+	_check(not (_row(screen, 1)["ai"] as OptionButton).disabled and (_row(screen, 0)["ai"] as OptionButton).disabled,
+		"a bot seat can choose its Bot type; a human's can't")
+	_pick(screen, 1, "ai", 1)
+	_check(screen.settings()["seats"][1]["ai"] == "random", "the choice is sent")
+	_pick(screen, 1, "ai", 0)
 
 	# Maximum alliance size: 1 .. players-1, default 3 (1 = no alliances, no Alliances phase).
 	var size: OptionButton = screen._max_alliance

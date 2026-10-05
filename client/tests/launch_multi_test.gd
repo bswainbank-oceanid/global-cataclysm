@@ -57,6 +57,16 @@ func _initialize() -> void:
 	_check(labels == ["Global Cataclysm: 1972", "New scenario", "Shared scenarios", "Duel", "My scenarios", "Mine"],
 		"the list: %s" % str(labels))
 	_check(not screen._resume.visible and screen._back_button.visible and screen._start.visible, "Back and Start; no Resume")
+	var account = root.get_node("Account")
+	account.multi = true
+	account.user = {"id": "U_000001", "admin": false}
+	screen._changed()
+	_check(not screen._ai_col.visible, "no Bot type column for a player")
+	account.user = {"id": "U_000001", "admin": true}
+	screen._changed()
+	_check(screen._ai_col.visible, "an admin sees it")
+	account.multi = false
+	account.user = {}
 
 	# Any number of humans.
 	screen._rows[1]["mode"].select(0)

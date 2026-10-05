@@ -104,7 +104,9 @@ func _rebuild(report: Array) -> void:
 	for c in _grid.get_children():
 		_grid.remove_child(c)
 		c.queue_free()
-	for col in COLUMNS:
+	var columns := _columns()
+	_grid.columns = columns.size()
+	for col in columns:
 		var h := HudStyle.label(str(col[0]), 12, HudStyle.GOLD)
 		h.custom_minimum_size = Vector2(float(col[1]), 0)
 		_grid.add_child(h)
@@ -126,12 +128,18 @@ func _add_row(row: Dictionary) -> void:
 	_cell(str(int(row.get("units_produced", 0))))
 	_cell(str(int(row.get("units_destroyed", 0))))
 	_cell(_or_dash(row.get("seat_type")))
-	_cell(_or_dash(row.get("bot_type")))
+	if Account.sees_bot_details():  # (which AI a bot played: admins only)
+		_cell(_or_dash(row.get("bot_type")))
 	_cell(_or_dash(row.get("bot_strategy")))
 	_cell(_or_dash(row.get("alliance_strategy")))
 	_cell(_or_dash(row.get("alliance_behavior")))
 	var hist: Array = row.get("alliance_history", [])
 	_cell("\n".join(hist) if not hist.is_empty() else "-", HudStyle.TEXT_DIM)
+
+
+## The report's columns: Bot type only for admins (Account.sees_bot_details).
+static func _columns() -> Array:
+	return COLUMNS.filter(func(c): return c[0] != "Bot type" or Account.sees_bot_details())
 
 
 func _or_dash(v) -> String:

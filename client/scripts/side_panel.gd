@@ -84,6 +84,7 @@ func _ready() -> void:
 	_strategy.scroll_following = true
 	_log_tabs.add_child(_strategy)
 	Settings.changed.connect(_sync_log_tabs)
+	Account.changed.connect(_sync_log_tabs)  # (the Strategy Log is for admins: known once logged in)
 	_sync_log_tabs()
 	if Dbg.args.has("strategy_log"):
 		_log_tabs.current_tab = 1
@@ -241,9 +242,10 @@ func log_line(text: String) -> void:
 
 ## The Strategy tab shows only while Settings' strategy_log is on (it is always filled).
 func _sync_log_tabs() -> void:
-	_log_tabs.set_tab_hidden(1, not Settings.strategy_log)
-	_log_tabs.tabs_visible = Settings.strategy_log
-	if not Settings.strategy_log:
+	var shown := Settings.strategy_log and Account.sees_bot_details()  # (admins only)
+	_log_tabs.set_tab_hidden(1, not shown)
+	_log_tabs.tabs_visible = shown
+	if not shown:
 		_log_tabs.current_tab = 0
 
 

@@ -49,6 +49,9 @@ const FIXED := "fixed"  # the scenario list's entries: FIXED, NEW, or a saved se
 const NEW := "new"
 const ALLIANCES := ["None", "Alliance 1", "Alliance 2", "Alliance 3"]
 const STRATEGIES := ["random", "aggressive", "passive", "counterweight", "independent", "adversarial", "underdog", "variable"]
+# Which AI a bot seat plays (server/lobby.py's BOT_AIS): the heuristic bot (default), the random baseline, and
+# Claude itself (needs ANTHROPIC_API_KEY on the server). Shown to admins only (Account.sees_bot_details).
+const BOT_AIS := [["Strategy", "strategy"], ["Random", "random"], ["Claude", "claude"]]
 const BEHAVIORS := ["random", "loyal", "opportunistic", "treacherous", "underdog", "variable"]
 # A new scenario's seat settings: [key, header, width]; the Neutral row has no initial MPC.
 const SEAT_KEYS := [["territory_value", "Territory", 84], ["initial_mpc", "Initial MPC", 84], ["units_mpc", "Units MPC", 84],
@@ -121,6 +124,7 @@ var _defaults := {}       # FIXED / NEW -> the screen's own default settings
 var _reset_button: HoldButton
 var _back_button: Button
 var _title_label: Label
+var _ai_col: VBoxContainer  # the Bot type column (admins only)
 
 
 func _ready() -> void:
@@ -386,6 +390,7 @@ func _build_seat_table(parent: VBoxContainer) -> void:
 		_new_columns.append(setting_cols[k[0]])
 	var strategy_col := _column(moving, "Alliance strategy", 140)
 	var behavior_col := _column(moving, "Alliance behavior", 150)
+	_ai_col = _column(moving, "Bot type", 120)
 
 	for i in SEATS:
 		var row: Dictionary = _rows[i]
@@ -414,6 +419,9 @@ func _build_seat_table(parent: VBoxContainer) -> void:
 		strategy_col.add_child(row["strategy"])
 		row["behavior"] = _option(BEHAVIORS.map(func(s): return str(s).capitalize()), 150)
 		behavior_col.add_child(row["behavior"])
+		row["ai"] = _option(BOT_AIS.map(func(a): return a[0]), 120)
+		row["ai"].tooltip_text = "Strategy: the heuristic bot (styles, objectives, risk checks).\nRandom: the baseline bot, for comparison.\nClaude: Claude plays it (the server needs ANTHROPIC_API_KEY)."
+		_ai_col.add_child(row["ai"])
 		_territory_auto[i] = true
 
 	# the Neutral row (a new scenario's Neutral pool)
@@ -572,6 +580,7 @@ func settings() -> Dictionary:
 			"alliance": (row["alliance"] as OptionButton).selected if player else 0,
 			"strategy": STRATEGIES[(row["strategy"] as OptionButton).selected],
 			"behavior": BEHAVIORS[(row["behavior"] as OptionButton).selected],
+			"ai": BOT_AIS[(row["ai"] as OptionButton).selected][1],
 		}
 		if _is_new() and player:
 			for k in SEAT_KEYS:
@@ -671,6 +680,7 @@ func _changed() -> void:
 			(row["alliance"] as OptionButton).select(0)
 		(row["strategy"] as OptionButton).disabled = mode != "BOT"
 		(row["behavior"] as OptionButton).disabled = mode != "BOT"
+		(row["ai"] as OptionButton).disabled = mode != "BOT"
 		for k in SEAT_KEYS:
 			(row[k[0]] as SpinBox).editable = player
 			(row[k[0]] as SpinBox).modulate.a = 1.0 if player else 0.35
@@ -680,6 +690,7 @@ func _changed() -> void:
 	_message.text = "\n".join(p) if not p.is_empty() else ""
 	_start.disabled = not p.is_empty()
 	_resume.visible = _game_running and not multi
+	_ai_col.visible = Account.sees_bot_details()
 	_start.visible = not admin_mode
 	_back_button.visible = multi
 	if multi:
@@ -1027,6 +1038,11 @@ func apply_settings(s: Dictionary) -> void:
 		(row["alliance"] as OptionButton).select(clampi(int(seat.get("alliance", 0)), 0, ALLIANCES.size() - 1))
 		(row["strategy"] as OptionButton).select(maxi(0, STRATEGIES.find(str(seat.get("strategy", "random")))))
 		(row["behavior"] as OptionButton).select(maxi(0, BEHAVIORS.find(str(seat.get("behavior", "random")))))
+		var ai_index := 0
+		for j in BOT_AIS.size():
+			if BOT_AIS[j][1] == str(seat.get("ai", "strategy")):
+				ai_index = j
+		(row["ai"] as OptionButton).select(ai_index)
 		for k in SEAT_KEYS:
 			var key := "%d/%s" % [i, k[0]]
 			if seat.has(k[0]):

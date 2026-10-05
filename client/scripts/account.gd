@@ -38,6 +38,12 @@ func is_admin() -> bool:
 	return bool(user.get("admin", false))
 
 
+## Whether the bots' inner workings are shown -- which AI a bot plays (its "bot type") and their
+## Strategy Log: to admins on a multi-player server; always on the one-game server (no accounts).
+func sees_bot_details() -> bool:
+	return not multi or is_admin()
+
+
 func login(email: String, password: String) -> void:
 	_pending = "login"
 	Net.send_msg({"type": "login", "email": email.strip_edges(), "password": password})

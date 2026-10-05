@@ -74,6 +74,7 @@ func _ready() -> void:
 	new_game.pressed.connect(func(): new_game_pressed.emit())
 	v.add_child(new_game)
 
+	Account.changed.connect(_sync)  # (the Strategy Log checkbox is for admins: known once logged in)
 	GameStore.state_changed.connect(_sync)
 	GameStore.armistice_changed.connect(_sync)
 	_sync()
@@ -117,6 +118,7 @@ func _sync() -> void:
 	_opp_battle_mine.set_pressed_no_signal(Settings.opp_pause_battle_mine)
 	_your_battle.set_pressed_no_signal(Settings.your_pause_battle)
 	_strategy_log.set_pressed_no_signal(Settings.strategy_log)
+	_strategy_log.visible = Account.sees_bot_details()  # (admins only)
 	var has_player := GameStore.has_player()
 	_opp_battle_mine.disabled = not has_player
 	_your_battle.disabled = not has_player
