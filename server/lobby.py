@@ -113,8 +113,9 @@ class LobbyError(ValueError):
         super().__init__('; '.join(self.problems))
 
 
-def check_settings(settings):
-    """Every problem with `settings`, as a list of readable strings (empty = valid)."""
+def check_settings(settings, max_humans=1):
+    """Every problem with `settings`, as a list of readable strings (empty = valid). `max_humans`: the most
+    HUMAN seats allowed (None: any number -- a game lobby's, server/games.py)."""
     problems = []
     seats = settings.get('seats')
     if not isinstance(seats, list) or len(seats) != seat_count():
@@ -189,8 +190,9 @@ def check_settings(settings):
     humans = [i for i, s in enumerate(seats, 1) if s.get('mode') == 'HUMAN']
     if len(players) < 2:
         problems.append('at least two players (humans or bots) are needed')
-    if len(humans) > 1:
-        problems.append('at most one human player is supported')
+    if max_humans is not None and len(humans) > max_humans:
+        problems.append('at most one human player is supported' if max_humans == 1
+                        else f'at most {max_humans} human players are supported')
 
     if 'max_alliance_size' in settings and size_ok:
         if max_size < 1:
