@@ -76,6 +76,14 @@ and staged moves; its Diplomacy queue carries {kind: "diplomacy", members, optio
 factions it may force to surrender and why), game_would_end}. Its Capture and
 Deploy phases are automatic.
 
+A HUMAN's "invite" of another HUMAN faction is not answered by policy either -- even when one player
+controls both factions: the invited faction is asked. The diplomacy_result then carries an
+"alliance_invite_sent" event, the inviter's queue an "invitation" {from, to, members, answered: false,
+accepts: null, by_human: true}, and nothing else can happen (no other diplomacy action, no "next" /
+"end_phase") until the invited faction answers with respond_invitation; its answer is carried out at once
+(a diplomacy_result with the alliance events) and the inviter's Diplomacy carries on. If the invited
+faction leaves the game first, the invitation lapses.
+
 A bot's Diplomacy phase that INVITES a human faction cannot be resolved by policy:
 its phase_queue carries an "invitation" {from, to, members, answered, accepts},
 the human answers with respond_invitation, the queue is re-sent with the answer
@@ -281,12 +289,23 @@ class PhaseStepper:
             return [self._error(f"it is not {faction}'s Diplomacy phase")]
         if action not in ('invite', 'withdraw', 'surrender'):
             return [self._error(f'unknown diplomacy action {action!r}'), self._queue]
+        self.drop_lapsed_invitation()
+        if self._invitation is not None and not self._invitation['answered']:
+            return [self._error(f"{self._invitation['to']} has not answered {faction}'s invitation yet"), self._queue]
         engine = self.engine
         start = len(self.turn_log.events)
         try:
             if action == 'invite':
                 if not target or target not in engine.legal_alliance_options(faction)['eligible_invite_targets']:
                     raise ValueError(f'{target} is not a legal invite target for {faction} right now')
+                if self._is_human(target):  # a person answers, even one playing both factions
+                    if engine.alliance_action_taken(faction):
+                        raise ValueError(f'{faction} has already used its alliance action this turn')
+                    self._invitation = {'from': faction, 'to': target, 'answered': False, 'by_human': True}
+                    self._plan_current_phase()
+                    sent = {'kind': 'alliance_invite_sent', 'faction': faction, 'target': target}
+                    return [{'type': 'diplomacy_result', 'faction': faction, 'action': action, 'target': target,
+                             'events': [sent]}, self._queue, self._state_message()]
                 engine.invite_to_alliance(faction, target, accepts_invite(engine, target, faction))
             elif action == 'withdraw':
                 engine.withdraw_from_alliance(faction)
@@ -305,15 +324,45 @@ class PhaseStepper:
 
     def respond_invitation(self, faction, accept):
         """The human target of a bot's invitation answers it."""
+        self.drop_lapsed_invitation()
         inv = self._invitation
         if inv is None or inv['to'] != faction or inv['answered']:
             return [self._error('no invitation is waiting for your answer')]
         if accept is None:
             return [self._error("'accept' is required (true or false)"), self._queue]
+        if inv.get('by_human'):
+            return self._answer_human_invitation(inv, bool(accept))
         self._alliance_plan['accepts'] = bool(accept)
         inv['answered'] = True
         self._plan_current_phase()
         return [self._queue]
+
+    def _answer_human_invitation(self, inv, accept):
+        """Carries out a human's invitation of another human with the answer just given; the inviter's
+        Diplomacy phase then carries on."""
+        inviter, target = inv['from'], inv['to']
+        start = len(self.turn_log.events)
+        self._invitation = None
+        try:
+            self.engine.invite_to_alliance(inviter, target, accept)
+        except ValueError as e:  # (something changed while it waited: it can't be carried out now)
+            self._plan_current_phase()
+            return [self._error(str(e)), self._queue]
+        events = self.turn_log.events[start:]
+        if not any(e['kind'] in ('alliance_joined', 'alliance_declined') for e in events):
+            events = events + [{'kind': 'alliance_declined', 'faction': inviter, 'target': target}]
+        self._plan_current_phase()
+        return [{'type': 'diplomacy_result', 'faction': inviter, 'action': 'invite', 'target': target,
+                 'answered_by': target, 'accepted': accept, 'events': events}, self._queue, self._state_message()]
+
+    def drop_lapsed_invitation(self):
+        """A human's invitation to a faction that has left the game lapses (nobody is left to answer)."""
+        inv = self._invitation
+        if inv is not None and inv.get('by_human') and not inv['answered'] \
+                and inv['to'] not in self.engine.game_state.active_factions():
+            self._invitation = None
+            if self._queue is not None:
+                self._plan_current_phase()
 
     def next(self):
         problem = self._check_all_bots()
@@ -324,6 +373,7 @@ class PhaseStepper:
             return [self._game_over_message()]
         if self._queue is None:
             self._plan_current_phase()
+        self.drop_lapsed_invitation()
         if self._invitation is not None and not self._invitation['answered']:
             return [self._error(f"{self._invitation['to']} must answer {self._invitation['from']}'s invitation first"), self._queue]
         return self._execute_queued_phase()
@@ -585,6 +635,9 @@ class PhaseStepper:
             if human:
                 events = []  # the player acts at once (diplomacy_action); nothing is queued
                 extra['human'] = self._diplomacy_block(faction)
+                inv = self._invitation
+                if inv is not None and inv.get('by_human') and inv['from'] == faction:
+                    extra['invitation'] = {**inv, 'members': sorted(engine.alliance_members(faction)), 'accepts': None}
             else:
                 if self._alliance_plan_for != key or self._alliance_plan is None:
                     # A fresh plan for this turn (re-planning after an answer must keep the

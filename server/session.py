@@ -391,8 +391,9 @@ class GameSession:
 
     def waiting_for(self):
         """The factions whose input the game is waiting on ([] when it can go on by itself, or is over):
-        everyone still to answer an armistice proposal, the human a bot's invitation is put to, or the
-        human whose Purchase / Combat Move / Non-Combat Move / Diplomacy is queued."""
+        everyone still to answer an armistice proposal, the human an invitation is put to (a bot's or
+        another human's), or the human whose Purchase / Combat Move / Non-Combat Move / Diplomacy is
+        queued."""
         gs, stepper = self.engine.game_state, self.stepper
         if gs.game_over:
             return []
@@ -400,6 +401,7 @@ class GameSession:
             return sorted(self._armistice['pending'])
         if stepper._queue is None:
             stepper._plan_current_phase()
+        stepper.drop_lapsed_invitation()
         inv = stepper._invitation
         if inv is not None and not inv['answered']:
             return [inv['to']]
@@ -441,7 +443,7 @@ class GameSession:
         return self._publish(out)
 
     def _end_phase(self, faction):
-        queue = self._human_decision_queued() if self.waiting_for() else None
+        queue = self._human_decision_queued() if faction in self.waiting_for() else None
         if queue is None or queue['faction'] != faction or self._armistice is not None:
             return [self._error(faction, f'{faction} has no phase to finish right now')]
         return self.stepper._execute_queued_phase() + self._maybe_propose_armistice()
