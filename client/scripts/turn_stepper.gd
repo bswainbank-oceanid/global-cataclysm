@@ -142,7 +142,9 @@ func _on_message(msg: Dictionary) -> void:
 		"phase_queue":
 			_awaiting = false
 			_last_queue = msg
-			var block: Dictionary = msg.get("human", {})
+			# a human's purchase / move / diplomacy options -- only the player's own (another player's
+			# phase shows like a bot's: what is queued)
+			var block: Dictionary = msg.get("human", {}) if GameStore.is_player(str(msg.get("faction", ""))) else {}
 			var kind := str(block.get("kind", ""))
 			GameStore.set_invitation(msg.get("invitation", {}))
 			if kind == "diplomacy":
@@ -385,7 +387,11 @@ func _refresh() -> void:
 		button_text = "Pausing..." if _pause_requested else "Pause"
 		button_active = not _pause_requested
 	elif feed_mode and _inbox.is_empty() and _someone_elses_decision():
-		button_text = "Waiting for %s..." % ", ".join(GameStore.waiting_for if not GameStore.waiting_for.is_empty() else [_queued_faction])
+		var who := []
+		for f in (GameStore.waiting_for if not GameStore.waiting_for.is_empty() else [_queued_faction]):
+			var name := str(GameStore.player_names.get(f, ""))
+			who.append("%s (%s)" % [name, f] if name != "" else str(f))
+		button_text = "Waiting for %s..." % ", ".join(who)
 	elif _queued_phase != "" and not _awaiting:
 		needs_hold = GameStore.is_player(_queued_faction) and DECISION_PHASES.has(_queued_phase)
 		if needs_hold:

@@ -20,6 +20,8 @@ var _launch: LaunchScreen
 var _login: LoginScreen
 var _menu: MainMenu
 var _my_games: MyGamesScreen
+var _available: AvailableGamesScreen
+var _lobby: GameLobbyScreen
 var _scenarios_for := ""  # the "scenarios" asked for: "new" (New Game) or "admin" (Scenarios)
 var _settings_panel: SettingsPanel
 
@@ -374,7 +376,7 @@ func _setup_launch_screen() -> void:
 		if str(g.get("status", "")) == "live":
 			Net.send_msg({"type": "enter_game", "game_id": g["id"]})
 		else:
-			_my_games.show_problem("Game lobbies are being built next."))
+			Net.send_msg({"type": "enter_lobby", "game_id": g["id"]}))
 	_menu.new_game_pressed.connect(func():
 		_scenarios_for = "new"
 		Net.send_msg({"type": "scenarios"}))
@@ -385,7 +387,23 @@ func _setup_launch_screen() -> void:
 	_launch.back_requested.connect(func():
 		_launch.close()
 		_menu.open())
-	_menu.join_pressed.connect(func(): _menu._say("Join Game is being built next."))
+	_available = AvailableGamesScreen.new()
+	add_child(_available)
+	_lobby = GameLobbyScreen.new()
+	add_child(_lobby)
+	_menu.join_pressed.connect(func():
+		_menu.close()
+		_available.open())
+	_available.back_pressed.connect(func():
+		_available.close()
+		_menu.open())
+	_available.game_picked.connect(func(gid: String): Net.send_msg({"type": "enter_lobby", "game_id": gid}))
+	_available.code_entered.connect(func(code: String): Net.send_msg({"type": "join_code", "code": code}))
+	_available.chat_sent.connect(func(t: String): Net.send_msg({"type": "chat", "room": "browse", "text": t}))
+	_lobby.request.connect(func(m: Dictionary): Net.send_msg(m))
+	_lobby.back_pressed.connect(func():
+		_lobby.close()
+		_menu.open())
 	Net.raw_message.connect(_on_multi_message)
 	Stepper.game_reset.connect(func():
 		_side.reset_logs()
@@ -425,18 +443,41 @@ func _on_multi_message(msg: Dictionary) -> void:
 			elif _scenarios_for != "":
 				_menu.close()
 				_launch.open_multi(msg, _scenarios_for == "admin")
+		"open_games":
+			if _available.visible:
+				_available.set_games(msg)
 		"game_lobby":
-			_launch.show_error("The game's lobby is open (code %s). Lobby screens are being built next." % str(msg.get("game", {}).get("code", "")))
+			for screen in [_menu, _my_games, _launch, _available]:
+				screen.close()
+			_lobby.show_game(msg)
+		"chat":
+			var m: Dictionary = msg.get("message", {})
+			if str(m.get("room", "")) == "browse":
+				if _available.visible:
+					_available.chat.add_message(m)
+			elif _lobby.visible and str(m.get("room", "")) == str(_lobby.game.get("id", "")):
+				_lobby.add_chat(m)
+		"game_launched":
+			Net.send_msg({"type": "enter_game", "game_id": msg["game_id"]})
+		"game_cancelled":
+			_lobby.close()
+			_menu.open()
+			_menu._say("The host cancelled that game.")
 		"entered_game":
 			Stepper.feed_mode = true
 			Stepper.reset()
-			GameStore.set_multi_game(msg.get("game", {}), msg.get("my_factions", []))
-			for screen in [_menu, _my_games, _login, _launch]:
+			GameStore.set_multi_game(msg.get("game", {}), msg.get("my_factions", []), msg.get("players", {}))
+			for screen in [_menu, _my_games, _login, _launch, _available, _lobby]:
 				screen.close()
 			_settings_panel.set_multi(true)
 		"error":
+			var text := str(msg.get("message", ""))
 			if _my_games.visible:
-				_my_games.show_problem(str(msg.get("message", "")))
+				_my_games.show_problem(text)
+			elif _available.visible:
+				_available.show_problem(text)
+			elif _lobby.visible:
+				_lobby.show_problem(text)
 
 
 ## Back to the main menu from a multi-player game (it carries on on the server).

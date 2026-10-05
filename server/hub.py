@@ -22,7 +22,8 @@ Client -> server (besides each game's own protocol, server/session.py's auto mod
         -> {"type": "logged_in", "user": {...}, "token"}  (token_login: the same token back)
     {"type": "logout"}                          -> {"type": "logged_out"}; the token stops working
     {"type": "enter_game", "game_id"}           -> {"type": "entered_game", "game": {...summary...},
-                                                    "seats": [...], "my_factions": [...]} and the game's
+                                                    "seats": [...], "my_factions": [...], "players":
+                                                    {faction: player name}} and the game's
                                                     "feed" (auto mode's catch-up)
     {"type": "leave_game"}                      -> {"type": "left_game"}
 
@@ -202,8 +203,12 @@ class Hub:
             problem = self.load_problems.get(game_id, 'it is not running')
             return self._error(conn, f"that game can't be played right now: {problem}")
         conn.game_id, conn.lobby_id, conn.browsing = game_id, None, False
+        players = {}
+        for faction, uid in self._users_by_faction(game).items():
+            user = accounts.get_user(self.store, uid)
+            players[faction] = user['player_name'] if user else None
         entered = {'type': 'entered_game', 'game': games.summary(self.store, game, conn.user['id']),
-                   'seats': game['seats'], 'factions': game['factions'],
+                   'seats': game['seats'], 'factions': game['factions'], 'players': players,
                    'my_factions': sorted(self._factions_of(game, conn.user['id']))}
         feed = self.sessions[game_id].handle_message({'type': 'follow', 'since': None})
         return [([conn.key], entered)] + self._route(game_id, conn, feed)

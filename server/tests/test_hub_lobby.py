@@ -159,6 +159,8 @@ class TestLobbies(LobbyTest):
         self.assertIn(game['id'], self.hub.sessions)
         entered = self.got(self.send('bob', {'type': 'enter_game', 'game_id': game['id']}), 'bob')[0]
         self.assertEqual(len(entered['my_factions']), 1)
+        self.assertEqual(sorted(entered['players'].values()), ['Ann', 'Bob'])  # who plays each human faction
+        self.assertEqual(entered['players'][entered['my_factions'][0]], 'Bob')
 
     def test_the_host_cancels_and_the_game_leaves_the_list(self):
         game = self.lobby()

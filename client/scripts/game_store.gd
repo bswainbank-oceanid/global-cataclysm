@@ -68,6 +68,7 @@ var armistice_cooldown_until_round := -1
 var multi_game := false
 var my_factions: Array = []
 var game_info := {}        # the game entered: server/games.py's summary (id, code, scenario, host_name, ...)
+var player_names := {}     # ...and who plays each human faction: {faction: player name}
 var waiting_for: Array = []  # the factions the game is waiting on (server: "waiting")
 
 
@@ -217,10 +218,11 @@ func human_faction() -> String:
 
 
 ## Enters (or, with an empty `info`, leaves) a multi-player game: which of its factions are this player's.
-func set_multi_game(info: Dictionary, mine: Array) -> void:
+func set_multi_game(info: Dictionary, mine: Array, players := {}) -> void:
 	multi_game = not info.is_empty()
 	game_info = info
 	my_factions = mine.duplicate()
+	player_names = players.duplicate()
 	waiting_for = []
 	state_changed.emit()
 
@@ -803,6 +805,8 @@ func seat_label(code: String) -> String:
 	if f.is_empty():
 		return ""
 	if f["mode"] == "HUMAN":
+		if multi_game and not is_player(code):  # another player's
+			return str(player_names.get(code, "Player"))
 		return "You"
 	var n := 0
 	for c in state["factions"]:
