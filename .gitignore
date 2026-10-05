@@ -2,6 +2,9 @@
 derived/
 exports/
 
+# The server's player data (accounts, games, chat): server/store.py
+server_data/
+
 __pycache__/
 *.pyc
 .DS_Store

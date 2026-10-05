@@ -184,6 +184,135 @@ Land owned by the built-in Neutral faction (NEU) plays like a Neutral seat, but 
 Strategic Centers are real ones for whoever captures them; land owned by the
 built-in Noncombatant faction (NCB) plays like a Noncombatant seat.
 
+Saved setups are the game's **shared scenarios**: every player sees them, and only an
+admin (Scenarios mode) may change, add or delete them. Players' own scenarios are not
+modules: they are player data, in the server database (below).
+
+## Player data (server database)
+
+Accounts, players' own scenarios and settings, games and chat are **player data**, not
+game content: they live in one SQLite file the server owns,
+`server_data/global_cataclysm.sqlite3` (git-ignored; `--db` on the server picks another).
+Each record is a JSON document in a `doc` column; the fields the server looks things up
+by are copied into columns of their own, with the database enforcing uniqueness. All
+access goes through one storage module (`server/store.py`), so the database can be
+swapped later without the rest of the server noticing. Ids are server-assigned, with a
+prefix per kind (`U_000001`, `S_000001`, `G_000001`).
+
+| Table | Key | Lookup columns | Holds |
+|---|---|---|---|
+| `users` | `id` | `email` (unique, case-insensitive), `player_name` (unique, case-insensitive) | a player account |
+| `logins` | `token_hash` | `user_id` | a client staying logged in |
+| `scenarios` | `id` | `owner_id`, `name` (unique per owner) | a player's own scenario |
+| `user_settings` | `user_id` + `scenario_id` | | a player's saved settings for a shared scenario |
+| `games` | `id` | `code` (unique), `host_id`, `status` | a game, from its lobby to its end |
+| `game_saves` | `game_id` | | a live game's saved state |
+| `chat` | `id` (in order) | `room` | one chat message |
+
+### User
+
+```json
+{"id": "U_000001", "player_name": "Brian", "actual_name": "Brian S.", "email": "b@example.com",
+ "password": {"scheme": "pbkdf2_sha256", "iterations": 600000, "salt": "<hex>", "hash": "<hex>"},
+ "admin": false, "created": "2026-10-04T15:00:00Z"}
+```
+
+- The email and player name are each unique, ignoring case; the email is the login.
+- A password is at least one character. Only its salted hash is stored
+  (PBKDF2-SHA256 from Python's standard library), never the password itself.
+- `admin` opens Scenarios mode. There's no UI for it: it is set in the database directly.
+- No email verification and no password reset for now (a forgotten password is fixed in
+  the database). One account may be logged in on several clients at once.
+
+### Login
+
+Logging in or registering returns a random token. The client keeps the token (not the
+password) and logs back in with it on every start, until the player logs out, which deletes
+it here. Only the token's SHA-256 is stored, so a copy of the database can't log anyone in.
+
+```json
+{"token_hash": "<hex>", "user_id": "U_000001", "created": "...", "last_used": "..."}
+```
+
+### Scenarios: shared, own, and a player's settings
+
+A game is started from a **scenario** (the doc's "game mode": the same thing). There are three kinds:
+
+- **GC72**, the fixed scenario: its settings are fixed, and not even an admin can change them.
+- **Shared scenarios**, the ScenarioSetup modules above: everyone sees them; only an admin
+  changes them.
+- **A player's own scenarios**, in `scenarios`: only their owner sees them in New Game,
+  and only their owner changes or deletes them. Another player sees one only as the
+  settings of a game lobby its owner created.
+
+```json
+{"id": "S_000001", "owner_id": "U_000001", "name": "Island hopping", "description": "...",
+ "generator_id": "GC72_Generator", "settings": {...the launch settings, as a ScenarioSetup's...}}
+```
+
+A player can **Save** their own settings for GC72 or a shared scenario; picking that scenario
+afterwards fills New Game with them, and **Reset Settings** deletes them, going back to the
+scenario's own. Nothing is saved without Save. On a player's own scenario, Save updates the
+scenario itself and Reset Settings goes back to its last saved version. Saving under a new
+name makes a new scenario of the player's own, whatever it was started from.
+
+```json
+{"user_id": "U_000001", "scenario_id": "Setup_002", "settings": {...}}
+```
+
+### Game
+
+```json
+{"id": "G_000001", "code": "K7QM2X", "host_id": "U_000001", "status": "forming",
+ "scenario": {"kind": "fixed" | "shared" | "own", "id": "Setup_002", "name": "Duel"},
+ "settings": {...the launch settings, frozen when the game is created...},
+ "seats": [{"seat": 1, "mode": "HUMAN", "faction": "random", "user_id": "U_000001"},
+           {"seat": 2, "mode": "HUMAN", "faction": "UE", "user_id": null},
+           {"seat": 3, "mode": "BOT", "faction": "random", "user_id": null}, ...],
+ "factions": {"1": "UER", "2": "UE", ...},
+ "progress": {"round": 4, "turn": 2, "active_faction": "GPC", "waiting_for": ["U_000002"]},
+ "created": "...", "started": "...", "ended": "..."}
+```
+
+- **status:** `forming` (in its lobby) → `live` → `finished`; a forming game the host
+  cancels becomes `cancelled`.
+- **Seats** are the settings' seats. Every HUMAN seat is open until a player takes it;
+  players pick their own seats, the host too, and one player may take several. A seat's
+  faction is known in the lobby when the settings name it, and is dealt at launch when
+  they say `random`. `factions` (seat → faction) is filled in at launch.
+- The host can launch once every HUMAN seat is taken. A game with exactly one HUMAN seat
+  skips the lobby: the host takes the seat and it starts at once. A game with none (all
+  bots) starts at once too, owned by its host, who watches it.
+- Every forming game is listed under Available Games while it has open seats (private
+  games come later). The `code` (six letters and digits, no look-alikes) finds it directly.
+- **progress** is copied from the live game after every phase, for My Live Games: the
+  round and turn, whose turn it is, and the players it is waiting for.
+- A game waits for as long as a human it needs is away (removing players and bot
+  replacements come later).
+
+### Game save
+
+A live game's complete state, written after every phase so the game survives a server
+restart: the engine state (`GameState.to_dict()`), the server session's own position
+(the phase being played, the pending human decision, alliance invitations, the armistice),
+and the random number generators' states, so a seeded game still replays exactly after a
+reload.
+
+```json
+{"game_id": "G_000001", "saved": "...", "session": {...}}
+```
+
+### Chat
+
+```json
+{"id": 1, "room": "browse" | "G_000001", "user_id": "U_000001", "player_name": "Brian",
+ "text": "anyone up for a duel?", "sent": "..."}
+```
+
+`browse` is the Available Games chat, for everyone browsing it; a game's id is its lobby's
+chat. In-game chat comes later. A player name is copied into each message so old messages
+read the same.
+
 ## Client data
 
 `tools/sync_client_data.py` still copies files into `client/data`: it resolves
