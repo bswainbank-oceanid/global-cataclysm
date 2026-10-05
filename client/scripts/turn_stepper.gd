@@ -96,8 +96,17 @@ func _on_raw(msg: Dictionary) -> void:
 	_on_message(msg)
 
 
-## Entering a multi-player game: the picture as it stands (its state, the step waiting now).
+## Entering a multi-player game: the picture as it stands (its state, the step waiting now) -- or, back
+## from a lost connection, just what was missed meanwhile (when the server can still say).
 func _apply_feed(msg: Dictionary) -> void:
+	var missed = msg.get("messages")
+	if missed is Array and str(msg.get("epoch", "")) == _feed_epoch and not GameStore.state.is_empty():
+		for m in missed:
+			_on_raw(m)
+		GameStore.set_waiting_for(msg.get("waiting_for", []))
+		_refresh()
+		return
+	_queue_reset()
 	_feed_epoch = str(msg.get("epoch", ""))
 	_feed_seq = int(msg.get("seq", 0))
 	_inbox = []

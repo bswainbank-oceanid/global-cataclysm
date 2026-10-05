@@ -31,10 +31,10 @@ func _initialize() -> void:
 	account.login("ann@x.com", "pw")
 	var problems := []
 	account.problem.connect(func(m): problems.append(m))
-	account._on_message({"type": "error", "message": "wrong email or password"})
+	account._on_message({"type": "login_failed", "message": "wrong email or password"})
 	_check(problems == ["wrong email or password"], "a refused login is reported in the server's words")
 	account._on_message({"type": "error", "message": "stray"})
-	_check(problems.size() == 1, "an error with no account request in flight isn't the login's")
+	_check(problems.size() == 1, "an ordinary error is never the login's")
 
 	account._on_message({"type": "logged_in", "user": {"id": "U_000001", "player_name": "Ann", "admin": true}, "token": "tok123"})
 	_check(account.is_logged_in() and account.is_admin(), "logged in, with the admin flag")
@@ -45,7 +45,9 @@ func _initialize() -> void:
 	account.user = {}
 	account._on_message({"type": "hello"})
 	_check(account.is_checking(), "a saved token is tried on the next hello")
-	account._on_message({"type": "error", "message": "that login has ended: log in again"})
+	account._on_message({"type": "error", "message": "log in first"})
+	_check(account.is_checking(), "an ordinary error doesn't end the check")
+	account._on_message({"type": "login_failed", "message": "that login has ended: log in again"})
 	_check(account.token == "" and not account.is_checking() and not account.is_logged_in(), "an ended login is forgotten")
 	cfg = ConfigFile.new()
 	cfg.load(account._path())

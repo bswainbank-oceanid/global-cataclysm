@@ -19,12 +19,15 @@ Client -> server (besides each game's own protocol, server/session.py's auto mod
     {"type": "register", "player_name", "actual_name", "email", "password"}
     {"type": "login", "email", "password"}
     {"type": "token_login", "token"}
-        -> {"type": "logged_in", "user": {...}, "token"}  (token_login: the same token back)
+        -> {"type": "logged_in", "user": {...}, "token"}  (token_login: the same token back), or
+           {"type": "login_failed", "message", "problems"}
     {"type": "logout"}                          -> {"type": "logged_out"}; the token stops working
-    {"type": "enter_game", "game_id"}           -> {"type": "entered_game", "game": {...summary...},
+    {"type": "enter_game", "game_id", ["since", "epoch"]}
+                                                -> {"type": "entered_game", "game": {...summary...},
                                                     "seats": [...], "my_factions": [...], "players":
                                                     {faction: player name}} and the game's
-                                                    "feed" (auto mode's catch-up)
+                                                    "feed" (auto mode's catch-up: with "since" and
+                                                    "epoch", what a reconnecting client missed)
     {"type": "leave_game"}                      -> {"type": "left_game"}
 
   Scenarios (New Game, and an admin's Scenarios mode):
@@ -116,11 +119,14 @@ class Hub:
         kind = msg.get('type')
         try:
             if kind in ACCOUNT_TYPES:
-                return self._account(conn, kind, msg)
+                try:
+                    return self._account(conn, kind, msg)
+                except StoreError as e:  # (its own type: the client never mistakes another error for it)
+                    return [([conn.key], {'type': 'login_failed', 'message': '; '.join(e.problems), 'problems': e.problems})]
             if conn.user is None:
                 return self._error(conn, 'log in first')
             if kind == 'enter_game':
-                return self._enter_game(conn, msg.get('game_id'))
+                return self._enter_game(conn, msg.get('game_id'), msg.get('since'), msg.get('epoch'))
             if kind == 'leave_game':
                 conn.game_id = None
                 return [([conn.key], {'type': 'left_game'})]
@@ -150,7 +156,7 @@ class Hub:
             token = msg.get('token')
             user = accounts.login_with_token(self.store, token)
             if user is None:
-                return self._error(conn, 'that login has ended: log in again')
+                raise StoreError('that login has ended: log in again')
         conn.user, conn.token, conn.game_id = user, token, None
         conn.lobby_id, conn.browsing = None, False
         return [([conn.key], {'type': 'logged_in', 'user': user, 'token': token})]
@@ -191,7 +197,7 @@ class Hub:
             self._save(game_id)
         return self._route(game_id, None, out)
 
-    def _enter_game(self, conn, game_id):
+    def _enter_game(self, conn, game_id, since=None, epoch=None):
         game = games.get(self.store, game_id)
         if game is None:
             return self._error(conn, f'there is no game {game_id!r}')
@@ -210,7 +216,7 @@ class Hub:
         entered = {'type': 'entered_game', 'game': games.summary(self.store, game, conn.user['id']),
                    'seats': game['seats'], 'factions': game['factions'], 'players': players,
                    'my_factions': sorted(self._factions_of(game, conn.user['id']))}
-        feed = self.sessions[game_id].handle_message({'type': 'follow', 'since': None})
+        feed = self.sessions[game_id].handle_message({'type': 'follow', 'since': since, 'epoch': epoch})
         return [([conn.key], entered)] + self._route(game_id, conn, feed)
 
     def _game_message(self, conn, msg):

@@ -7,24 +7,37 @@ extends Node
 ## mode) and server/session.py (joining as a faction).
 ##
 ## Not connected until start() is called (main.gd does so when the client is
-## launched with --server, or later from a menu).
+## launched with --server, or later from a menu). With `auto_reconnect` on (the
+## multi-player server: Account turns it on), a lost connection is tried again
+## every RETRY_SECONDS until it comes back.
 
 signal connected
 signal disconnected
 signal raw_message(msg: Dictionary)
+signal reconnecting  # the connection was lost and will be tried again
+
+const RETRY_SECONDS := 2.0
 
 var url := "ws://localhost:8765"
 var auto_watch := false  # send "watch" on connecting (resuming a running game); else the launch screen decides
 
+var auto_reconnect := false
+
 var _ws := WebSocketPeer.new()
 var _open := false
 var _enabled := false
+var _retry_in := -1.0  # seconds until the next try to reconnect (-1: none planned)
 
 
 func start(server_url: String = "") -> void:
 	if server_url != "":
 		url = server_url
+	_connect()
+
+
+func _connect() -> void:
 	_enabled = true
+	_ws = WebSocketPeer.new()
 	# The default 64 KB inbound buffer is smaller than a full game state (~80 KB with
 	# four or more armies), and Godot drops the connection on an oversized message.
 	_ws.inbound_buffer_size = 16 * 1024 * 1024
@@ -44,7 +57,12 @@ func send_msg(d: Dictionary) -> void:
 		_ws.send_text(JSON.stringify(d))
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _retry_in >= 0.0:
+		_retry_in -= delta
+		if _retry_in < 0.0:
+			_connect()
+		return
 	if not _enabled:
 		return
 	_ws.poll()
@@ -64,3 +82,6 @@ func _process(_delta: float) -> void:
 				_open = false
 				disconnected.emit()
 			_enabled = false
+			if auto_reconnect:
+				_retry_in = RETRY_SECONDS
+				reconnecting.emit()

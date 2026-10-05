@@ -22,7 +22,9 @@ var _menu: MainMenu
 var _my_games: MyGamesScreen
 var _available: AvailableGamesScreen
 var _lobby: GameLobbyScreen
-var _scenarios_for := ""  # the "scenarios" asked for: "new" (New Game) or "admin" (Scenarios)
+var _scenarios_for := ""
+var _reconnecting := ""  # multi-player: the connection was lost; where the player was ("game", "lobby", ...)
+var _conn_banner: PanelContainer  # the "scenarios" asked for: "new" (New Game) or "admin" (Scenarios)
 var _settings_panel: SettingsPanel
 
 
@@ -405,6 +407,25 @@ func _setup_launch_screen() -> void:
 		_lobby.close()
 		_menu.open())
 	Net.raw_message.connect(_on_multi_message)
+	_conn_banner = PanelContainer.new()
+	_conn_banner.add_theme_stylebox_override("panel", GCTheme.box(GCTheme.RED, GCTheme.RED_DARK, 2, 4, Vector4(18, 8, 18, 8)))
+	var banner_text := HudStyle.label("Connection lost  -  reconnecting...", 16, GCTheme.WHITE)
+	banner_text.add_theme_font_override("font", GCTheme.font("display"))
+	_conn_banner.add_child(banner_text)
+	_conn_banner.z_index = 900
+	_conn_banner.visible = false
+	add_child(_conn_banner)
+	_conn_banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_conn_banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_conn_banner.position.y += 12
+	Net.reconnecting.connect(func():
+		if not Account.multi:
+			return
+		_conn_banner.visible = true
+		if _reconnecting == "":
+			_reconnecting = _where()
+			if Dbg.args.has("shot"):
+				print("[dbg] connection lost while at %s" % _reconnecting))
 	Stepper.game_reset.connect(func():
 		_side.reset_logs()
 		_world.arrows.reset()
@@ -417,6 +438,22 @@ func _setup_launch_screen() -> void:
 func _on_account_changed() -> void:
 	if not Account.multi:
 		return
+	if _reconnecting != "":
+		if Account.is_logged_in():
+			_conn_banner.visible = false
+			_restore(_reconnecting)
+			_reconnecting = ""
+			return
+		if Account.is_checking():
+			return  # (logging back in: keep the screen as it is)
+		_conn_banner.visible = false  # the login has ended: log in afresh
+		_reconnecting = ""
+		if GameStore.multi_game:
+			Stepper.feed_mode = false
+			Stepper.reset()
+			GameStore.set_multi_game({}, [])
+		for screen in [_available, _lobby, _my_games]:
+			screen.close()
 	_launch.close()
 	if Account.is_logged_in():
 		_login.close()
@@ -434,6 +471,8 @@ func _on_account_changed() -> void:
 func _on_multi_message(msg: Dictionary) -> void:
 	if not Account.multi:
 		return
+	if Dbg.args.has("shot") and not msg.has("seq"):
+		print("[dbg] multi: %s" % str(msg.get("type", "")))
 	match str(msg.get("type", "")):
 		"my_games":
 			_my_games.set_games(msg.get("games", []))
@@ -464,9 +503,12 @@ func _on_multi_message(msg: Dictionary) -> void:
 			_menu.open()
 			_menu._say("The host cancelled that game.")
 		"entered_game":
-			Stepper.feed_mode = true
-			Stepper.reset()
-			GameStore.set_multi_game(msg.get("game", {}), msg.get("my_factions", []), msg.get("players", {}))
+			var game: Dictionary = msg.get("game", {})
+			var again: bool = GameStore.multi_game and str(GameStore.game_info.get("id", "")) == str(game.get("id", ""))
+			if not again:  # (the same game again, after a lost connection: keep the log and the board)
+				Stepper.feed_mode = true
+				Stepper.reset()
+			GameStore.set_multi_game(game, msg.get("my_factions", []), msg.get("players", {}))
 			for screen in [_menu, _my_games, _login, _launch, _available, _lobby]:
 				screen.close()
 			_settings_panel.set_multi(true)
@@ -478,6 +520,37 @@ func _on_multi_message(msg: Dictionary) -> void:
 				_available.show_problem(text)
 			elif _lobby.visible:
 				_lobby.show_problem(text)
+
+
+## Where the player is in the multi-player launcher (to come back to after a lost connection).
+func _where() -> String:
+	if GameStore.multi_game:
+		return "game"
+	for pair in [[_lobby, "lobby"], [_available, "browse"], [_my_games, "my_games"], [_launch, "launch"]]:
+		if pair[0].visible:
+			return pair[1]
+	return "menu"
+
+
+## Back from a lost connection, logged in again: pick up where the player was.
+func _restore(where: String) -> void:
+	if Dbg.args.has("shot"):
+		print("[dbg] reconnected: back to %s" % where)
+	match where:
+		"game":
+			Stepper.log_line.emit("[color=#a9b4b8]reconnected[/color]")
+			Net.send_msg({"type": "enter_game", "game_id": GameStore.game_info.get("id", ""),
+				"since": Stepper._feed_seq, "epoch": Stepper._feed_epoch})
+		"lobby":
+			Net.send_msg({"type": "enter_lobby", "game_id": _lobby.game.get("id", "")})
+		"browse":
+			_available.open()
+		"my_games":
+			_my_games.open()
+		"launch":
+			pass  # (New Game keeps what is on the screen)
+		_:
+			_menu.open()
 
 
 ## Back to the main menu from a multi-player game (it carries on on the server).

@@ -81,14 +81,16 @@ class TestLoggingIn(HubTest):
         self.send('ann', {'type': 'logout'})
         self.hub.connect('c3')
         [(_, msg)] = self.send('c3', {'type': 'token_login', 'token': self.ann_token})
-        self.assertEqual(msg['type'], 'error')
+        self.assertEqual(msg['type'], 'login_failed')
 
     def test_refusals_carry_their_problems(self):
         self.hub.connect('c4')
         [(_, msg)] = self.send('c4', {'type': 'register', 'player_name': 'ann', 'email': 'new@x.com', 'password': ''})
-        self.assertEqual(msg['problems'], ['a password needs at least one character'])
+        self.assertEqual((msg['type'], msg['problems']), ('login_failed', ['a password needs at least one character']))
         [(_, msg)] = self.send('c4', {'type': 'login', 'email': 'ann@x.com', 'password': 'nope'})
-        self.assertEqual(msg['problems'], ['wrong email or password'])
+        self.assertEqual((msg['type'], msg['problems']), ('login_failed', ['wrong email or password']))
+        [(_, msg)] = self.send('c4', {'type': 'enter_game', 'game_id': 'G_000001'})
+        self.assertEqual(msg['type'], 'error')  # (anything else refused is an ordinary error)
 
 
 class TestRunningGames(HubTest):
@@ -112,6 +114,22 @@ class TestRunningGames(HubTest):
         self.assertEqual(entered['my_factions'], [self.faction_of(gid, self.ann)])
         self.assertEqual(feed['type'], 'feed')
         self.assertEqual({k for keys, _ in out for k in keys}, {'ann'})
+
+    def test_a_reconnecting_player_gets_what_they_missed(self):
+        gid = self.one_human_game()
+        out = self.send('ann', {'type': 'enter_game', 'game_id': gid})
+        feed = [m for _, m in out if m['type'] == 'feed'][0]
+        self.hub.disconnect('ann')
+        self.run_game(gid)  # the bots play on while Ann is away (nobody to deliver to)
+        latest = self.hub.sessions[gid].seq
+        self.assertGreater(latest, feed['seq'])
+        self.hub.connect('ann')
+        self.send('ann', {'type': 'token_login', 'token': self.ann_token})
+        out = self.send('ann', {'type': 'enter_game', 'game_id': gid, 'since': feed['seq'], 'epoch': feed['epoch']})
+        again = [m for _, m in out if m['type'] == 'feed'][0]
+        self.assertEqual([m['seq'] for m in again['messages']], list(range(feed['seq'] + 1, latest + 1)))
+        out = self.send('ann', {'type': 'enter_game', 'game_id': gid, 'since': 1, 'epoch': 'another run'})
+        self.assertIsNone([m for _, m in out if m['type'] == 'feed'][0]['messages'])  # a restarted server: start afresh
 
     def test_a_game_broadcasts_to_its_own_connections_only(self):
         gid = self.one_human_game()

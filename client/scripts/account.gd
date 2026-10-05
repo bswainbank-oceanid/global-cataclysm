@@ -19,9 +19,7 @@ var _pending := ""     # the account request in flight: "token_login", "login", 
 
 func _ready() -> void:
 	Net.raw_message.connect(_on_message)
-	Net.disconnected.connect(func():
-		_pending = ""
-		changed.emit())
+	Net.disconnected.connect(func(): _pending = "")  # (still logged in: the client logs back in when it reconnects)
 	var cfg := ConfigFile.new()
 	if cfg.load(_path()) == OK:
 		token = str(cfg.get_value("login", "token", ""))
@@ -60,6 +58,8 @@ func _on_message(msg: Dictionary) -> void:
 	match str(msg.get("type", "")):
 		"hello":
 			multi = true
+			Net.auto_reconnect = true
+			Net.auto_watch = false  # (the one-game server's; here a game is entered after logging in)
 			user = {}
 			if token != "":
 				_pending = "token_login"
@@ -76,7 +76,7 @@ func _on_message(msg: Dictionary) -> void:
 			changed.emit()
 		"logged_out":
 			_forget()
-		"error":
+		"login_failed":
 			if _pending == "":
 				return
 			var was := _pending
