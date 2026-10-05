@@ -15,7 +15,9 @@ replay comes out exactly as the game went (what tools/golden_games.py relies on 
 
 `setup` is what rebuilding needs beyond the snapshot: {'seats': lobby.build_session's seats,
 'settings': the game's settings, 'generated': a New Scenario's generated modules or None,
-'scenario_id': its scenario id or None}.
+'scenario_id': its scenario id or None, 'auto': whether the session runs itself}. An auto-mode
+session's steps (GameSession.step, which the server calls between messages) are decisions too: they
+are recorded as {'type': '_step'} and replayed in the same order as the messages around them.
 
 Limits: orders a human has staged but not confirmed are part of the decisions, so they come back too;
 a Claude bot (engine/bots/claude_bot.py) asks the API again on a replay and may decide differently.
@@ -42,6 +44,7 @@ from .stepper import START_OF_TURN
 
 VERSION = 1
 NOT_RECORDED = ('join',)  # pure queries: they change nothing, so a replay needn't see them
+STEP = '_step'  # a decision entry for one auto-mode step (GameSession.step), replayed as one
 
 # The engine's per-turn bookkeeping, all sets of faction codes (empty at a turn start, saved regardless).
 ENGINE_SETS = ('_purchases_confirmed', '_combat_moves_confirmed', '_combat_resolved',
@@ -68,13 +71,25 @@ class RecordedGame:
         out = self.session.handle_message(msg)
         if msg.get('type') not in NOT_RECORDED:
             self.decisions.append(copy.deepcopy(msg))
+        self._after()
+        return out
+
+    def step(self):
+        """An auto-mode step (GameSession.step), recorded like a message when it does something."""
+        planned = self.session.stepper._queue is None  # (a step may plan the queue -- a bot's draw -- and stop)
+        out = self.session.step()
+        if out is not None or planned:
+            self.decisions.append({'type': STEP})
+            self._after()
+        return out
+
+    def _after(self):
         key = self._current_turn_key()
         if key is not None and key != self._turn_key:  # a new turn is about to start: a clean moment
             self.snapshot = take_snapshot(self.session)
             self.decisions = []
             self._turn_key = key
             self.snapshots_taken += 1
-        return out
 
     def doc(self):
         """The whole save, JSON-ready."""
@@ -97,7 +112,10 @@ def load(doc):
     # (the queue is planned again by the first message, as every stepper entry point does when it has
     # none: at a turn start that is just the Start of Turn announcement, which draws nothing random)
     for msg in doc['decisions']:
-        game.handle_message(msg)
+        if msg.get('type') == STEP:
+            game.step()
+        else:
+            game.handle_message(msg)
     return game
 
 
@@ -117,9 +135,8 @@ def take_snapshot(session):
         bots[faction] = entry
     logs = {f: {'start': log._start, 'last_start': log._last_start} for f, log in stepper._strategy_logs.items()}
     armistice = session._armistice
-    if armistice is not None:
-        armistice = {'from': armistice['from'], 'pending': sorted(armistice['pending']),
-                     'accepted': sorted(armistice['accepted'])}
+    if armistice is not None:  # (every key kept; its two sets of faction codes as sorted lists)
+        armistice = {k: sorted(v) if isinstance(v, set) else copy.deepcopy(v) for k, v in armistice.items()}
     return {
         'game_state': engine.game_state.to_dict(),
         'combat_rng': _rng_state(engine._combat_rng),
@@ -146,12 +163,12 @@ def restore_snapshot(snap, setup):
     bots = {}
     for faction, entry in snap['bots'].items():
         bots[faction] = _bot(engine, faction, entry)
-    session = GameSession(engine, turn_log, bots)
+    session = GameSession(engine, turn_log, bots, auto=bool(setup.get('auto')))
     s = snap['session']
     session._pending_invite = copy.deepcopy(s['pending_invite'])
     a = s['armistice']
-    session._armistice = None if a is None else {'from': a['from'], 'pending': set(a['pending']),
-                                                 'accepted': set(a['accepted'])}
+    session._armistice = None if a is None else {k: set(v) if k in ('pending', 'accepted') else copy.deepcopy(v)
+                                                 for k, v in a.items()}
     session._armistice_cooldown = {k: v for k, v in s['armistice_cooldown']}
     session._auto_armistice_round = s['auto_armistice_round']
     for faction, entry in snap['strategy_logs'].items():
@@ -181,7 +198,7 @@ def setup_for(session, seats, settings):
     data = session.engine.data
     generated = generated_modules(session)
     return {'seats': copy.deepcopy(seats), 'settings': copy.deepcopy(settings), 'generated': generated,
-            'scenario_id': data.scenario_id if generated else None}
+            'scenario_id': data.scenario_id if generated else None, 'auto': session.auto}
 
 
 # ---- bots --------------------------------------------------------------------------------------------

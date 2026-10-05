@@ -216,12 +216,12 @@ def check_settings(settings, max_humans=1):
     return problems
 
 
-def resolve_settings(settings, rng=None):
+def resolve_settings(settings, rng=None, max_humans=1):
     """Validates `settings` and resolves the random faction picks. Returns
     (assignments, groups, randomize_order): assignments is one dict per seat
     ({faction, mode, strategy, behavior}, in seat order), groups the starting
     alliances as lists of faction codes. Raises LobbyError."""
-    problems = check_settings(settings)
+    problems = check_settings(settings, max_humans)
     if problems:
         raise LobbyError(problems)
     rng = rng or random.Random()
@@ -246,11 +246,12 @@ def resolve_settings(settings, rng=None):
     return assignments, [g for _, g in sorted(by_number.items())], bool(settings.get('randomize_order', True))
 
 
-def build_session(settings, rng=None):
+def build_session(settings, rng=None, auto=False, max_humans=1):
     """The GameSession for `settings`, plus the resolved seat list for the client.
-    Returns (session, seats); raises LobbyError."""
+    Returns (session, seats); raises LobbyError. `auto`: the session runs itself until it needs a
+    human (server/session.py, auto mode); `max_humans` as check_settings'."""
     rng = rng or random.Random(settings.get('seed'))
-    assignments, groups, randomize = resolve_settings(settings, rng)
+    assignments, groups, randomize = resolve_settings(settings, rng, max_humans)
     kind, options = _scenario(settings)
     config = data_module
     if kind == 'new':
@@ -301,4 +302,4 @@ def build_session(settings, rng=None):
         else:
             bots[a['faction']] = StrategyBot(engine, a['faction'], rng=bot_rng, budget=budget)
     seats = [dict(a, seat=i) for i, a in enumerate(assignments, 1)]
-    return GameSession(engine, turn_log, bots), seats
+    return GameSession(engine, turn_log, bots, auto=auto), seats

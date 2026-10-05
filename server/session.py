@@ -214,7 +214,33 @@ out-of-turn message like alliance_invite_response exists); client-
 controlled PACING of playback is entirely a client-side concern once it
 has a "bot_turn"/"combat_events" message's full event list (decided this
 session) -- the server never paces delivery itself.
+
+Auto mode (GameSession(auto=True), the multi-player server's): the game moves on by itself until it
+needs a human, instead of waiting for "next". The server calls step() again and again -- each call
+executes one queued step (a phase, a battle, a bombardment, a Start of Turn) and returns what it
+broadcast -- until it returns None: the game is waiting for a human (waiting_for() says who) or is
+over. Every broadcast message carries "seq" (counting up from 1) and "epoch" (which run of the server
+numbered it), and the latest ones are kept (FEED_LIMIT) so a client can catch up; clients play them
+back at their own pace. Replies meant for the sender alone (errors, a catch-up) carry "to_sender".
+
+Client -> server, auto mode:
+    {"type": "follow", "since": 41, "epoch": "a1b2c3d4"}
+        Answered (to the sender) with {"type": "feed", "epoch", "seq": the latest, "messages": every
+        broadcast after `since` -- or null when `since` is from another epoch or older than what is kept
+        (start from "state" instead) --, "state", "queue": the step waiting now, "waiting_for": [faction
+        codes], "game_over": the report or null}. "since" null: just the current picture. ("watch" is
+        the same as a follow with no "since".)
+    {"type": "end_phase", "faction": "NAA"}
+        A HUMAN faction is done with its Purchase / Combat Move / Non-Combat Move / Diplomacy (what it
+        staged is confirmed), and the game moves on. "next" is refused in auto mode.
+Server -> client, auto mode (besides the usual phase_queue / phase_result / state):
+    {"type": "waiting", "for": ["NAA"], "seq", "epoch"}
+        After the steps that brought the game to a stop: whose input it is waiting for (a human's phase,
+        an answer to an invitation or an armistice proposal).
 """
+import collections
+import secrets
+
 from engine.bots.alliance_policy import accepts_invite
 from engine.engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from engine.state import FactionMode, Phase
@@ -233,6 +259,10 @@ _AUTOMATIC_PHASE_KINDS = ('territory_captured', 'unit_deployed', 'income_collect
 # module for a real decision -- see connect()/_decision_prompt.
 _HUMAN_DECISION_PHASES = (Phase.PURCHASE, Phase.COMBAT_MOVE, Phase.NONCOMBAT_MOVE, Phase.DIPLOMACY)
 
+# Auto mode: how many broadcast messages are kept for clients catching up (a "state" is ~100 KB; a client
+# further behind than this starts again from the current state).
+FEED_LIMIT = 400
+
 # A proposer whose armistice was declined can't propose another for this many rounds (measured against
 # GameState.round_number -- see _handle_propose_armistice's cooldown check).
 ARMISTICE_COOLDOWN_ROUNDS = 5
@@ -242,7 +272,7 @@ ARMISTICE_REPEAT_ROUNDS = 5
 
 
 class GameSession:
-    def __init__(self, engine, turn_log, bots=None):
+    def __init__(self, engine, turn_log, bots=None, auto=False):
         self.engine = engine
         self.turn_log = turn_log
         self.bots = bots or {}  # faction_code -> RandomBot, one per BOT faction in play
@@ -272,6 +302,11 @@ class GameSession:
         # or None (the setting is 0: never).
         after = engine.game_state.armistice_after_rounds
         self._auto_armistice_round = after + 1 if after else None
+        # Auto mode (see this module's docstring): the game runs itself until it needs a human.
+        self.auto = auto
+        self.epoch = secrets.token_hex(4)  # (never from the game's own generators: a replay must not shift them)
+        self.seq = 0
+        self.feed = collections.deque(maxlen=FEED_LIMIT)
 
     def connect(self, faction):
         """A client just identified itself as `faction` ("join"). Pure
@@ -310,6 +345,11 @@ class GameSession:
         its own "to" key if present, else broadcast. Never raises for a
         malformed/unknown message; that becomes an "error" reply instead,
         same as any other rejected request."""
+        if self.auto:
+            return self._handle_auto(msg)
+        return self._dispatch(msg)
+
+    def _dispatch(self, msg):
         msg_type = msg.get('type')
         faction = msg.get('faction')
         if msg_type == 'join':
@@ -346,6 +386,104 @@ class GameSession:
         if msg_type == 'alliance_invite_response':
             return self._handle_alliance_invite_response(faction, msg.get('accept'))
         return [self._error(faction, f'unknown message type: {msg_type!r}')]
+
+    # ---- auto mode: the game runs itself until it needs a human -----------------------------------------
+
+    def waiting_for(self):
+        """The factions whose input the game is waiting on ([] when it can go on by itself, or is over):
+        everyone still to answer an armistice proposal, the human a bot's invitation is put to, or the
+        human whose Purchase / Combat Move / Non-Combat Move / Diplomacy is queued."""
+        gs, stepper = self.engine.game_state, self.stepper
+        if gs.game_over:
+            return []
+        if self._armistice is not None:
+            return sorted(self._armistice['pending'])
+        if stepper._queue is None:
+            stepper._plan_current_phase()
+        inv = stepper._invitation
+        if inv is not None and not inv['answered']:
+            return [inv['to']]
+        if self._human_decision_queued() is not None:
+            return [stepper._queue['faction']]
+        return []
+
+    def can_step(self):
+        return self.auto and not self.engine.game_state.game_over and not self.waiting_for()
+
+    def step(self):
+        """Auto mode: executes the one step queued now and returns what it broadcast (numbered) -- or None
+        when the game is waiting for a human or is over. Stopping adds a "waiting" message."""
+        if not self.can_step():
+            return None
+        return self._publish(self.stepper._execute_queued_phase() + self._maybe_propose_armistice())
+
+    def _human_decision_queued(self):
+        """The queued step when it is a HUMAN faction's decision (its Purchase, Combat Move, Non-Combat Move
+        or Diplomacy, while it is still in the game), else None."""
+        queue, gs = self.stepper._queue, self.engine.game_state
+        if queue is None or queue['phase'] not in [p.value for p in _HUMAN_DECISION_PHASES]:
+            return None
+        faction = queue['faction']
+        if faction not in gs.active_factions() or gs.factions[faction].mode != FactionMode.HUMAN:
+            return None
+        return queue
+
+    def _handle_auto(self, msg):
+        kind = msg.get('type')
+        if kind == 'next':
+            return [self._to_sender(self._error(None, 'this game moves on by itself: finish a phase with end_phase'))]
+        if kind in ('follow', 'watch'):
+            return [self._follow(msg.get('since') if kind == 'follow' else None, msg.get('epoch'))]
+        if kind == 'end_phase':
+            out = self._end_phase(msg.get('faction'))
+        else:
+            out = self._dispatch(msg)
+        return self._publish(out)
+
+    def _end_phase(self, faction):
+        queue = self._human_decision_queued() if self.waiting_for() else None
+        if queue is None or queue['faction'] != faction or self._armistice is not None:
+            return [self._error(faction, f'{faction} has no phase to finish right now')]
+        return self.stepper._execute_queued_phase() + self._maybe_propose_armistice()
+
+    def _follow(self, since, epoch):
+        waiting = self.waiting_for()
+        missed = None
+        if since is not None and epoch == self.epoch:
+            oldest = self.feed[0]['seq'] if self.feed else self.seq + 1
+            if since >= oldest - 1:
+                missed = [m for m in self.feed if m['seq'] > since]
+        gs = self.engine.game_state
+        return {'type': 'feed', 'to_sender': True, 'epoch': self.epoch, 'seq': self.seq, 'messages': missed,
+                'state': self.stepper._state_message(), 'queue': self.stepper._queue, 'waiting_for': waiting,
+                'game_over': self.stepper._game_over_message()['report'] if gs.game_over else None}
+
+    def _publish(self, messages):
+        """Numbers the broadcast ones and keeps them for catching up; errors go to the sender only. After
+        messages that leave the game waiting, adds who it is waiting for."""
+        out = []
+        for m in messages:
+            if m.get('type') == 'error' or m.get('to_sender'):
+                out.append(self._to_sender(m))
+            elif 'to' in m:
+                out.append(m)
+            else:
+                out.append(self._number(m))
+        if not self.engine.game_state.game_over and any('seq' in m for m in out):
+            waiting = self.waiting_for()
+            if waiting:
+                out.append(self._number({'type': 'waiting', 'for': waiting}))
+        return out
+
+    def _number(self, message):
+        self.seq += 1
+        message = dict(message, seq=self.seq, epoch=self.epoch)
+        self.feed.append(message)
+        return message
+
+    @staticmethod
+    def _to_sender(message):
+        return dict(message, to_sender=True)
 
     # ---- Settings actions: surrender and armistice, out-of-band, not tied to any queued phase --------
 
