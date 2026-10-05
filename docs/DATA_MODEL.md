@@ -294,15 +294,25 @@ new name makes a new scenario of the player's own, whichever New Scenario it was
 
 ### Game save
 
-A live game's complete state, written after every phase so the game survives a server
-restart: the engine state (`GameState.to_dict()`), the server session's own position
-(the phase being played, the pending human decision, alliance invitations, the armistice),
-and the random number generators' states, so a seeded game still replays exactly after a
-reload.
+A live game's save, so it survives a server restart (`server/persist.py`): a **snapshot** taken at
+the start of each faction's turn -- the one moment nothing is in flight (no bot plan half used,
+nothing staged, no battle queued) -- plus every **decision** the game has handled since (purchases,
+moves, diplomacy, answers, surrenders, "next"). Loading rebuilds the game from the snapshot and
+replays the decisions through the same code; bots and dice draw from random generators saved in the
+snapshot, so the replay comes out exactly as the game went. A New Scenario's generated modules are
+saved with it; everything else is read from the modules as they are when it loads.
 
 ```json
-{"game_id": "G_000001", "saved": "...", "session": {...}}
+{"game_id": "G_000001", "saved": "...",
+ "session": {"version": 1,
+             "setup": {"seats": [...], "settings": {...}, "generated": [...modules] | null, "scenario_id": ... | null},
+             "snapshot": {"game_state": {...}, "combat_rng": [...], "engine": {...}, "turn_log": [...],
+                          "stats": {...}, "bots": {"UER": {"kind": "strategy", "rng": [...], "base_style": ..., "budget": ...}},
+                          "strategy_logs": {...}, "session": {...the pending invitation and armistice...}},
+             "decisions": [{"type": "stage_purchase", ...}, {"type": "next"}, ...]}}
 ```
+
+A Claude bot asks the API again on a replay, so a game with one may not replay exactly.
 
 ### Chat
 
