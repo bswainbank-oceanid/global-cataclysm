@@ -11,7 +11,7 @@ tools/make_shortcut.py, with pythonw, so no console window opens):
 Godot is found from the GODOT environment variable, or else Godot 4's WinGet install. Problems are
 shown in a message box (there's no console to print to).
 
-    pythonw tools/launcher.py [--port 8765] [--db PATH]
+    pythonw tools/launcher.py [--port 8765] [--db PATH] [--profile NAME]
 """
 import argparse
 import glob
@@ -60,6 +60,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=DEFAULT_PORT)
     parser.add_argument('--db', default=None, help="the server's player database (default: the server's own)")
+    parser.add_argument('--profile', default=None,
+                        help="the client's own saved login (a second player on this machine: e.g. player2)")
     args = parser.parse_args(argv)
 
     godot = find_godot()
@@ -88,7 +90,8 @@ def main(argv=None):
             message("The game server didn't start. Its log is server_data/server.log.")
             return 1
 
-    subprocess.Popen([godot, '--path', os.path.join(ROOT, 'client'), '--', f'--server=ws://localhost:{args.port}'],
+    client_args = [f'--server=ws://localhost:{args.port}'] + ([f'--profile={args.profile}'] if args.profile else [])
+    subprocess.Popen([godot, '--path', os.path.join(ROOT, 'client'), '--'] + client_args,
                      cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      creationflags=DETACHED, close_fds=True)
     return 0
