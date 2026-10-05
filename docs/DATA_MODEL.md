@@ -217,10 +217,11 @@ prefix per kind (`U_000001`, `S_000001`, `G_000001`).
  "admin": false, "created": "2026-10-04T15:00:00Z"}
 ```
 
-- The email and player name are each unique, ignoring case; the email is the login.
+- The email and player name are each unique, ignoring case; the email is the login. A player
+  name is at most 24 characters; the actual name may be left blank (`server/accounts.py`).
 - A password is at least one character. Only its salted hash is stored
   (PBKDF2-SHA256 from Python's standard library), never the password itself.
-- `admin` opens Scenarios mode. There's no UI for it: it is set in the database directly.
+- `admin` opens Scenarios mode. There's no UI for it: `tools/set_admin.py` sets it in the database.
 - No email verification and no password reset for now (a forgotten password is fixed in
   the database). One account may be logged in on several clients at once.
 
@@ -332,6 +333,7 @@ factions, units with abilities and icons, adjacency) plus the map image.
 | `tools/validate_setup.py` | checks the starting setups against the setup rules |
 | `tools/sync_client_data.py` | the scenario's modules -> `client/data` |
 | `tools/golden_games.py` | seeded full-game digests, to prove a refactor changed nothing |
+| `tools/set_admin.py` | turns a player's admin flag on or off in the player database (`--list`: who is an admin) |
 
 Tools find the modules through `tools/tool_data.py` and take `--scenario`
 (default `GC72_Scenario`). See `docs/PIPELINE.md` for the editing workflow.
