@@ -60,10 +60,10 @@ def _next_id(repo):
     return f'{ID_PREFIX}{max(used, default=0) + 1:03d}'
 
 
-def save(setup, repo=None):
-    """Saves `setup` ({id: the setup being edited or null, name, description, settings}); returns the id
-    saved under. Raises LobbyError."""
-    repo = repo or default_repository()
+def checked(setup, kinds=('new',)):
+    """`setup`'s ({name, description, settings}) name, description and settings, tidied (trimmed, settings
+    canonical, no seed or dev switches) -- or LobbyError with every problem. `kinds`: the scenario kinds
+    its settings may have. Saved setups and players' own scenarios (server/scenarios.py) share it."""
     name = str(setup.get('name') or '').strip()
     description = str(setup.get('description') or '').strip()
     settings = setup.get('settings')
@@ -74,16 +74,33 @@ def save(setup, repo=None):
         problems.append(f'a scenario name may be at most {MAX_NAME} characters')
     if len(description) > MAX_DESCRIPTION:
         problems.append(f'a description may be at most {MAX_DESCRIPTION} characters')
-    if not isinstance(settings, dict):
-        problems.append('a saved scenario needs its settings')
-    else:
-        settings = canonical({k: v for k, v in settings.items() if k not in NOT_SAVED})
-        if (settings.get('scenario') or {}).get('kind') != 'new':
-            problems.append('only a new scenario\'s settings can be saved')
-        else:
-            problems += check_settings(settings)
+    problems += checked_settings_problems(settings, kinds)
     if problems:
         raise LobbyError(problems)
+    return name, description, tidy(settings)
+
+
+def tidy(settings):
+    """Settings as they are saved: canonical, without a seed or dev switches."""
+    return canonical({k: v for k, v in settings.items() if k not in NOT_SAVED})
+
+
+def checked_settings_problems(settings, kinds=('new',)):
+    """The problems with saving `settings`, whose scenario kind must be one of `kinds`."""
+    if not isinstance(settings, dict):
+        return ['a saved scenario needs its settings']
+    kind = (settings.get('scenario') or {}).get('kind', 'fixed')
+    if kind not in kinds:
+        return ["only a new scenario's settings can be saved" if kinds == ('new',)
+                else f'these settings are for a {kind} scenario, not this one']
+    return check_settings(tidy(settings))
+
+
+def save(setup, repo=None):
+    """Saves `setup` ({id: the setup being edited or null, name, description, settings}); returns the id
+    saved under. Raises LobbyError."""
+    repo = repo or default_repository()
+    name, description, settings = checked(setup)
 
     editing = setup.get('id')
     current = {d['id']: d for d in repo.all(MODULE_TYPE)}

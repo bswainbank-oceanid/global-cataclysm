@@ -251,11 +251,12 @@ A game is started from a **scenario** (the doc's "game mode": the same thing). T
  "generator_id": "GC72_Generator", "settings": {...the launch settings, as a ScenarioSetup's...}}
 ```
 
-A player can **Save** their own settings for GC72 or a shared scenario; picking that scenario
-afterwards fills New Game with them, and **Reset Settings** deletes them, going back to the
-scenario's own. Nothing is saved without Save. On a player's own scenario, Save updates the
-scenario itself and Reset Settings goes back to its last saved version. Saving under a new
-name makes a new scenario of the player's own, whatever it was started from.
+A player can **Save** their own settings for GC72, the blank New Scenario or a shared scenario;
+picking that scenario afterwards fills New Game with them, and **Reset Settings** deletes them,
+going back to the scenario's own. Nothing is saved without Save. On a player's own scenario, Save
+updates the scenario itself and Reset Settings goes back to its last saved version. Saving under a
+new name makes a new scenario of the player's own, whichever New Scenario it was started from
+(GC72's settings only ever save as personal settings). `server/scenarios.py` holds these rules.
 
 ```json
 {"user_id": "U_000001", "scenario_id": "Setup_002", "settings": {...}}
