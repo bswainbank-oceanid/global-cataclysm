@@ -1,7 +1,7 @@
 class_name MainMenu
 extends MenuScreen
 ## The main screen once logged in (reference/GC Launcher_User Profile.odt): the poster, the menu
-## (Resume Game, Join Game, New Game, Scenarios for admins, History, Rules), the player's profile in
+## (Resume Game, Join Game, New Game, Scenarios for admins, History, Rules, Quit to Desktop), the player's profile in
 ## the upper right (names, Log Out) and Display Settings (full screen).
 
 signal resume_pressed
@@ -63,6 +63,13 @@ func _build() -> void:
 	_note = HudStyle.label("", 13, HudStyle.TEXT_DIM)
 	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(_note)
+	v.add_child(HSeparator.new())
+	var quit := Button.new()
+	quit.text = "Quit to Desktop"
+	HudStyle.secondary(quit)
+	quit.custom_minimum_size = Vector2(0, 46)
+	quit.pressed.connect(func(): get_tree().quit())  # (the games carry on on the server)
+	v.add_child(quit)
 
 	# the upper right: Display Settings and the profile
 	var corner := HBoxContainer.new()
