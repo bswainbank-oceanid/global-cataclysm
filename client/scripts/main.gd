@@ -20,6 +20,7 @@ var _launch: LaunchScreen
 var _login: LoginScreen
 var _menu: MainMenu
 var _my_games: MyGamesScreen
+var _scenarios_for := ""  # the "scenarios" asked for: "new" (New Game) or "admin" (Scenarios)
 var _settings_panel: SettingsPanel
 
 
@@ -327,7 +328,8 @@ func _inject_all() -> void:
 			var c: PackedStringArray = spot.split(",")
 			var p := Vector2(float(c[0]), float(c[1]))
 			_inject_button(p, true)
-			await get_tree().process_frame
+			for i in (int(c[2]) if c.size() > 2 else 1):  # x,y,frames: a long press (a HoldButton)
+				await get_tree().process_frame
 			_inject_button(p, false)
 			for i in 4:
 				await get_tree().process_frame
@@ -373,8 +375,17 @@ func _setup_launch_screen() -> void:
 			Net.send_msg({"type": "enter_game", "game_id": g["id"]})
 		else:
 			_my_games.show_problem("Game lobbies are being built next."))
-	for sig in [_menu.join_pressed, _menu.new_game_pressed, _menu.scenarios_pressed]:
-		(sig as Signal).connect(func(): _menu._say("That part of the launcher is being built next."))
+	_menu.new_game_pressed.connect(func():
+		_scenarios_for = "new"
+		Net.send_msg({"type": "scenarios"}))
+	_menu.scenarios_pressed.connect(func():
+		_scenarios_for = "admin"
+		Net.send_msg({"type": "scenarios"}))
+	_launch.server_request.connect(func(m: Dictionary): Net.send_msg(m))
+	_launch.back_requested.connect(func():
+		_launch.close()
+		_menu.open())
+	_menu.join_pressed.connect(func(): _menu._say("Join Game is being built next."))
 	Net.raw_message.connect(_on_multi_message)
 	Stepper.game_reset.connect(func():
 		_side.reset_logs()
@@ -408,11 +419,19 @@ func _on_multi_message(msg: Dictionary) -> void:
 	match str(msg.get("type", "")):
 		"my_games":
 			_my_games.set_games(msg.get("games", []))
+		"scenarios":
+			if _launch.visible and _launch.multi:
+				_launch.set_scenarios(msg.get("scenarios", []), msg.get("selected"))
+			elif _scenarios_for != "":
+				_menu.close()
+				_launch.open_multi(msg, _scenarios_for == "admin")
+		"game_lobby":
+			_launch.show_error("The game's lobby is open (code %s). Lobby screens are being built next." % str(msg.get("game", {}).get("code", "")))
 		"entered_game":
 			Stepper.feed_mode = true
 			Stepper.reset()
 			GameStore.set_multi_game(msg.get("game", {}), msg.get("my_factions", []))
-			for screen in [_menu, _my_games, _login]:
+			for screen in [_menu, _my_games, _login, _launch]:
 				screen.close()
 			_settings_panel.set_multi(true)
 		"error":

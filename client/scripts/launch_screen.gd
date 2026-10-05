@@ -25,11 +25,22 @@ extends Control
 ## The rules mirrored here for instant feedback: at least two players, at most one
 ## human, each faction picked once, a starting alliance needs two or more members and
 ## can't include every player, and a seat's initial MPC is at least its units MPC.
+##
+## MULTI-PLAYER (open_multi; server/hub.py): New Game, or an admin's Scenarios mode. The list is the
+## server's for this player -- GC72, New scenario, the shared scenarios, then the player's own -- each
+## filled with the player's saved settings when they have some. Any number of Human seats. Save: the
+## player's own settings for GC72, New scenario or a shared one (unless it is renamed: then it saves a
+## new scenario of their own); an own scenario saves itself, or a new one under a new name. Reset
+## Settings goes back to the scenario's own; Delete is for the player's own scenarios. Start Game
+## creates the game. In Scenarios mode, Save and Delete change the shared scenarios for everyone and
+## there is no Start. Every action is a message for the server (`server_request`).
 
 signal start_requested(settings: Dictionary)
 signal resume_requested
 signal save_requested(setup: Dictionary)   # {id, name, description, settings}: the server replies "setups"
 signal delete_requested(setup_id: String)
+signal server_request(msg: Dictionary)   # multi-player: a message for the server (create_game, save_settings, ...)
+signal back_requested                    # multi-player: back to the main menu
 
 var SEATS := 6  # one seat per faction: set from GameData's faction set in _ready
 const MODES := [["Human", "HUMAN"], ["Bot", "BOT"], ["Neutral", "NEUTRAL"], ["Noncombatant", "NONCOMBATANT"]]
@@ -103,6 +114,13 @@ var _pending_entry := ""  # remembered from the last launch: a saved setup to pi
 var _game_running := false
 var _loading := false
 var remember := true  # keep the last setup in user://launch.cfg (off for scripted runs and tests)
+var multi := false        # a multi-player server's New Game (or Scenarios) -- see above
+var admin_mode := false   # ...its Scenarios mode: the shared scenarios are edited, nothing is started
+var _entries := {}        # multi-player: id -> the server's listing entry {id, kind, name, description, settings, defaults, personal}
+var _defaults := {}       # FIXED / NEW -> the screen's own default settings
+var _reset_button: HoldButton
+var _back_button: Button
+var _title_label: Label
 
 
 func _ready() -> void:
@@ -147,6 +165,10 @@ func _ready() -> void:
 	var rule := HSeparator.new()
 	rule.theme_type_variation = "RedRule"
 	v.add_child(rule)
+	_title_label = HudStyle.label("", 16, GCTheme.RED)
+	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title_label.visible = false
+	v.add_child(_title_label)
 	var scenario_row := HBoxContainer.new()
 	scenario_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	scenario_row.add_theme_constant_override("separation", 10)
@@ -178,12 +200,24 @@ func _ready() -> void:
 	v.add_child(buttons)
 	_delete_button = _button("Delete Scenario Setup")
 	_delete_button.activated.connect(func():
-		if _setup_id != "":
+		if _setup_id == "":
+			return
+		if multi:
+			server_request.emit({"type": "delete_shared" if admin_mode else "delete_scenario", "id": _setup_id})
+		else:
 			delete_requested.emit(_setup_id))
 	buttons.add_child(_delete_button)
 	_save_button = _button("Save Scenario Setup")
-	_save_button.activated.connect(func(): save_requested.emit(setup()))
+	_save_button.activated.connect(func():
+		if multi:
+			_multi_save()
+		else:
+			save_requested.emit(setup()))
 	buttons.add_child(_save_button)
+	_reset_button = _button("Reset Settings")
+	_reset_button.visible = false
+	_reset_button.activated.connect(_multi_reset)
+	buttons.add_child(_reset_button)
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	gap.custom_minimum_size = Vector2(20, 0)
@@ -193,15 +227,27 @@ func _ready() -> void:
 	buttons.add_child(_resume)
 	_start = HudStyle.primary(_button("Start Game"))
 	_start.activated.connect(func():
+		if multi:
+			server_request.emit({"type": "create_game", "scenario": {"kind": _entry_kind(), "id": _entry}, "settings": settings()})
+			return
 		_save()
 		start_requested.emit(settings()))
 	buttons.add_child(_start)
+	_back_button = Button.new()
+	_back_button.text = "Back"
+	HudStyle.secondary(_back_button)
+	_back_button.custom_minimum_size = Vector2(120, 44)
+	_back_button.visible = false
+	_back_button.pressed.connect(func(): back_requested.emit())
+	buttons.add_child(_back_button)
 	var hint := HudStyle.label("Press and hold a button to use it.", 11, HudStyle.TEXT_DIM)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	v.add_child(hint)
 
 	get_viewport().size_changed.connect(_fit_scroll)
 	_set_new_visible(false)
+	_defaults[FIXED] = settings()  # (the screen as built: GC72's defaults; New scenario's follow from them)
+	_defaults[NEW] = _new_defaults(_defaults[FIXED])
 	_load()
 	_changed()
 
@@ -582,7 +628,7 @@ func problems() -> Array:
 				groups[a] = int(groups.get(a, 0)) + 1
 	if players < 2:
 		out.append("At least two players (humans or bots) are needed.")
-	if humans > 1:
+	if humans > 1 and not multi:
 		out.append("At most one human player.")
 	for a in groups:
 		if groups[a] > _max_size and players >= 2:
@@ -612,7 +658,7 @@ func _changed() -> void:
 		var row: Dictionary = _rows[i]
 		var mode := _mode_of(row)
 		var mode_o: OptionButton = row["mode"]
-		mode_o.set_item_disabled(0, human_seat >= 0 and human_seat != i)  # at most one human
+		mode_o.set_item_disabled(0, not multi and human_seat >= 0 and human_seat != i)  # at most one human (one-game server)
 		var fac_o: OptionButton = row["faction"]
 		for k in range(1, fac_o.item_count):
 			var code := str(fac_o.get_item_metadata(k))
@@ -633,8 +679,13 @@ func _changed() -> void:
 	var p := problems()
 	_message.text = "\n".join(p) if not p.is_empty() else ""
 	_start.disabled = not p.is_empty()
-	_resume.visible = _game_running
-	_refresh_save_buttons(p)
+	_resume.visible = _game_running and not multi
+	_start.visible = not admin_mode
+	_back_button.visible = multi
+	if multi:
+		_refresh_multi_buttons(p)
+	else:
+		_refresh_save_buttons(p)
 	_fit_scroll.call_deferred()
 
 
@@ -697,7 +748,18 @@ func _rebuild_scenario_list() -> void:
 	_scenario.set_item_metadata(0, FIXED)
 	_scenario.add_item("New scenario")
 	_scenario.set_item_metadata(1, NEW)
-	if not _setups.is_empty():
+	if multi:
+		for group in [["shared", "Shared scenarios"], ["own", "My scenarios"]]:
+			var rows := _setups.filter(func(r): return str(r.get("kind", "")) == group[0])
+			if rows.is_empty():
+				continue
+			_scenario.add_separator(group[1])
+			for s in rows:
+				_scenario.add_item(str(s["name"]))
+				var i := _scenario.item_count - 1
+				_scenario.set_item_metadata(i, str(s["id"]))
+				_scenario.get_popup().set_item_tooltip(i, str(s.get("description", "")))
+	elif not _setups.is_empty():
 		_scenario.add_separator("Saved scenarios")
 		for s in _setups:
 			_scenario.add_item(str(s["name"]))
@@ -769,11 +831,131 @@ func _entry_picked(entry: String) -> void:
 	_setup_name = ""
 	_name.text = ""
 	_description.text = ""
+	if multi:  # GC72 / New scenario: the player's saved settings for it, else its defaults
+		var saved = _entries.get(entry, {}).get("settings")
+		apply_settings(saved if saved is Dictionary else _defaults[entry])
+		_entry = entry
+		_rebuild_scenario_list()
+		_changed()
+		return
 	_rebuild_scenario_list()
 	if was_new != _is_new():
 		_scenario_changed()
 	else:
 		_changed()
+
+
+# ---- multi-player: New Game and Scenarios ----------------------------------------------------------
+
+## Opens as a multi-player server's New Game (or, `admin`, its Scenarios mode) from its "scenarios" reply.
+func open_multi(msg: Dictionary, admin: bool) -> void:
+	multi = true
+	admin_mode = admin
+	remember = false  # (the server keeps a player's settings)
+	var spec: Dictionary = msg.get("new_scenario", {})
+	set_new_scenario_options(spec.get("options", []))
+	set_seat_specs(spec.get("seats", {}))
+	_title_label.text = "SCENARIOS  -  EDITING THE SHARED SCENARIOS" if admin else ""
+	_title_label.visible = admin
+	set_scenarios(msg.get("scenarios", []), msg.get("selected"))
+	_message.text = ""
+	visible = true
+
+
+## The server's listing for this player ("scenarios", after every save, reset or delete). `selected`:
+## the scenario just saved (it is shown as saved), or null (keep what is on the screen, if it still exists).
+func set_scenarios(rows: Array, selected = null) -> void:
+	_entries = {}
+	var listed := []
+	for r in rows:
+		if admin_mode:  # (an admin edits the scenarios themselves, not their own settings for them)
+			r = r.duplicate()
+			r["settings"] = r.get("defaults")
+			r["personal"] = false
+		_entries[str(r["id"])] = r
+		var kind := str(r.get("kind", ""))
+		if kind == "shared" or (kind == "own" and not admin_mode):
+			listed.append(r)
+	var current := _entry
+	_setups = listed
+	if selected != null and _entries.has(str(selected)):
+		_entry = "x"  # (force a fresh pick of the saved one)
+		_entry_picked(str(selected))
+	elif not _entries.has(current) and current != FIXED and current != NEW:
+		_entry_picked(NEW)
+	else:
+		_entry = "x"
+		_entry_picked(current)
+
+
+## The kind of the scenario on the screen, as the server names them: fixed, new, shared or own.
+func _entry_kind() -> String:
+	if _entry == FIXED or _entry == NEW:
+		return _entry
+	return str(_entries.get(_entry, {}).get("kind", "new"))
+
+
+## The scenario on the screen saved as it would be now: renamed, it becomes a new scenario.
+func _renamed() -> bool:
+	return _is_new() and _name.text.strip_edges() != "" and _name.text.strip_edges() != _setup_name
+
+
+func _multi_save() -> void:
+	var kind := _entry_kind()
+	var s := settings()
+	s.erase("dev")
+	var doc := {"id": _setup_id if _setup_id != "" else null, "name": _name.text.strip_edges(),
+		"description": _description.text.strip_edges(), "settings": s}
+	if admin_mode:
+		server_request.emit({"type": "save_shared", "scenario": doc})
+	elif kind == "own" or _renamed():
+		if kind != "own":
+			doc["id"] = null
+		server_request.emit({"type": "save_scenario", "scenario": doc})
+	else:
+		server_request.emit({"type": "save_settings", "scenario_id": _entry, "settings": s})
+
+
+func _multi_reset() -> void:
+	if _entry_kind() == "own":
+		_entry_picked(_entry)  # its last saved version
+		return
+	server_request.emit({"type": "reset_settings", "scenario_id": _entry})
+
+
+func _refresh_multi_buttons(p: Array) -> void:
+	var kind := _entry_kind()
+	var named := _name.text.strip_edges() != ""
+	_reset_button.visible = not admin_mode
+	_reset_button.disabled = kind != "own" and not bool(_entries.get(_entry, {}).get("personal", false))
+	_delete_button.visible = (kind == "own" and not admin_mode) or (kind == "shared" and admin_mode)
+	_delete_button.disabled = _setup_id == ""
+	_delete_button.text = "DELETE SHARED SCENARIO" if admin_mode else "DELETE MY SCENARIO"
+	_save_button.visible = not admin_mode or _is_new()
+	_save_button.disabled = not p.is_empty() or (admin_mode and not named) or (kind == "own" and not named)
+	var label := "Save My Settings"
+	if admin_mode:
+		label = "Save Shared Scenario" if kind == "shared" and not _renamed() else "Save as New Shared Scenario"
+	elif kind == "own":
+		label = "Save as New Scenario" if _renamed() else "Save Scenario"
+	elif _renamed():
+		label = "Save as New Scenario"
+	_save_button.text = label.to_upper()
+	if kind == "own":
+		_id_label.text = "%s  (yours%s)" % [_setup_id, "; a new name saves a new scenario" if _renamed() else ""]
+	elif kind == "shared":
+		_id_label.text = "%s  (shared%s)" % [_setup_id, "; a new name saves a new scenario" if _renamed() else ""]
+	else:
+		_id_label.text = "name it to save it as a scenario of your own"
+
+
+static func _new_defaults(fixed: Dictionary) -> Dictionary:
+	var s := fixed.duplicate(true)
+	for seat in s["seats"]:
+		if not ["HUMAN", "BOT"].has(str(seat["mode"])):
+			seat["mode"] = "NOT_PLAYING"
+	s["scenario"] = {"kind": "new", "options": {}, "neutral": {}}
+	return s
 
 
 ## "fixed" or "new" (scripted runs).
