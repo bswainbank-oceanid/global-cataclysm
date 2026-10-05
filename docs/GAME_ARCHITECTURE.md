@@ -335,7 +335,7 @@ synced JSON read-only; nobody hand-edits game data inside the Godot editor.
   unit-tested directly with no socket ever opened; `server/test_client.py`
   is a small scripted client (with its own toy playback-pacing loop) for
   manual end-to-end verification against a running server
-  (`python -m server.app`, then `python -m server.test_client`, which now
+  (`python -m server.app --single`, then `python -m server.test_client`, which now
   drives two full NAA turns exercising real `purchase`, `combat_move`,
   `noncombat_move`, and `alliance_action` decisions in sequence -- always
   `"none"` for the alliance action there, since the demo scenario's only
@@ -456,7 +456,7 @@ synced JSON read-only; nobody hand-edits game data inside the Godot editor.
   between launches; "New game..." in Settings returns to the screen (the running
   game stays until you start another, and "Resume" goes back to it).
   **Human players:** the demo server now runs NAA as a HUMAN and GPC as a bot
-  (`python -m server.app --human none` for the old bots-only watch). A human
+  (`python -m server.app --single --human none` for the old bots-only watch). A human
   faction's phases go through the same queue: its Purchase queue carries
   `engine.purchase_options` (treasury, each legal target's remaining capacity and
   whether the next unit is priced at a Strategic Center, staged orders with exact
@@ -492,7 +492,7 @@ synced JSON read-only; nobody hand-edits game data inside the Godot editor.
   move is queued. Committed units show dimmed with an arrow badge at the origin
   and as "Incoming" at the destination, and the queue lists each (from, to)
   group; any of the three lets you recall a unit, a group, or all incoming. The
-  remaining units stay available. `python -m server.app --combat-first-turn`
+  remaining units stay available. `python -m server.app --single --combat-first-turn`
   (dev) allows Combat Move on the first turn, which the rules skip by default (the
   launch screen has a checkbox for it now).
   shortening. While phases are running unpaused the Next button becomes a **Pause**
@@ -794,3 +794,15 @@ synced JSON read-only; nobody hand-edits game data inside the Godot editor.
   strategy AI.
   Tests: `engine/tests/test_scenario_generator.py`; the golden games include a
   seeded new scenario.
+
+- **Multi-player (the default server since 2026-10):** `python -m server.app` runs `server/hub.py`:
+  players register and log in (`server/accounts.py`), run many games at once, and every live game is
+  saved as it goes (`server/persist.py`: a snapshot at each turn start plus the decisions since,
+  replayed exactly on load) in the player database, `server_data/global_cataclysm.sqlite3`
+  (`server/store.py`; docs/DATA_MODEL.md, "Player data"). Games run themselves until they need a
+  human (`GameSession(auto=True)`), broadcasting numbered steps that each client plays back at its
+  own pace (TurnStepper's feed mode). The client's launcher: log in, the main menu, My Live Games,
+  New Game (own and shared scenarios, personal settings with Save / Reset), Join Game (open games,
+  join by code, chat), the game lobby (seats, chat, the host's Launch / Cancel) and an admin's
+  Scenarios mode (`tools/set_admin.py` makes an admin). The original one-game server is
+  `python -m server.app --single` (and `--demo`); the client still drives it as before.

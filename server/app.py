@@ -8,7 +8,14 @@ messages come back to the right sockets -- a "to": faction_code key means
 just that faction's connection(s), no "to" key means every connection on
 this game (everyone sees the same board).
 
-ONE game at a time, held by a GameHost (server/host.py): the server starts idle
+The server runs in one of two modes.
+
+MULTI-PLAYER (the default): many games at once, players logged in, games saved as they go and loaded
+back when the server starts -- server/hub.py's protocol, over MultiServer below. The player database is
+server_data/global_cataclysm.sqlite3 unless --db says otherwise.
+
+ONE GAME (--single, or --demo): the original launcher's server. ONE game at a time, held by a GameHost
+(server/host.py): the server starts idle
 and the client's launch screen builds the game ({"type": "new_game"}, see
 server/lobby.py), replacing any running one. `--demo` instead starts the old
 hardcoded game (NAA a HUMAN player by default, GPC a BOT, every other faction
@@ -19,11 +26,8 @@ at a time with {"type": "next"}; a human faction's orders arrive as
 simultaneous games, persistence, real auth (a "join" message is trusted
 at face value for now).
 
-Multi-player mode (--multi): many games at once, players logged in, games saved as they go and loaded
-back when the server starts -- server/hub.py's protocol, over MultiServer below. The player database is
-server_data/global_cataclysm.sqlite3 unless --db says otherwise.
-
-Run: python -m server.app [--host HOST] [--port PORT] [--multi [--db PATH]]
+Run: python -m server.app [--host HOST] [--port PORT] [--db PATH]      multi-player
+     python -m server.app --single [--host HOST] [--port PORT]           one game
 A minimal scripted client for manual testing: python -m server.test_client
 """
 import argparse
@@ -223,20 +227,22 @@ if __name__ == '__main__':
     parser.add_argument('--host', default='localhost')
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--demo', action='store_true',
-                        help='start a two-faction bot game (NAA vs GPC) already running (dev/scripted runs); '
-                             'without it the server waits for the launch screen to start a game')
+                        help='the one-game server with a two-faction bot game (NAA vs GPC) already running '
+                             '(dev/scripted runs)')
     parser.add_argument('--human', default=None,
                         help="with --demo: the faction a player controls (default: the first demo faction); 'none' = both bots")
     parser.add_argument('--combat-first-turn', action='store_true',
                         help='dev/testing: allow Combat Move on a faction\'s first turn (the rules skip it)')
+    parser.add_argument('--single', action='store_true',
+                        help='the one-game server (the original launcher): no logins, one game at a time, not saved')
     parser.add_argument('--multi', action='store_true',
-                        help='multi-player mode: logins, many games at once, games saved (server/hub.py)')
-    parser.add_argument('--db', default=str(DEFAULT_PATH), help='with --multi: the player database (default: %(default)s)')
+                        help='multi-player mode, the default: logins, many games at once, games saved (server/hub.py)')
+    parser.add_argument('--db', default=str(DEFAULT_PATH), help='multi-player: the player database (default: %(default)s)')
     parser.add_argument('--seed', type=int, default=None,
                         help='with --demo: seed the game (bots and dice) so it replays exactly')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(message)s')
-    if args.multi:
+    if not (args.single or args.demo):
         asyncio.run(main_multi(args.host, args.port, args.db))
         raise SystemExit(0)
     human = demo_factions()[0] if args.human is None else (None if args.human == 'none' else args.human)
