@@ -16,6 +16,10 @@ from .lobby import GENERATOR_ID, LobbyError, check_settings
 
 MODULE_TYPE = 'ScenarioSetup'
 ID_PREFIX = 'Setup_'
+# GC72's own default settings, as an admin last saved them (Scenarios mode): a ScenarioSetup of the fixed
+# scenario, kept out of the shared scenarios' list. Without one, the client's own defaults stand.
+FIXED_ID = 'Setup_GC72'
+FIXED_NAME = 'Global Cataclysm: 1972'
 MAX_NAME = 60
 MAX_DESCRIPTION = 2000
 # what a saved setup leaves out: a seed replays one game, and dev switches are for testing
@@ -47,9 +51,9 @@ def _whole(v):
 
 
 def listing(repo=None):
-    """Every saved setup, by name: [{id, name, description, settings}]."""
+    """Every saved setup, by name: [{id, name, description, settings}] (GC72's defaults left out: fixed_defaults)."""
     repo = repo or default_repository()
-    docs = sorted(repo.all(MODULE_TYPE), key=lambda d: (d['name'].lower(), d['id']))
+    docs = sorted((d for d in repo.all(MODULE_TYPE) if d['id'] != FIXED_ID), key=lambda d: (d['name'].lower(), d['id']))
     return [{'id': d['id'], 'name': d['name'], 'description': d.get('description', ''), 'settings': d['settings']}
             for d in docs]
 
@@ -86,14 +90,15 @@ def tidy(settings):
 
 
 def checked_settings_problems(settings, kinds=('new',)):
-    """The problems with saving `settings`, whose scenario kind must be one of `kinds`."""
+    """The problems with saving `settings`, whose scenario kind must be one of `kinds`. Any number of humans:
+    a saved scenario may be played on the multi-player server."""
     if not isinstance(settings, dict):
         return ['a saved scenario needs its settings']
     kind = (settings.get('scenario') or {}).get('kind', 'fixed')
     if kind not in kinds:
         return ["only a new scenario's settings can be saved" if kinds == ('new',)
                 else f'these settings are for a {kind} scenario, not this one']
-    return check_settings(tidy(settings))
+    return check_settings(tidy(settings), max_humans=None)
 
 
 def save(setup, repo=None):
@@ -114,6 +119,26 @@ def save(setup, repo=None):
     repo.save({'module_type': MODULE_TYPE, 'id': module_id, 'name': name, 'description': description,
                'generator_id': GENERATOR_ID, 'settings': settings})
     return module_id
+
+
+def fixed_defaults(repo=None):
+    """GC72's default settings as an admin saved them, or None (the client's own defaults)."""
+    repo = repo or default_repository()
+    if FIXED_ID not in repo.ids(MODULE_TYPE):
+        return None
+    return repo.get(MODULE_TYPE, FIXED_ID)['settings']
+
+
+def save_fixed(settings, repo=None):
+    """Saves GC72's default settings (its seats, alliances and rules -- what the launcher can change; the
+    map and starting units are the scenario's own). Raises LobbyError."""
+    repo = repo or default_repository()
+    problems = checked_settings_problems(settings, ('fixed',))
+    if problems:
+        raise LobbyError(problems)
+    repo.save({'module_type': MODULE_TYPE, 'id': FIXED_ID, 'name': FIXED_NAME,
+               'description': "GC72's default settings (Scenarios mode)", 'generator_id': GENERATOR_ID,
+               'settings': tidy(settings)})
 
 
 def delete(module_id, repo=None):

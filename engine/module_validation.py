@@ -416,7 +416,11 @@ class _Checker:
         settings = self.field(where, s, 'settings', (dict,))
         if g is None or settings is None:
             return
-        if (settings.get('scenario') or {}).get('kind') != 'new':
+        kind = (settings.get('scenario') or {}).get('kind', 'fixed')
+        if s.get('id') == 'Setup_GC72':  # (GC72's own default settings: server/setups.py's FIXED_ID)
+            if kind != 'fixed':
+                self.err(where, "GC72's default settings must be the fixed scenario's")
+        elif kind != 'new':
             self.err(where, "settings must be a new scenario's (scenario.kind 'new')")
         if not isinstance(settings.get('seats'), list):
             self.err(where, 'settings has no seats list')

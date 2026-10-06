@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from engine.module_validation import validate_repository
 from engine.repository import ModuleRepository
 from server import accounts, scenarios, setups
 from server.store import Store, StoreError
@@ -179,6 +180,35 @@ class TestSharedScenarios(ScenarioTest):
         scenarios.delete_shared(self.store, self.admin, self.duel, self.repo)
         self.assertNotIn(self.duel, self.listing(self.ann))
         self.assertEqual(self.store.fetch_all('user_settings'), [])
+
+    def test_an_admin_saves_gc72s_defaults_for_everyone(self):
+        mine = fixed_settings(randomize_order=False, seed=3)
+        self.assertEqual(self.refused(scenarios.save_shared, self.store, self.ann, {'id': 'fixed', 'settings': mine}, self.repo),
+                         ['only an admin can change the shared scenarios'])
+        self.assertIsNone(self.listing(self.ann)['fixed']['defaults'])  # (the client's own, until saved)
+        self.assertEqual(scenarios.save_shared(self.store, self.admin, {'id': 'fixed', 'settings': mine}, self.repo), 'fixed')
+        row = self.listing(self.ann)['fixed']
+        self.assertFalse(row['defaults']['randomize_order'])
+        self.assertNotIn('seed', row['defaults'])
+        self.assertEqual(row['settings'], row['defaults'])
+        self.assertNotIn(setups.FIXED_ID, [r['id'] for r in setups.listing(self.repo)])  # not a shared scenario
+        self.assertEqual(validate_repository(self.repo), [])
+
+    def test_a_players_gc72_settings_still_win_and_reset_brings_the_admins_back(self):
+        scenarios.save_shared(self.store, self.admin, {'id': 'fixed', 'settings': fixed_settings(randomize_order=False)}, self.repo)
+        scenarios.save_settings(self.store, self.ann, 'fixed', fixed_settings(randomize_order=True), self.repo)
+        self.assertTrue(self.listing(self.ann)['fixed']['settings']['randomize_order'])
+        scenarios.reset_settings(self.store, self.ann, 'fixed')
+        self.assertFalse(self.listing(self.ann)['fixed']['settings']['randomize_order'])
+
+    def test_gc72s_defaults_must_be_gc72_settings(self):
+        self.assertTrue(self.refused(scenarios.save_shared, self.store, self.admin, {'id': 'fixed', 'settings': new_settings()}, self.repo))
+
+    def test_a_scenario_with_several_humans_can_be_saved(self):
+        two = new_settings()
+        two['seats'][1] = dict(two['seats'][1], mode='HUMAN')
+        sid = scenarios.save_own(self.store, self.ann, {'name': 'Two of us', 'settings': two})
+        self.assertEqual(scenarios.get_own(self.store, sid)['settings']['seats'][1]['mode'], 'HUMAN')
 
     def test_gc72_cannot_be_saved_over_even_by_an_admin(self):
         problems = self.refused(scenarios.save_shared, self.store, self.admin,

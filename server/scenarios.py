@@ -2,8 +2,9 @@
 What a player can start a game from, and what they may change (docs/DATA_MODEL.md, "Scenarios:
 shared, own, and a player's settings"):
 
-- the built-ins: GC72 as it stands (`fixed`) and a blank New Scenario (`new`), whose defaults the
-  client builds from the lobby message; nobody can change those defaults;
+- the built-ins: GC72 (`fixed`) and a blank New Scenario (`new`), whose defaults the client builds
+  itself -- except that an admin may save GC72's editable settings (seats, alliances, rules) as everyone's
+  defaults for it (setups.save_fixed);
 - shared scenarios: the saved setups (server/setups.py, ScenarioSetup modules), which everyone sees and
   only an admin changes;
 - a player's own scenarios, in the player database, which only their owner sees and changes.
@@ -35,7 +36,7 @@ def listing(store, user_id, repo=None):
         return {'id': sid, 'kind': kind, 'name': name, 'description': description,
                 'settings': mine[sid] if personal else defaults, 'defaults': defaults, 'personal': personal}
 
-    out = [entry('fixed', 'fixed', None, '', None), entry('new', 'new', None, '', None)]
+    out = [entry('fixed', 'fixed', None, '', setups.fixed_defaults(repo)), entry('new', 'new', None, '', None)]
     out += [entry(s['id'], 'shared', s['name'], s['description'], s['settings']) for s in setups.listing(repo)]
     own = sorted(store.fetch_all('scenarios', owner_id=user_id), key=lambda d: (d['name'].lower(), d['id']))
     out += [{'id': d['id'], 'kind': 'own', 'name': d['name'], 'description': d['description'],
@@ -117,9 +118,13 @@ def get_own(store, scenario_id):
 # ---- shared scenarios: admins only -------------------------------------------------------------------
 
 def save_shared(store, user_id, setup, repo=None):
-    """An admin saving a shared scenario (setups.save: same name updates, new name adds); returns its id."""
+    """An admin saving a shared scenario (setups.save: same name updates, new name adds) -- or, `setup`'s id
+    'fixed', GC72's default settings (setups.save_fixed); returns its id."""
     _admin(store, user_id)
     try:
+        if setup.get('id') == 'fixed':
+            setups.save_fixed(setup.get('settings'), repo)
+            return 'fixed'
         return setups.save(setup, repo)
     except LobbyError as e:
         raise StoreError(e.problems) from None

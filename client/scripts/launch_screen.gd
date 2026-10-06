@@ -917,7 +917,9 @@ func _multi_save() -> void:
 	s.erase("dev")
 	var doc := {"id": _setup_id if _setup_id != "" else null, "name": _name.text.strip_edges(),
 		"description": _description.text.strip_edges(), "settings": s}
-	if admin_mode:
+	if admin_mode and _entry == FIXED:  # GC72's default settings, for everyone
+		server_request.emit({"type": "save_shared", "scenario": {"id": "fixed", "settings": s}})
+	elif admin_mode:
 		server_request.emit({"type": "save_shared", "scenario": doc})
 	elif kind == "own" or _renamed():
 		if kind != "own":
@@ -942,10 +944,12 @@ func _refresh_multi_buttons(p: Array) -> void:
 	_delete_button.visible = (kind == "own" and not admin_mode) or (kind == "shared" and admin_mode)
 	_delete_button.disabled = _setup_id == ""
 	_delete_button.text = "DELETE SHARED SCENARIO" if admin_mode else "DELETE MY SCENARIO"
-	_save_button.visible = not admin_mode or _is_new()
-	_save_button.disabled = not p.is_empty() or (admin_mode and not named) or (kind == "own" and not named)
+	_save_button.visible = not admin_mode or _is_new() or _entry == FIXED
+	_save_button.disabled = not p.is_empty() or (admin_mode and not named and _entry != FIXED) or (kind == "own" and not named)
 	var label := "Save My Settings"
-	if admin_mode:
+	if admin_mode and _entry == FIXED:
+		label = "Save GC72 Settings"
+	elif admin_mode:
 		label = "Save Shared Scenario" if kind == "shared" and not _renamed() else "Save as New Shared Scenario"
 	elif kind == "own":
 		label = "Save as New Scenario" if _renamed() else "Save Scenario"

@@ -133,5 +133,7 @@ func _initialize() -> void:
 	screen._delete_button.activated.emit()
 	_check(_last() == {"type": "delete_shared", "id": "Setup_001"}, "Delete: delete_shared")
 	_pick(screen, "fixed")
-	_check(not screen._save_button.visible, "GC72 can't be saved over")
+	_check(screen._save_button.visible and screen._save_button.text == "SAVE GC72 SETTINGS", "an admin can save GC72's settings")
+	screen._save_button.activated.emit()
+	_check(_last().get("type") == "save_shared" and _last()["scenario"]["id"] == "fixed", "...as GC72's defaults")
 	quit(1 if _failures > 0 else 0)
