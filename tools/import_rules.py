@@ -136,7 +136,7 @@ def rules(path):
                 doc['subtitle'] = text
             elif style in ('Heading_20_2', 'Heading_20_3'):
                 doc['sections'].append({'heading': text, 'blocks': []})
-            elif style == 'Heading_20_4' or _all_bold(el, bold):
+            elif style == 'Heading_20_4' or el.get(_q('text', 'style-name')) in bold or _all_bold(el, bold):
                 blocks().append({'kind': 'subheading', 'text': text})
             else:
                 blocks().append({'kind': 'paragraph', 'text': text})
