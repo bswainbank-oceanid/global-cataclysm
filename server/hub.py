@@ -68,6 +68,14 @@ Client -> server (besides each game's own protocol, server/session.py's auto mod
     {"type": "leave_lobby"}
     {"type": "chat", "room": "browse" | <game id>, "text"}
 
+  In a game (chat.game_room / chat.ally_room):
+    {"type": "game_chat", "channel": "game" | "ally", "text", ["faction"]}
+        -> {"type": "game_chat", "channel", "alliance", "message": {...}} to everyone in the game (game),
+           or to the players of the alliance's members ("ally": the alliance of "faction", one of the
+           sender's own, or else of their first faction in one)
+    {"type": "game_chat_history", ["faction"]}  -> {"type": "game_chat_history", "game": [...],
+                                                   "ally": [...] | null, "alliance": tag | null}
+
   The Admin panel (admins only):
     {"type": "admin_overview"}                  -> {"type": "admin_overview", "stats": {players, games_played,
                                                    games_completed, games_live, max_users}, "build"}
@@ -437,6 +445,50 @@ class Hub:
     def _in_lobby(self, game_id):
         return [c.key for c in self.connections.values() if c.lobby_id == game_id and c.user]
 
+    # ---- chat in a game ----------------------------------------------------------------------------
+
+    def _game_chat(self, conn, msg):
+        record = self._live_game_of(conn)
+        channel = msg.get('channel')
+        if channel == 'game':
+            room, alliance = chat.game_room(record['id']), None
+            targets = [c.key for c in self.connections.values() if c.game_id == record['id'] and c.user]
+        elif channel == 'ally':
+            alliance = self._alliance_of(record, conn.user['id'], msg.get('faction'))
+            if alliance is None:
+                raise StoreError('you are not in an alliance')
+            room = chat.ally_room(record['id'], alliance)
+            targets = [c.key for c in self.connections.values() if c.game_id == record['id'] and c.user
+                       and alliance in self._alliances_of(record, c.user['id'])]
+        else:
+            raise StoreError("a game's chat is 'game' or 'ally'")
+        message = chat.post(self.store, room, conn.user['id'], msg.get('text'))
+        return [(targets, {'type': 'game_chat', 'channel': channel, 'alliance': alliance, 'message': message})]
+
+    def _game_chat_history(self, conn, msg):
+        record = self._live_game_of(conn)
+        alliance = self._alliance_of(record, conn.user['id'], msg.get('faction'))
+        ally = chat.recent(self.store, chat.ally_room(record['id'], alliance)) if alliance else None
+        return [([conn.key], {'type': 'game_chat_history', 'game': chat.recent(self.store, chat.game_room(record['id'])),
+                              'ally': ally, 'alliance': alliance})]
+
+    def _alliances_of(self, record, user_id):
+        """The alliance tags of `user_id`'s factions in a live game, as they stand now."""
+        factions = self.sessions[record['id']].engine.game_state.factions
+        return {factions[f].alliance for f in self._factions_of(record, user_id)
+                if f in factions and factions[f].alliance}
+
+    def _alliance_of(self, record, user_id, faction=None):
+        """The alliance whose Ally Chat `user_id` sees: `faction`'s (one of theirs), or else their first
+        faction's that is in one. None when it isn't in one."""
+        mine = sorted(self._factions_of(record, user_id))
+        if faction is not None:
+            if faction not in mine:
+                raise StoreError(f'you are not playing {faction}')
+            mine = [faction]
+        factions = self.sessions[record['id']].engine.game_state.factions
+        return next((factions[f].alliance for f in mine if f in factions and factions[f].alliance), None)
+
     # ---- the Admin panel ---------------------------------------------------------------------------
 
     def _admin_only(self, conn):
@@ -559,6 +611,7 @@ class Hub:
         'take_seat': _take_seat, 'leave_seat': _leave_seat, 'launch': _launch, 'cancel': _cancel, 'chat': _chat,
         'admin_overview': _admin_overview, 'admin_set_max_users': _admin_set_max_users, 'admin_find': _admin_find,
         'admin_lock': _admin_lock, 'hand_over': _hand_over, 'replace_with_bot': _replace_with_bot,
+        'game_chat': _game_chat, 'game_chat_history': _game_chat_history,
     }
 
     # ---- helpers -----------------------------------------------------------------------------------

@@ -6,7 +6,8 @@ extends VBoxContainer
 ## Lower: the orders QUEUED for the current phase (what Next will execute),
 ## above the log of the phases already executed (the Game Log tab) -- and the
 ## Strategy tab, filling the same space (the bots' Strategy Log, StrategyText; shown when Settings'
-## strategy_log is on).
+## strategy_log is on) -- and in a multi-player game the Game Chat and Ally Chat tabs (server/hub.py
+## game_chat), whose titles count the messages not yet read.
 
 var _detail: VBoxContainer
 var _queue: RichTextLabel
@@ -14,6 +15,15 @@ var _queue_head: Label
 var _log: RichTextLabel
 var _strategy: RichTextLabel
 var _log_tabs: TabContainer
+var _game_chat: ChatPanel
+var _ally_chat: ChatPanel
+var _unread := {TAB_GAME_CHAT: 0, TAB_ALLY_CHAT: 0}
+var _chat_game := ""   # the game whose chat is shown ("" outside one)
+var _chat_ally = null  # the alliance whose Ally Chat is shown (null: not in one)
+const TAB_STRATEGY := 1
+const TAB_GAME_CHAT := 2
+const TAB_ALLY_CHAT := 3
+const CHAT_TITLES := {TAB_GAME_CHAT: "Game Chat", TAB_ALLY_CHAT: "Ally Chat"}
 signal territory_clicked(tid: int)  # a territory name in the queue/log was clicked
 signal units_selected(unit_ids: Array)  # the units toggled on in the selection panel
 
@@ -83,6 +93,21 @@ func _ready() -> void:
 	_strategy.name = "Strategy"
 	_strategy.scroll_following = true
 	_log_tabs.add_child(_strategy)
+	_game_chat = ChatPanel.new(0.0, true)
+	_game_chat.name = "Game Chat"
+	_game_chat.send.connect(func(t: String): Net.send_msg({"type": "game_chat", "channel": "game", "text": t}))
+	_log_tabs.add_child(_game_chat)
+	_ally_chat = ChatPanel.new(0.0, true)
+	_ally_chat.name = "Ally Chat"
+	_ally_chat.send.connect(func(t: String):
+		Net.send_msg({"type": "game_chat", "channel": "ally", "text": t, "faction": GameStore.human_faction()}))
+	_log_tabs.add_child(_ally_chat)
+	_log_tabs.tab_changed.connect(func(tab: int):
+		if _unread.has(tab):
+			_unread[tab] = 0
+			_title_chat(tab))
+	Net.raw_message.connect(_on_chat_message)
+	GameStore.state_changed.connect(_sync_chat)
 	Settings.changed.connect(_sync_log_tabs)
 	Account.changed.connect(_sync_log_tabs)  # (the Strategy Log is for admins: known once logged in)
 	_sync_log_tabs()
@@ -240,13 +265,85 @@ func log_line(text: String) -> void:
 	_log.append_text(text + "\n")
 
 
-## The Strategy tab shows only while Settings' strategy_log is on (it is always filled).
+## The Strategy tab shows only while Settings' strategy_log is on (it is always filled); the chat tabs
+## only in a multi-player game, the Ally Chat only while this player's faction is in an alliance.
 func _sync_log_tabs() -> void:
 	var shown := Settings.strategy_log and Account.sees_bot_details()  # (admins only)
-	_log_tabs.set_tab_hidden(1, not shown)
-	_log_tabs.tabs_visible = shown
-	if not shown:
-		_log_tabs.current_tab = 0
+	var chat := _chat_game != ""
+	var hidden := {TAB_STRATEGY: not shown, TAB_GAME_CHAT: not chat, TAB_ALLY_CHAT: not chat or _chat_ally == null}
+	for tab in hidden:
+		if hidden[tab] and _log_tabs.current_tab == tab:
+			_log_tabs.current_tab = 0
+		_log_tabs.set_tab_hidden(tab, hidden[tab])
+	_log_tabs.tabs_visible = shown or chat
+
+
+# ---- chat in a multi-player game ------------------------------------------------------------------
+
+## Entering or leaving a game, or this player's faction joining or leaving an alliance: (re)load the chat.
+func _sync_chat() -> void:
+	var game := str(GameStore.game_info.get("id", "")) if GameStore.multi_game else ""
+	var me := GameStore.human_faction()
+	var ally = GameStore.faction_state(me).get("alliance") if me != "" else null
+	if game == _chat_game and ally == _chat_ally:
+		return
+	var entering := game != _chat_game
+	_chat_game = game
+	_chat_ally = ally
+	if entering:
+		_game_chat.set_messages([])
+		_unread[TAB_GAME_CHAT] = 0
+	_ally_chat.set_messages([])
+	_unread[TAB_ALLY_CHAT] = 0
+	for tab in _unread:
+		_title_chat(tab)
+	_sync_log_tabs()
+	if game != "":
+		var msg := {"type": "game_chat_history"}
+		if me != "":
+			msg["faction"] = me
+		Net.send_msg(msg)
+
+
+func _on_chat_message(msg: Dictionary) -> void:
+	if _chat_game == "":
+		return
+	match str(msg.get("type", "")):
+		"game_chat_history":
+			_game_chat.set_messages(msg.get("game", []))
+			if msg.get("ally") != null and msg.get("alliance") == _chat_ally:
+				_ally_chat.set_messages(msg["ally"])
+		"game_chat":
+			var m: Dictionary = msg.get("message", {})
+			var ally: bool = str(msg.get("channel", "")) == "ally"
+			if ally and msg.get("alliance") != _chat_ally:
+				return  # (sent just before this player left that alliance)
+			(_ally_chat if ally else _game_chat).add_message(m)
+			var tab := TAB_ALLY_CHAT if ally else TAB_GAME_CHAT
+			if _log_tabs.current_tab != tab and str(m.get("user_id", "")) != str(Account.user.get("id", "")):
+				_unread[tab] += 1
+				_title_chat(tab)
+
+
+## A chat tab's title: its name, and how many messages came in since it was last looked at.
+func _title_chat(tab: int) -> void:
+	var n: int = _unread[tab]
+	_log_tabs.set_tab_title(tab, CHAT_TITLES[tab] + (" (%d new)" % n if n > 0 else ""))
+	_log_tabs.set_tab_icon(tab, _dot() if n > 0 else null)
+
+
+static var _dot_icon: Texture2D
+
+## A small red dot: a chat tab with unread messages.
+static func _dot() -> Texture2D:
+	if _dot_icon == null:
+		var img := Image.create(10, 10, false, Image.FORMAT_RGBA8)
+		for x in 10:
+			for y in 10:
+				var d := Vector2(x + 0.5, y + 0.5).distance_to(Vector2(5, 5))
+				img.set_pixel(x, y, Color(GCTheme.RED_LIGHT, clampf(4.8 - d, 0.0, 1.0)))
+		_dot_icon = ImageTexture.create_from_image(img)
+	return _dot_icon
 
 
 func log_events(header: String, events: Array) -> void:

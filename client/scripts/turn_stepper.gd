@@ -81,7 +81,8 @@ func _on_raw(msg: Dictionary) -> void:
 	if kind == "feed":
 		_apply_feed(msg)
 		return
-	if kind in ["entered_game", "left_game", "my_games", "open_games", "game_lobby", "scenarios", "chat",
+	if kind in ["entered_game", "left_game", "my_games", "open_games", "game_lobby", "scenarios", "chat", "game_chat",
+			"game_chat_history",
 			"logged_in", "logged_out", "hello", "game_launched", "game_cancelled", "left_lobby"]:
 		return  # (the launcher's, not the game's)
 	if msg.has("seq"):

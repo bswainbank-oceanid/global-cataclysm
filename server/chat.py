@@ -1,6 +1,8 @@
 """
 Chat in the player database (docs/DATA_MODEL.md, "Chat"): the Available Games room, `browse`, for
-everyone browsing it, and one room per game lobby (the game's id). In-game chat comes later.
+everyone browsing it; one room per game lobby (the game's id); and, once a game is under way, its Game
+Chat (game_room: everyone in the game) and one Ally Chat per alliance (ally_room: its members, whoever
+they are at the time -- a faction joining reads what was said before, one leaving no longer can).
 
     message = post(store, 'browse', user_id, 'anyone up for a duel?')
     recent(store, 'browse')        # the last messages, oldest first
@@ -12,6 +14,16 @@ MAX_TEXT = 500
 RECENT = 50
 
 
+def game_room(game_id):
+    """A live game's Game Chat (a fresh room: the lobby's chat stays in the lobby)."""
+    return f'{game_id}:game'
+
+
+def ally_room(game_id, alliance):
+    """The Ally Chat of one alliance in a game (`alliance`: its tag, never reused within a game)."""
+    return f'{game_id}:ally:{alliance}'
+
+
 def post(store, room, user_id, text):
     """Adds `user_id`'s message to `room`; returns it ({id, room, user_id, player_name, text, sent}). The
     player's name is copied in, so old messages read the same whatever happens to the account."""
@@ -20,7 +32,7 @@ def post(store, room, user_id, text):
         raise StoreError('a chat message needs some text')
     if len(text) > MAX_TEXT:
         raise StoreError(f'a chat message may be at most {MAX_TEXT} characters')
-    if room != BROWSE and store.fetch('games', id=room) is None:
+    if room != BROWSE and store.fetch('games', id=str(room).split(':')[0]) is None:
         raise StoreError(f'there is no chat room {room!r}')
     user = store.fetch('users', id=user_id)
     if user is None:
