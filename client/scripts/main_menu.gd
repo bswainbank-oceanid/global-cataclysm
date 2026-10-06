@@ -2,7 +2,8 @@ class_name MainMenu
 extends MenuScreen
 ## The main screen once logged in (reference/GC Launcher_User Profile.odt): the poster, the menu
 ## (Resume Game, Join Game, New Game, Scenarios for admins, History, Rules, Quit to Desktop), the player's profile in
-## the upper right (names, Log Out) and Display Settings (full screen).
+## the upper right (names, Log Out), Settings (the in-game panel's options: playback, display, sound, the log), and
+## the client's and server's build numbers in the lower right.
 
 signal resume_pressed
 signal join_pressed
@@ -18,7 +19,7 @@ var _player_name: Label
 var _actual_name: Label
 var _email: Label
 var _note: Label
-var _fullscreen: CheckBox
+var _builds: Label  # the client's and server's build numbers, bottom right
 
 
 func _art_dim() -> float:
@@ -79,11 +80,11 @@ func _build() -> void:
 	corner.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	corner.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	corner.position += Vector2(-20, 20)
-	var display := Button.new()
-	display.text = "Display & Sound"
-	HudStyle.secondary(display)
-	display.pressed.connect(func(): _toggle(_display_panel))
-	corner.add_child(display)
+	var settings_button := Button.new()
+	settings_button.text = "Settings"
+	HudStyle.secondary(settings_button)
+	settings_button.pressed.connect(func(): _toggle(_display_panel))
+	corner.add_child(settings_button)
 	_profile_button = HudStyle.primary(Button.new())
 	_profile_button.custom_minimum_size = Vector2(160, 0)
 	_profile_button.pressed.connect(func(): _toggle(_profile_panel))
@@ -106,17 +107,26 @@ func _build() -> void:
 		Account.logout())
 	p.add_child(logout)
 
-	_display_panel = _drop_panel()
-	var d := MenuScreen.body(_display_panel)
-	d.add_child(HudStyle.heading("Display & Sound", 15))
-	_fullscreen = CheckBox.new()
-	_fullscreen.text = "Full screen"
-	_fullscreen.button_pressed = Settings.fullscreen
-	_fullscreen.toggled.connect(func(on: bool):
-		Settings.fullscreen = on
-		Settings.commit())
-	d.add_child(_fullscreen)
-	d.add_child(Sfx.controls())
+	# Settings: the in-game panel's playback, display, sound and log options (not its game actions)
+	var settings := SettingsPanel.new()
+	settings.menu = true
+	settings.visible = false
+	add_child(settings)
+	settings.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	settings.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	settings.position += Vector2(-20, 70)
+	_display_panel = settings
+
+	_builds = HudStyle.label("", 12, GCTheme.CREAM_DIM)
+	_builds.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_builds)
+	_builds.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_builds.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_builds.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_builds.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_builds.position += Vector2(-16, -12)
+	_builds.add_theme_color_override("font_outline_color", GCTheme.NAVY_DARK)
+	_builds.add_theme_constant_override("outline_size", 4)
 
 
 func open() -> void:
@@ -140,7 +150,14 @@ func refresh() -> void:
 	_actual_name.text = actual if actual != "" else "(no actual name given)"
 	_email.text = str(u.get("email", ""))
 	_scenarios.visible = Account.is_admin()
-	_fullscreen.set_pressed_no_signal(Settings.fullscreen)
+	var client := str(Account.client_build().get("label", "Build unknown"))
+	var server := str(Account.server_build.get("label", "Build unknown"))
+	var lines := ["Client " + client, "Server " + server]
+	if Account.builds_differ():
+		lines.append("The client and server builds differ: restart the game to update")
+	_builds.text = "
+".join(lines)
+	_builds.add_theme_color_override("font_color", GCTheme.RED_LIGHT if Account.builds_differ() else GCTheme.CREAM)
 
 
 func _say(text: String) -> void:

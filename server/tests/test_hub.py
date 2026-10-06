@@ -70,7 +70,9 @@ class HubTest(unittest.TestCase):
 
 class TestLoggingIn(HubTest):
     def test_a_new_connection_is_greeted_and_must_log_in(self):
-        self.assertEqual(self.hub.connect('c1'), [(['c1'], {'type': 'hello', 'logged_in': False})])
+        [(keys, hello)] = self.hub.connect('c1')
+        self.assertEqual((keys, hello['type'], hello['logged_in']), (['c1'], 'hello', False))
+        self.assertTrue(hello['build']['label'].startswith('Build '))  # (server/build.py)
         [(keys, error)] = self.send('c1', {'type': 'enter_game', 'game_id': 'G_000001'})
         self.assertEqual((keys, error['type'], error['message']), (['c1'], 'error', 'log in first'))
 

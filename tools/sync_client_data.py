@@ -11,6 +11,7 @@ files the client reads:
   territory_shapes.json  each location's boundary polygons
   factions.json          faction name, color, icon, in faction-set order; the Neutral colour/faction
   units.json             unit types with stats, abilities, icon, display and battle order
+  build.json             the client's build number (server/build.py), shown on the main menu
   history.json           the game's back story, for the History screen (data/history.json, written by
                          tools/import_history.py)
 plus the map image (as assets/base_map.png), the unit and faction icons, the unit sounds (assets/sounds),
@@ -40,6 +41,7 @@ sys.path.insert(0, str(ROOT))
 
 from engine.game_config import GameConfig  # noqa: E402
 from engine.repository import DEFAULT_SCENARIO_ID  # noqa: E402
+from server.build import build_info  # noqa: E402
 
 
 def client_files(config):
@@ -84,6 +86,8 @@ def main():
             json.dump(doc, f, ensure_ascii=False, indent=1)
             f.write('\n')
     shutil.copy2(ROOT / 'data' / 'history.json', data_dir / 'history.json')  # (tools/import_history.py)
+    with open(data_dir / 'build.json', 'w', encoding='utf-8') as f:  # the client's build number (server/build.py)
+        json.dump(build_info(refresh=True), f)
     shutil.copy2(ROOT / config.map_info()['image'], CLIENT / 'assets' / 'base_map.png')
     icons = {d['icon'] for d in config.units().values() if d.get('icon')}
     icons |= {f['icon'] for f in config.factions().values() if f.get('icon')}

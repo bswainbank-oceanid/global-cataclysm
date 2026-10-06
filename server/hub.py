@@ -62,7 +62,7 @@ Client -> server (besides each game's own protocol, server/session.py's auto mod
     {"type": "chat", "room": "browse" | <game id>, "text"}
         -> {"type": "chat", "message": {...}} to everyone browsing (browse) or in that lobby
 Server -> client:
-    {"type": "hello", "logged_in": false}       on connecting
+    {"type": "hello", "logged_in": false, "build": {build, commit, label}}   on connecting (server/build.py)
     {"type": "error", "message", "problems"}    a request refused (to the sender only)
 """
 import random
@@ -70,6 +70,7 @@ import random
 from engine.repository import default_repository
 
 from . import accounts, chat, games, persist, scenarios, setups
+from .build import build_info
 from .lobby import LobbyError, build_session, generator_info
 from .store import StoreError
 
@@ -104,7 +105,7 @@ class Hub:
 
     def connect(self, key):
         conn = self.connections[key] = Connection(key)
-        return [([conn.key], {'type': 'hello', 'logged_in': False})]
+        return [([conn.key], {'type': 'hello', 'logged_in': False, 'build': build_info()})]
 
     def disconnect(self, key):
         self.connections.pop(key, None)

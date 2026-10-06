@@ -14,6 +14,7 @@ signal problem(message: String)     # a login / registration refused, in the ser
 var multi := false     # the server is the multi-player one
 var user := {}         # {id, player_name, actual_name, email, admin, created} once logged in
 var token := ""
+var server_build := {}  # the server's build number, from its hello (server/build.py): {build, commit, label}
 var _pending := ""     # the account request in flight: "token_login", "login", "register", or ""
 
 
@@ -32,6 +33,23 @@ func is_logged_in() -> bool:
 ## A saved login is being checked with the server (show neither the login screen nor the menu yet).
 func is_checking() -> bool:
 	return _pending == "token_login" or (_pending == "login" and Dbg.args.has("dev_user"))
+
+
+## This client's build number (client/data/build.json, written by the sync): {build, commit, label}.
+static func client_build() -> Dictionary:
+	var path := "res://data/build.json"
+	if not FileAccess.file_exists(path):
+		return {}
+	var d = JSON.parse_string(FileAccess.get_file_as_string(path))
+	return d if d is Dictionary else {}
+
+
+## The client and the server were built from different commits (they may not understand each other).
+func builds_differ() -> bool:
+	var mine := client_build()
+	if mine.is_empty() or server_build.is_empty():
+		return false
+	return str(mine.get("commit", "")).trim_suffix("+") != str(server_build.get("commit", "")).trim_suffix("+")
 
 
 func is_admin() -> bool:
@@ -63,6 +81,7 @@ func logout() -> void:
 func _on_message(msg: Dictionary) -> void:
 	match str(msg.get("type", "")):
 		"hello":
+			server_build = msg.get("build", {})
 			multi = true
 			Net.auto_reconnect = true
 			Net.auto_watch = false  # (the one-game server's; here a game is entered after logging in)
