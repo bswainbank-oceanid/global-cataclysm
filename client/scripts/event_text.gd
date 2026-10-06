@@ -86,6 +86,8 @@ static func describe_editable_purchase(orders: Array, total: int, treasury: int)
 
 static func describe(e: Dictionary) -> String:
 	match str(e.get("kind", "")):
+		"seat_to_bot":
+			return "%s is played by a bot from now on (%s)" % [_fac(str(e["faction"])), seat_reason(str(e.get("reason", "")))]
 		"start_of_turn":
 			return "[b]Round %d, turn %d of %d[/b]: %s begins its turn" % [int(e["round"]), int(e["turn"]), int(e["turns_in_round"]), _fac(str(e["faction"]))]
 		"purchase":
@@ -215,6 +217,18 @@ static func deploy_change(e: Dictionary) -> String:
 
 
 ## Why a surrender may be demanded, in words -- by the game's own surrender rule (GameData).
+## Why a seat went to a bot (a seat_to_bot event's reason).
+static func seat_reason(reason: String) -> String:
+	match reason:
+		"handed_over":
+			return "its player handed it over"
+		"replaced":
+			return "its player went over the time limit for a turn"
+		"locked":
+			return "its player's account was locked"
+	return reason
+
+
 static func surrender_reasons(reasons: Array) -> String:
 	var bits := []
 	for r in reasons:

@@ -23,6 +23,7 @@ Settings (the "new_game" message's "settings"):
      "allow_combat_first_turn": false,                   # may a faction make Combat Moves on its first turn (default false)
      "allow_noncombat_first_turn": true,                 # ...and Non-Combat Moves (default true)
      "armistice_rounds": 10,                             # rounds until the game proposes an armistice (0-100, default 10; 0 = never)
+     "turn_hours": 0,                                    # hours a player has for a whole turn before another may hand it to a bot (0-720, default 0 = no limit)
      "seed": 12345,                                      # optional: a seeded game replays exactly (setup, bots AND dice)
      "dev": {"combat_first_turn": false}}                # optional, testing only
 
@@ -105,6 +106,8 @@ DEFAULT_BOT_AI = 'strategy'
 DEFAULT_MAX_ALLIANCE_SIZE = 3
 DEFAULT_ARMISTICE_ROUNDS = 10  # the game proposes an armistice once this many rounds are played (0: never)
 MAX_ARMISTICE_ROUNDS = 100
+DEFAULT_TURN_HOURS = 0  # hours a player has to take a whole turn before they can be replaced by a bot (0: no limit)
+MAX_TURN_HOURS = 720
 
 
 class LobbyError(ValueError):
@@ -180,6 +183,11 @@ def check_settings(settings, max_humans=1):
         rounds = int(rounds)
     if isinstance(rounds, bool) or not isinstance(rounds, int) or not 0 <= rounds <= MAX_ARMISTICE_ROUNDS:
         problems.append(f'armistice_rounds must be a whole number from 0 to {MAX_ARMISTICE_ROUNDS}')
+    hours = settings.get('turn_hours', DEFAULT_TURN_HOURS)
+    if isinstance(hours, float) and hours.is_integer():
+        hours = int(hours)
+    if isinstance(hours, bool) or not isinstance(hours, int) or not 0 <= hours <= MAX_TURN_HOURS:
+        problems.append(f'turn_hours must be a whole number from 0 to {MAX_TURN_HOURS}')
     max_size = settings.get('max_alliance_size', DEFAULT_MAX_ALLIANCE_SIZE)
     size_ok = isinstance(max_size, int) and not isinstance(max_size, bool)
     if not size_ok:

@@ -69,6 +69,7 @@ var multi_game := false
 var my_factions: Array = []
 var game_info := {}        # the game entered: server/games.py's summary (id, code, scenario, host_name, ...)
 var player_names := {}     # ...and who plays each human faction: {faction: player name}
+var turn_hours := 0  # a multi-player game's time limit for a whole turn, in hours (0: none)
 var waiting_for: Array = []  # the factions the game is waiting on (server: "waiting")
 
 
@@ -218,12 +219,20 @@ func human_faction() -> String:
 
 
 ## Enters (or, with an empty `info`, leaves) a multi-player game: which of its factions are this player's.
-func set_multi_game(info: Dictionary, mine: Array, players := {}) -> void:
+func set_multi_game(info: Dictionary, mine: Array, players := {}, hours := 0) -> void:
 	multi_game = not info.is_empty()
 	game_info = info
+	turn_hours = hours
 	my_factions = mine.duplicate()
 	player_names = players.duplicate()
 	waiting_for = []
+	state_changed.emit()
+
+
+## A human's seat is a bot's now: no longer theirs, nor this player's.
+func seat_to_bot(faction: String) -> void:
+	player_names.erase(faction)
+	my_factions.erase(faction)
 	state_changed.emit()
 
 

@@ -218,6 +218,8 @@ static func _settings_text(s: Dictionary) -> String:
 		"allowed" if bool(s.get("allow_noncombat_first_turn", true)) else "not allowed"])
 	var rounds := int(s.get("armistice_rounds", 10))
 	lines.append("[b]Armistice:[/b] %s" % ("never proposed by the game" if rounds == 0 else "proposed after %d rounds" % rounds))
+	var hours := int(s.get("turn_hours", 0))
+	lines.append("[b]Time for a turn:[/b] %s" % ("no limit" if hours == 0 else "%d hour%s, then a bot may take the seat" % [hours, "" if hours == 1 else "s"]))
 	var opts: Dictionary = sc.get("options", {}) if sc.get("options") is Dictionary else {}
 	if not opts.is_empty():
 		var bits := []

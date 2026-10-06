@@ -13,6 +13,8 @@ var _strategy_log: CheckBox
 var _note: Label
 var _surrender_btn: HoldButton
 var _armistice_btn: HoldButton
+var _hand_over_btn: HoldButton
+var _replace_btn: Button
 signal new_game_pressed
 
 var _new_game: Button
@@ -80,6 +82,14 @@ func _ready() -> void:
 	_surrender_btn.activated.connect(func(): Stepper.surrender())
 	_armistice_btn = _hold_button(v, "Hold to propose armistice", false)
 	_armistice_btn.activated.connect(func(): Stepper.propose_armistice())
+	_hand_over_btn = _hold_button(v, "Hold to hand seat over to Bot", false)
+	_hand_over_btn.activated.connect(func(): Stepper.hand_over())
+	_replace_btn = Button.new()
+	_replace_btn.text = "Replace absent player with Bot"
+	HudStyle.secondary(_replace_btn)
+	_replace_btn.custom_minimum_size = Vector2(0, 36)
+	_replace_btn.pressed.connect(func(): Stepper.replace_absent())
+	v.add_child(_replace_btn)
 
 	v.add_child(HSeparator.new())
 	var new_game := Button.new()
@@ -155,6 +165,15 @@ func _sync() -> void:
 	# actually being in progress, the game being over, another proposal already in flight, or (server/
 	# session.py's ARMISTICE_COOLDOWN_ROUNDS) still cooling down from having proposed one that was
 	# declined, blocks it.
+	# Multi-player only: handing this player's own seat to a bot, and (with a turn time limit) replacing
+	# the player keeping everyone waiting.
+	_hand_over_btn.visible = GameStore.multi_game
+	_hand_over_btn.disabled = me == "" or eliminated or over
+	_hand_over_btn.tooltip_text = "Hold for %ds to leave the game: a bot plays your faction from now on." % int(HOLD_SECONDS)
+	_replace_btn.visible = GameStore.multi_game and GameStore.turn_hours > 0
+	_replace_btn.disabled = over
+	_replace_btn.tooltip_text = ("When the player whose turn it is has taken more than %d hour(s), a bot takes their seat. " +
+		"The host may do this, or anyone when the host is the slow one.") % GameStore.turn_hours
 	var cooldown := GameStore.armistice_cooldown_remaining()
 	_armistice_btn.disabled = not has_game or over or proposal_in_flight or cooldown > 0
 	if cooldown > 0:

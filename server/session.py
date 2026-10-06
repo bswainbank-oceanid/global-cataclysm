@@ -240,9 +240,11 @@ Server -> client, auto mode (besides the usual phase_queue / phase_result / stat
         an answer to an invitation or an armistice proposal).
 """
 import collections
+import random
 import secrets
 
-from engine.bots.alliance_policy import accepts_invite
+from engine.bots.alliance_policy import accepts_invite, resolve_alliance_behavior, resolve_alliance_strategy
+from engine.bots.strategy_bot import StrategyBot
 from engine.engine import CombatMoveOrder, NonCombatMoveOrder, PurchaseOrder
 from engine.state import FactionMode, Phase
 from .report import build_game_report, scenario_block
@@ -386,6 +388,8 @@ class GameSession:
             return self._handle_alliance_action(faction, msg.get('action'), msg.get('target'))
         if msg_type == 'alliance_invite_response':
             return self._handle_alliance_invite_response(faction, msg.get('accept'))
+        if msg_type == 'convert_to_bot':
+            return self._convert_to_bot(faction, msg.get('seed'), msg.get('reason'))
         return [self._error(faction, f'unknown message type: {msg_type!r}')]
 
     # ---- auto mode: the game runs itself until it needs a human -----------------------------------------
@@ -492,6 +496,51 @@ class GameSession:
     @staticmethod
     def _to_sender(message):
         return dict(message, to_sender=True)
+
+    # ---- a seat handed over to a bot ---------------------------------------------------------------
+
+    def _convert_to_bot(self, faction, seed, reason):
+        """A HUMAN faction becomes a BOT from here on (server/hub.py: its player handed it over, was
+        replaced for taking too long, or had their account locked) -- never sent by a client itself. The
+        bot is a strategy bot with random alliance settings, all drawn from `seed` (in the message, so a
+        replay makes the same bot). Whatever was waiting on the player is answered as a bot would: an
+        armistice is accepted, an invitation to it is accepted or declined by the alliance policy, an
+        invitation it made to a human is withdrawn; a phase it was composing is planned afresh by the bot."""
+        gs = self.engine.game_state
+        fstate = gs.factions.get(faction)
+        if fstate is None or fstate.mode != FactionMode.HUMAN:
+            return [self._error(faction, f'{faction} is not a human-controlled faction')]
+        if not isinstance(seed, int) or isinstance(seed, bool):
+            return [self._error(faction, 'a seat handed to a bot needs its seed')]
+        rng = random.Random(seed)
+        fstate.mode = FactionMode.BOT
+        fstate.alliance_strategy = resolve_alliance_strategy('random', rng)
+        fstate.alliance_behavior = resolve_alliance_behavior('random', rng)
+        self.bots[faction] = StrategyBot(self.engine, faction, rng=random.Random(rng.random()))
+        event = {'kind': 'seat_to_bot', 'faction': faction, 'reason': reason}
+        self.turn_log.events.append(event)
+        messages = [{'type': 'seat_changed', 'faction': faction, 'reason': reason, 'events': [event]}]
+        stepper = self.stepper
+        inv = self._pending_invite
+        if inv is not None and faction in (inv.get('inviter'), inv.get('target')):
+            self._pending_invite = None
+        inv = stepper._invitation
+        if inv is not None and not inv['answered']:
+            if inv['to'] == faction:
+                accept = accepts_invite(self.engine, faction, inv['from'])
+                messages += stepper._answer_human_invitation(inv, accept) if inv.get('by_human') else \
+                    stepper.respond_invitation(faction, accept)
+            elif inv['from'] == faction and inv.get('by_human'):
+                stepper._invitation = None
+        if self._armistice is not None and faction in self._armistice['pending']:
+            messages += self._handle_respond_armistice(faction, True)
+            if gs.game_over:
+                return messages
+        queue = stepper._queue
+        if queue is None or queue.get('faction') == faction:
+            stepper.invalidate_queue()
+            stepper._plan_current_phase()
+        return [m for m in messages if m is not None] + [stepper._queue, self._state_message()]
 
     # ---- Settings actions: surrender and armistice, out-of-band, not tied to any queued phase --------
 

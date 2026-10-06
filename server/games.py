@@ -148,6 +148,22 @@ def update_progress(store, game_id, progress):
     return game
 
 
+def seat_to_bot(store, game_id, faction, reason):
+    """A live game's seat playing `faction` is now a bot's (its player handed it over, was replaced, or
+    was locked out): the player no longer holds it. Returns the game."""
+    with store.transaction():
+        game = _status(store, game_id, LIVE)
+        for s in game['seats']:
+            if game['factions'].get(str(s['seat'])) == faction and s['user_id'] is not None:
+                s.update(mode='BOT', handed_over={'user_id': s['user_id'], 'reason': reason, 'when': utc_now()},
+                         user_id=None)
+                break
+        else:
+            raise StoreError(f'nobody is playing {faction} in that game')
+        _save(store, game)
+    return game
+
+
 def finish(store, game_id):
     """A live game has ended (a winner, an armistice, nobody left)."""
     with store.transaction():

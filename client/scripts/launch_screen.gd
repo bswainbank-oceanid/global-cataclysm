@@ -67,6 +67,7 @@ const OPTION_SECTIONS := {
 const HOLD_SECONDS := 1.0
 const DEFAULT_ARMISTICE_ROUNDS := 10  # (server/lobby.py's DEFAULT_ARMISTICE_ROUNDS / MAX_ARMISTICE_ROUNDS)
 const MAX_ARMISTICE_ROUNDS := 100
+const MAX_TURN_HOURS := 720  # (server/lobby.py's MAX_TURN_HOURS)
 const ROW_H := 30.0
 const HEAD_H := 18.0
 const LABEL_W := 205.0  # a section's labels
@@ -102,6 +103,7 @@ var _max_alliance: OptionButton
 var _combat_first: CheckBox
 var _noncombat_first: CheckBox
 var _armistice_rounds: SpinBox
+var _turn_hours: SpinBox
 var _max_pref := 3  # the maximum alliance size the player asked for
 var _max_size := 3  # ...as offered: kept within 2 .. players-1 for the players there are
 var _message: Label
@@ -343,6 +345,15 @@ func _build_sections(parent: VBoxContainer) -> void:
 	_armistice_rounds.custom_minimum_size = Vector2(90, 26)
 	_section_row("rules", "Rounds until armistice proposal:", _armistice_rounds,
 		"After this many rounds the game proposes an armistice: bots always accept, and human players can choose to continue. If it is declined, it is proposed again every 5 rounds. 0: never.")
+	_turn_hours = SpinBox.new()
+	_turn_hours.min_value = 0
+	_turn_hours.max_value = MAX_TURN_HOURS
+	_turn_hours.step = 1
+	_turn_hours.value = 0
+	_turn_hours.update_on_text_changed = true
+	_turn_hours.custom_minimum_size = Vector2(90, 26)
+	_section_row("rules", "Hours to take turn:", _turn_hours,
+		"How long a player has for a whole turn. Once it runs over, the host can have a bot take their seat (or anyone can, when the host is the slow one). 0: no limit.")
 
 
 ## A label and its control, in `section`. Returns both (to show or hide together).
@@ -601,6 +612,7 @@ func settings() -> Dictionary:
 	s["allow_combat_first_turn"] = _combat_first.button_pressed
 	s["allow_noncombat_first_turn"] = _noncombat_first.button_pressed
 	s["armistice_rounds"] = int(_armistice_rounds.value)
+	s["turn_hours"] = int(_turn_hours.value)
 	if Dbg.args.has("combat_first_turn"):
 		s["dev"] = {"combat_first_turn": true}  # scripted runs only: the rules skip it
 	return s
@@ -1068,6 +1080,7 @@ func apply_settings(s: Dictionary) -> void:
 	_combat_first.button_pressed = bool(s.get("allow_combat_first_turn", false))
 	_noncombat_first.button_pressed = bool(s.get("allow_noncombat_first_turn", true))
 	_armistice_rounds.set_value_no_signal(float(s.get("armistice_rounds", DEFAULT_ARMISTICE_ROUNDS)))
+	_turn_hours.set_value_no_signal(float(s.get("turn_hours", 0)))
 	_max_pref = maxi(1, int(s.get("max_alliance_size", 3)))
 	_max_size = _max_pref
 	_loading = false

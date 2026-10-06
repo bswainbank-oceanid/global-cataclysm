@@ -29,6 +29,13 @@ Client -> server (besides each game's own protocol, server/session.py's auto mod
                                                     "feed" (auto mode's catch-up: with "since" and
                                                     "epoch", what a reconnecting client missed)
     {"type": "leave_game"}                      -> {"type": "left_game"}
+    {"type": "hand_over", "faction"}            the sender's faction is played by a bot from now on
+    {"type": "replace_with_bot"}                the player whose turn it is has gone over the game's
+                                                   "turn_hours": a bot takes their seat. The host may
+                                                   ask, or anyone when the slow player is the host.
+        Either way the game broadcasts {"type": "seat_changed", "faction", "reason": "handed_over" |
+        "replaced" | "locked", "events"}, and the player who lost the seat (if they now have no part in
+        the game) gets {"type": "left_game", "reason"}.
 
   Scenarios (New Game, and an admin's Scenarios mode):
     {"type": "scenarios"}                       -> {"type": "scenarios", "scenarios": [...scenarios.listing...],
@@ -73,6 +80,7 @@ Server -> client:
     {"type": "hello", "logged_in": false, "build": {build, commit, label}}   on connecting (server/build.py)
     {"type": "error", "message", "problems"}    a request refused (to the sender only)
 """
+import datetime
 import random
 
 from engine.repository import default_repository
@@ -80,11 +88,16 @@ from engine.repository import default_repository
 from . import accounts, admin, chat, games, persist, scenarios, setups
 from .build import build_info
 from .lobby import LobbyError, build_session, generator_info
-from .store import StoreError
+from .store import StoreError, utc_now
 
 ACCOUNT_TYPES = ('register', 'login', 'token_login', 'logout')
 # A game's messages that a player may send without naming a faction of theirs.
 FACTIONLESS = ('follow', 'watch', 'propose_armistice')
+# A game's messages only the server itself sends (server/session.py).
+INTERNAL = ('convert_to_bot',)
+SEAT_LOST = {'handed_over': 'you handed your seat over to a bot',
+             'replaced': 'a bot has taken your seat: your turn went over the time limit',
+             'locked': 'your account is locked'}
 
 
 class Connection:
@@ -224,7 +237,8 @@ class Hub:
             players[faction] = user['player_name'] if user else None
         entered = {'type': 'entered_game', 'game': games.summary(self.store, game, conn.user['id']),
                    'seats': game['seats'], 'factions': game['factions'], 'players': players,
-                   'my_factions': sorted(self._factions_of(game, conn.user['id']))}
+                   'my_factions': sorted(self._factions_of(game, conn.user['id'])),
+                   'turn_hours': int(game['settings'].get('turn_hours', 0) or 0)}
         feed = self.sessions[game_id].handle_message({'type': 'follow', 'since': since, 'epoch': epoch})
         return [([conn.key], entered)] + self._route(game_id, conn, feed)
 
@@ -235,6 +249,8 @@ class Hub:
         if game is None or session is None or game['status'] != games.LIVE:
             conn.game_id = None
             return self._error(conn, 'that game is no longer running')
+        if msg.get('type') in INTERNAL:
+            return self._error(conn, f"unknown message type: {msg.get('type')!r}")
         faction = msg.get('faction')
         mine = self._factions_of(game, conn.user['id'])
         if faction is not None and faction not in mine:
@@ -459,8 +475,80 @@ class Hub:
         return out + self._admin_find(conn, {'query': getattr(conn, 'admin_query', '')})
 
     def _hand_seats_to_bots(self, user_id):
-        """A locked player's seats in live games go to bots. (Filled in with seat handovers.)"""
-        return []
+        """A locked player's seats in live games go to bots."""
+        out = []
+        for game_id in list(self.sessions):
+            record = games.get(self.store, game_id)
+            if record is None or record['status'] != games.LIVE:
+                continue
+            for faction in sorted(self._factions_of(record, user_id)):
+                out += self._seat_to_bot(game_id, faction, 'locked')
+        return out
+
+    # ---- seats handed over to bots ------------------------------------------------------------------
+
+    def _hand_over(self, conn, msg):
+        record = self._live_game_of(conn)
+        faction = msg.get('faction')
+        if faction not in self._factions_of(record, conn.user['id']):
+            raise StoreError(f'you are not playing {faction}')
+        return self._seat_to_bot(record['id'], faction, 'handed_over')
+
+    def _replace_with_bot(self, conn, msg):
+        record = self._live_game_of(conn)
+        hours = int(record['settings'].get('turn_hours', 0) or 0)
+        if not hours:
+            raise StoreError('this game has no time limit on turns')
+        session = self.sessions[record['id']]
+        faction = session.engine.game_state.active_faction
+        owner = self._users_by_faction(record).get(faction)
+        if owner is None or faction not in session.waiting_for():
+            raise StoreError('nobody is keeping the game waiting')
+        if owner == conn.user['id']:
+            raise StoreError('it is your own turn (hand your seat over instead)')
+        if conn.user['id'] != record['host_id'] and owner != record['host_id']:
+            raise StoreError('only the host can replace a player (anyone can when the host is the slow one)')
+        left = self.turn_time_left(record, hours)
+        if left > 0:
+            raise StoreError(f'{faction} still has {_duration(left)} to take their turn')
+        return self._seat_to_bot(record['id'], faction, 'replaced')
+
+    @staticmethod
+    def turn_time_left(record, hours, now=None):
+        """Seconds left of the current turn's `hours` (from when it began, progress.turn_started)."""
+        started = (record.get('progress') or {}).get('turn_started')
+        if not started:
+            return 0
+        now = now or datetime.datetime.now(datetime.timezone.utc)
+        elapsed = (now - datetime.datetime.fromisoformat(started)).total_seconds()
+        return max(0, hours * 3600 - elapsed)
+
+    def _live_game_of(self, conn):
+        record = games.get(self.store, conn.game_id) if conn.game_id else None
+        if record is None or record['status'] != games.LIVE or conn.game_id not in self.sessions:
+            raise StoreError('you are not in a live game')
+        return record
+
+    def _seat_to_bot(self, game_id, faction, reason):
+        """`faction`'s player gives way to a bot: in the game itself (recorded, so a reload does it again
+        with the same bot) and in the game's seats. The player's connections in the game leave it if
+        they no longer have a part in it."""
+        record = games.get(self.store, game_id)
+        loser = self._users_by_faction(record).get(faction)
+        seed = random.SystemRandom().randrange(2 ** 31)
+        out = self.sessions[game_id].handle_message(
+            {'type': 'convert_to_bot', 'faction': faction, 'seed': seed, 'reason': reason})
+        if any(m.get('type') == 'error' for m in out):
+            raise StoreError([m['message'] for m in out if m.get('type') == 'error'])
+        record = games.seat_to_bot(self.store, game_id, faction, reason)
+        deliveries = self._route(game_id, None, out)
+        if loser is not None and not self._takes_part(loser, record):
+            for c in self.connections.values():
+                if c.game_id == game_id and c.user and c.user['id'] == loser:
+                    c.game_id = None
+                    deliveries.append(([c.key], {'type': 'left_game', 'reason': SEAT_LOST.get(reason, reason)}))
+        self._save(game_id)
+        return deliveries
 
     _HANDLERS = {
         'scenarios': _scenarios, 'save_settings': _save_settings, 'reset_settings': _reset_settings,
@@ -470,7 +558,7 @@ class Hub:
         'join_code': _join_code, 'enter_lobby': _enter_lobby, 'leave_lobby': _leave_lobby,
         'take_seat': _take_seat, 'leave_seat': _leave_seat, 'launch': _launch, 'cancel': _cancel, 'chat': _chat,
         'admin_overview': _admin_overview, 'admin_set_max_users': _admin_set_max_users, 'admin_find': _admin_find,
-        'admin_lock': _admin_lock,
+        'admin_lock': _admin_lock, 'hand_over': _hand_over, 'replace_with_bot': _replace_with_bot,
     }
 
     # ---- helpers -----------------------------------------------------------------------------------
@@ -492,9 +580,12 @@ class Hub:
             return
         games.save_state(self.store, game_id, game.doc())
         users = self._users_by_faction(record)
+        before = record.get('progress') or {}
+        same_turn = before.get('turn') == gs.global_turn and before.get('active_faction') == gs.active_faction
         games.update_progress(self.store, game_id, {
             'round': gs.round_number, 'turn': gs.global_turn, 'active_faction': gs.active_faction,
-            'waiting_for': sorted({users[f] for f in game.waiting_for() if f in users})})
+            'waiting_for': sorted({users[f] for f in game.waiting_for() if f in users}),
+            'turn_started': before.get('turn_started') if same_turn and before.get('turn_started') else utc_now()})
         if gs.game_over:
             games.finish(self.store, game_id)
 
@@ -535,3 +626,12 @@ class Hub:
         problems = [problems] if isinstance(problems, str) else list(problems)
         return [([conn.key], {'type': 'error', 'message': '; '.join(problems), 'problems': problems})]
 
+
+
+def _duration(seconds):
+    """'3 hours 20 minutes' and the like, for a turn's time left."""
+    minutes = int(seconds // 60) + (1 if seconds % 60 else 0)
+    hours, minutes = divmod(minutes, 60)
+    parts = ([f"{hours} hour{'s' if hours != 1 else ''}"] if hours else []) + \
+        ([f"{minutes} minute{'s' if minutes != 1 else ''}"] if minutes or not hours else [])
+    return ' '.join(parts)

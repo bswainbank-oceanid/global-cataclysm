@@ -521,6 +521,13 @@ func _on_multi_message(msg: Dictionary) -> void:
 				_lobby.add_chat(m)
 		"game_launched":
 			Net.send_msg({"type": "enter_game", "game_id": msg["game_id"]})
+		"left_game":
+			if msg.has("reason") and GameStore.multi_game:  # (a bot took this player's seat: server/hub.py)
+				Stepper.feed_mode = false
+				Stepper.reset()
+				GameStore.set_multi_game({}, [])
+				_menu.open()
+				_menu._say(str(msg["reason"]))
 		"game_cancelled":
 			_lobby.close()
 			_menu.open()
@@ -531,7 +538,7 @@ func _on_multi_message(msg: Dictionary) -> void:
 			if not again:  # (the same game again, after a lost connection: keep the log and the board)
 				Stepper.feed_mode = true
 				Stepper.reset()
-			GameStore.set_multi_game(game, msg.get("my_factions", []), msg.get("players", {}))
+			GameStore.set_multi_game(game, msg.get("my_factions", []), msg.get("players", {}), int(msg.get("turn_hours", 0)))
 			for screen in [_menu, _my_games, _login, _launch, _available, _lobby]:
 				screen.close()
 			_settings_panel.set_multi(true)

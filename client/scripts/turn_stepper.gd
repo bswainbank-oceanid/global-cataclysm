@@ -233,6 +233,12 @@ func _on_message(msg: Dictionary) -> void:
 			# tied to any queued phase, so (unlike diplomacy_result) there's no phase to name in the header.
 			executed.emit("%s - Surrender" % str(msg["faction"]), msg["events"])
 			_announce(msg["events"])
+		"seat_changed":
+			# A human's seat went to a bot (handed over, replaced for going over the turn time limit, or
+			# the player's account locked): server/hub.py.
+			GameStore.seat_to_bot(str(msg["faction"]))
+			executed.emit("%s - A bot takes over" % str(msg["faction"]), msg.get("events", []))
+			_announce(msg.get("events", []))
 		"armistice_proposed":
 			# A Propose Armistice offer is out and awaiting an answer from every human it names (bots
 			# already answered, synchronously, before this ever arrives -- see server/session.py). "from"
@@ -319,6 +325,10 @@ func _announce(events: Array) -> void:
 				items.append({"title": "%s surrenders" % t, "color": _color(t),
 					"body": "%s has forced %s to surrender: %s.\n\n%s is out of the game and all of its units are removed from the board; its territory stays where it is." % [
 						_name(str(e["faction"])), _name(t), EventText.surrender_reasons(e.get("reasons", [])), _name(t)]})
+			"seat_to_bot":
+				var b := str(e["faction"])
+				items.append({"title": "A bot takes over %s" % b, "color": _color(b),
+					"body": "%s is played by a bot from now on: %s." % [_name(b), EventText.seat_reason(str(e.get("reason", "")))]})
 			"self_surrender":
 				var f := str(e["faction"])
 				items.append({"title": "%s surrenders" % f, "color": _color(f),
@@ -787,6 +797,19 @@ func surrender() -> void:
 ## game with no HUMAN seat: has_player() is false, human_faction() is "") -- in which
 ## case the server asks/auto-accepts every active faction, since there's no proposer's
 ## own seat to fold in for free.
+## Give this player's seat to a bot for the rest of the game (multi-player).
+func hand_over() -> void:
+	var me := GameStore.human_faction()
+	if me != "":
+		Net.send_msg({"type": "hand_over", "faction": me})
+
+
+## The player whose turn it is has gone over the game's time limit: a bot takes their seat. (The host may
+## ask, or anyone when the host is the slow one; the server says why when it can't be done yet.)
+func replace_absent() -> void:
+	Net.send_msg({"type": "replace_with_bot"})
+
+
 func propose_armistice() -> void:
 	var me := GameStore.human_faction()
 	var msg := {"type": "propose_armistice"}
