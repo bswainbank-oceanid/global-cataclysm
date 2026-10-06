@@ -368,10 +368,10 @@ func _tiles_for(tid: int, units: Array, mine: bool) -> Control:
 	flow.add_theme_constant_override("h_separation", 2)
 	flow.add_theme_constant_override("v_separation", 2)
 	var movable := GameStore.movable_ids_at(tid) if mine else []
-	var committed := {}
+	var committed := {}  # unit id -> its queued order
 	if mine:
 		for o in GameStore.committed_from(tid):
-			committed[int(o["unit_id"])] = true
+			committed[int(o["unit_id"])] = o
 	for u in units:
 		var uid := int(u["unit_id"])
 		var tile := UnitTile.make(u, GameStore.in_transport_form(tid, u))
@@ -385,7 +385,7 @@ func _tiles_for(tid: int, units: Array, mine: bool) -> Control:
 		if mine and committed.has(uid):
 			tile.toggle_mode = false
 			tile.committed = true
-			tile.tooltip_text += "\nQueued to move - click to recall"
+			tile.tooltip_text += "\nQueued to move to %s - click to recall" % _place(int(committed[uid]["dest"]))
 			tile.pressed.connect(func(): move_recall.emit([uid]))
 			# Its one-hop combat move didn't trigger a battle and it has move budget
 			# left over: offer a second, explicit hop (GameStore.move_extend) without
@@ -403,8 +403,9 @@ func _tiles_for(tid: int, units: Array, mine: bool) -> Control:
 		elif mine:
 			tile.toggle_mode = false
 			tile.dimmed = true
-			if _rides_with_queued_carrier(tid, u):
-				tile.tooltip_text += "\nRides along with its carrier (queued to move)"
+			var carrier := _queued_carrier(tid, u)
+			if not carrier.is_empty():
+				tile.tooltip_text += "\nRides along with its carrier (queued to move to %s)" % _place(int(carrier["dest"]))
 			else:
 				tile.tooltip_text += "\nNo legal move this phase"
 		else:
@@ -415,14 +416,20 @@ func _tiles_for(tid: int, units: Array, mine: bool) -> Control:
 
 
 ## An air unit left behind at `tid` while a carrier (an Aircraft Carrier) there is
-## queued to move: the engine carries the air units along with the carrier.
-func _rides_with_queued_carrier(tid: int, u: Dictionary) -> bool:
+## queued to move: the engine carries the air units along with the carrier. The
+## carrier's queued order, or {} if `u` isn't riding along with one.
+func _queued_carrier(tid: int, u: Dictionary) -> Dictionary:
 	if str(GameData.units["units"][GameStore.base_type(str(u["unit_type"]))]["category"]) != "Air":
-		return false
+		return {}
 	for o in GameStore.committed_from(tid):
 		if GameData.has_ability(str(o["unit_type"]), "carrier_air_wing"):
-			return true
-	return false
+			return o
+	return {}
+
+
+## A space as a tooltip names it: "28. France".
+static func _place(tid: int) -> String:
+	return "%d. %s" % [tid, GameData.territories[tid]["name"]] if GameData.territories.has(tid) else str(tid)
 
 
 ## Units queued to move INTO this space (from elsewhere): shown so they can be
