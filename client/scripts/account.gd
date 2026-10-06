@@ -101,6 +101,8 @@ func _on_message(msg: Dictionary) -> void:
 			changed.emit()
 		"logged_out":
 			_forget()
+			if msg.has("reason"):  # (an admin locked the account, say)
+				problem.emit(str(msg["reason"]))
 		"login_failed":
 			if _pending == "":
 				return

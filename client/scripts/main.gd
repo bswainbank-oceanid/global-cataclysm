@@ -22,6 +22,7 @@ var _menu: MainMenu
 var _my_games: MyGamesScreen
 var _available: AvailableGamesScreen
 var _history: HistoryScreen
+var _admin: AdminScreen
 var _lobby: GameLobbyScreen
 var _scenarios_for := ""
 var _reconnecting := ""  # multi-player: the connection was lost; where the player was ("game", "lobby", ...)
@@ -396,6 +397,15 @@ func _setup_launch_screen() -> void:
 	add_child(_lobby)
 	_history = HistoryScreen.new()
 	add_child(_history)
+	_admin = AdminScreen.new()
+	add_child(_admin)
+	_menu.admin_pressed.connect(func():
+		_menu.close()
+		_admin.open())
+	_admin.back_pressed.connect(func():
+		_admin.close()
+		_menu.open())
+	_admin.request.connect(func(m: Dictionary): Net.send_msg(m))
 	_menu.history_pressed.connect(func():
 		_menu.close()
 		_history.open())
@@ -461,7 +471,7 @@ func _on_account_changed() -> void:
 			Stepper.feed_mode = false
 			Stepper.reset()
 			GameStore.set_multi_game({}, [])
-		for screen in [_available, _lobby, _my_games]:
+		for screen in [_available, _lobby, _my_games, _admin, _history]:
 			screen.close()
 	_launch.close()
 	if Account.is_logged_in():
@@ -491,6 +501,10 @@ func _on_multi_message(msg: Dictionary) -> void:
 			elif _scenarios_for != "":
 				_menu.close()
 				_launch.open_multi(msg, _scenarios_for == "admin")
+		"admin_overview":
+			_admin.set_overview(msg)
+		"admin_users":
+			_admin.set_users(msg.get("users", []))
 		"open_games":
 			if _available.visible:
 				_available.set_games(msg)
@@ -529,6 +543,8 @@ func _on_multi_message(msg: Dictionary) -> void:
 				_available.show_problem(text)
 			elif _lobby.visible:
 				_lobby.show_problem(text)
+			elif _admin.visible:
+				_admin.show_problem(text)
 
 
 ## Where the player is in the multi-player launcher (to come back to after a lost connection).

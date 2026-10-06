@@ -23,7 +23,7 @@ from pathlib import Path
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / 'server_data' / 'global_cataclysm.sqlite3'
 
 # Bump when the tables change, with an upgrade step in Store._upgrade.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Server-assigned ids: a prefix per kind of record, then a running number.
 ID_PREFIXES = {'user': 'U_', 'scenario': 'S_', 'game': 'G_'}
@@ -73,11 +73,20 @@ CREATE TABLE chat (
     doc  TEXT NOT NULL
 );
 CREATE INDEX chat_by_room ON chat(room, id);
+CREATE TABLE server_settings (
+    key TEXT PRIMARY KEY,
+    doc TEXT NOT NULL
+);
 CREATE TABLE counters (
     kind TEXT PRIMARY KEY,
     last INTEGER NOT NULL
 );
 """
+
+# What each schema version added, for a database an older server made: [(version, [statements])].
+UPGRADES = [
+    (2, ['CREATE TABLE server_settings (key TEXT PRIMARY KEY, doc TEXT NOT NULL)']),
+]
 
 # A unique column that is already taken, as the player should read it.
 TAKEN = {
@@ -130,6 +139,14 @@ class Store:
                     if statement.strip():
                         self._db.execute(statement)
                 self._db.execute(f'PRAGMA user_version = {SCHEMA_VERSION}')
+            return
+        for to, statements in UPGRADES:  # a database from an older server: bring it up to date
+            if version < to:
+                with self.transaction():
+                    for statement in statements:
+                        self._db.execute(statement)
+                    self._db.execute(f'PRAGMA user_version = {to}')
+                version = to
 
     @contextmanager
     def transaction(self):

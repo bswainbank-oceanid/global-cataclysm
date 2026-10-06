@@ -60,6 +60,14 @@ Client -> server (besides each game's own protocol, server/session.py's auto mod
     {"type": "cancel"}                          the host: everyone in the lobby gets {"type": "game_cancelled"}
     {"type": "leave_lobby"}
     {"type": "chat", "room": "browse" | <game id>, "text"}
+
+  The Admin panel (admins only):
+    {"type": "admin_overview"}                  -> {"type": "admin_overview", "stats": {players, games_played,
+                                                   games_completed, games_live, max_users}, "build"}
+    {"type": "admin_set_max_users", "max"}      -> "admin_overview"
+    {"type": "admin_find", "query"}             -> {"type": "admin_users", "users": [...server/admin.py...]}
+    {"type": "admin_lock", "user_id", "locked"} -> "admin_users" again (for the last query); a locked player
+                                                   is logged out wherever they are connected
         -> {"type": "chat", "message": {...}} to everyone browsing (browse) or in that lobby
 Server -> client:
     {"type": "hello", "logged_in": false, "build": {build, commit, label}}   on connecting (server/build.py)
@@ -69,7 +77,7 @@ import random
 
 from engine.repository import default_repository
 
-from . import accounts, chat, games, persist, scenarios, setups
+from . import accounts, admin, chat, games, persist, scenarios, setups
 from .build import build_info
 from .lobby import LobbyError, build_session, generator_info
 from .store import StoreError
@@ -413,6 +421,47 @@ class Hub:
     def _in_lobby(self, game_id):
         return [c.key for c in self.connections.values() if c.lobby_id == game_id and c.user]
 
+    # ---- the Admin panel ---------------------------------------------------------------------------
+
+    def _admin_only(self, conn):
+        if not accounts.is_admin(self.store, conn.user['id']):
+            raise StoreError('only an admin can do that')
+
+    def _admin_overview(self, conn, msg):
+        self._admin_only(conn)
+        return [([conn.key], {'type': 'admin_overview', 'stats': admin.stats(self.store), 'build': build_info()})]
+
+    def _admin_set_max_users(self, conn, msg):
+        self._admin_only(conn)
+        admin.set_max_users(self.store, msg.get('max'))
+        return self._admin_overview(conn, msg)
+
+    def _admin_find(self, conn, msg):
+        self._admin_only(conn)
+        conn.admin_query = str(msg.get('query') or '')
+        return [([conn.key], {'type': 'admin_users', 'users': admin.find_users(self.store, conn.admin_query)})]
+
+    def _admin_lock(self, conn, msg):
+        self._admin_only(conn)
+        user_id = msg.get('user_id')
+        if user_id == conn.user['id']:
+            raise StoreError("you can't lock your own account")
+        locked = bool(msg.get('locked'))
+        admin.set_locked(self.store, user_id, locked)
+        out = []
+        if locked:
+            for c in self.connections.values():  # logged out wherever they are
+                if c.user and c.user['id'] == user_id:
+                    c.user = c.token = c.game_id = c.lobby_id = None
+                    c.browsing = False
+                    out.append(([c.key], {'type': 'logged_out', 'reason': accounts.LOCKED}))
+            out += self._hand_seats_to_bots(user_id)
+        return out + self._admin_find(conn, {'query': getattr(conn, 'admin_query', '')})
+
+    def _hand_seats_to_bots(self, user_id):
+        """A locked player's seats in live games go to bots. (Filled in with seat handovers.)"""
+        return []
+
     _HANDLERS = {
         'scenarios': _scenarios, 'save_settings': _save_settings, 'reset_settings': _reset_settings,
         'save_scenario': _save_scenario, 'delete_scenario': _delete_scenario,
@@ -420,6 +469,8 @@ class Hub:
         'create_game': _create_game, 'my_games': _my_games, 'browse': _browse, 'stop_browsing': _stop_browsing,
         'join_code': _join_code, 'enter_lobby': _enter_lobby, 'leave_lobby': _leave_lobby,
         'take_seat': _take_seat, 'leave_seat': _leave_seat, 'launch': _launch, 'cancel': _cancel, 'chat': _chat,
+        'admin_overview': _admin_overview, 'admin_set_max_users': _admin_set_max_users, 'admin_find': _admin_find,
+        'admin_lock': _admin_lock,
     }
 
     # ---- helpers -----------------------------------------------------------------------------------

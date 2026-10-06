@@ -10,8 +10,10 @@ signal join_pressed
 signal new_game_pressed
 signal scenarios_pressed
 signal history_pressed
+signal admin_pressed
 
 var _scenarios: Button
+var _admin: Button
 var _profile_button: Button
 var _profile_panel: PanelContainer
 var _display_panel: PanelContainer
@@ -42,7 +44,7 @@ func _build() -> void:
 	v.add_child(HudStyle.heading("Command", 18, true))
 	var buttons := [
 		["Resume Game", resume_pressed, true], ["Join Game", join_pressed, false],
-		["New Game", new_game_pressed, false], ["Scenarios", scenarios_pressed, false],
+		["New Game", new_game_pressed, false], ["Scenarios", scenarios_pressed, false], ["Admin", admin_pressed, false],
 		["History", history_pressed, false], ["Rules", null, false]]
 	for entry in buttons:
 		var b := Button.new()
@@ -62,6 +64,9 @@ func _build() -> void:
 		if entry[0] == "Scenarios":
 			_scenarios = b
 			b.tooltip_text = "Edit the shared scenarios (admins)"
+		if entry[0] == "Admin":
+			_admin = b
+			b.tooltip_text = "The server's numbers, the most players, finding and locking players (admins)"
 	_note = HudStyle.label("", 13, HudStyle.TEXT_DIM)
 	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(_note)
@@ -150,6 +155,7 @@ func refresh() -> void:
 	_actual_name.text = actual if actual != "" else "(no actual name given)"
 	_email.text = str(u.get("email", ""))
 	_scenarios.visible = Account.is_admin()
+	_admin.visible = Account.is_admin()
 	var client := str(Account.client_build().get("label", "Build unknown"))
 	var server := str(Account.server_build.get("label", "Build unknown"))
 	var lines := ["Client " + client, "Server " + server]

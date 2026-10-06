@@ -23,6 +23,7 @@ MAX_ACTUAL_NAME = 60
 MAX_EMAIL = 254
 MAX_PASSWORD = 1024   # (hashing an enormous password would tie the server up)
 WRONG_LOGIN = 'wrong email or password'
+LOCKED = 'this account is locked: ask an admin'
 
 
 def public(user):
@@ -63,6 +64,10 @@ def register(store, player_name, actual_name, email, password):
     problems = check_profile(player_name, actual_name, email, password)
     if problems:
         raise StoreError(problems)
+    from .admin import max_users  # (an admin's setting: the most players this server takes)
+    limit = max_users(store)
+    if len(store.fetch_all('users')) >= limit:
+        raise StoreError(f'this server has room for {limit} players, and it is full')
     with store.transaction():
         uid = store.next_id('user')
         user = {'id': uid, 'player_name': player_name, 'actual_name': actual_name, 'email': email,
@@ -82,6 +87,9 @@ def login(store, email, password):
         raise StoreError(WRONG_LOGIN)
     if not _matches(password, user['password']):
         raise StoreError(WRONG_LOGIN)
+    if user.get('locked'):
+        raise StoreError(LOCKED)
+    _note_login(store, user)
     return public(user), _new_login(store, user['id'])
 
 
@@ -92,9 +100,10 @@ def login_with_token(store, token):
     if login_doc is None:
         return None
     user = store.fetch('users', id=login_doc['user_id'])
-    if user is None:
+    if user is None or user.get('locked'):
         return None
     store.update('logins', {**login_doc, 'last_used': utc_now()}, {'token_hash': key})
+    _note_login(store, user)
     return public(user)
 
 
@@ -130,6 +139,11 @@ def set_admin(store, user_id, admin=True):
         user['admin'] = bool(admin)
         store.update('users', user, {'id': user_id})
     return public(user)
+
+
+def _note_login(store, user):
+    user['last_login'] = utc_now()
+    store.update('users', user, {'id': user['id']})
 
 
 # ---- passwords and tokens ------------------------------------------------------------------------

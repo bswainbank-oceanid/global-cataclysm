@@ -205,5 +205,33 @@ class TestChat(LobbyTest):
         self.assertEqual([m['text'] for m in rejoin['chat']], ['hi'])
 
 
+class TestAdminPanel(LobbyTest):
+    def test_only_an_admin_sees_the_panel(self):
+        self.assertEqual(self.only('ann', {'type': 'admin_overview'})['problems'], ['only an admin can do that'])
+        accounts.set_admin(self.store, self.ann)
+        reply = self.only('ann', {'type': 'admin_overview'})
+        self.assertEqual(reply['stats']['players'], 3)
+        self.assertTrue(reply['build']['label'].startswith('Build'))
+
+    def test_the_most_players_and_the_lookup(self):
+        accounts.set_admin(self.store, self.ann)
+        self.assertEqual(self.only('ann', {'type': 'admin_set_max_users', 'max': 3})['stats']['max_users'], 3)
+        self.hub.connect('dan')
+        [(_, msg)] = self.hub.handle('dan', {'type': 'register', 'player_name': 'Dan', 'email': 'dan@x.com', 'password': 'pw'})
+        self.assertEqual(msg['type'], 'login_failed')
+        users = self.only('ann', {'type': 'admin_find', 'query': 'b'})['users']
+        self.assertEqual([u['player_name'] for u in users], ['Bob'])
+
+    def test_locking_logs_the_player_out_everywhere(self):
+        accounts.set_admin(self.store, self.ann)
+        self.only('bob', {'type': 'browse'})
+        out = self.send('ann', {'type': 'admin_lock', 'user_id': self.bob, 'locked': True})
+        self.assertEqual(self.got(out, 'bob'), [{'type': 'logged_out', 'reason': 'this account is locked: ask an admin'}])
+        self.assertTrue(self.got(out, 'ann')[-1]['type'] == 'admin_users')
+        self.assertEqual(self.only('bob', {'type': 'browse'})['message'], 'log in first')
+        self.assertEqual(self.only('ann', {'type': 'admin_lock', 'user_id': self.ann, 'locked': True})['problems'],
+                         ["you can't lock your own account"])
+
+
 if __name__ == '__main__':
     unittest.main()
