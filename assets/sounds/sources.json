@@ -1,0 +1,123 @@
+{
+ "infantry_move": {
+  "freesound_id": 240732,
+  "name": "marching-concrete-loop.aif",
+  "author": "stib",
+  "url": "https://freesound.org/people/stib/sounds/240732/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "infantry_move B"
+ },
+ "infantry_attack": {
+  "freesound_id": 854205,
+  "name": "Volley Rifle Fire 4",
+  "author": "qubodup",
+  "url": "https://freesound.org/people/qubodup/sounds/854205/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "infantry_attack F"
+ },
+ "mech_infantry_move": {
+  "freesound_id": 675213,
+  "name": "S03-24 Vintage jeep drives in & stops.wav",
+  "author": "craigsmith",
+  "url": "https://freesound.org/people/craigsmith/sounds/675213/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "mech_infantry_move D"
+ },
+ "mech_infantry_attack": {
+  "freesound_id": 165394,
+  "name": "Heavy Machine Gun",
+  "author": "ShawnyBoy",
+  "url": "https://freesound.org/people/ShawnyBoy/sounds/165394/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "mech_infantry_attack A"
+ },
+ "armor_move": {
+  "freesound_id": 121531,
+  "name": "tracked vehicle.wav",
+  "author": "cognito perceptu",
+  "url": "https://freesound.org/people/cognito%20perceptu/sounds/121531/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "armor_move C"
+ },
+ "armor_attack": {
+  "freesound_id": 448002,
+  "name": "cannon.mp3",
+  "author": "Kneeling",
+  "url": "https://freesound.org/people/Kneeling/sounds/448002/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "armor_attack E"
+ },
+ "fighter_move": {
+  "freesound_id": 805168,
+  "name": "Jet Flyby 01",
+  "author": "mrspivey",
+  "url": "https://freesound.org/people/mrspivey/sounds/805168/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "fighter_move A"
+ },
+ "bomber_move": {
+  "freesound_id": 507446,
+  "name": "Aeroplane Passing Close.wav",
+  "author": "paulprit",
+  "url": "https://freesound.org/people/paulprit/sounds/507446/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "bomber_move F"
+ },
+ "carrier_move": {
+  "freesound_id": 587171,
+  "name": "Running ship steam engine",
+  "author": "derplayer",
+  "url": "https://freesound.org/people/derplayer/sounds/587171/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "cruiser_move A",
+  "start": 5.0
+ },
+ "carrier_attack": {
+  "freesound_id": 486028,
+  "name": "R12-33-Large Automatic Artillery.wav",
+  "author": "craigsmith",
+  "url": "https://freesound.org/people/craigsmith/sounds/486028/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "cruiser_attack C"
+ },
+ "submarine_move": {
+  "freesound_id": 675797,
+  "name": "S34-28 Submarine propeller under water.wav",
+  "author": "craigsmith",
+  "url": "https://freesound.org/people/craigsmith/sounds/675797/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "submarine_move C"
+ },
+ "submarine_attack": {
+  "freesound_id": 546957,
+  "name": "NổLớnDướiNước1",
+  "author": "SieuAmThanh",
+  "url": "https://freesound.org/people/SieuAmThanh/sounds/546957/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "submarine_attack F"
+ },
+ "cruiser_move": {
+  "freesound_id": 587171,
+  "name": "Running ship steam engine",
+  "author": "derplayer",
+  "url": "https://freesound.org/people/derplayer/sounds/587171/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "cruiser_move A"
+ },
+ "cruiser_attack": {
+  "freesound_id": 854477,
+  "name": "120mm Mortar Shell Shot 1",
+  "author": "qubodup",
+  "url": "https://freesound.org/people/qubodup/sounds/854477/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "armor_attack F"
+ },
+ "transport_move": {
+  "freesound_id": 468846,
+  "name": "35_Bocina_barco.wav",
+  "author": "ChristianAnd",
+  "url": "https://freesound.org/people/ChristianAnd/sounds/468846/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "transport_move E"
+ }
+}
