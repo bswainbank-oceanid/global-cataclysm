@@ -68,6 +68,21 @@ func _initialize() -> void:
 	stepper._on_raw({"type": "error", "message": "nope", "to_sender": true})
 	_check(errors.size() == 1 and stepper._inbox.size() == 1, "an error isn't held behind the inbox")
 
+	# Entering while an armistice proposal is pending: this player is asked (and the game holds still);
+	# a player who isn't asked sees whose answer it is waiting for.
+	var with_armistice: Dictionary = data["feed"].duplicate(true)
+	with_armistice["epoch"] = "a later run"
+	with_armistice["armistice"] = {"from": "UE", "awaiting": ["AAC"], "automatic_after": null}
+	stepper._on_raw(with_armistice)
+	_check(store.armistice_pending() and store.armistice_faction() == "AAC", "the proposal is put to the player entering")
+	_check(stepper.button_text == "Answer the armistice proposal" and not stepper.button_enabled, "Next waits for the answer")
+	store.my_factions = ["UE"]
+	stepper._refresh()
+	_check(stepper.button_text.begins_with("Armistice proposed") and not stepper.button_enabled, "the proposer's game holds still")
+	store.my_factions = ["AAC"]
+	stepper._on_raw({"type": "armistice_resolved", "accepted": false, "from": "UE", "declined_by": "AAC", "seq": 99, "epoch": "a later run"})
+	_check(store.armistice.is_empty() and not stepper.button_text.begins_with("Armistice"), "resolved: the game goes on")
+
 	# Leaving the game: back to the one-game behaviour.
 	stepper.feed_mode = false
 	stepper.reset()

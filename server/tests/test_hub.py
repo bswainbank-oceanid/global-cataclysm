@@ -185,6 +185,36 @@ class TestRunningGames(HubTest):
         self.assertEqual(self.hub.runnable(), [])
 
 
+class TestArmisticeAcrossPlayers(HubTest):
+    def test_a_player_entering_later_is_asked_and_the_game_holds_still_meanwhile(self):
+        game = games.create(self.store, self.ann, SCENARIO, TWO_HUMANS)
+        games.take_seat(self.store, game['id'], self.ann, 1)
+        games.take_seat(self.store, game['id'], self.bob, 2)
+        games.launch(self.store, game['id'], self.ann)
+        gid = game['id']
+        self.hub.start_game(gid)
+        self.run_game(gid)
+        self.send('ann', {'type': 'enter_game', 'game_id': gid})
+        ann_f, bob_f = self.faction_of(gid, self.ann), self.faction_of(gid, self.bob)
+        self.send('ann', {'type': 'propose_armistice', 'faction': ann_f})
+        self.assertNotIn(gid, self.hub.runnable())  # paused until Bob answers
+        out = self.send('bob', {'type': 'enter_game', 'game_id': gid})  # Bob comes in afterwards
+        feed = [m for _, m in out if m['type'] == 'feed'][0]
+        self.assertEqual(feed['armistice'], {'from': ann_f, 'awaiting': [bob_f], 'automatic_after': None})
+        self.assertEqual(feed['waiting_for'], [bob_f])
+        self.assertEqual(games.get(self.store, gid)['progress']['waiting_for'], [self.bob])
+        waiting = self.hub.sessions[gid].waiting_for()
+        if ann_f in [self.hub.sessions[gid].stepper._queue['faction']]:
+            [(_, msg)] = [d for d in self.send('ann', {'type': 'end_phase', 'faction': ann_f}) if d[1]['type'] == 'error']
+            self.assertEqual(msg['type'], 'error')  # (Ann's own phase is held too)
+        self.send('bob', {'type': 'respond_armistice', 'faction': bob_f, 'accept': False})
+        self.assertIsNone(self.hub.sessions[gid]._armistice)
+        out = self.send('bob', {'type': 'enter_game', 'game_id': gid})
+        self.assertIsNone([m for _, m in out if m['type'] == 'feed'][0]['armistice'])
+        self.assertFalse(self.hub.sessions[gid].engine.game_state.game_over)
+        self.assertNotEqual(waiting, [])
+
+
 class TestRestarting(HubTest):
     def test_live_games_come_back_where_they_were(self):
         gid = self.one_human_game()

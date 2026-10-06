@@ -104,6 +104,7 @@ func _apply_feed(msg: Dictionary) -> void:
 		for m in missed:
 			_on_raw(m)
 		GameStore.set_waiting_for(msg.get("waiting_for", []))
+		_apply_feed_armistice(msg)
 		_refresh()
 		return
 	_queue_reset()
@@ -114,9 +115,17 @@ func _apply_feed(msg: Dictionary) -> void:
 	if msg.get("queue") != null:
 		_on_message(msg["queue"])
 	GameStore.set_waiting_for(msg.get("waiting_for", []))
+	_apply_feed_armistice(msg)
 	if msg.get("game_over") != null:
 		_on_message({"type": "game_over", "report": msg["game_over"]})
 	_refresh()
+
+
+## A pending armistice proposal, as the game stands (a player entering after it was proposed is asked too).
+func _apply_feed_armistice(msg: Dictionary) -> void:
+	var a = msg.get("armistice")
+	GameStore.set_armistice({"from": a["from"], "awaiting": a["awaiting"], "automatic_after": a.get("automatic_after")}
+		if a is Dictionary else {})
 
 
 ## Plays back the next step from the inbox once Next (or Settings) has asked for it: its phase_result and
@@ -384,6 +393,15 @@ func _refresh() -> void:
 	needs_hold = false
 	if game_over:
 		button_text = "Game over"
+	elif feed_mode and not GameStore.armistice.is_empty():  # the game holds still until everyone asked answers
+		if GameStore.armistice_pending():
+			button_text = "Answer the armistice proposal"
+		else:
+			var who := []
+			for f in GameStore.armistice.get("awaiting", []):
+				var name := str(GameStore.player_names.get(f, ""))
+				who.append("%s (%s)" % [name, f] if name != "" else str(f))
+			button_text = "Armistice proposed  -  waiting for %s..." % ", ".join(who)
 	elif GameStore.invitation_pending():
 		button_text = "Answer %s's alliance invitation" % str(GameStore.invitation["from"])
 	elif _battle_open:
@@ -644,7 +662,8 @@ func _bombardment_in(msg: Dictionary) -> Dictionary:
 ## finished shortening -- no extra delay, and no waiting at all when there
 ## were no arrows.
 func _process(_delta: float) -> void:
-	if _auto and not _awaiting and not game_over and not _queued_phase.is_empty() and not GameStore.announcement_open:
+	var held := feed_mode and not GameStore.armistice.is_empty()  # (an armistice proposal holds the game still)
+	if _auto and not _awaiting and not game_over and not _queued_phase.is_empty() and not GameStore.announcement_open and not held:
 		if busy.is_null() or not busy.call():
 			_auto = false
 			_do_advance()

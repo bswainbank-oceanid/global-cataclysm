@@ -228,7 +228,8 @@ Client -> server, auto mode:
         Answered (to the sender) with {"type": "feed", "epoch", "seq": the latest, "messages": every
         broadcast after `since` -- or null when `since` is from another epoch or older than what is kept
         (start from "state" instead) --, "state", "queue": the step waiting now, "waiting_for": [faction
-        codes], "game_over": the report or null}. "since" null: just the current picture. ("watch" is
+        codes], "armistice": a pending proposal {from, awaiting, automatic_after} or null, "game_over": the
+        report or null}. "since" null: just the current picture. ("watch" is
         the same as a follow with no "since".)
     {"type": "end_phase", "faction": "NAA"}
         A HUMAN faction is done with its Purchase / Combat Move / Non-Combat Move / Diplomacy (what it
@@ -456,8 +457,13 @@ class GameSession:
             if since >= oldest - 1:
                 missed = [m for m in self.feed if m['seq'] > since]
         gs = self.engine.game_state
+        armistice = None
+        if self._armistice is not None:  # (a player entering later must still be asked)
+            armistice = {'from': self._armistice['from'], 'awaiting': sorted(self._armistice['pending']),
+                         'automatic_after': self._armistice.get('automatic_after')}
         return {'type': 'feed', 'to_sender': True, 'epoch': self.epoch, 'seq': self.seq, 'messages': missed,
                 'state': self.stepper._state_message(), 'queue': self.stepper._queue, 'waiting_for': waiting,
+                'armistice': armistice,
                 'game_over': self.stepper._game_over_message()['report'] if gs.game_over else None}
 
     def _publish(self, messages):
