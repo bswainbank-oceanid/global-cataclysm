@@ -3,7 +3,9 @@ extends MenuScreen
 ## The main screen once logged in (reference/GC Launcher_User Profile.odt): the poster, the menu
 ## (Resume Game, Join Game, New Game, Scenarios for admins, History, Rules, Quit to Desktop), the player's profile in
 ## the upper right (names, Log Out), Settings (the in-game panel's options: playback, display, sound, the log), and
-## the client's and server's build numbers in the lower right.
+## the client's and server's build numbers in the lower right. Resume Game pulses while one of the player's
+## games is waiting on them (their turn, or an answer): the menu asks for My Games when it opens and every
+## POLL_SECONDS while it shows.
 
 signal resume_pressed
 signal join_pressed
@@ -13,6 +15,11 @@ signal history_pressed
 signal rules_pressed
 signal admin_pressed
 
+const POLL_SECONDS := 15.0
+
+var _resume: Button
+var _pulse: Tween
+var _poll: Timer
 var _scenarios: Button
 var _admin: Button
 var _profile_button: Button
@@ -62,6 +69,8 @@ func _build() -> void:
 		else:
 			b.pressed.connect(func(): (sig as Signal).emit())
 		v.add_child(b)
+		if entry[0] == "Resume Game":
+			_resume = b
 		if entry[0] == "Scenarios":
 			_scenarios = b
 			b.tooltip_text = "Edit the shared scenarios (admins)"
@@ -134,6 +143,11 @@ func _build() -> void:
 	_builds.add_theme_color_override("font_outline_color", GCTheme.NAVY_DARK)
 	_builds.add_theme_constant_override("outline_size", 4)
 
+	_poll = Timer.new()
+	_poll.wait_time = POLL_SECONDS
+	_poll.timeout.connect(_ask_games)
+	add_child(_poll)
+
 
 func open() -> void:
 	refresh()
@@ -141,10 +155,44 @@ func open() -> void:
 	_display_panel.visible = false
 	_note.text = ""
 	visible = true
+	_ask_games()
+	_poll.start()
 
 
 func close() -> void:
 	visible = false
+	_poll.stop()
+
+
+func _ask_games() -> void:
+	if Account.is_logged_in():
+		Net.send_msg({"type": "my_games"})
+
+
+## The server's "my_games": Resume Game pulses when any of them is waiting on this player.
+func set_games(games: Array) -> void:
+	var me := str(Account.user.get("id", ""))
+	var waiting := false
+	for g in games:
+		var progress = g.get("progress")
+		if g.get("status") == "live" and progress is Dictionary and (progress.get("waiting_for", []) as Array).has(me):
+			waiting = true
+	_set_pulse(waiting)
+
+
+func _set_pulse(on: bool) -> void:
+	if on == (_pulse != null):
+		return
+	if _pulse != null:
+		_pulse.kill()
+		_pulse = null
+		_resume.modulate = Color.WHITE
+		_resume.tooltip_text = ""
+		return
+	_resume.tooltip_text = "A game is waiting for you: your turn, or an answer"
+	_pulse = create_tween().set_loops()
+	_pulse.tween_property(_resume, "modulate", Color(1.45, 1.45, 1.45), 0.7).set_trans(Tween.TRANS_SINE)
+	_pulse.tween_property(_resume, "modulate", Color.WHITE, 0.7).set_trans(Tween.TRANS_SINE)
 
 
 ## The logged-in player's names, and the admin-only Scenarios button.

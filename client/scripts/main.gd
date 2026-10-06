@@ -504,6 +504,7 @@ func _on_multi_message(msg: Dictionary) -> void:
 	match str(msg.get("type", "")):
 		"my_games":
 			_my_games.set_games(msg.get("games", []))
+			_menu.set_games(msg.get("games", []))
 		"scenarios":
 			if _launch.visible and _launch.multi:
 				_launch.set_scenarios(msg.get("scenarios", []), msg.get("selected"))
