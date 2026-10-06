@@ -55,6 +55,14 @@
   "license": "http://creativecommons.org/publicdomain/zero/1.0/",
   "chosen_from": "fighter_move A"
  },
+ "fighter_attack": {
+  "freesound_id": 854473,
+  "name": "M142 HIMARS Rocket Launch 5",
+  "author": "qubodup",
+  "url": "https://freesound.org/people/qubodup/sounds/854473/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "fighter_attack B"
+ },
  "bomber_move": {
   "freesound_id": 507446,
   "name": "Aeroplane Passing Close.wav",
@@ -62,6 +70,15 @@
   "url": "https://freesound.org/people/paulprit/sounds/507446/",
   "license": "http://creativecommons.org/publicdomain/zero/1.0/",
   "chosen_from": "bomber_move F"
+ },
+ "bomber_attack": {
+  "freesound_id": 372086,
+  "name": "Distant Explosion",
+  "author": "Mr_KeybOred",
+  "url": "https://freesound.org/people/Mr_KeybOred/sounds/372086/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "bomber_attack A",
+  "length": 2.0
  },
  "carrier_move": {
   "freesound_id": 587171,

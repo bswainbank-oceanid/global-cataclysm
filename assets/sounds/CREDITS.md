@@ -13,7 +13,9 @@ Built by tools/fetch_sounds.py from assets/sounds/sources.json.
 | armor_move | [tracked vehicle.wav](https://freesound.org/people/cognito%20perceptu/sounds/121531/) | cognito perceptu | CC0 |
 | armor_attack | [cannon.mp3](https://freesound.org/people/Kneeling/sounds/448002/) | Kneeling | CC0 |
 | fighter_move | [Jet Flyby 01](https://freesound.org/people/mrspivey/sounds/805168/) | mrspivey | CC0 |
+| fighter_attack | [M142 HIMARS Rocket Launch 5](https://freesound.org/people/qubodup/sounds/854473/) | qubodup | CC0 |
 | bomber_move | [Aeroplane Passing Close.wav](https://freesound.org/people/paulprit/sounds/507446/) | paulprit | CC0 |
+| bomber_attack | [Distant Explosion](https://freesound.org/people/Mr_KeybOred/sounds/372086/) | Mr_KeybOred | CC0 |
 | carrier_move | [Running ship steam engine](https://freesound.org/people/derplayer/sounds/587171/) | derplayer | CC0 |
 | carrier_attack | [R12-33-Large Automatic Artillery.wav](https://freesound.org/people/craigsmith/sounds/486028/) | craigsmith | CC0 |
 | submarine_move | [S34-28 Submarine propeller under water.wav](https://freesound.org/people/craigsmith/sounds/675797/) | craigsmith | CC0 |
