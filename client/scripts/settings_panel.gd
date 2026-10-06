@@ -53,6 +53,10 @@ func _ready() -> void:
 	v.add_child(_note)
 
 	v.add_child(HSeparator.new())
+	v.add_child(HudStyle.label("Sound", 13))
+	v.add_child(Sfx.controls())
+
+	v.add_child(HSeparator.new())
 	v.add_child(HudStyle.label("Game Log", 13))
 	_strategy_log = _check(v, "Show the bots' Strategy Log tab", func(on): Settings.strategy_log = on)
 	_strategy_log.tooltip_text = "Each bot's strategy decisions: what it chose each phase, for which objective, and why objectives went without."

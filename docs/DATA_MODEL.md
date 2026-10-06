@@ -34,7 +34,7 @@ Source: `reference/GC Data Model.rtf`, plus the decisions recorded below.
 |---|---|---|---|
 | Map | `map` | `GC72_Map` | image, size, flat/cylinder, locations (name, land/sea, anchor point, *generated* boundary polygons, label metrics, adjacency), adjacency overrides |
 | AbilityCatalog | `ability_catalog` | `GC72_Abilities` | the engine's fixed ability library: id, name, description template, parameters and their defaults |
-| UnitSet | `unit_set` | `GC72_UnitSet` | unit types: stats, purchasable, land/sea combat resolution order, display order, icon, abilities with parameters |
+| UnitSet | `unit_set` | `GC72_UnitSet` | unit types: stats, purchasable, land/sea combat resolution order, display order, icon, move and attack sounds (files in `assets/sounds`; a Transport has no attack sound), abilities with parameters |
 | MapValues | `map_values` | `GC72_MapValues` | map id; each land location's value |
 | FactionSet | `faction_set` | `GC72_FactionSet` | factions: id, name, color, icon; the built-in `neutral` (NEU, the shared Neutral colour) and `noncombatant` (NCB) factions |
 | FactionAssignment | `faction_assignment` | `GC72_FactionAssignment` | value assignment id, faction set id; each land location's faction and starting-setup sea deployment location |
@@ -345,6 +345,7 @@ factions, units with abilities and icons, adjacency) plus the map image.
 | `tools/sync_client_data.py` | the scenario's modules -> `client/data` |
 | `tools/golden_games.py` | seeded full-game digests, to prove a refactor changed nothing |
 | `tools/set_admin.py` | turns a player's admin flag on or off in the player database (`--list`: who is an admin) |
+| `tools/make_sounds.py` | generates the unit sounds (each unit type's `move_sound` / `attack_sound` in the UnitSet) into `assets/sounds/units` |
 | `tools/import_history.py` | `reference/GC_ 1972 History.odt` -> `data/history.json`, the back story the client's History screen shows |
 | `tools/launcher.py` | starts the game as a player does: syncs the client data, starts the server in the background if it isn't running, opens the game window (what the shortcut runs) |
 | `tools/make_shortcut.py` | makes the "Global Cataclysm 1972" desktop and Start menu shortcuts, and "(Player 2)" ones with their own saved login (`--profile player2`), with their icons in `assets/logo` |

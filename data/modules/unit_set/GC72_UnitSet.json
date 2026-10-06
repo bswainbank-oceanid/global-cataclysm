@@ -23,6 +23,8 @@
    "sea_order": null,
    "display_order": 1,
    "icon": "units/person.svg",
+   "move_sound": "units/infantry_move.wav",
+   "attack_sound": "units/infantry_attack.wav",
    "plural": "Infantry",
    "abilities": [
     {"id": "mustering"},
@@ -47,6 +49,8 @@
    "sea_order": null,
    "display_order": 2,
    "icon": "units/apc.svg",
+   "move_sound": "units/mech_infantry_move.wav",
+   "attack_sound": "units/mech_infantry_attack.wav",
    "plural": "Mechanized Infantry",
    "abilities": [
     {"id": "amphibious", "params": {"transport_unit": "Transport"}},
@@ -70,6 +74,8 @@
    "sea_order": null,
    "display_order": 3,
    "icon": "units/battle-tank.svg",
+   "move_sound": "units/armor_move.wav",
+   "attack_sound": "units/armor_attack.wav",
    "plural": "Armor",
    "abilities": []
   },
@@ -90,6 +96,8 @@
    "sea_order": 2,
    "display_order": 4,
    "icon": "units/jet-fighter.svg",
+   "move_sound": "units/fighter_move.wav",
+   "attack_sound": "units/fighter_attack.wav",
    "plural": "Fighters",
    "abilities": [
     {"id": "air_superiority", "params": {"attack_die": "D10", "damage": 3, "triggers_round": true}},
@@ -113,6 +121,8 @@
    "sea_order": 3,
    "display_order": 5,
    "icon": "units/bomber.svg",
+   "move_sound": "units/bomber_move.wav",
+   "attack_sound": "units/bomber_attack.wav",
    "plural": "Bombers",
    "abilities": [
     {"id": "air_superiority", "params": {"attack_die": "D6", "damage": 1, "triggers_round": false}},
@@ -136,6 +146,8 @@
    "sea_order": 5,
    "display_order": 8,
    "icon": "units/carrier.svg",
+   "move_sound": "units/carrier_move.wav",
+   "attack_sound": "units/carrier_attack.wav",
    "plural": "Aircraft Carriers",
    "abilities": [
     {"id": "carrier_air_wing", "params": {"capacity": 3}}
@@ -158,6 +170,8 @@
    "sea_order": 1,
    "display_order": 6,
    "icon": "units/submarine.svg",
+   "move_sound": "units/submarine_move.wav",
+   "attack_sound": "units/submarine_attack.wav",
    "plural": "Submarines",
    "abilities": [
     {"id": "submerge"}
@@ -180,6 +194,8 @@
    "sea_order": 4,
    "display_order": 7,
    "icon": "units/cruiser.svg",
+   "move_sound": "units/cruiser_move.wav",
+   "attack_sound": "units/cruiser_attack.wav",
    "plural": "Cruisers",
    "abilities": [
     {"id": "bombardment"}
@@ -202,6 +218,7 @@
    "sea_order": null,
    "display_order": null,
    "icon": "units/cargo-ship.svg",
+   "move_sound": "units/transport_move.wav",
    "plural": "Transports",
    "abilities": [
     {"id": "transport"}

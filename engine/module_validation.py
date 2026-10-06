@@ -6,7 +6,11 @@ here rather than surfacing as a crash mid-game.
 validate_repository(repo) checks every module stored, including that each scenario's
 modules fit together, and returns a list of problems (empty = valid).
 """
+import os
+
 from .repository import MODULE_DIRS, ModuleNotFound
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # (assets/ sits beside engine/)
 
 DIE_SIZES = ('D6', 'D8', 'D10', 'D12')
 CATEGORIES = ('Land', 'Air', 'Sea')
@@ -144,6 +148,10 @@ class _Checker:
             for k in ('land_order', 'sea_order', 'display_order'):
                 self.field(tw, t, k, INT, optional=True, nullable=True)
             self.field(tw, t, 'icon', STR, optional=True, nullable=True)
+            for k in ('move_sound', 'attack_sound'):  # a file in assets/sounds (tools/make_sounds.py)
+                sound = self.field(tw, t, k, STR, optional=True, nullable=True)
+                if sound and not os.path.exists(os.path.join(_ROOT, 'assets', 'sounds', sound)):
+                    self.err(tw, f'{k} {t[k]!r} is not a file in assets/sounds')
             self.field(tw, t, 'plural', STR, optional=True, nullable=True)
             for a in t.get('abilities', []):
                 if a.get('id') not in abilities:

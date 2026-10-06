@@ -180,6 +180,7 @@ class GameConfig:
                 stats.update({
                     'name': u['name'], 'land_order': u.get('land_order'), 'sea_order': u.get('sea_order'),
                     'display_order': u.get('display_order'), 'icon': u.get('icon'),
+                    'move_sound': u.get('move_sound'), 'attack_sound': u.get('attack_sound'),
                     'plural': u.get('plural') or u['name'] + 's', 'abilities': abilities,
                 })
                 out[u['id']] = stats

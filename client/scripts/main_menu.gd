@@ -80,7 +80,7 @@ func _build() -> void:
 	corner.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	corner.position += Vector2(-20, 20)
 	var display := Button.new()
-	display.text = "Display"
+	display.text = "Display & Sound"
 	HudStyle.secondary(display)
 	display.pressed.connect(func(): _toggle(_display_panel))
 	corner.add_child(display)
@@ -108,7 +108,7 @@ func _build() -> void:
 
 	_display_panel = _drop_panel()
 	var d := MenuScreen.body(_display_panel)
-	d.add_child(HudStyle.heading("Display Settings", 15))
+	d.add_child(HudStyle.heading("Display & Sound", 15))
 	_fullscreen = CheckBox.new()
 	_fullscreen.text = "Full screen"
 	_fullscreen.button_pressed = Settings.fullscreen
@@ -116,6 +116,7 @@ func _build() -> void:
 		Settings.fullscreen = on
 		Settings.commit())
 	d.add_child(_fullscreen)
+	d.add_child(Sfx.controls())
 
 
 func open() -> void:

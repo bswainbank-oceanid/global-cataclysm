@@ -13,8 +13,8 @@ files the client reads:
   units.json             unit types with stats, abilities, icon, display and battle order
   history.json           the game's back story, for the History screen (data/history.json, written by
                          tools/import_history.py)
-plus the map image (as assets/base_map.png), the unit and faction icons, the fonts (assets/fonts) and the
-logo artwork (assets/logo, renamed by LOGO_FILES).
+plus the map image (as assets/base_map.png), the unit and faction icons, the unit sounds (assets/sounds),
+the fonts (assets/fonts) and the logo artwork (assets/logo, renamed by LOGO_FILES).
 
 Run: python tools/sync_client_data.py [--scenario GC72_Scenario]
 """
@@ -91,6 +91,12 @@ def main():
     for icon in sorted(icons):
         (icon_dir / icon).parent.mkdir(parents=True, exist_ok=True)  # (faction icons sit in a subfolder)
         shutil.copy2(ROOT / 'assets' / 'icons' / icon, icon_dir / icon)
+    # the unit sounds each unit type names (assets/sounds: tools/make_sounds.py)
+    sounds = {d[k] for d in config.units().values() for k in ('move_sound', 'attack_sound') if d.get(k)}
+    for sound in sorted(sounds):
+        dest = CLIENT / 'assets' / 'sounds' / sound
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / 'assets' / 'sounds' / sound, dest)
     # the style guide's fonts (assets/fonts) and the logo artwork (assets/logo), under the names the client loads
     font_dir = CLIENT / 'assets' / 'fonts'
     font_dir.mkdir(parents=True, exist_ok=True)

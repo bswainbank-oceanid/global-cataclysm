@@ -24,6 +24,8 @@ var strategy_log := false                # show the bots' Strategy Log tab besid
 var resolve_attacker := BattleModel.Resolve.UNIT_TYPE
 var resolve_defender := BattleModel.Resolve.UNIT_TYPE
 var fullscreen := false                  # Display Settings: the window fills the screen
+var sound_volume := 70                   # the unit sounds' volume, 0-100 (Sfx)
+var sound_muted := false
 
 
 func _ready() -> void:
@@ -50,6 +52,8 @@ func _ready() -> void:
 	resolve_attacker = int(cfg.get_value("battle", "resolve_attacker", resolve_attacker))
 	resolve_defender = int(cfg.get_value("battle", "resolve_defender", resolve_defender))
 	fullscreen = bool(cfg.get_value("display", "fullscreen", fullscreen))
+	sound_volume = clampi(int(cfg.get_value("sound", "volume", sound_volume)), 0, 100)
+	sound_muted = bool(cfg.get_value("sound", "muted", sound_muted))
 	_apply_display()
 
 
@@ -68,6 +72,8 @@ func commit() -> void:
 	cfg.set_value("battle", "resolve_attacker", resolve_attacker)
 	cfg.set_value("battle", "resolve_defender", resolve_defender)
 	cfg.set_value("display", "fullscreen", fullscreen)
+	cfg.set_value("sound", "volume", sound_volume)
+	cfg.set_value("sound", "muted", sound_muted)
 	cfg.save(PATH)
 
 

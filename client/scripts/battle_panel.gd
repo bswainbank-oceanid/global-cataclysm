@@ -300,6 +300,8 @@ func _on_button() -> void:
 func _do_press() -> void:
 	_model.press({"attacker": Settings.resolve_attacker, "defender": Settings.resolve_defender})
 	_sync()
+	# the rolls on show: each unit type's attack sound, a little apart
+	Sfx.play_units(_model.last_rolls.map(func(e): return str(e.get("unit_type", ""))), "attack", 4, 0.15)
 
 
 func _sync() -> void:

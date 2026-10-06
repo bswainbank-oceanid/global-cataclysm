@@ -27,6 +27,7 @@ Settings="*res://scripts/settings.gd"
 Net="*res://scripts/net_client.gd"
 Stepper="*res://scripts/turn_stepper.gd"
 Account="*res://scripts/account.gd"
+Sfx="*res://scripts/sfx.gd"
 
 [display]
 

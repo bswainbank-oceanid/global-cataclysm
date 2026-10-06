@@ -217,10 +217,13 @@ func _on_message(msg: Dictionary) -> void:
 				for e in msg["events"]:
 					if str(e.get("kind", "")) == "bombardment":
 						bombardment_rolled.emit(e)
+						var cruiser: Dictionary = GameStore._unit_index.get(int(e.get("cruiser_unit_id", -1)), {})
+						Sfx.play_unit(str(cruiser.get("unit_type", "Cruiser")), "attack")
 						break
 			else:
 				executed.emit(_header(str(msg["faction"]), str(msg["phase"])), msg["events"])
 				_announce(msg["events"])
+				_play_result_sounds(str(msg["phase"]), msg["events"])
 		"diplomacy_result":
 			# One of the player's own Diplomacy actions, carried out at once: its outcome goes in the Events box.
 			executed.emit("%s - Diplomacy" % str(msg["faction"]), msg["events"])
@@ -821,11 +824,41 @@ func _send_moves(orders: Array) -> void:
 
 
 ## The selected units were dropped on `dest`: queue their move.
+## The unit types of staged move orders ({unit_id, path | destination}), from the move options.
+static func order_unit_types(orders: Array) -> Array:
+	var out := []
+	var options: Dictionary = GameStore.human_move.get("options", {})
+	for o in orders:
+		var opt: Dictionary = options.get(int(o["unit_id"]), {})
+		if opt.has("unit_type"):
+			out.append(str(opt["unit_type"]))
+	return out
+
+
+## The sounds of a step played back: its moves' (a move phase, aircraft flying home) -- one per unit type,
+## a few at most -- or, for battles fought without the board, a brief, quieter burst of their attack sounds.
+func _play_result_sounds(phase: String, events: Array) -> void:
+	var types := []
+	if phase in ["COMBAT_MOVE", "NONCOMBAT_MOVE", "RETURN_TO_BASE"]:
+		for e in events:
+			if str(e.get("kind", "")) in ["combat_move", "noncombat_move", "return_to_base"]:
+				for o in e.get("orders", []):
+					if o.has("unit_type"):
+						types.append(str(o["unit_type"]))
+		Sfx.play_units(types, "move")
+	elif phase == "COMBAT_RESOLUTION":
+		for e in events:
+			if str(e.get("kind", "")) == "battle_event" and str(e.get("event_kind", "")) == "UNIT_ROLL":
+				types.append(str(e.get("unit_type", "")))
+		Sfx.play_units(types, "attack", 3, 0.15, -6.0)
+
+
 func move_commit(dest: int) -> void:
 	var targets := GameStore.move_targets()
 	if not targets.has(dest):
 		return
 	var committed: Array = targets[dest]["orders"]
+	Sfx.play_units(order_unit_types(committed), "move")  # (queued: the units' move sounds)
 	GameStore.set_move_extend(_extend_offer_for(committed, dest))
 	var orders := GameStore.staged_orders_plain()
 	orders.append_array(committed)
