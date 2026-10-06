@@ -14,6 +14,8 @@ files the client reads:
   build.json             the client's build number (server/build.py), shown on the main menu
   history.json           the game's back story, for the History screen (data/history.json, written by
                          tools/import_history.py)
+  rules_text.json        the player's rule book, for the Rules screen (data/rules_text.json, written by
+                         tools/import_rules.py)
 plus the map image (as assets/base_map.png), the unit and faction icons, the unit sounds (assets/sounds),
 the fonts (assets/fonts) and the logo artwork (assets/logo, renamed by LOGO_FILES).
 
@@ -86,6 +88,7 @@ def main():
             json.dump(doc, f, ensure_ascii=False, indent=1)
             f.write('\n')
     shutil.copy2(ROOT / 'data' / 'history.json', data_dir / 'history.json')  # (tools/import_history.py)
+    shutil.copy2(ROOT / 'data' / 'rules_text.json', data_dir / 'rules_text.json')  # (tools/import_rules.py)
     with open(data_dir / 'build.json', 'w', encoding='utf-8') as f:  # the client's build number (server/build.py)
         json.dump(build_info(refresh=True), f)
     shutil.copy2(ROOT / config.map_info()['image'], CLIENT / 'assets' / 'base_map.png')

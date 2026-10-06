@@ -1,0 +1,525 @@
+{
+ "title": "Global Cataclysm: 1972",
+ "subtitle": "Rules of War",
+ "sections": [
+  {
+   "heading": "Game Objectives",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "text": "Victory is achieved by forcing enemy factions to surrender by controlling two critical resources:"
+    },
+    {
+     "kind": "subheading",
+     "text": "Military Production Capacity (MPC)"
+    },
+    {
+     "kind": "list",
+     "items": [
+      {
+       "text": "Each territory has an MPC value that indicates:",
+       "items": [
+        {
+         "text": "How much income the controlling faction collects at the end of each turn",
+         "items": []
+        },
+        {
+         "text": "How many units can be produced there, or in an adjacent sea territory, each turn",
+         "items": []
+        }
+       ]
+      },
+      {
+       "text": "MPC income can be spent to produce new units",
+       "items": []
+      },
+      {
+       "text": "Each scenario has an MPC multiplier (typically 2x) setting",
+       "items": [
+        {
+         "text": "Factions that fall behind economically, with a lower MPC total after applying the multiplier, can be forced to surrender",
+         "items": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "subheading",
+     "text": "Strategic Centers (SC)"
+    },
+    {
+     "kind": "list",
+     "items": [
+      {
+       "text": "The special territories confer several benefits",
+       "items": [
+        {
+         "text": "Give bonus MPC",
+         "items": []
+        },
+        {
+         "text": "Units produced at SC have a lower cost",
+         "items": []
+        }
+       ]
+      },
+      {
+       "text": "Each scenario has a minimum SC count per faction",
+       "items": [
+        {
+         "text": "Factions that fall below the minimum can be forced to surrender by another faction that controls one of their starting SCs",
+         "items": []
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "heading": "Units",
+   "blocks": [
+    {
+     "kind": "table",
+     "header": [
+      "Unit",
+      "Type",
+      "Cost",
+      "Cost at Strategic Center",
+      "Attack Die",
+      "Damage",
+      "Defense",
+      "Hit Points",
+      "Combat Move",
+      "Non-Combat Move",
+      "Special Abilities"
+     ],
+     "rows": [
+      [
+       "Infantry",
+       "Land",
+       "3",
+       "2",
+       "D6",
+       "2",
+       "5",
+       "2",
+       "1",
+       "2",
+       "Mustering: Can be deployed in contested territory, Dig In: +1 Defense when defending"
+      ],
+      [
+       "Mechanized Infantry",
+       "Land",
+       "6",
+       "4",
+       "D6",
+       "2",
+       "5",
+       "3",
+       "2",
+       "2",
+       "Amphibious: Becomes a transport in sea spaces"
+      ],
+      [
+       "Armor",
+       "Land",
+       "8",
+       "6",
+       "D8",
+       "3",
+       "5",
+       "4",
+       "1",
+       "2",
+       ""
+      ],
+      [
+       "Fighter",
+       "Air",
+       "10",
+       "7",
+       "D6",
+       "2",
+       "7",
+       "2",
+       "3",
+       "3",
+       "Air Superiority: D10 Attack, 3 Damage"
+      ],
+      [
+       "Bomber",
+       "Air",
+       "10",
+       "7",
+       "D8",
+       "3",
+       "6",
+       "3",
+       "3",
+       "3",
+       "Air Superiority: D6 Attack, 1 Damage"
+      ],
+      [
+       "Aircraft Carrier",
+       "Sea",
+       "11",
+       "8",
+       "D8",
+       "2",
+       "5",
+       "6",
+       "2",
+       "2",
+       "Carrier Air Wing: Carry up to 3 air units"
+      ],
+      [
+       "Submarine",
+       "Sea",
+       "6",
+       "4",
+       "D8",
+       "3",
+       "7",
+       "2",
+       "2",
+       "2",
+       "Submerge: Can’t engage or be attacked by aircraft"
+      ],
+      [
+       "Cruiser",
+       "Sea",
+       "12",
+       "9",
+       "D10",
+       "3",
+       "5",
+       "7",
+       "2",
+       "2",
+       "Bombardment: Can do 1 bombardment round against land as a Combat Move"
+      ],
+      [
+       "Transport",
+       "Sea",
+       "N/A",
+       "N/A",
+       "N/A",
+       "N/A",
+       "5",
+       "1",
+       "2",
+       "2",
+       "See Transport Rules"
+      ]
+     ]
+    },
+    {
+     "kind": "subheading",
+     "text": "Combat"
+    },
+    {
+     "kind": "list",
+     "items": [
+      {
+       "text": "Limited to 3 rounds",
+       "items": []
+      },
+      {
+       "text": "Roll attack die for each unit",
+       "items": [
+        {
+         "text": "Roll >= defense equals a hit",
+         "items": [
+          {
+           "text": "Deal damage equal to the damage rating",
+           "items": []
+          }
+         ]
+        },
+        {
+         "text": "Target is chosen randomly from eligible units (Defense <= roll)",
+         "items": [
+          {
+           "text": "Units are twice as likely to hit the same unit type",
+           "items": [
+            {
+             "text": "Except bombers",
+             "items": []
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "text": "Max number on the die always hits",
+         "items": [
+          {
+           "text": "If there’s no natural hit, the target is chosen from among the next lowest defense",
+           "items": [
+            {
+             "text": "If roll is < Defense",
+             "items": [
+              {
+               "text": "Deals half damage - rounded down",
+               "items": [
+                {
+                 "text": "Typically 1",
+                 "items": []
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "text": "Recovering:",
+       "items": [
+        {
+         "text": "Damage persists. Units that have not engaged in combat for a full round recover at the end of the turn",
+         "items": []
+        }
+       ]
+      },
+      {
+       "text": "Attacker rolls all attacks",
+       "items": [
+        {
+         "text": "Defending casualties are noted but not removed",
+         "items": []
+        }
+       ]
+      },
+      {
+       "text": "Defender rolls all attacks",
+       "items": [
+        {
+         "text": "Attacking and defending casualties are removed",
+         "items": []
+        }
+       ]
+      },
+      {
+       "text": "Capture territory if all enemies are removed and ground units remain",
+       "items": []
+      }
+     ]
+    },
+    {
+     "kind": "subheading",
+     "text": "Air Units"
+    },
+    {
+     "kind": "list",
+     "items": [
+      {
+       "text": "Surviving air units automatically return to their base or carrier after combat",
+       "items": [
+        {
+         "text": "Occurs even if the carrier made its own combat move",
+         "items": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "subheading",
+     "text": "Air Superiority:"
+    },
+    {
+     "kind": "list",
+     "items": [
+      {
+       "text": "Attacking or defending fighters create a 1-round air superiority combat before main combat",
+       "items": [
+        {
+         "text": "Limited to air units",
+         "items": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "subheading",
+     "text": "Promotion"
+    },
+    {
+     "kind": "list",
+     "items": [
+      {
+       "text": "Units gain XP",
+       "items": [
+        {
+         "text": "1 XP for surviving a round of combat",
+         "items": []
+        },
+        {
+         "text": "1 XP for dealing damage in combat",
+         "items": []
+        }
+       ]
+      },
+      {
+       "text": "5 XP grants a promotion",
+       "items": [
+        {
+         "text": "Increase in attack die size",
+         "items": [
+          {
+           "text": "Max of D12",
+           "items": []
+          }
+         ]
+        },
+        {
+         "text": "+1 defense",
+         "items": [
+          {
+           "text": "Max of 10",
+           "items": []
+          }
+         ]
+        },
+        {
+         "text": "+1 HP",
+         "items": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "subheading",
+     "text": "Transport and Amphibious Operations"
+    },
+    {
+     "kind": "list",
+     "items": [
+      {
+       "text": "Mechanical Infantry units can traverse water spaces",
+       "items": [
+        {
+         "text": "Become transports in marine spaces",
+         "items": [
+          {
+           "text": "Unit is destroyed with transport",
+           "items": []
+          },
+          {
+           "text": "Transports that survive a naval battle can continue a combat move into adjacent land",
+           "items": []
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "text": "Territories being attacked by transported land units get a combat bonus in the first round of combat",
+       "items": [
+        {
+         "text": "No bonus if non-amphibious land troops are attacking",
+         "items": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "kind": "subheading",
+     "text": "Contested Territory"
+    },
+    {
+     "kind": "list",
+     "items": [
+      {
+       "text": "An attack with units remaining on both sides after the 3rd round of fighting will result in a contested territory",
+       "items": []
+      },
+      {
+       "text": "The territory still belongs to its original owner",
+       "items": []
+      },
+      {
+       "text": "It contributes to neither power's IPC total",
+       "items": []
+      },
+      {
+       "text": "Only infantry from the owning power can be mustered in the territory",
+       "items": []
+      },
+      {
+       "text": "Units can move out of the territory as a combat move",
+       "items": [
+        {
+         "text": "Can’t move into uncontested enemy territory",
+         "items": []
+        }
+       ]
+      },
+      {
+       "text": "Units can move into a contested territory as a non-combat move",
+       "items": []
+      }
+     ]
+    },
+    {
+     "kind": "subheading",
+     "text": "Combat Bonuses"
+    },
+    {
+     "kind": "list",
+     "items": [
+      {
+       "text": "Units that receive a combat bonus receive:",
+       "items": [
+        {
+         "text": "Increase in attack die size",
+         "items": [
+          {
+           "text": "Max of D12",
+           "items": []
+          }
+         ]
+        },
+        {
+         "text": "+1 defense",
+         "items": [
+          {
+           "text": "Max of 10",
+           "items": []
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "text": "Combat bonuses are granted for the first round of a battle when:",
+       "items": [
+        {
+         "text": "Defender gets a bonus against amphibious attacks",
+         "items": []
+        },
+        {
+         "text": "Attacker gets a bonus when new sea units are deployed into a space they occupy",
+         "items": []
+        },
+        {
+         "text": "Owner of territory gets a bonus against formerly allied units on their territory after an ally withdraws from an alliance",
+         "items": []
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

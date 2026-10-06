@@ -10,6 +10,7 @@ signal join_pressed
 signal new_game_pressed
 signal scenarios_pressed
 signal history_pressed
+signal rules_pressed
 signal admin_pressed
 
 var _scenarios: Button
@@ -45,7 +46,7 @@ func _build() -> void:
 	var buttons := [
 		["Resume Game", resume_pressed, true], ["Join Game", join_pressed, false],
 		["New Game", new_game_pressed, false], ["Scenarios", scenarios_pressed, false], ["Admin", admin_pressed, false],
-		["History", history_pressed, false], ["Rules", null, false]]
+		["History", history_pressed, false], ["Rules", rules_pressed, false]]
 	for entry in buttons:
 		var b := Button.new()
 		b.text = entry[0]

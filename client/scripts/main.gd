@@ -22,6 +22,7 @@ var _menu: MainMenu
 var _my_games: MyGamesScreen
 var _available: AvailableGamesScreen
 var _history: HistoryScreen
+var _rules: RulesScreen
 var _admin: AdminScreen
 var _lobby: GameLobbyScreen
 var _scenarios_for := ""
@@ -406,6 +407,14 @@ func _setup_launch_screen() -> void:
 		_admin.close()
 		_menu.open())
 	_admin.request.connect(func(m: Dictionary): Net.send_msg(m))
+	_rules = RulesScreen.new()
+	add_child(_rules)
+	_menu.rules_pressed.connect(func():
+		_menu.close()
+		_rules.open())
+	_rules.back_pressed.connect(func():
+		_rules.close()
+		_menu.open())
 	_menu.history_pressed.connect(func():
 		_menu.close()
 		_history.open())
@@ -471,7 +480,7 @@ func _on_account_changed() -> void:
 			Stepper.feed_mode = false
 			Stepper.reset()
 			GameStore.set_multi_game({}, [])
-		for screen in [_available, _lobby, _my_games, _admin, _history]:
+		for screen in [_available, _lobby, _my_games, _admin, _history, _rules]:
 			screen.close()
 	_launch.close()
 	if Account.is_logged_in():
