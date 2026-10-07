@@ -18,6 +18,10 @@ boot_splash/stretch_mode=1
 boot_splash/image="res://assets/logo/splash.png"
 config/icon="res://assets/logo/icon_256.png"
 
+[audio]
+
+general/default_playback_type.web=0
+
 [autoload]
 
 GameData="*res://scripts/game_data.gd"
