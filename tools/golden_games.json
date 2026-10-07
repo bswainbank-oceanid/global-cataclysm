@@ -1,9 +1,9 @@
 {
   "random_6bot": {
     "setup": "f7fe25edcb74606f22e9012ba411bd169371870e",
-    "log": "e5f0119976ccab637761d26130dac69ac6bbaf08",
-    "final": "3a41f7508dc0d11f293d44dac7be5e473eb96edd",
-    "events": 3433
+    "log": "708636fa5e8fa99c42c550ff86ef9e48aaf0be3d",
+    "final": "cacddaf71a24362487fd254b856e1bc7024d70c9",
+    "events": 5942
   },
   "strategy_6bot": {
     "setup": "b1243c88af346a5d3c54b6c1e258716813fe66a8",
@@ -13,9 +13,9 @@
   },
   "strategy_3bot_neutral": {
     "setup": "d69d2937dc8984829002b557b6e236f62f65f704",
-    "log": "d6e82a24b51e7c295f28f89ea01dddce50c0fc90",
-    "final": "e5dc235c8dd30447466dfbb8542c71331b4f9771",
-    "events": 1903
+    "log": "7fd7b5b4485566cb7fa1052282a76e2905494766",
+    "final": "6af11e2466a4f2d02547e109684a0c4710ef9c59",
+    "events": 1865
   },
   "mixed_alliances": {
     "setup": "7a81690dee4cff825ae8590e585ece4660887d7f",

@@ -180,6 +180,9 @@ static func describe(e: Dictionary) -> String:
 				"withdraw":
 					return "%s withdraws from its alliance" % _fac(e["faction"])
 			return "%s takes no alliance action" % _fac(e["faction"])
+		"amphibious_landing":
+			return "%s's %s survives the naval battle at %s and lands at %s" % [_fac(str(e["faction"])), str(e["unit_type"]),
+				_terr(e["from"]), _terr(e["to"])]
 		"territory_captured":
 			return "%s captures %s (from %s)" % [_fac(e["faction"]), _terr(e["territory_id"]), _fac(str(e["previous_owner"]))]
 		"unit_deployed":

@@ -149,6 +149,10 @@ class UnitInstance:
     # tracker -- the bonus is one-shot, only for the turn a purely-
     # amphibious assault actually lands, confirmed this session.
     arrived_amphibiously: bool = False
+    # A land unit whose combat move fights through an enemy-held sea zone on its way to land: it waits in
+    # that sea zone (as Transport cargo) and fights its naval battle first; if it survives, it lands here --
+    # GameEngine._land_after_sea_battle, at the end of that sea battle. None otherwise (and once landed).
+    landing_at: Optional[int] = None
     # Transient, never serialized: True only while combat.resolve_battle has this
     # LAND unit in a SEA battle, where it is Transport cargo (see effective_stats).
     in_transport_form: bool = field(default=False, repr=False, compare=False)
@@ -256,6 +260,7 @@ class UnitInstance:
             'purchased_at': self.purchased_at,
             'arrived_amphibiously': self.arrived_amphibiously,
             'bombard_target': self.bombard_target,
+            **({'landing_at': self.landing_at} if self.landing_at is not None else {}),
         }
 
     @staticmethod

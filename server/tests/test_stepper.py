@@ -179,8 +179,12 @@ class TestWatch(unittest.TestCase):
                 continue
             count = queue['battle']['count']
             gs = session.engine.game_state
-            for i in range(count):
-                self.assertEqual((queue['phase'], queue['battle']['index']), ('COMBAT_RESOLUTION', i))
+            last = -1
+            while queue['phase'] == 'COMBAT_RESOLUTION':
+                # (one at a time, in order; a landing's battle is skipped when nobody survived the sea to land)
+                i = queue['battle']['index']
+                self.assertTrue(last < i < count, (last, i, count))
+                last = i
                 self.assertEqual(len(queue['events']), 1)
                 self.assertEqual(queue['events'][0]['kind'], 'battle_preview')
                 messages = session.handle_message({'type': 'next'})

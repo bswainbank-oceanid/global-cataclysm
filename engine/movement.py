@@ -551,12 +551,16 @@ class CombatMoveTrace:
     meaningful there when the unit's FINAL stop is land (one that ends
     in open water instead is a naval combatant, never a land-battle
     attacker, so a True value here for that case is harmless)."""
-    __slots__ = ('entered_en_route', 'final_kind', 'crossed_water')
+    __slots__ = ('entered_en_route', 'final_kind', 'crossed_water', 'fight_at')
 
-    def __init__(self, entered_en_route, final_kind, crossed_water):
+    def __init__(self, entered_en_route, final_kind, crossed_water, fight_at=None):
         self.entered_en_route = entered_en_route
         self.final_kind = final_kind
         self.crossed_water = crossed_water
+        # fight_at: the hostile sea zone a LAND unit's path fights through on its way to land (the
+        # 'land_only' pass-through), or None. The unit must fight that sea zone's naval battle first and
+        # survive it before it lands (GameEngine._execute_combat_moves / _land_after_sea_battle).
+        self.fight_at = fight_at
 
 
 class BombardmentTrace:
@@ -676,6 +680,7 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
     water_active = is_land_unit and territories[path[0]]['type'] == 'sea'
     moves_used = 0
     entered_en_route = []
+    fight_at = None  # the hostile sea zone fought through on the way to land (CombatMoveTrace.fight_at)
     # True when the PREVIOUS hop was a hostile-water crossing (_Hop's
     # 'land_only' pass-through) -- forces THIS hop to be land, and to be
     # the final stop of the whole path (see the amphibious-landing
@@ -745,6 +750,8 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
                 # contested by the caller, same as everything else here.
                 entered_en_route.append(next_id)
         land_only_restricted = (hop.pass_through == 'land_only')
+        if land_only_restricted and not is_last:
+            fight_at = next_id
 
     final_id = path[-1]
     final_state = game_state.territories[final_id]
@@ -760,7 +767,8 @@ def trace_combat_move(unit_type, owner, path, game_state, data_module):
     else:
         final_kind = 'attack'  # empty open sea is never a legal final stop -- see _classify_combat_hop
 
-    return CombatMoveTrace(entered_en_route=entered_en_route, final_kind=final_kind, crossed_water=water_active)
+    return CombatMoveTrace(entered_en_route=entered_en_route, final_kind=final_kind, crossed_water=water_active,
+                           fight_at=fight_at)
 
 
 def legal_contest_exit_paths(unit_type, owner, origin_id, game_state, data_module):

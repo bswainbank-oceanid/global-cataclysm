@@ -555,6 +555,9 @@ class PhaseStepper:
         territory_id, battle_type = self._battles[self._battle_index]
         engine.resolve_one_battle(faction, territory_id, battle_type)
         self._battle_index += 1
+        # (a landing's battle is off when nobody survived the naval battle to land: GameEngine.battle_ready)
+        while self._battle_index < len(self._battles) and not engine.battle_ready(faction, self._battles[self._battle_index][0]):
+            self._battle_index += 1
         if self._battle_index < len(self._battles):
             return True
         self._bombardments = None

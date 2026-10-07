@@ -847,6 +847,19 @@ class GameEngine:
                             and unit_defs[u.unit_type]['category'] == 'Air'
                         ][:self._capacity(unit.unit_type)]  # a carrier carries at most its capacity
                     origin_state.units.remove(unit)
+                    if category == 'Land' and trace.fight_at is not None:
+                        # Its path fights through an enemy-held sea zone on the way to land: it stops there,
+                        # as Transport cargo, to fight that naval battle first. If it survives, it lands at
+                        # dest_id at the end of that battle (_land_after_sea_battle) -- every sea battle is
+                        # fought before any land battle (combat.battle_resolution_pass_order).
+                        for entered_tid in trace.entered_en_route:
+                            self._mark_contested_by_attack(game_state.territories[entered_tid], faction, game_state)
+                        sea_state = game_state.territories[trace.fight_at]
+                        self._mark_contested_by_attack(sea_state, faction, game_state)
+                        unit.landing_at = dest_id
+                        sea_state.units.append(unit)
+                        unit.has_moved_combat = True
+                        continue
                     # Every foreign territory entered or passed through this
                     # way is marked contested -- never captured outright,
                     # even an entirely undefended Mechanized Infantry blitz
@@ -1081,14 +1094,25 @@ class GameEngine:
         terrs = self.data.territories()
         battles = []
         for tid, t in self.game_state.territories.items():
-            if not t.contested_by:
-                continue
-            if not any(u.owner == faction for u in t.units):
+            if not self.battle_ready(faction, tid):
                 continue
             battles.append((tid, 'sea' if terrs[tid]['type'] == 'sea' else 'land'))
+        # A land unit waiting at sea to land after its naval battle (UnitInstance.landing_at): its landing's
+        # battle is part of this Combat Resolution too, fought only if it gets there (see battle_ready).
+        for t in self.game_state.territories.values():
+            for u in t.units:
+                if u.owner == faction and u.landing_at is not None and (u.landing_at, 'land') not in battles:
+                    battles.append((u.landing_at, 'land'))
         pass_order = {'sea': 0, 'land': 1}
         battles.sort(key=lambda b: pass_order[b[1]])
         return battles
+
+    def battle_ready(self, faction, territory_id):
+        """Whether `faction` has a battle to fight at `territory_id` right now: it's contested and `faction`
+        has units there. (A battle declared_battles listed for a landing that never came -- every unit sunk
+        in its naval battle -- isn't, and is skipped.)"""
+        t = self.game_state.territories[territory_id]
+        return bool(t.contested_by) and any(u.owner == faction for u in t.units)
 
     def gather_battle_units(self, territory_id, faction):
         """(attacker_units, defender_units) for a battle at
@@ -1174,6 +1198,7 @@ class GameEngine:
         return [
             self.resolve_one_battle(faction, territory_id, battle_type, rng)
             for territory_id, battle_type in self.declared_battles(faction)
+            if self.battle_ready(faction, territory_id)  # (checked as each comes up: a landing may not have)
         ]
 
     def begin_combat_resolution(self, faction):
@@ -1336,6 +1361,22 @@ class GameEngine:
                     in_transport = battle_type == 'sea' and unit_defs[unit.unit_type]['category'] == 'Land'
                     self.stats.record_death(unit.owner, unit.unit_type, in_transport=in_transport)
 
+    def _land_after_sea_battle(self, faction, sea_id):
+        """`faction`'s land units that fought this sea battle on their way to land (UnitInstance.landing_at)
+        and survived it go ashore now, attacking (or joining the fight at, or landing safely on) the
+        territory they were headed for -- before any land battle is fought. The sunk never land."""
+        t = self.game_state.territories[sea_id]
+        for unit in [u for u in t.units if u.owner == faction and u.landing_at is not None]:
+            dest = self.game_state.territories[unit.landing_at]
+            t.units.remove(unit)
+            if not (_is_ally_or_self(self.game_state, faction, dest.owner) and not dest.contested_by):
+                self._mark_contested_by_attack(dest, faction, self.game_state)
+            dest.units.append(unit)
+            if self.turn_log is not None:
+                self.turn_log.events.append({'kind': 'amphibious_landing', 'faction': faction, 'unit_id': unit.unit_id,
+                                             'unit_type': unit.unit_type, 'from': sea_id, 'to': unit.landing_at})
+            unit.landing_at = None
+
     def _apply_battle_outcome(self, territory_id, battle_type, faction, result, rng):
         t = self.game_state.territories[territory_id]
         dead_ids = set(result.eliminated_attacker_ids) | set(result.eliminated_defender_ids)
@@ -1343,6 +1384,7 @@ class GameEngine:
 
         if battle_type == 'sea':
             self._resolve_stranded_defender_aircraft(territory_id, result, rng)
+            self._land_after_sea_battle(faction, territory_id)
 
         if self.stats is not None:
             # stats.rounds_contested: this counts as one more round of
@@ -2377,6 +2419,7 @@ class GameEngine:
                         u.has_moved_combat = False
                         u.has_moved_noncombat = False
                         u.arrived_amphibiously = False
+                        u.landing_at = None  # (a landing still waiting -- never, normally -- doesn't carry over)
                         u.bombard_target = None  # defensive: _resolve_bombardments always consumes this already
             self._purchases_confirmed.discard(finishing)
             self._combat_moves_confirmed.discard(finishing)

@@ -160,7 +160,9 @@ class TestCombatMovePhase(unittest.TestCase):
         bot = RandomBot(engine, 'NAA')
         bot.take_combat_move_phase()
 
-        self.assertIn(mover.unit_id, [u.unit_id for u in gs.territories[6].units])
+        # (it fights the Cruiser's sea zone first, waiting there to land at 6: engine._land_after_sea_battle)
+        self.assertIn(mover.unit_id, [u.unit_id for u in gs.territories[3].units])
+        self.assertEqual(mover.landing_at, 6)
 
     def test_amphibious_attack_preferred_over_a_merely_safe_landing(self):
         # 2 (NAA Mech Inf) -> 3 (sea, hostile) -> either 5 (NAA's OWN
@@ -190,7 +192,7 @@ class TestCombatMovePhase(unittest.TestCase):
         bot = RandomBot(engine, 'NAA')
         bot.take_combat_move_phase()
 
-        self.assertIn(mover.unit_id, [u.unit_id for u in gs.territories[9].units], 'must press the attack, not retreat to friendly land')
+        self.assertEqual(mover.landing_at, 9, 'must press the attack, not retreat to friendly land')
 
     def test_falls_back_to_safe_landing_when_no_attack_option_exists(self):
         # Same shape, but this time the only land beyond the hostile
@@ -214,7 +216,7 @@ class TestCombatMovePhase(unittest.TestCase):
         bot = RandomBot(engine, 'NAA')
         bot.take_combat_move_phase()
 
-        self.assertIn(mover.unit_id, [u.unit_id for u in gs.territories[5].units])
+        self.assertEqual(mover.landing_at, 5)  # (after the naval battle at 3)
 
     def test_infantry_on_an_owned_sc_never_gets_a_combat_move_order(self):
         # Bot defense policy, this session: "Infantry should never leave
