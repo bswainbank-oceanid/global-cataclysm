@@ -47,8 +47,25 @@ func _ready() -> void:
 		if a.begins_with("--"):
 			var kv := a.substr(2).split("=", true, 1)
 			args[kv[0]] = kv[1] if kv.size() > 1 else "true"
+	_web_args()
 	if args.has("shot"):
 		_take_shot()
+
+
+## In a browser (the web build) there's no command line: a page served from this machine takes the same
+## options from its address instead (index.html?dev_user=Ann&click=...), for testing. Never a page from
+## anywhere else, so a real server's players can't use them. (--shot can't save a file there.)
+func _web_args() -> void:
+	if not OS.has_feature("web"):
+		return
+	var host := str(JavaScriptBridge.eval("location.hostname", true))
+	if host not in ["localhost", "127.0.0.1"]:
+		return
+	var query := str(JavaScriptBridge.eval("location.search", true)).trim_prefix("?")
+	for pair in query.split("&", false):
+		var kv := pair.split("=", true, 1)
+		if kv[0] != "server":  # (net_client.gd's release_url reads that one itself)
+			args[kv[0].uri_decode()] = kv[1].uri_decode() if kv.size() > 1 else "true"
 
 
 func _take_shot() -> void:

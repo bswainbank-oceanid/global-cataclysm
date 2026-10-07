@@ -3,13 +3,22 @@
 #
 #   wss://GC_DOMAIN/ws          the game (the client's server address), passed to the game server
 #   https://GC_DOMAIN/          the download page (deploy/www/index.html)
+#   https://GC_DOMAIN/play/     the game in the browser (tools/build_client.py --web)
 #   https://GC_DOMAIN/download/ the client builds (tools/build_client.py's zips)
 
 GC_DOMAIN {
-	encode gzip
+	encode zstd gzip
 
 	handle /ws {
 		reverse_proxy 127.0.0.1:8765
+	}
+
+	# The web build's files keep their names from one version to the next: browsers must check for a newer
+	# one each time (an unchanged file is answered "not modified", so it costs little).
+	handle /play/* {
+		root * /var/www/global-cataclysm
+		header Cache-Control "no-cache"
+		file_server
 	}
 
 	handle {

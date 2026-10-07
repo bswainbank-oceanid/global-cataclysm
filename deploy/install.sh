@@ -41,7 +41,7 @@ sudo -u gc bash -lc "cd $APP && ~/.local/bin/uv python install 3.14 && ~/.local/
 sudo -u gc mkdir -p "$APP/server_data"
 
 echo "== the download page"
-mkdir -p "$WWW/download"
+mkdir -p "$WWW/download" "$WWW/play"
 if [[ ! -f $WWW/index.html ]]; then
   sed "s/GC_DOMAIN/$DOMAIN/g" "$APP/deploy/www/index.html" > "$WWW/index.html"
 fi
@@ -58,6 +58,6 @@ systemctl reload caddy || systemctl restart caddy
 
 echo
 echo "Done. The game server: systemctl status global-cataclysm   (log: journalctl -u global-cataclysm -f)"
-echo "Players connect to wss://$DOMAIN/ws; the download page is https://$DOMAIN/"
+echo "Players connect to wss://$DOMAIN/ws; the download page is https://$DOMAIN/ (the browser version: /play/)"
 echo "Next: register your account in the client, then make it an admin:"
 echo "  sudo -u gc $APP/.venv/bin/python $APP/tools/set_admin.py --db $APP/server_data/global_cataclysm.sqlite3 YOUR_EMAIL"

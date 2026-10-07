@@ -32,8 +32,16 @@ var _retry_in := -1.0  # seconds until the next try to reconnect (-1: none plann
 
 
 ## The server a release build connects to (tools/build_client.py writes it into the build), or "" for a
-## development copy, which only connects when started with --server.
+## development copy, which only connects when started with --server. In a browser (the web build) it is
+## the page's own server -- wss://<the page's host>/ws (ws:// for a page served over plain http) -- unless
+## the page's address says otherwise (?server=ws://..., for testing).
 static func release_url() -> String:
+	if OS.has_feature("web"):
+		var asked := str(JavaScriptBridge.eval("new URLSearchParams(location.search).get('server') || ''", true))
+		if asked != "":
+			return asked
+		var secure := str(JavaScriptBridge.eval("location.protocol", true)) == "https:"
+		return "%s://%s/ws" % ["wss" if secure else "ws", str(JavaScriptBridge.eval("location.host", true))]
 	if not FileAccess.file_exists(RELEASE):
 		return ""
 	var doc = JSON.parse_string(FileAccess.get_file_as_string(RELEASE))

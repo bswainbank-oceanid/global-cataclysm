@@ -1,8 +1,11 @@
 """
 Builds the client players download: a Windows program that connects to `--server-url` on its own (no
---server needed), zipped as exports/GlobalCataclysm-Build<N>.zip (docs/DEPLOY.md).
+--server needed), zipped as exports/GlobalCataclysm-Build<N>.zip -- or with --web the browser version,
+the files of exports/web/ (served at https://<domain>/play/), which connects to the server it was loaded
+from (docs/DEPLOY.md).
 
-    python tools/build_client.py --server-url wss://play.example.com
+    python tools/build_client.py --server-url wss://play.example.com/ws
+    python tools/build_client.py --web
     python tools/build_client.py --server-url wss://play.example.com --godot PATH\\Godot_v4.7.2-stable_win64_console.exe
 
 It syncs the client's data first (tools/sync_client_data.py), writes the server's address into the build
@@ -25,6 +28,7 @@ CLIENT = os.path.join(ROOT, 'client')
 RELEASE = os.path.join(CLIENT, 'data', 'server.json')
 OUT = os.path.join(ROOT, 'exports')
 PRESET = 'Windows Desktop'
+WEB_PRESET = 'Web'
 EXE = 'GlobalCataclysm.exe'
 GODOT_GLOB = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Microsoft', 'WinGet', 'Packages', 'GodotEngine.GodotEngine*',
                           'Godot_v*_win64_console.exe')
@@ -42,15 +46,19 @@ def templates_missing(godot):
     parts = version.split('.')
     name = '.'.join(parts[:parts.index('stable') + 1]) if 'stable' in parts else '.'.join(parts[:4])
     folder = os.path.join(os.environ.get('APPDATA', ''), 'Godot', 'export_templates', name)
-    return None if os.path.exists(os.path.join(folder, 'windows_release_x86_64.exe')) else folder
+    return None if all(os.path.exists(os.path.join(folder, f)) for f in ('windows_release_x86_64.exe', 'web_nothreads_release.zip')) else folder
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--server-url', required=True, help='the server players connect to, e.g. wss://play.example.com')
+    parser.add_argument('--server-url', help='the server players connect to, e.g. wss://play.example.com/ws '
+                                             '(the Windows build; the web build uses the server it is loaded from)')
+    parser.add_argument('--web', action='store_true', help='build the browser version (exports/web/) instead')
     parser.add_argument('--godot', default=None, help='the Godot console executable (default: the WinGet install)')
     args = parser.parse_args(argv)
-    if not args.server_url.startswith(('wss://', 'ws://')):
+    if not args.web and not args.server_url:
+        parser.error('--server-url is needed (or --web)')
+    if args.server_url and not args.server_url.startswith(('wss://', 'ws://')):
         parser.error('--server-url must start with wss:// (or ws:// for testing)')
     godot = args.godot or find_godot()
     if not godot or not os.path.exists(godot):
@@ -67,6 +75,8 @@ def main(argv=None):
     build = build_info(refresh=True)
     if build['commit'].endswith('+'):
         print(f"note: {build['label']} has uncommitted changes")
+    if args.web:
+        return build_web(godot, build)
     os.makedirs(os.path.join(OUT, 'client'), exist_ok=True)
     exe = os.path.join(OUT, 'client', EXE)
     try:
@@ -84,6 +94,25 @@ def main(argv=None):
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
         z.write(exe, EXE)
     print(f"built {archive} ({os.path.getsize(archive) // 1024 // 1024} MB): {build['label']}, server {args.server_url}")
+    return 0
+
+
+def build_web(godot, build):
+    """The browser version, in exports/web/ (emptied first): index.html and the engine and game files."""
+    web = os.path.join(OUT, 'web')
+    os.makedirs(web, exist_ok=True)
+    for old in os.listdir(web):
+        os.remove(os.path.join(web, old))
+    if os.path.exists(RELEASE):  # (no built-in server: the page connects to its own)
+        os.remove(RELEASE)
+    subprocess.run([godot, '--headless', '--path', CLIENT, '--import'], check=True)
+    subprocess.run([godot, '--headless', '--path', CLIENT, '--export-release', WEB_PRESET,
+                    os.path.join(web, 'index.html')], check=True)
+    if not os.path.exists(os.path.join(web, 'index.html')):
+        print('the export made no page: see the messages above')
+        return 1
+    size = sum(os.path.getsize(os.path.join(web, f)) for f in os.listdir(web))
+    print(f"built {web} ({size // 1024 // 1024} MB, {len(os.listdir(web))} files): {build['label']}")
     return 0
 
 

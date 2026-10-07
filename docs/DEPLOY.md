@@ -7,11 +7,13 @@ How to run the game server on the internet and give players a client to download
 | Game server | `python -m server.app` (multi-player), as a systemd service | `/opt/global-cataclysm` on a Linux server |
 | Caddy | Web server in front of it: HTTPS certificates, the `wss://` connection, the download page | `/etc/caddy/Caddyfile` |
 | Player database | Accounts, games, chat (SQLite), backed up daily | `/opt/global-cataclysm/server_data/` |
-| Client | A Windows program built by `tools/build_client.py` | `https://<domain>/download/GlobalCataclysm.zip` |
+| Client in the browser | The web build of the client (`tools/build_client.py --web`) | `https://<domain>/play/` |
+| Client to download | A Windows program built by `tools/build_client.py` | `https://<domain>/download/GlobalCataclysm.zip` |
 
 ```
 player's client ──wss://<domain>/ws──▶ Caddy (443) ──ws://127.0.0.1:8765──▶ game server ──▶ SQLite
-player's browser ──https://<domain>/──▶ Caddy ──▶ /var/www/global-cataclysm (download page + zips)
+player's browser ──https://<domain>/──▶ Caddy ──▶ /var/www/global-cataclysm (download page, /play/, zips)
+browser client ──wss://<domain>/ws──▶ (the same as the downloaded client)
 ```
 
 ## What you need
@@ -76,13 +78,36 @@ isn't code-signed): **More info → Run anyway**.
 
 A development copy is unaffected: without the built-in address it still connects only with `--server`.
 
+### The browser version
+
+```bash
+python tools/build_client.py --web
+```
+
+That builds `exports/web/` (an `index.html` and the engine and game files, about 60 MB, about 30 MB once
+compressed in transit). It connects to the server it is loaded from (`wss://<domain>/ws`), so one build works
+for any domain. Upload it, replacing the old one:
+
+```bash
+scp exports/web/* you@play.example.com:/tmp/gc-web/      # (make /tmp/gc-web first: ssh ... mkdir -p /tmp/gc-web)
+ssh you@play.example.com "sudo rm -rf /var/www/global-cataclysm/play/* && sudo cp /tmp/gc-web/* /var/www/global-cataclysm/play/"
+```
+
+Players open `https://play.example.com/play/` (the download page links to it). Browsers check for a new
+version on each visit (deploy/Caddyfile), so a reload after an update gets it; a player whose page is out of
+date sees a **Reload for the new version** button.
+
+To try a web build on your own PC: run a test game server (`python -m server.app --port 8796 --db <a test
+database>`), serve the files (`python -m http.server 8800 --directory exports/web`), and open
+`http://localhost:8800/?server=ws://localhost:8796/ws`.
+
 ## Updating
 
 1. Push the new code from your PC.
 2. On the server: `sudo bash /opt/global-cataclysm/deploy/update.sh`. It backs up the database, pulls the
    code, updates the Python packages and restarts the server. Live games carry on where they were.
-3. If the client changed, build and upload a new one (above). Players with the old one see their build
-   differs from the server's, with a **Download the new version** button.
+3. If the client changed, build and upload new ones (above): the browser version and the Windows download.
+   Players with an old one see their build differs from the server's, with a button to reload or download.
 
 The client and server compare build numbers (git commit counts), so build the client from the same commit
 the server runs.

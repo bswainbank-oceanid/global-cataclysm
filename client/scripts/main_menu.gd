@@ -87,6 +87,7 @@ func _build() -> void:
 	HudStyle.secondary(quit)
 	quit.custom_minimum_size = Vector2(0, 46)
 	quit.pressed.connect(func(): get_tree().quit())  # (the games carry on on the server)
+	quit.visible = not OS.has_feature("web")  # (in a browser the player closes the tab)
 	v.add_child(quit)
 
 	# the upper right: Display Settings and the profile
@@ -141,11 +142,16 @@ func _build() -> void:
 	bottom.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	bottom.position += Vector2(-16, -12)
 	_download = Button.new()
-	_download.text = "Download the new version"
+	# (in a browser the new version is the page itself, reloaded)
+	_download.text = "Reload for the new version" if OS.has_feature("web") else "Download the new version"
 	HudStyle.primary(_download)
 	_download.size_flags_horizontal = Control.SIZE_SHRINK_END
 	_download.visible = false
-	_download.pressed.connect(func(): OS.shell_open(Account.download_url))
+	_download.pressed.connect(func():
+		if OS.has_feature("web"):
+			JavaScriptBridge.eval("location.reload()")
+		else:
+			OS.shell_open(Account.download_url))
 	bottom.add_child(_download)
 	_builds = HudStyle.label("", 12, GCTheme.CREAM_DIM)
 	_builds.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -220,12 +226,16 @@ func refresh() -> void:
 	var server := str(Account.server_build.get("label", "Build unknown"))
 	var lines := ["Client " + client, "Server " + server]
 	if Account.builds_differ():
-		lines.append("The client and server builds differ: " + ("download the new version" if Account.download_url != ""
-			else "restart the game to update"))
+		var how := "restart the game to update"
+		if OS.has_feature("web"):
+			how = "reload the page to update"
+		elif Account.download_url != "":
+			how = "download the new version"
+		lines.append("The client and server builds differ: " + how)
 	_builds.text = "
 ".join(lines)
 	_builds.add_theme_color_override("font_color", GCTheme.RED_LIGHT if Account.builds_differ() else GCTheme.CREAM)
-	_download.visible = Account.builds_differ() and Account.download_url != ""
+	_download.visible = Account.builds_differ() and (Account.download_url != "" or OS.has_feature("web"))
 	_download.tooltip_text = Account.download_url
 
 
