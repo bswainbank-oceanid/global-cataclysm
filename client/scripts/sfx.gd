@@ -5,6 +5,10 @@ extends Node
 ##
 ##   Sfx.play_units(["Armor", "Infantry"], "move")   # one sound per unit type, a little apart
 ##
+## The interface's own sound -- a soft typewriter click (assets/sounds/ui/ui_click.wav) -- plays for every
+## button, tab and list choice (hooked up here as each one is created), and for map clicks that aren't a
+## unit's own sound (main.gd): Sfx.click(). Unit tiles stay silent: their units make their own sounds.
+##
 ## Several units of a type make one sound, not many; a burst of different types is capped (`limit`) and
 ## spaced out (`spacing`), and the same sound never starts twice within MIN_GAP_MS. `played` reports each
 ## sound as it is asked for (tests listen to it).
@@ -15,11 +19,16 @@ const BUS := "SFX"
 const VOICES := 8          # sounds that can play at once
 const MIN_GAP_MS := 120    # the same sound doesn't restart sooner than this
 const SOUND_DIR := "res://assets/sounds/"
+const CLICK := "ui/ui_click.wav"
+const CLICK_GAIN_DB := -12.0  # played softly, under the unit sounds
+const CLICK_GAP_MS := 45       # a press seen twice (a button inside a tab, say) clicks once
 
 var _players: Array = []
 var _next_player := 0
 var _streams := {}         # file -> AudioStreamWAV (null if it couldn't be loaded)
 var _last_start := {}      # file -> msec it last started
+var _click_player: AudioStreamPlayer
+var _last_click := -100000
 
 
 func _ready() -> void:
@@ -32,8 +41,39 @@ func _ready() -> void:
 		p.bus = BUS
 		add_child(p)
 		_players.append(p)
+	_click_player = AudioStreamPlayer.new()
+	_click_player.bus = BUS
+	_click_player.volume_db = CLICK_GAIN_DB
+	_click_player.max_polyphony = 3
+	add_child(_click_player)
 	Settings.changed.connect(apply_volume)
 	apply_volume()
+	get_tree().node_added.connect(_hook_clicks)
+
+
+## The interface's click: soft, and never two at once for one press.
+func click() -> void:
+	var now := Time.get_ticks_msec()
+	if now - _last_click < CLICK_GAP_MS:
+		return
+	_last_click = now
+	var stream = _stream(CLICK)
+	if stream == null:
+		return
+	_click_player.stream = stream
+	_click_player.play()
+
+
+## Every button (but a unit tile), tab bar and pop-up list clicks as it's pressed.
+func _hook_clicks(node: Node) -> void:
+	if node is UnitTile:
+		return
+	if node is BaseButton:
+		(node as BaseButton).pressed.connect(click)
+	elif node is TabBar:
+		(node as TabBar).tab_clicked.connect(func(_tab: int): click())
+	elif node is PopupMenu:
+		(node as PopupMenu).index_pressed.connect(func(_i: int): click())
 
 
 ## The Settings' volume (0-100) and mute, onto the SFX bus.

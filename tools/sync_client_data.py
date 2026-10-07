@@ -113,6 +113,7 @@ def main():
         _keep_as_is(icon_dir / icon)
     # the unit sounds each unit type names (assets/sounds: tools/make_sounds.py)
     sounds = {d[k] for d in config.units().values() for k in ('move_sound', 'attack_sound') if d.get(k)}
+    sounds |= {f'ui/{f.name}' for f in (ROOT / 'assets' / 'sounds' / 'ui').glob('*.wav')}  # (the interface's: Sfx.click)
     for sound in sorted(sounds):
         dest = CLIENT / 'assets' / 'sounds' / sound
         dest.parent.mkdir(parents=True, exist_ok=True)

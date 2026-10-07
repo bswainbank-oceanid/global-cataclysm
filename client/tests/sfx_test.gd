@@ -58,6 +58,22 @@ func _initialize() -> void:
 	stepper._play_result_sounds("PURCHASE", [{"kind": "purchase", "orders": [{"unit_type": "Armor"}]}])
 	_check(_heard.is_empty(), "a purchase makes no sound")
 
+	# The interface click: it loads; every button clicks as it's pressed (once per press), a unit tile doesn't.
+	_check(sfx._stream(sfx.CLICK) != null, "the click sound loads")
+	var button := Button.new()
+	root.add_child(button)
+	sfx._last_click = -100000
+	button.pressed.emit()
+	var first: int = sfx._last_click
+	_check(first > 0, "pressing a button clicks")
+	button.pressed.emit()
+	_check(sfx._last_click == first, "a second press at the same moment doesn't click again")
+	var tile = load("res://scripts/unit_tile.gd").make({"unit_id": 1, "unit_type": "Armor", "owner": "PAF", "current_hp": 4})
+	root.add_child(tile)
+	sfx._last_click = -100000
+	tile.pressed.emit()
+	_check(sfx._last_click == -100000, "a unit tile makes no click")
+
 	# Queued moves: the unit types come from the move options.
 	var store = root.get_node("GameStore")
 	store.human_move = {"options": {5: {"unit_type": "Bomber"}, 6: {"unit_type": "Fighter"}}}

@@ -136,5 +136,13 @@
   "url": "https://freesound.org/people/ChristianAnd/sounds/468846/",
   "license": "http://creativecommons.org/publicdomain/zero/1.0/",
   "chosen_from": "transport_move E"
+ },
+ "ui_click": {
+  "freesound_id": 194795,
+  "name": "Vintage Keyboard 1",
+  "author": "jim-ph",
+  "url": "https://freesound.org/people/jim-ph/sounds/194795/",
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "chosen_from": "ui_click K"
  }
 }

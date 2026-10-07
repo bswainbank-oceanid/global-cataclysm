@@ -7,7 +7,8 @@ writes server_data/sound_audition/index.html -- open it in a browser, play them,
 The Freesound API key is read from server_data/freesound_key.txt (the 40-character key; the rest of what
 the credentials page shows may be in there too) or FREESOUND_API_KEY. server_data is git-ignored.
 
-    python tools/sound_search.py [--per 4] [--only armor_attack,...] [--licence cc0|cc0+by]
+    python tools/sound_search.py [--per 4] [--only armor_attack,...] [--licence cc0|cc0+by] [--page NAME.html]
+    (--page: write just the sounds searched for to that page, e.g. a board for one new sound)
 """
 import argparse
 import html
@@ -45,6 +46,10 @@ WANTED = {
     'cruiser_move': ("Cruiser moving: a warship's engine and wake", ['ship engine room', 'boat engine', 'ship engine', 'motorboat passing'], (0.8, 15)),
     'cruiser_attack': ('Cruiser attacking: a naval gun salvo', ['cannon fire', 'cannon shot', 'artillery', 'naval gun'], (0.2, 6)),
     'transport_move': ("Transport moving: a cargo ship's horn", ['boat horn', 'ship horn', 'ferry horn'], (0.5, 12)),
+    # the interface's own sound (not a unit's): menus, selections, non-unit clicks -- played softly
+    'ui_click': ('A soft click for menus and selections: one key of an old typewriter',
+                 ['typewriter key', 'typewriter single key', 'typewriter keystroke', 'old typewriter',
+                  'manual typewriter click', 'typewriter type'], (0.05, 4)),
 }
 
 LICENCES = {'cc0': 'license:"Creative Commons 0"',
@@ -102,13 +107,13 @@ def download(url, path):
             f.write(r.read())
 
 
-def page(results):
+def page(results, title='Unit Sound Audition'):
     rows = []
     for name, found in results.items():
         what = WANTED[name][0]
         cards = []
         for i, s in enumerate(found):
-            letter = 'ABCDEFGH'[i]
+            letter = 'ABCDEFGHIJKLMNOP'[i]
             cards.append(f'''
       <div class="card">
         <div class="pick">{letter}</div>
@@ -125,7 +130,7 @@ def page(results):
   </section>''')
     return f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Unit Sound Audition</title>
+<title>{html.escape(title)}</title>
 <style>
   :root {{ --navy:#0B2433; --red:#C92A24; --paper:#E9E1D3; --cream:#F4EBDD; --gray:#6B747A; }}
   body {{ margin:0; background:var(--paper); color:var(--navy); font:15px/1.45 Inter, Helvetica, Arial, sans-serif; }}
@@ -144,7 +149,7 @@ def page(results):
   .meta {{ font-size:12px; color:var(--gray); margin:4px 0 8px; }}
   audio {{ width:100%; }}
 </style></head><body>
-<header><h1>Unit Sound Audition</h1>
+<header><h1>{html.escape(title)}</h1>
 <p>Play each candidate and tell Claude your pick per sound (e.g. "armor_attack B"), or "none" to search again.
 Picks are trimmed to the best second or two and matched in loudness, so judge the character, not the length.</p></header>
 <main>{''.join(rows)}
@@ -157,6 +162,7 @@ def main(argv=None):
     parser.add_argument('--per', type=int, default=6, help='candidates per sound')
     parser.add_argument('--only', default='', help='comma-separated sound names (default: all)')
     parser.add_argument('--licence', choices=sorted(LICENCES), default='cc0')
+    parser.add_argument('--page', default='', help="write only these sounds' candidates to this page (in the audition folder)")
     args = parser.parse_args(argv)
     key = api_key()
     names = [n for n in args.only.split(',') if n] or list(WANTED)
@@ -173,9 +179,15 @@ def main(argv=None):
     results = {n: results[n] for n in WANTED if n in results}
     with open(data_path, 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=1)
-    with open(os.path.join(OUT, 'index.html'), 'w', encoding='utf-8') as f:
-        f.write(page(results))
-    print('audition page:', os.path.join(OUT, 'index.html'))
+    if args.page:
+        path = os.path.join(OUT, args.page)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(page({n: results[n] for n in names if n in results}, 'Sound Audition'))
+    else:
+        path = os.path.join(OUT, 'index.html')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(page(results))
+    print('audition page:', path)
     return 0
 
 

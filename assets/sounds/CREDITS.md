@@ -1,6 +1,6 @@
-# Unit sound credits
+# Sound credits
 
-The unit sounds are cut from these recordings on [Freesound](https://freesound.org), all under
+The unit and interface sounds are cut from these recordings on [Freesound](https://freesound.org), all under
 Creative Commons 0 (public domain): no attribution is required, but they are credited here with thanks.
 Built by tools/fetch_sounds.py from assets/sounds/sources.json.
 
@@ -23,3 +23,4 @@ Built by tools/fetch_sounds.py from assets/sounds/sources.json.
 | cruiser_move | [Running ship steam engine](https://freesound.org/people/derplayer/sounds/587171/) | derplayer | CC0 |
 | cruiser_attack | [120mm Mortar Shell Shot 1](https://freesound.org/people/qubodup/sounds/854477/) | qubodup | CC0 |
 | transport_move | [35_Bocina_barco.wav](https://freesound.org/people/ChristianAnd/sounds/468846/) | ChristianAnd | CC0 |
+| ui_click | [Vintage Keyboard 1](https://freesound.org/people/jim-ph/sounds/194795/) | jim-ph | CC0 |

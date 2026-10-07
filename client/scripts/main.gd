@@ -75,7 +75,9 @@ func _ready() -> void:
 	_cam.zoom_changed.connect(_world.set_zoom)
 	_setup_move_dragging()
 	_setup_launch_screen()
-	_cam.clicked.connect(func(p: Vector2): _world.select(_world.space_at_world(p)))
+	_cam.clicked.connect(func(p: Vector2):
+		Sfx.click()
+		_world.select(_world.space_at_world(p)))
 	_container.mouse_entered.connect(func(): _world.set_hover_enabled(true))
 	_container.mouse_exited.connect(func(): _world.set_hover_enabled(false))
 	_world.hovered_changed.connect(_refresh_info)
@@ -792,8 +794,10 @@ func _drag_release(screen_pos: Vector2) -> void:
 	var tid := _world.space_at_world(_cam.screen_to_world(screen_pos))
 	if _dragging_extend():
 		if GameStore.move_extend_targets().has(tid):
+			Sfx.click()
 			Stepper.move_extend_commit(tid)
 	elif GameStore.move_targets().has(tid):
+		Sfx.click()
 		Stepper.move_commit(tid)
 	_clear_drag_preview()
 
