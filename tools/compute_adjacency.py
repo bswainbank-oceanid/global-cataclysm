@@ -1,8 +1,10 @@
 """
 Compute the Map module's adjacency from the real outlines: two spaces are adjacent
-when their boundary polygons touch (see tools/outline_adjacency.py: within a few
-pixels, wrapping east-west on a cylinder map, a sea zone counting only as its
-visible water). Nothing is added by hand and nothing is inferred from centre points.
+when their boundary polygons touch along a stretch of border (see tools/outline_adjacency.py:
+within a few pixels, wrapping east-west on a cylinder map, a sea zone counting only as its
+visible water). Touching only at a single point -- where three or four borders meet, a
+contact no longer than outline_adjacency.POINT_CONTACT_PX -- is not adjacency. Nothing is
+added by hand and nothing is inferred from centre points.
 
 This replaced a Delaunay triangulation over the spaces' centre points (edges
 under a 420px cap, plus a short hand-confirmed FORCED_EDGES list). That method
@@ -27,7 +29,7 @@ Run from the repo root:
 import argparse
 
 import tool_data
-from outline_adjacency import label_image, touching_pairs, load
+from outline_adjacency import POINT_CONTACT_PX, contact_extents, label_image, load
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--scenario', default=tool_data.DEFAULT_SCENARIO_ID)
@@ -39,13 +41,15 @@ WIDTH = int(meta['reference_image_width_px'])
 HEIGHT = int(meta['reference_image_height_px'])
 territories = meta['spaces']
 
-touching = touching_pairs(label_image(spaces, shapes, WIDTH, HEIGHT), wraps=meta['wraps_east_west'])
+extents = contact_extents(label_image(spaces, shapes, WIDTH, HEIGHT), wraps=meta['wraps_east_west'])
+touching = {pair for pair, extent in extents.items() if extent > POINT_CONTACT_PX}
+points = sorted(set(extents) - touching)  # (meeting at a corner only)
 
 overrides = tool_data.adjacency_overrides()
 edges = set(touching)
 for a, b, *_ in overrides['remove']:
     pair = (min(a, b), max(a, b))
-    if pair not in edges:
+    if pair not in edges and pair not in points:  # (a point contact needs no removing, but agrees)
         print(f'WARNING: override removes {pair}, which is not adjacent anyway (stale?)')
     edges.discard(pair)
 for a, b, *_ in overrides['add']:
@@ -68,7 +72,8 @@ def _store(m):
 
 path = tool_data.save_map(_store)
 print(f'wrote the adjacency of {len(territories)} locations into {path}: {len(edges)} edges '
-      f"({len(touching)} from outlines, -{len(overrides['remove'])} removed, +{len(overrides['add'])} added by hand)")
+      f"({len(touching)} from outlines, {len(points)} single-point contacts left out, "
+      f"-{len(overrides['remove'])} removed, +{len(overrides['add'])} added by hand)")
 
 isolated = [s['id'] for s in territories if s['id'] not in neighbors]
 if isolated:

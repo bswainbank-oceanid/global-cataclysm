@@ -5,13 +5,18 @@ The outlines are painted into a label image -- seas first, land on top, because
 a sea zone's polygon is only its OUTER boundary and encloses the coastal land it
 borders, so painting land last leaves each sea's visible water -- and two spaces
 touch when their labels come within `touch_px` pixels of each other. Wraps
-east-west on a cylinder map. Used by tools/compute_adjacency.py (the source of
+east-west on a cylinder map. Touching only at a point -- where three or four
+borders meet, with no stretch of shared border (contact_extents: a contact no
+longer than POINT_CONTACT_PX) -- isn't adjacency. Used by tools/compute_adjacency.py (the source of
 the Map's adjacency) and tools/debug_adjacency.py.
 """
 import cv2
 import numpy as np
 
 DEFAULT_TOUCH_PX = 6
+# A contact this long or shorter (its pixels' extent, along x or y) is a single point -- borders meeting
+# at a corner -- not a shared border. (The shortest real borders on the map run 11px and more.)
+POINT_CONTACT_PX = 10
 
 
 def label_image(spaces, shapes, width, height):
@@ -47,6 +52,43 @@ def touching_pairs(labels, touch_px=DEFAULT_TOUCH_PX, wraps=True):
             for x, y in set(zip(a[m].tolist(), b[m].tolist())):
                 pairs.add((min(x, y), max(x, y)))
     return pairs
+
+
+def contact_extents(labels, touch_px=DEFAULT_TOUCH_PX, wraps=True):
+    """{(a, b): extent} for every touching pair: how far, in pixels, the stretch where they come within
+    touch_px of each other runs (the larger of its x and y spans; across the east-west seam when `wraps`).
+    A pair touching at a single point has a tiny extent (POINT_CONTACT_PX or less)."""
+    height, width = labels.shape
+    found = {}  # pair -> ([xs], [ys]) of the pixels where they touch
+    for dy in range(0, touch_px + 1):
+        for dx in range(-touch_px, touch_px + 1):
+            if dy == 0 and dx <= 0:
+                continue
+            a = labels[:height - dy] if dy else labels
+            b = np.roll(labels, -dx, axis=1)[dy:]
+            m = (a != b) & (a > 0) & (b > 0)
+            if not wraps and dx:
+                seam = np.zeros(width, bool)
+                seam[:max(0, -dx)] = True
+                seam[width - max(0, dx):] = True
+                m &= ~seam[np.newaxis, :]
+            ys, xs = np.nonzero(m)
+            if not len(xs):
+                continue
+            la, lb = a[m].astype(np.int64), b[m].astype(np.int64)
+            keys = np.minimum(la, lb) * 100000 + np.maximum(la, lb)
+            for key in np.unique(keys):
+                sel = keys == key
+                entry = found.setdefault((int(key // 100000), int(key % 100000)), ([], []))
+                entry[0].append(xs[sel])
+                entry[1].append(ys[sel])
+    out = {}
+    for pair, (xs, ys) in found.items():
+        px, py = np.concatenate(xs), np.concatenate(ys)
+        if wraps and px.max() - px.min() > width / 2:  # across the seam: measure it unwrapped
+            px = np.where(px < width / 2, px + width, px)
+        out[pair] = int(max(px.max() - px.min(), py.max() - py.min()))
+    return out
 
 
 def load():

@@ -514,7 +514,9 @@ class TestStrategyBotPlaysTurns(unittest.TestCase):
     def test_the_bots_buy_and_move(self):
         from engine.bots.driver import play_to_completion
         from engine.turn_log import TurnLog
-        engine, gs, bots = self.game(seed=4)
+        # (a modest planning budget: at the class's cheap 250 simulated battles a bot often can't afford to
+        # plan any purchase at all, and whether one gets bought within 12 turns hangs on the map's details)
+        engine, gs, bots = self.game(seed=4, budget=1000)
         log = TurnLog()
         engine.turn_log = log
         play_to_completion(engine, bots, max_turns=12)

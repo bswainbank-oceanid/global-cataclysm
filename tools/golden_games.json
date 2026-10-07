@@ -1,38 +1,38 @@
 {
   "random_6bot": {
     "setup": "f7fe25edcb74606f22e9012ba411bd169371870e",
-    "log": "708636fa5e8fa99c42c550ff86ef9e48aaf0be3d",
-    "final": "cacddaf71a24362487fd254b856e1bc7024d70c9",
-    "events": 5942
+    "log": "4cc8e04c4661c8018de7efa921974ee6ac226497",
+    "final": "0df38b1a41fa6998cb06a43901114ee280662641",
+    "events": 6088
   },
   "strategy_6bot": {
     "setup": "b1243c88af346a5d3c54b6c1e258716813fe66a8",
-    "log": "22ca1ced31a2b7151a7701528897144d0fab20c3",
-    "final": "797b7a31003f48b0c48fcb6038a3aec45de61e7c",
-    "events": 842
+    "log": "17d5a35c98ec97f05093240bdf29b6e66e009501",
+    "final": "9b63539f623015e141d08160acc75f469f67721f",
+    "events": 934
   },
   "strategy_3bot_neutral": {
     "setup": "d69d2937dc8984829002b557b6e236f62f65f704",
-    "log": "7fd7b5b4485566cb7fa1052282a76e2905494766",
-    "final": "6af11e2466a4f2d02547e109684a0c4710ef9c59",
-    "events": 1865
+    "log": "eafc1b55485ed6fce5edfce3678ec0cb8693bbbe",
+    "final": "0d717819c7f0d3d8417b93a8e5ed564e7fe7e3e9",
+    "events": 1685
   },
   "mixed_alliances": {
     "setup": "7a81690dee4cff825ae8590e585ece4660887d7f",
-    "log": "105f6d42d0289faea17d684219b39777c0ed9435",
-    "final": "e42833a3d0a6a03c1d710530569be13a4bbdf418",
-    "events": 2076
+    "log": "eb2157629b921333e4d80c9e89d848f44e71d3e9",
+    "final": "4d255ebd88d7d87d70264036a2d310b0a6ca2658",
+    "events": 2201
   },
   "fixed_order_2bot": {
     "setup": "68d80a9dbe0714e901821b3e453a5e92bed28d1a",
-    "log": "4aa9fd56fe08af3e4b8e16cb31f797854df9d303",
-    "final": "9efffca801942a459289f18c09b7953452fd5eec",
-    "events": 883
+    "log": "91798f4ee563e505ee90ef4c5db997b69dfd98c1",
+    "final": "914f0e4f2b75e7873b2a364b1bf06a0dda921df7",
+    "events": 1545
   },
   "new_scenario_3bot": {
-    "setup": "a8ee0e0ec9a9d1d24d269788d22648e2d0262388",
-    "log": "dcc724e146b39b40c61f473f9ec32034fb350e50",
-    "final": "cdebe44d61609ebf00a57de2b565da8f694578cc",
-    "events": 848
+    "setup": "500738b63f20b5560c73608c4c3f5098f6502d8d",
+    "log": "68a6c9d0722e044d50bec0097c1894fb18da7d6c",
+    "final": "aaadcb7cbbf04106dbed9145b24d31d6e5b1316e",
+    "events": 1977
   }
 }
