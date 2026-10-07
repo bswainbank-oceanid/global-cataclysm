@@ -53,6 +53,12 @@ func builds_differ() -> bool:
 	return str(mine.get("commit", "")).trim_suffix("+") != str(server_build.get("commit", "")).trim_suffix("+")
 
 
+## The builds differ and this client is the older one (by build number): a newer client is to be had --
+## reloading the page, or downloading it. (When the server is the older one, nothing the player does helps.)
+func client_outdated() -> bool:
+	return builds_differ() and int(client_build().get("build", 0)) < int(server_build.get("build", 0))
+
+
 func is_admin() -> bool:
 	return bool(user.get("admin", false))
 

@@ -226,16 +226,18 @@ func refresh() -> void:
 	var server := str(Account.server_build.get("label", "Build unknown"))
 	var lines := ["Client " + client, "Server " + server]
 	if Account.builds_differ():
-		var how := "restart the game to update"
-		if OS.has_feature("web"):
-			how = "reload the page to update"
+		if not Account.client_outdated():
+			lines.append("The server is running an older build than this client")
+		elif OS.has_feature("web"):
+			lines.append("A new version is out: reload the page")
 		elif Account.download_url != "":
-			how = "download the new version"
-		lines.append("The client and server builds differ: " + how)
+			lines.append("A new version is out: download it")
+		else:
+			lines.append("The client and server builds differ: restart the game to update")
 	_builds.text = "
 ".join(lines)
 	_builds.add_theme_color_override("font_color", GCTheme.RED_LIGHT if Account.builds_differ() else GCTheme.CREAM)
-	_download.visible = Account.builds_differ() and (Account.download_url != "" or OS.has_feature("web"))
+	_download.visible = Account.client_outdated() and (Account.download_url != "" or OS.has_feature("web"))
 	_download.tooltip_text = Account.download_url
 
 

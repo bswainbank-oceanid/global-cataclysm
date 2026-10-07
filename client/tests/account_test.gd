@@ -57,4 +57,17 @@ func _initialize() -> void:
 	account.logout()
 	_check(account.token == "" and not account.is_logged_in(), "logging out forgets the login")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(account._path()))
+
+	# Builds: only a client older than its server is told to get the new version.
+	var mine: Dictionary = account.client_build()
+	if not mine.is_empty():
+		var n := int(mine["build"])
+		var commit := str(mine["commit"]).trim_suffix("+")
+		account.server_build = {"build": n, "commit": commit}
+		_check(not account.builds_differ() and not account.client_outdated(), "the same build: nothing to say")
+		account.server_build = {"build": n + 5, "commit": "fffffff"}
+		_check(account.builds_differ() and account.client_outdated(), "a newer server: the client is out of date")
+		account.server_build = {"build": n - 5, "commit": "eeeeeee"}
+		_check(account.builds_differ() and not account.client_outdated(), "an older server: the client isn't out of date")
+		account.server_build = {}
 	quit(1 if _failures > 0 else 0)
