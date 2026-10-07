@@ -30,6 +30,7 @@ var _actual_name: Label
 var _email: Label
 var _note: Label
 var _builds: Label  # the client's and server's build numbers, bottom right
+var _download: Button  # above them, when the builds differ and the server says where to get the client
 
 
 func _art_dim() -> float:
@@ -132,14 +133,24 @@ func _build() -> void:
 	settings.position += Vector2(-20, 70)
 	_display_panel = settings
 
+	var bottom := VBoxContainer.new()
+	bottom.alignment = BoxContainer.ALIGNMENT_END
+	add_child(bottom)
+	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	bottom.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	bottom.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	bottom.position += Vector2(-16, -12)
+	_download = Button.new()
+	_download.text = "Download the new version"
+	HudStyle.primary(_download)
+	_download.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_download.visible = false
+	_download.pressed.connect(func(): OS.shell_open(Account.download_url))
+	bottom.add_child(_download)
 	_builds = HudStyle.label("", 12, GCTheme.CREAM_DIM)
 	_builds.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_builds)
-	_builds.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	_builds.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	_builds.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_builds.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_builds.position += Vector2(-16, -12)
+	bottom.add_child(_builds)
 	_builds.add_theme_color_override("font_outline_color", GCTheme.NAVY_DARK)
 	_builds.add_theme_constant_override("outline_size", 4)
 
@@ -209,10 +220,13 @@ func refresh() -> void:
 	var server := str(Account.server_build.get("label", "Build unknown"))
 	var lines := ["Client " + client, "Server " + server]
 	if Account.builds_differ():
-		lines.append("The client and server builds differ: restart the game to update")
+		lines.append("The client and server builds differ: " + ("download the new version" if Account.download_url != ""
+			else "restart the game to update"))
 	_builds.text = "
 ".join(lines)
 	_builds.add_theme_color_override("font_color", GCTheme.RED_LIGHT if Account.builds_differ() else GCTheme.CREAM)
+	_download.visible = Account.builds_differ() and Account.download_url != ""
+	_download.tooltip_text = Account.download_url
 
 
 func _say(text: String) -> void:

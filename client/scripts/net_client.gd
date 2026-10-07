@@ -18,6 +18,8 @@ signal reconnecting  # the connection was lost and will be tried again
 
 const RETRY_SECONDS := 2.0
 
+const RELEASE := "res://data/server.json"  # a release build's server, {"url": ...} (tools/build_client.py)
+
 var url := "ws://localhost:8765"
 var auto_watch := false  # send "watch" on connecting (resuming a running game); else the launch screen decides
 
@@ -27,6 +29,15 @@ var _ws := WebSocketPeer.new()
 var _open := false
 var _enabled := false
 var _retry_in := -1.0  # seconds until the next try to reconnect (-1: none planned)
+
+
+## The server a release build connects to (tools/build_client.py writes it into the build), or "" for a
+## development copy, which only connects when started with --server.
+static func release_url() -> String:
+	if not FileAccess.file_exists(RELEASE):
+		return ""
+	var doc = JSON.parse_string(FileAccess.get_file_as_string(RELEASE))
+	return str(doc.get("url", "")) if doc is Dictionary else ""
 
 
 func start(server_url: String = "") -> void:

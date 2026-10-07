@@ -197,8 +197,9 @@ func _start_view() -> void:
 	_refresh_info(-1)
 	if Dbg.args.has("select"):
 		_side.show_space(int(Dbg.args["select"]))
-	if Dbg.args.has("server"):
-		var url: String = Dbg.args["server"]
+	var release := Net.release_url()  # (a release build: its server, without --server)
+	if Dbg.args.has("server") or release != "":
+		var url: String = Dbg.args.get("server", release)
 		# Scripted runs (and --resume) go straight to the game running on the server;
 		# otherwise the launch screen (opened by the server's "lobby" message) comes first.
 		Net.auto_watch = Dbg.args.has("resume") or (Dbg.args.has("shot") and not Dbg.args.has("launch"))

@@ -26,7 +26,12 @@ at a time with {"type": "next"}; a human faction's orders arrive as
 simultaneous games, persistence, real auth (a "join" message is trusted
 at face value for now).
 
-Run: python -m server.app [--host HOST] [--port PORT] [--db PATH]      multi-player
+Run: python -m server.app [--host HOST] [--port PORT] [--db PATH] [--behind-proxy] [--download-url URL]
+                                                                         multi-player
+     --behind-proxy: the server sits behind a reverse proxy (Caddy: deploy/Caddyfile) on this machine, which
+     adds the player's address as X-Forwarded-For (used for the login limits, server/limits.py); without it
+     the socket's own address is used. --download-url: where players get the client, told to every client
+     (it shows it when its build is older than the server's).
      python -m server.app --single [--host HOST] [--port PORT]           one game
 A minimal scripted client for manual testing: python -m server.test_client
 """
@@ -141,8 +146,9 @@ class MultiServer:
     keeps answering while they do. One runner task steps every game that can move on, a step from each
     in turn, until none can, then sleeps until a message wakes it."""
 
-    def __init__(self, hub):
+    def __init__(self, hub, behind_proxy=False):
         self.hub = hub
+        self.behind_proxy = behind_proxy
         self.sockets = {}  # connection key -> websocket
         self.lock = asyncio.Lock()
         self.wake = asyncio.Event()
@@ -154,7 +160,7 @@ class MultiServer:
         self.sockets[key] = websocket
         try:
             async with self.lock:
-                deliveries = self.hub.connect(key)
+                deliveries = self.hub.connect(key, self._address(websocket))
             await self._deliver(deliveries)
             async for raw in websocket:
                 try:
@@ -172,6 +178,17 @@ class MultiServer:
             self.sockets.pop(key, None)
             async with self.lock:
                 self.hub.disconnect(key)
+
+    def _address(self, websocket):
+        """The player's address: the socket's own, or behind a proxy the one it reports (the last entry of
+        X-Forwarded-For: the one our proxy added, which a client can't forge)."""
+        if self.behind_proxy:
+            forwarded = websocket.request.headers.get('X-Forwarded-For', '') if websocket.request else ''
+            last = forwarded.split(',')[-1].strip()
+            if last:
+                return last
+        remote = websocket.remote_address
+        return remote[0] if remote else None
 
     async def run_games(self):
         while True:
@@ -201,8 +218,8 @@ class MultiServer:
             await asyncio.gather(*sends, return_exceptions=True)
 
 
-async def main_multi(host, port, db):
-    server = MultiServer(Hub(Store(db)))
+async def main_multi(host, port, db, behind_proxy=False, download_url=None):
+    server = MultiServer(Hub(Store(db), download_url=download_url), behind_proxy=behind_proxy)
     for game_id, problem in server.hub.load_problems.items():
         logger.warning("game %s wasn't loaded: %s", game_id, problem)
     logger.info('%d live game(s) loaded', len(server.hub.sessions))
@@ -238,12 +255,16 @@ if __name__ == '__main__':
     parser.add_argument('--multi', action='store_true',
                         help='multi-player mode, the default: logins, many games at once, games saved (server/hub.py)')
     parser.add_argument('--db', default=str(DEFAULT_PATH), help='multi-player: the player database (default: %(default)s)')
+    parser.add_argument('--behind-proxy', action='store_true',
+                        help='multi-player: behind a reverse proxy on this machine (player addresses from X-Forwarded-For)')
+    parser.add_argument('--download-url', default=None,
+                        help='multi-player: where players get the client (shown when theirs is out of date)')
     parser.add_argument('--seed', type=int, default=None,
                         help='with --demo: seed the game (bots and dice) so it replays exactly')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(message)s')
     if not (args.single or args.demo):
-        asyncio.run(main_multi(args.host, args.port, args.db))
+        asyncio.run(main_multi(args.host, args.port, args.db, args.behind_proxy, args.download_url))
         raise SystemExit(0)
     human = demo_factions()[0] if args.human is None else (None if args.human == 'none' else args.human)
     if human is not None and human not in demo_factions():

@@ -94,8 +94,10 @@ func _file(unit_type: String, kind: String) -> String:
 
 func _stream(file: String):
 	if not _streams.has(file):
-		# (loaded from the file itself, so a sound synced in after the project was last imported still plays)
-		_streams[file] = AudioStreamWAV.load_from_file(ProjectSettings.globalize_path(SOUND_DIR + file))
+		# (read from the file itself, so a sound synced in after the project was last imported still plays --
+		# through FileAccess, which also reads it from inside an exported game)
+		var bytes := FileAccess.get_file_as_bytes(SOUND_DIR + file)
+		_streams[file] = AudioStreamWAV.load_from_buffer(bytes) if not bytes.is_empty() else null
 	return _streams[file]
 
 

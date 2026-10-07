@@ -1,0 +1,26 @@
+# Caddy in front of the game server (docs/DEPLOY.md). deploy/install.sh copies this to /etc/caddy/Caddyfile
+# with GC_DOMAIN replaced by the server's domain. Caddy gets and renews the HTTPS certificate by itself.
+#
+#   wss://GC_DOMAIN/ws          the game (the client's server address), passed to the game server
+#   https://GC_DOMAIN/          the download page (deploy/www/index.html)
+#   https://GC_DOMAIN/download/ the client builds (tools/build_client.py's zips)
+
+GC_DOMAIN {
+	encode gzip
+
+	handle /ws {
+		reverse_proxy 127.0.0.1:8765
+	}
+
+	handle {
+		root * /var/www/global-cataclysm
+		file_server
+	}
+
+	log {
+		output file /var/log/caddy/global-cataclysm.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

@@ -1,0 +1,11 @@
+# A backup of the player database (tools/backup_db.py), run daily by gc-backup.timer (docs/DEPLOY.md).
+
+[Unit]
+Description=Back up the Global Cataclysm player database
+
+[Service]
+Type=oneshot
+User=gc
+Group=gc
+WorkingDirectory=/opt/global-cataclysm
+ExecStart=/opt/global-cataclysm/.venv/bin/python tools/backup_db.py --keep 14

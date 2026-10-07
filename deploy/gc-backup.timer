@@ -1,0 +1,12 @@
+# Runs gc-backup.service every day (docs/DEPLOY.md). Check it: systemctl list-timers gc-backup.timer
+
+[Unit]
+Description=Daily backup of the Global Cataclysm player database
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

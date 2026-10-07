@@ -4,7 +4,7 @@ routed by game and by player. Like GameHost (the one-game launcher's), it never 
 server/app.py hands it each message with the connection it came from, and delivers what it returns.
 
     hub = Hub(store)                           # loads every live game back from its save
-    hub.connect(conn)                          # -> deliveries
+    hub.connect(conn, address)                 # -> deliveries (address: the player's, for server/limits.py)
     hub.handle(conn, msg)                      # -> deliveries: [(connections, message), ...]
     hub.runnable()                             # games that can move on by themselves
     hub.step(game_id)                          # -> deliveries of one step
@@ -85,7 +85,11 @@ Client -> server (besides each game's own protocol, server/session.py's auto mod
                                                    is logged out wherever they are connected
         -> {"type": "chat", "message": {...}} to everyone browsing (browse) or in that lobby
 Server -> client:
-    {"type": "hello", "logged_in": false, "build": {build, commit, label}}   on connecting (server/build.py)
+    {"type": "hello", "logged_in": false, "build": {build, commit, label}, ["download_url"]}
+                                                on connecting (server/build.py); download_url: where to get
+                                                the client (Hub's download_url), when the server has one
+    Logging in and registering are limited per address and per account (server/limits.py): over the limit,
+    "login_failed" says how long to wait.
     {"type": "error", "message", "problems"}    a request refused (to the sender only)
 """
 import datetime
@@ -94,6 +98,7 @@ import random
 from engine.repository import default_repository
 
 from . import accounts, admin, chat, games, persist, scenarios, setups
+from .limits import Limits
 from .build import build_info
 from .lobby import LobbyError, build_session, generator_info
 from .store import StoreError, utc_now
@@ -117,13 +122,16 @@ class Connection:
         self.token = None
         self.game_id = None       # the game this connection is in, or None
         self.lobby_id = None      # the game lobby this connection is in, or None
+        self.address = None       # the player's network address (server/limits.py), when known
         self.browsing = False     # looking at Available Games (gets its updates and its chat)
 
 
 class Hub:
-    def __init__(self, store, repo=None):
+    def __init__(self, store, repo=None, download_url=None, limits=None):
         self.store = store
         self.repo = repo or default_repository()
+        self.download_url = download_url  # where players get the client (in "hello"), or None
+        self.limits = limits or Limits()
         self.connections = {}     # key -> Connection
         self.sessions = {}        # game id -> persist.RecordedGame, for every live game
         self.load_problems = {}   # game id -> why its save couldn't be loaded
@@ -132,9 +140,13 @@ class Hub:
 
     # ---- connections -------------------------------------------------------------------------------
 
-    def connect(self, key):
+    def connect(self, key, address=None):
         conn = self.connections[key] = Connection(key)
-        return [([conn.key], {'type': 'hello', 'logged_in': False, 'build': build_info()})]
+        conn.address = address
+        hello = {'type': 'hello', 'logged_in': False, 'build': build_info()}
+        if self.download_url:
+            hello['download_url'] = self.download_url
+        return [([conn.key], hello)]
 
     def disconnect(self, key):
         self.connections.pop(key, None)
@@ -178,10 +190,18 @@ class Hub:
             conn.browsing = False
             return [([conn.key], {'type': 'logged_out'})]
         if kind == 'register':
+            self.limits.check('register', conn.address)
+            self.limits.failed('register', conn.address)  # (every new account counts)
             user, token = accounts.register(self.store, msg.get('player_name'), msg.get('actual_name'),
                                             msg.get('email'), msg.get('password'))
         elif kind == 'login':
-            user, token = accounts.login(self.store, msg.get('email'), msg.get('password'))
+            self.limits.check('login', conn.address, msg.get('email'))
+            try:
+                user, token = accounts.login(self.store, msg.get('email'), msg.get('password'))
+            except StoreError as e:
+                if e.problems == [accounts.WRONG_LOGIN]:
+                    self.limits.failed('login', conn.address, msg.get('email'))
+                raise
         else:
             token = msg.get('token')
             user = accounts.login_with_token(self.store, token)

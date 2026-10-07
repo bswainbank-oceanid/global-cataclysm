@@ -15,6 +15,7 @@ var multi := false     # the server is the multi-player one
 var user := {}         # {id, player_name, actual_name, email, admin, created} once logged in
 var token := ""
 var server_build := {}  # the server's build number, from its hello (server/build.py): {build, commit, label}
+var download_url := ""  # where to get the client, from the server's hello ("" when it doesn't say)
 var _pending := ""     # the account request in flight: "token_login", "login", "register", or ""
 
 
@@ -82,6 +83,7 @@ func _on_message(msg: Dictionary) -> void:
 	match str(msg.get("type", "")):
 		"hello":
 			server_build = msg.get("build", {})
+			download_url = str(msg.get("download_url", "")) if msg.get("download_url") != null else ""
 			multi = true
 			Net.auto_reconnect = true
 			Net.auto_watch = false  # (the one-game server's; here a game is entered after logging in)
