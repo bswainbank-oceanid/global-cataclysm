@@ -108,10 +108,8 @@ class TestSetupTools(unittest.TestCase):
         tool_data.use_scenario()
         setup, _ = tool_data.config().initial_setup('standard')
         self.assertEqual(validate_setup.check_setup(setup, {}), [])
-        # The neutral setup's known problems predate the module refactor (see docs/DATA_MODEL.md).
         setup, _ = tool_data.config().initial_setup('neutral')
-        errors = validate_setup.check_setup(setup, {})
-        self.assertEqual(len(errors), 1, errors)
+        self.assertEqual(validate_setup.check_setup(setup, {}), [])
 
     def test_a_generated_standard_setup_is_valid(self):
         import generate_setup

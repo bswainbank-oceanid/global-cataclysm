@@ -181,7 +181,6 @@
   {
    "location_id": 47,
    "units": [
-    {"id": "NAA-006", "unit_type_id": "Bomber", "faction_id": "NAA"},
     {"id": "NAA-008", "unit_type_id": "Fighter", "faction_id": "NAA"},
     {"id": "NAA-009", "unit_type_id": "Mechanized Infantry", "faction_id": "NAA"}
    ]
@@ -223,7 +222,8 @@
   {
    "location_id": 54,
    "units": [
-    {"id": "NAA-010", "unit_type_id": "Infantry", "faction_id": "NAA"}
+    {"id": "NAA-010", "unit_type_id": "Infantry", "faction_id": "NAA"},
+    {"id": "NAA-006", "unit_type_id": "Bomber", "faction_id": "NAA"}
    ]
   },
   {
