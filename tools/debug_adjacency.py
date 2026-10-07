@@ -14,7 +14,7 @@ east-west seam are drawn on both sides.
 --diff colours the pairs by whether the data agrees with the outlines (useful if
 adjacency.json is ever edited by hand, or the outlines change without a rebuild):
 
-    green    adjacent in the data AND the outlines touch
+    green    adjacent in the data AND the outlines touch (along a border: not just at a point)
     red      adjacent in the data but the outlines DO NOT touch
     magenta  outlines touch but the data has NO edge
 
@@ -28,7 +28,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, __import__('os').path.dirname(__file__))
-from outline_adjacency import label_image, touching_pairs  # noqa: E402
+from outline_adjacency import POINT_CONTACT_PX, contact_extents, label_image  # noqa: E402
 import tool_data  # noqa: E402
 
 parser = argparse.ArgumentParser()
@@ -65,7 +65,8 @@ for tid in spaces:
     if tid not in visible:
         warnings.append(f"{tid} {spaces[tid]['name']} is completely covered by another space's outline")
 
-touching = touching_pairs(labels, args.touch_px)
+# (as tools/compute_adjacency.py: outlines meeting only at a point aren't adjacent)
+touching = {pair for pair, extent in contact_extents(labels, args.touch_px).items() if extent > POINT_CONTACT_PX}
 # data/adjacency_overrides.json's hand corrections are intended differences from the
 # outlines, so --diff expects them rather than flagging them.
 _ov = tool_data.adjacency_overrides()
