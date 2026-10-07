@@ -70,6 +70,18 @@ def client_files(config):
             'factions.json': factions, 'units.json': units}
 
 
+# Godot's import settings for a file the client reads itself (the icons, as SVG text it recolours; the
+# sounds, as WAV bytes): kept as it is, not turned into a texture or audio resource -- so an exported game
+# has the file itself (tools/build_client.py), as the development copy does.
+KEEP_IMPORT = '[remap]\n\nimporter="keep"\n'
+
+
+def _keep_as_is(path):
+    imp = path.with_name(path.name + '.import')
+    if not imp.exists() or imp.read_text(encoding='utf-8') != KEEP_IMPORT:
+        imp.write_text(KEEP_IMPORT, encoding='utf-8')
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--scenario', default=DEFAULT_SCENARIO_ID)
@@ -98,12 +110,14 @@ def main():
     for icon in sorted(icons):
         (icon_dir / icon).parent.mkdir(parents=True, exist_ok=True)  # (faction icons sit in a subfolder)
         shutil.copy2(ROOT / 'assets' / 'icons' / icon, icon_dir / icon)
+        _keep_as_is(icon_dir / icon)
     # the unit sounds each unit type names (assets/sounds: tools/make_sounds.py)
     sounds = {d[k] for d in config.units().values() for k in ('move_sound', 'attack_sound') if d.get(k)}
     for sound in sorted(sounds):
         dest = CLIENT / 'assets' / 'sounds' / sound
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / 'assets' / 'sounds' / sound, dest)
+        _keep_as_is(dest)
     # the style guide's fonts (assets/fonts) and the logo artwork (assets/logo), under the names the client loads
     font_dir = CLIENT / 'assets' / 'fonts'
     font_dir.mkdir(parents=True, exist_ok=True)
