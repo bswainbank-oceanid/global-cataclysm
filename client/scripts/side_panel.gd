@@ -430,6 +430,7 @@ func show_space(tid: int) -> void:
 		head.add_child(head_row)
 		_detail.add_child(head)
 		_detail.add_child(_tiles_for(tid, units, mine))
+	_add_pending_section(tid)
 	if GameStore.human_move_active():
 		_add_incoming_section(tid)
 
@@ -531,6 +532,32 @@ static func _place(tid: int) -> String:
 
 ## Units queued to move INTO this space (from elsewhere): shown so they can be
 ## recalled from the destination too.
+## Units bought this turn for this space, until Deploy + Income puts them on the board: the confirmed
+## purchases and the one queued now (GameStore.pending_units), faded and outlined (UnitTile.pending).
+func _add_pending_section(tid: int) -> void:
+	var units := GameStore.pending_units(tid)
+	if units.is_empty():
+		return
+	var head := HudStyle.label("Awaiting deployment: %d unit%s, placed at the end of the turn" % [
+		units.size(), "" if units.size() == 1 else "s"], 12, HudStyle.GOLD)
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_detail.add_child(head)
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 2)
+	flow.add_theme_constant_override("v_separation", 2)
+	for u in units:
+		var tile := UnitTile.make(u)
+		tile.toggle_mode = false
+		tile.pending = true
+		var owner := str(u["owner"])
+		var who: String = GameData.factions[owner].name if GameData.factions.has(owner) else owner
+		tile.tooltip_text = "%s (%s)
+%s - deploys here at the end of %s's turn" % [str(u["unit_type"]), who,
+			"In this turn's purchase" if bool(u.get("queued", false)) else "Bought this turn", owner]
+		flow.add_child(tile)
+	_detail.add_child(flow)
+
+
 func _add_incoming_section(tid: int) -> void:
 	var incoming := GameStore.incoming_to(tid)
 	if incoming.is_empty():

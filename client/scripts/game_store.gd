@@ -384,6 +384,31 @@ func pending(tid: int) -> Dictionary:
 	return out
 
 
+## The same purchases as units, for the territory window: the confirmed ones as they are (the state's
+## pending_deployment), and each one in the queued purchase as a new unit at full strength (unit_id -1,
+## "queued": true) -- in owner order, then the unit set's display order.
+func pending_units(tid: int) -> Array:
+	var out := []
+	var t = state.get("territories", {}).get(str(tid))
+	if t != null:
+		out.append_array(t["pending_deployment"])
+	for o in queued_purchase.get("orders", []):
+		if int(o["deploy_at"]) != tid:
+			continue
+		var unit_type := str(o["unit_type"])
+		for i in int(o["qty"]):
+			out.append({"unit_id": -1, "unit_type": unit_type, "owner": str(queued_purchase["faction"]),
+				"current_hp": int(GameData.unit_def(unit_type).get("hp", 1)), "xp": 0, "promotions": 0, "queued": true})
+	var owners: Array = GameData.owner_order()
+	out.sort_custom(func(a, b):
+		var oa := owners.find(str(a["owner"]))
+		var ob := owners.find(str(b["owner"]))
+		if oa != ob:
+			return oa < ob
+		return int(GameData.unit_def(str(a["unit_type"])).get("display_order", 999)) 			< int(GameData.unit_def(str(b["unit_type"])).get("display_order", 999)))
+	return out
+
+
 func _add_unit(out: Dictionary, owner: String, unit_type: String, qty: int) -> void:
 	var by_type: Dictionary = out.get(owner, {})
 	by_type[unit_type] = int(by_type.get(unit_type, 0)) + qty

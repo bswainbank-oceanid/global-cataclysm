@@ -38,6 +38,7 @@ var committed := false     # queued to move: drawn with an arrow badge; clicking
 var drag_payload := {}     # non-empty: this tile can start a move drag carrying this payload
 var rolling := false       # the battle board: this unit's roll is the one on show
 var must_land := false     # an aircraft that must land this Non-Combat Move or crash: a red pulse
+var pending := false       # bought this turn, not yet on the board (deploys at Deploy + Income): faded, dashed
 var on_paper := false      # on a paper sheet (the battle board): a bare silhouette in the owner's colour
 var _shake_x := 0.0        # the battle board's reactions: a roll shakes the unit side to side,
 var _bounce_y := 0.0       # and a hit bounces it up and down (drawn as an offset; the layout is untouched)
@@ -163,6 +164,14 @@ func _draw() -> void:
 			draw_rect(CARGO_BOX, Color(1, 1, 1, 0.9), false, 1.5)
 		_draw_package(CARGO_OFFSET, owner_col)
 	_draw_mark()
+	if pending:
+		# not on the board yet: faded, inside a dashed outline in the owner's colour
+		draw_rect(Rect2(ICON_POS - Vector2(2, 2), Vector2(ICON, ICON) + Vector2(4, 4)), Color(0.05, 0.07, 0.1, 0.45))
+		var edge := owner_col.lightened(0.35)
+		var r := Rect2(Vector2.ONE, size - Vector2(2, 2))
+		for side in [[r.position, Vector2(r.end.x, r.position.y)], [Vector2(r.end.x, r.position.y), r.end],
+				[r.end, Vector2(r.position.x, r.end.y)], [Vector2(r.position.x, r.end.y), r.position]]:
+			draw_dashed_line(side[0], side[1], edge, 1.5, 4.0)
 	if dimmed or committed:
 		var shade := Color(0.05, 0.07, 0.1, 0.62)
 		draw_rect(Rect2(ICON_POS - Vector2(2, 2), Vector2(ICON, ICON) + Vector2(4, 4)), shade)
