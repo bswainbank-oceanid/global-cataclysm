@@ -98,7 +98,7 @@ version on each visit (deploy/Caddyfile), so a reload after an update gets it; a
 date sees a **Reload for the new version** button.
 
 To try a web build on your own PC: run a test game server (`python -m server.app --port 8796 --db <a test
-database>`), serve the files (`python -m http.server 8800 --directory exports/web`), and open
+database>`), serve the files (`python tools/serve_web.py`: it tells the browser to check for a newer build each time), and open
 `http://localhost:8800/?server=ws://localhost:8796/ws`.
 
 ## Updating
