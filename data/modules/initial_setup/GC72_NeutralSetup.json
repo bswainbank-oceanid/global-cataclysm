@@ -135,6 +135,12 @@
    ]
   },
   {
+   "location_id": 34,
+   "units": [
+    {"id": "GPC-016", "unit_type_id": "Infantry", "faction_id": "GPC"}
+   ]
+  },
+  {
    "location_id": 37,
    "units": [
     {"id": "AAC-002", "unit_type_id": "Fighter", "faction_id": "AAC"},

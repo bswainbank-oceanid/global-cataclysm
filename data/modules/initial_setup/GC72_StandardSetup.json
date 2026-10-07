@@ -90,7 +90,8 @@
     {"id": "UER-013", "unit_type_id": "Armor", "faction_id": "UER"},
     {"id": "UER-014", "unit_type_id": "Bomber", "faction_id": "UER"},
     {"id": "UER-015", "unit_type_id": "Fighter", "faction_id": "UER"},
-    {"id": "UER-016", "unit_type_id": "Infantry", "faction_id": "UER"}
+    {"id": "UER-016", "unit_type_id": "Infantry", "faction_id": "UER"},
+    {"id": "UER-033", "unit_type_id": "Infantry", "faction_id": "UER"}
    ]
   },
   {
@@ -104,7 +105,8 @@
    "units": [
     {"id": "NAA-004", "unit_type_id": "Bomber", "faction_id": "NAA"},
     {"id": "NAA-005", "unit_type_id": "Infantry", "faction_id": "NAA"},
-    {"id": "NAA-006", "unit_type_id": "Infantry", "faction_id": "NAA"}
+    {"id": "NAA-006", "unit_type_id": "Infantry", "faction_id": "NAA"},
+    {"id": "NAA-027", "unit_type_id": "Infantry", "faction_id": "NAA"}
    ]
   },
   {
@@ -265,7 +267,8 @@
     {"id": "GPC-005", "unit_type_id": "Armor", "faction_id": "GPC"},
     {"id": "GPC-006", "unit_type_id": "Armor", "faction_id": "GPC"},
     {"id": "GPC-007", "unit_type_id": "Infantry", "faction_id": "GPC"},
-    {"id": "GPC-008", "unit_type_id": "Infantry", "faction_id": "GPC"}
+    {"id": "GPC-008", "unit_type_id": "Infantry", "faction_id": "GPC"},
+    {"id": "GPC-031", "unit_type_id": "Infantry", "faction_id": "GPC"}
    ]
   },
   {
@@ -458,7 +461,8 @@
    "units": [
     {"id": "PAF-025", "unit_type_id": "Armor", "faction_id": "PAF"},
     {"id": "PAF-026", "unit_type_id": "Infantry", "faction_id": "PAF"},
-    {"id": "PAF-027", "unit_type_id": "Infantry", "faction_id": "PAF"}
+    {"id": "PAF-027", "unit_type_id": "Infantry", "faction_id": "PAF"},
+    {"id": "PAF-034", "unit_type_id": "Infantry", "faction_id": "PAF"}
    ]
   },
   {
@@ -494,7 +498,8 @@
    "units": [
     {"id": "AAC-020", "unit_type_id": "Fighter", "faction_id": "AAC"},
     {"id": "AAC-021", "unit_type_id": "Infantry", "faction_id": "AAC"},
-    {"id": "AAC-022", "unit_type_id": "Infantry", "faction_id": "AAC"}
+    {"id": "AAC-022", "unit_type_id": "Infantry", "faction_id": "AAC"},
+    {"id": "AAC-030", "unit_type_id": "Infantry", "faction_id": "AAC"}
    ]
   },
   {

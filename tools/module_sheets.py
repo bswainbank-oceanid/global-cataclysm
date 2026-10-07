@@ -75,7 +75,7 @@ LAYOUTS = {
             Col('attack_die'), Col('damage', kind='int'), Col('defense', kind='int'), Col('hp', kind='int'),
             Col('combat_move', kind='int'), Col('non_combat_move', kind='int'), Col('purchasable', kind='bool'),
             Col('land_order', kind='int'), Col('sea_order', kind='int'), Col('display_order', kind='int'),
-            Col('icon'), Col('plural'),
+            Col('icon'), Col('move_sound', omit=True), Col('attack_sound', omit=True), Col('plural'),
         ], key='id'),
         Table('Unit Abilities', 'abilities', [Col('ability_id', 'id'), Col('params', kind='json', omit=True)],
               parent=('unit_types', 'id', 'unit_type_id', 'abilities')),

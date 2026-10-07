@@ -157,8 +157,12 @@ class TestRunningGames(HubTest):
         self.assertEqual(msg['message'], f'you are not playing {other}')
         [(_, msg)] = self.send('ann', {'type': 'end_phase'})
         self.assertEqual(msg['message'], 'say which of your factions this is for')
+        session = self.hub.sessions[gid]
+        while session.stepper._invitation is not None and session.waiting_for() == [mine]:  # (a bot's invitation)
+            self.send('ann', {'type': 'respond_invitation', 'faction': mine, 'accept': False})
+            self.run_game(gid)
         out = self.send('ann', {'type': 'end_phase', 'faction': mine})
-        self.assertEqual(self.to(out, 'ann')[0]['type'], 'phase_result')
+        self.assertEqual(self.to(out, 'ann')[0]['type'], 'phase_result', out)
 
     def test_seats_are_matched_to_their_players_in_a_launched_game(self):
         game = games.create(self.store, self.ann, SCENARIO, TWO_HUMANS)
