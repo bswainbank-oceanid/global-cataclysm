@@ -123,6 +123,12 @@ func _on_message(msg: Dictionary) -> void:
 		"reset_requested":
 			_pending = ""
 			reset_sent.emit(str(msg.get("email", "")))
+		"error":
+			# (refused before it got to be a login at all -- an older server that doesn't know the request,
+			# say: the login screen is waiting, so say why rather than leave it waiting)
+			if _pending in ["login", "register", "reset"]:
+				_pending = ""
+				problem.emit(str(msg.get("message", "")))
 		"logged_out":
 			_forget()
 			if msg.has("reason"):  # (an admin locked the account, say)

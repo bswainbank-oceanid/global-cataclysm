@@ -115,6 +115,13 @@ func _build() -> void:
 
 	_problem = MenuScreen.problem_label()
 	v.add_child(_problem)
+	if not OS.has_feature("web"):  # (in a browser the player closes the tab)
+		v.add_child(HSeparator.new())
+		var quit := HudStyle.secondary(Button.new())
+		quit.text = "QUIT TO DESKTOP"
+		quit.custom_minimum_size = Vector2(0, 40)
+		quit.pressed.connect(func(): get_tree().quit())
+		v.add_child(quit)
 	Account.problem.connect(func(message: String):
 		_busy = false
 		_problem.text = message

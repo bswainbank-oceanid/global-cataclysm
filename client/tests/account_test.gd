@@ -58,6 +58,16 @@ func _initialize() -> void:
 	_check(account.token == "" and not account.is_logged_in(), "logging out forgets the login")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(account._path()))
 
+	# A request refused outright while the login screen waits (an older server that doesn't know it): said.
+	var said := []
+	account.problem.connect(func(m): said.append(m))
+	account._pending = "reset"
+	account._on_message({"type": "error", "message": "log in first"})
+	_check(said == ["log in first"] and account._pending == "", "a refused reset request is reported, not left waiting")
+	account._on_message({"type": "error", "message": "something else"})
+	_check(said.size() == 1, "an error with nothing waiting isn't the login screen's")
+	account._on_message({"type": "reset_requested", "email": "ann@x.com"})
+
 	# Builds: only a client older than its server is told to get the new version.
 	var mine: Dictionary = account.client_build()
 	if not mine.is_empty():
