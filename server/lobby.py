@@ -278,6 +278,7 @@ def build_session(settings, rng=None, auto=False, max_humans=1):
     modes = {a['faction']: FactionMode[a['mode']] for a in assignments if a['mode'] != 'NOT_PLAYING'}
     gs = build_game_state(
         modes, randomize_play_order=randomize, rng=rng,
+        play_order=[a['faction'] for a in assignments],  # (not randomized: Seat 1 first, then Seat 2, ...)
         max_alliance_size=int(settings.get('max_alliance_size', DEFAULT_MAX_ALLIANCE_SIZE)),
         alliance_strategies={a['faction']: a['strategy'] for a in assignments if a['mode'] == 'BOT'},
         alliance_behaviors={a['faction']: a['behavior'] for a in assignments if a['mode'] == 'BOT'},

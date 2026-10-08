@@ -86,7 +86,7 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
                       allow_noncombat_moves_first_turn=True, max_alliance_size=2,
                       can_withdraw_from_alliances=True, can_rejoin_alliances=False,
                       alliance_strategies=None, alliance_behaviors=None, rng=None,
-                      starting_alliances=None, data_module=None, armistice_after_rounds=0):
+                      starting_alliances=None, data_module=None, armistice_after_rounds=0, play_order=None):
     """faction_modes: {faction_code: FactionMode}, one entry per faction in the game -- every
     faction of the scenario, or (a generated scenario) only those playing: a faction left out has no
     place in the game at all, so it may own no land. data_module: the game's configuration
@@ -104,6 +104,8 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
       tie-break uses as "turn order" -- so this one shuffle drives both
       consistently. Takes an explicit `rng` (a random.Random instance)
       for deterministic tests/replays; defaults to a fresh, unseeded one.
+      Not randomized, the order is `play_order` (faction codes: the lobby passes them in seat order,
+      Seat 1 first) when given, else the scenario's faction order.
     - allow_combat_moves_first_turn (default False) / allow_noncombat_
       moves_first_turn (default True): stored directly on GameState and
       enforced every turn by GameEngine.advance_phase(), not just at
@@ -182,6 +184,9 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
         gs.territories[tid] = TerritoryState(territory_id=tid, owner=owner, sc_disabled=neutral_home)
 
     faction_codes = [code for code in data.factions() if code in seat_modes]
+    if play_order is not None and not randomize_play_order:
+        ordered = [code for code in play_order if code in seat_modes]
+        faction_codes = ordered + [code for code in faction_codes if code not in ordered]
     if randomize_play_order:
         rng.shuffle(faction_codes)
     faction_codes += used_builtin  # after the shuffle: never a seat, never in turn order

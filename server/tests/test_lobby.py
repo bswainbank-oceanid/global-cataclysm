@@ -114,6 +114,18 @@ class TestResolveAndBuild(unittest.TestCase):
             firsts.add(session.engine.game_state.active_faction)
         self.assertEqual(len(firsts), 1)  # the same first faction every time
 
+    def test_a_fixed_turn_order_is_the_seat_order(self):
+        session, _ = build_session(settings(seat('BOT', 'PAF'), seat('BOT', 'NAA'), seat('NEUTRAL', 'UE'),
+                                            seat('BOT', 'GPC'), randomize_order=False), random.Random(5))
+        gs = session.engine.game_state
+        self.assertEqual(gs.active_factions(), ['PAF', 'NAA', 'GPC'])  # Seat 1, 2 and 4 (Seat 3 has no turns)
+        self.assertEqual(gs.active_faction, 'PAF')
+        # random factions too: whichever each seat drew plays in seat order
+        session, seats = build_session(settings(seat('BOT'), seat('BOT'), seat('BOT'), randomize_order=False),
+                                       random.Random(8))
+        played = [s['faction'] for s in seats if s['mode'] == 'BOT']
+        self.assertEqual(session.engine.game_state.active_factions(), played)
+
     def test_a_zero_human_game_can_be_watched_to_its_first_step(self):
         session, _ = build_session(settings(seat('BOT'), seat('BOT')), random.Random(1))
         messages = session.handle_message({'type': 'watch'})
