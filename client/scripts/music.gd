@@ -2,7 +2,8 @@ extends Node
 ## The soundtrack (autoload "Music"): res://data/music.json's tracks (tools/sync_client_data.py, from
 ## assets/sounds/music), on their own "Music" bus at the Settings' music volume (or muted).
 ##
-## On the menus (and before a game): the base tracks, starting with one at random and then taking turns. In
+## On the menus (and before a game): the base tracks (the Main themes), starting with one at random and then taking
+## turns in order. In
 ## a game: the player's faction's own tracks, the same way -- or, playing several factions, all of theirs,
 ## shuffled (and shuffled again each time round). A spectator, or a player whose factions are all out,
 ## hears the base tracks. Never tied to whose turn it is. Tracks crossfade (FADE seconds).

@@ -79,25 +79,27 @@ def client_files(config):
 KEEP_IMPORT = '[remap]\n\nimporter="keep"\n'
 
 
-# A soundtrack file's name: "Cold Motif.mp3" / "Cold Motif - 2.mp3" (the base tracks), "NAA - Cold Motif.mp3" /
-# "NAA - 2 - Cold Motif.mp3" (a faction's; "AAC -2 - ..." too).
-MUSIC_NAME = re.compile(r'^(?:([A-Z]{2,4})\s*-\s*)?(?:(\d+)\s*-\s*)?[^-]+?(?:\s*-\s*(\d+))?\.mp3$', re.I)
+# A soundtrack file's name: a label -- "Main" (the base themes, played on the menus) or a faction's code --
+# then the track's number, then anything: "Main - 1 - GC72.mp3", "Main 4 - GC72.mp3", "NAA - 2 - GC72.mp3",
+# "GPC- 2 - GC72.mp3".
+MUSIC_NAME = re.compile(r'^\s*([A-Za-z]+)\s*-?\s*(\d+)(?!\d).*\.mp3$', re.I)
+MAIN_LABEL = 'main'
 
 
 def _music_tracks(folder, factions):
     """{'base': [(client name, source path), ...], 'factions': {code: [...]}} from the soundtrack folder,
-    each list in track order (1, 2, ...): base_1.mp3, NAA_1.mp3, NAA_2.mp3 and so on."""
+    each list in track order (1, 2, ...): base_1.mp3 (Main 1), NAA_1.mp3, NAA_2.mp3 and so on."""
     out = {'base': [], 'factions': {}}
     for src in sorted(folder.glob('*.mp3')) if folder.exists() else []:
         m = MUSIC_NAME.match(src.name)
         if not m:
-            print(f'note: {src.name} is not named like a soundtrack file; left out')
+            print(f'note: {src.name} is not named like a soundtrack file ("Main - 1 - ...", "NAA - 2 - ..."); left out')
             continue
-        code, n = m.group(1), int(m.group(2) or m.group(3) or 1)
-        if code is not None and code.upper() in factions:
-            out['factions'].setdefault(code.upper(), []).append((n, src))
-        elif code is None:
+        label, n = m.group(1), int(m.group(2))
+        if label.lower() == MAIN_LABEL:
             out['base'].append((n, src))
+        elif label.upper() in factions:
+            out['factions'].setdefault(label.upper(), []).append((n, src))
         else:
             print(f'note: {src.name} names no faction of this scenario; left out')
     out['base'] = [(f'base_{n}.mp3', src) for n, src in sorted(out['base'])]
@@ -156,7 +158,7 @@ def main():
     for group, group_files in [('base', tracks['base'])] + sorted(tracks['factions'].items()):
         for name, src in group_files:
             wanted.add(name)
-            if not (music_dir / name).exists() or (music_dir / name).stat().st_size != src.stat().st_size                     or (music_dir / name).stat().st_mtime < src.stat().st_mtime:
+            if not (music_dir / name).exists() or (music_dir / name).stat().st_size != src.stat().st_size                     or int((music_dir / name).stat().st_mtime) != int(src.stat().st_mtime):  # (any replacement)
                 shutil.copy2(src, music_dir / name)
             _keep_as_is(music_dir / name)
     for old in music_dir.glob('*.mp3'):

@@ -17,17 +17,19 @@ func _initialize() -> void:
 	var music = root.get_node("Music")
 	var store = root.get_node("GameStore")
 	var tracks: Dictionary = music._tracks
-	_check((tracks.get("base", []) as Array).size() == 2, "two base tracks: %s" % [tracks.get("base")])
+	_check((tracks.get("base", []) as Array).size() == 4, "four base tracks (the Main themes): %s" % [tracks.get("base")])
 	for code in ["NAA", "UE", "UER", "GPC", "PAF", "AAC"]:
 		_check((tracks.get("factions", {}).get(code, []) as Array).size() == 2, "%s has two tracks" % code)
 
-	# The menus: the base tracks, in turns, from either one.
+	# The menus: the base tracks, in turns (in order), from any one.
 	var starts := {}
-	for i in 20:
+	for i in 40:
 		var p: Array = music.playlist_for([])
-		_check(p.size() == 2 and p.has("base_1.mp3") and p.has("base_2.mp3"), "the menus play the base tracks: %s" % [p])
+		_check(p.size() == 4 and p.has("base_1.mp3") and p.has("base_4.mp3"), "the menus play the base tracks: %s" % [p])
+		var first := int(str(p[0]).trim_prefix("base_").trim_suffix(".mp3"))
+		_check(str(p[1]) == "base_%d.mp3" % (first % 4 + 1), "...taking turns in order: %s" % [p])
 		starts[p[0]] = true
-	_check(starts.size() == 2, "either base track may come first")
+	_check(starts.size() >= 3, "any base track may come first: %s" % [starts.keys()])
 	# One faction: its own two, in turns.
 	var naa: Array = music.playlist_for(["NAA"])
 	_check(naa.size() == 2 and naa.has("NAA_1.mp3") and naa.has("NAA_2.mp3"), "a faction's own tracks: %s" % [naa])
