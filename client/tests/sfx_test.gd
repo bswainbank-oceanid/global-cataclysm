@@ -41,13 +41,16 @@ func _initialize() -> void:
 
 	# A move phase played back: its units' move sounds. A battle fought without the board: attack sounds.
 	_heard.clear()
+	sfx._phase_until = 0  # (each phase below played as if the last one's sounds had finished)
 	stepper._play_result_sounds("COMBAT_MOVE", [{"kind": "combat_move", "orders": [
 		{"unit_id": 1, "unit_type": "Armor"}, {"unit_id": 2, "unit_type": "Armor"}, {"unit_id": 3, "unit_type": "Mechanized Infantry"}]}])
 	_check(_heard == ["Armor/move", "Mechanized Infantry/move"], "a combat move's sounds: %s" % str(_heard))
 	_heard.clear()
+	sfx._phase_until = 0  # (each phase below played as if the last one's sounds had finished)
 	stepper._play_result_sounds("RETURN_TO_BASE", [{"kind": "return_to_base", "orders": [{"unit_id": 9, "unit_type": "Fighter"}]}])
 	_check(_heard == ["Fighter/move"], "aircraft flying home: %s" % str(_heard))
 	_heard.clear()
+	sfx._phase_until = 0  # (each phase below played as if the last one's sounds had finished)
 	stepper._play_result_sounds("COMBAT_RESOLUTION", [
 		{"kind": "battle_event", "event_kind": "SIDE_START", "side": "attacker"},
 		{"kind": "battle_event", "event_kind": "UNIT_ROLL", "unit_type": "Submarine"},
@@ -55,8 +58,23 @@ func _initialize() -> void:
 		{"kind": "battle_event", "event_kind": "UNIT_ROLL", "unit_type": "Submarine"}])
 	_check(_heard == ["Submarine/attack", "Cruiser/attack"], "a battle without the board: %s" % str(_heard))
 	_heard.clear()
+	sfx._phase_until = 0  # (each phase below played as if the last one's sounds had finished)
 	stepper._play_result_sounds("PURCHASE", [{"kind": "purchase", "orders": [{"unit_type": "Armor"}]}])
 	_check(_heard.is_empty(), "a purchase makes no sound")
+
+	# Phases going by faster than their sounds: one comes in while the last one's still play -- it is silent.
+	sfx._phase_until = 0
+	_heard.clear()
+	stepper._play_result_sounds("COMBAT_MOVE", [{"kind": "combat_move", "orders": [{"unit_id": 1, "unit_type": "Armor"}]}])
+	stepper._play_result_sounds("NONCOMBAT_MOVE", [{"kind": "noncombat_move", "orders": [{"unit_id": 2, "unit_type": "Fighter"}]}])
+	_check(_heard == ["Armor/move"], "a phase over the last one's sounds is silent: %s" % str(_heard))
+	_check(sfx._phase_until > Time.get_ticks_msec(), "...the first phase's sounds still being played")
+	sfx._phase_until = Time.get_ticks_msec() - 1  # (they have finished)
+	stepper._play_result_sounds("NONCOMBAT_MOVE", [{"kind": "noncombat_move", "orders": [{"unit_id": 2, "unit_type": "Fighter"}]}])
+	_check(_heard == ["Armor/move", "Fighter/move"], "once they're over, the next phase plays: %s" % str(_heard))
+	# A player's own move, as they make it, isn't held back.
+	sfx.play_units(["Cruiser"], "move")
+	_check(_heard.back() == "Cruiser/move", "the player's own move sounds at once")
 
 	# The interface click: it loads; every button clicks as it's pressed (once per press), a unit tile doesn't.
 	_check(sfx._stream(sfx.CLICK) != null, "the click sound loads")

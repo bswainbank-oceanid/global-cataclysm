@@ -4,6 +4,8 @@ extends Node
 ## "SFX" bus at the Settings' sound volume (or muted).
 ##
 ##   Sfx.play_units(["Armor", "Infantry"], "move")   # one sound per unit type, a little apart
+##   Sfx.play_phase(["Armor"], "move")                 # the same for a phase played back -- unless the last
+##                                                     # phase's sounds are still playing: then none at all
 ##
 ## The interface's own sound -- a soft typewriter click (assets/sounds/ui/ui_click.wav) -- plays for every
 ## button, tab and list choice (hooked up here as each one is created), and for map clicks that aren't a
@@ -27,6 +29,7 @@ var _players: Array = []
 var _next_player := 0
 var _streams := {}         # file -> AudioStreamWAV (null if it couldn't be loaded)
 var _last_start := {}      # file -> msec it last started
+var _phase_until := 0      # msec when the last played-back phase's sounds end (play_phase)
 var _click_player: AudioStreamPlayer
 var _last_click := -100000
 
@@ -100,6 +103,33 @@ func play_units(types: Array, kind: String, limit := 3, spacing := 0.18, gain_db
 			continue
 		play_unit(unit_type, kind, n * spacing, gain_db)
 		n += 1
+
+
+## A phase's sounds as the game plays it back (TurnStepper): play_units' -- but only once the previous phase's
+## have finished. Phases going by faster than their sounds (nothing pausing them) would otherwise talk over
+## each other, so a phase that comes while they still play is silent. Returns whether it played.
+func play_phase(types: Array, kind: String, limit := 3, spacing := 0.18, gain_db := 0.0) -> bool:
+	var now := Time.get_ticks_msec()
+	if now < _phase_until:
+		return false
+	var longest := 0.0
+	var n := 0
+	var seen := {}
+	for raw in types:
+		var unit_type := GameStore.base_type(str(raw))
+		var file := _file(unit_type, kind)
+		if seen.has(unit_type) or n >= limit or file == "":
+			continue
+		seen[unit_type] = true
+		var stream = _stream(file)
+		if stream != null:
+			longest = maxf(longest, n * spacing + float(stream.get_length()))
+		n += 1
+	if n == 0:
+		return false
+	_phase_until = now + int(longest * 1000.0)
+	play_units(types, kind, limit, spacing, gain_db)
+	return true
 
 
 func play_unit(unit_type: String, kind: String, delay := 0.0, gain_db := 0.0) -> void:

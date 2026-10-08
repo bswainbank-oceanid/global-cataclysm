@@ -869,12 +869,12 @@ func _play_result_sounds(phase: String, events: Array) -> void:
 				for o in e.get("orders", []):
 					if o.has("unit_type"):
 						types.append(str(o["unit_type"]))
-		Sfx.play_units(types, "move")
+		Sfx.play_phase(types, "move")  # (not over the last phase's sounds, if they're still playing)
 	elif phase == "COMBAT_RESOLUTION":
 		for e in events:
 			if str(e.get("kind", "")) == "battle_event" and str(e.get("event_kind", "")) == "UNIT_ROLL":
 				types.append(str(e.get("unit_type", "")))
-		Sfx.play_units(types, "attack", 3, 0.15, -6.0)
+		Sfx.play_phase(types, "attack", 3, 0.15, -6.0)
 
 
 func move_commit(dest: int) -> void:
