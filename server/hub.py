@@ -105,6 +105,7 @@ from engine.repository import default_repository
 
 from . import accounts, admin, chat, games, persist, scenarios, setups
 from .limits import Limits
+from .shared_setups import SharedSetups
 from .build import build_info
 from .lobby import LobbyError, build_session, generator_info
 from .store import StoreError, utc_now
@@ -145,7 +146,9 @@ class Connection:
 class Hub:
     def __init__(self, store, repo=None, download_url=None, limits=None, mailer=None):
         self.store = store
-        self.repo = repo or default_repository()
+        # The shared scenarios, in the database (server/shared_setups.py): `repo` (the code's modules, by
+        # default) is only where a new database takes its starting set from.
+        self.repo = SharedSetups(store, repo or default_repository())
         self.download_url = download_url  # where players get the client (in "hello"), or None
         self.limits = limits or Limits()
         self.mailer = mailer  # server/mailer.py's Mailer (password reset codes), or None: no resets
