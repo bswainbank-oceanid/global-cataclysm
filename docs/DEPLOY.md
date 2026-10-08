@@ -37,6 +37,10 @@ curl -O https://raw.githubusercontent.com/OWNER/global-cataclysm/master/deploy/i
 sudo bash install.sh play.example.com https://github.com/OWNER/global-cataclysm.git
 ```
 
+If you copy `install.sh` over from a Windows PC instead of downloading it, strip its Windows line endings first
+(`sed -i 's/$//' install.sh`), or bash stops at once with "set: pipefail: invalid option name". (The repository
+keeps deploy/ in Linux line endings, so the server's own clone is fine.) It runs on Ubuntu 24.04 and 26.04.
+
 `deploy/install.sh` installs Caddy, git and Python 3.14 (through [uv](https://docs.astral.sh/uv/)), makes a
 `gc` user that owns the game, clones the code into `/opt/global-cataclysm`, and starts:
 
