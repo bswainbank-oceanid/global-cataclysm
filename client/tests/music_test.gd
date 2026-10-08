@@ -64,6 +64,8 @@ func _initialize() -> void:
 	settings.music_muted = false
 	music.apply_volume()
 	_check(not AudioServer.is_bus_mute(AudioServer.get_bus_index("Music")), "volume 50 plays")
+	_check(is_equal_approx(db_to_linear(AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Music"))), 0.25),
+		"...at half the slider's level (the soundtrack's own GAIN): %s" % db_to_linear(AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Music"))))
 	_check(not AudioServer.is_bus_mute(AudioServer.get_bus_index("SFX")) or settings.sound_muted, "the unit sounds are their own")
 
 	print("music test: failures=%d" % _failures)

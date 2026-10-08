@@ -18,6 +18,7 @@ const BUS := "Music"
 const MANIFEST := "res://data/music.json"
 const DIR := "res://assets/music/"
 const FADE := 2.0
+const GAIN := 0.5   # the soundtrack's own level, under the volume setting: half as loud as the tracks are mixed
 
 var _tracks := {"base": [], "factions": {}}
 var _players: Array = []          # two AudioStreamPlayers, for crossfading
@@ -57,13 +58,14 @@ func _ready() -> void:
 	_refresh.call_deferred()
 
 
-## The Settings' music volume (0-100) and mute, onto the Music bus.
+## The Settings' music volume (0-100) and mute, onto the Music bus (at GAIN: the slider's 100% is half the
+## tracks' own loudness).
 func apply_volume() -> void:
 	var bus := AudioServer.get_bus_index(BUS)
 	if bus < 0:
 		return
 	var level := clampf(float(Settings.music_volume) / 100.0, 0.0, 1.0)
-	AudioServer.set_bus_volume_db(bus, linear_to_db(maxf(level, 0.0001)))
+	AudioServer.set_bus_volume_db(bus, linear_to_db(maxf(level * GAIN, 0.0001)))
 	AudioServer.set_bus_mute(bus, Settings.music_muted or level <= 0.0)
 
 
