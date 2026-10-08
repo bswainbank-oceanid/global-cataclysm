@@ -22,6 +22,12 @@ Client -> server (besides each game's own protocol, server/session.py's auto mod
         -> {"type": "logged_in", "user": {...}, "token"}  (token_login: the same token back), or
            {"type": "login_failed", "message", "problems"}
     {"type": "logout"}                          -> {"type": "logged_out"}; the token stops working
+    {"type": "request_reset", "email"}          a forgotten password: emails a 6-digit code (server/mailer.py)
+                                                -> {"type": "reset_requested", "email"}, the same whether or
+                                                   not there's an account with that email
+    {"type": "reset_password", "email", "code", "password"}
+                                                -> "logged_in" with the new password (every other login of
+                                                   the account ended), or "login_failed"
     {"type": "enter_game", "game_id", ["since", "epoch"]}
                                                 -> {"type": "entered_game", "game": {...summary...},
                                                     "seats": [...], "my_factions": [...], "players":
@@ -103,7 +109,17 @@ from .build import build_info
 from .lobby import LobbyError, build_session, generator_info
 from .store import StoreError, utc_now
 
-ACCOUNT_TYPES = ('register', 'login', 'token_login', 'logout')
+ACCOUNT_TYPES = ('register', 'login', 'token_login', 'logout', 'request_reset', 'reset_password')
+RESET_SUBJECT = 'Your Global Cataclysm password reset code'
+RESET_TEXT = """Hello {name},
+
+Your code to set a new Global Cataclysm password is:
+
+    {code}
+
+It works once, for the next {minutes} minutes. If you didn't ask for it, ignore this email: your password
+hasn't changed.
+"""
 # A game's messages that a player may send without naming a faction of theirs.
 FACTIONLESS = ('follow', 'watch', 'propose_armistice')
 # A game's messages only the server itself sends (server/session.py).
@@ -127,11 +143,12 @@ class Connection:
 
 
 class Hub:
-    def __init__(self, store, repo=None, download_url=None, limits=None):
+    def __init__(self, store, repo=None, download_url=None, limits=None, mailer=None):
         self.store = store
         self.repo = repo or default_repository()
         self.download_url = download_url  # where players get the client (in "hello"), or None
         self.limits = limits or Limits()
+        self.mailer = mailer  # server/mailer.py's Mailer (password reset codes), or None: no resets
         self.connections = {}     # key -> Connection
         self.sessions = {}        # game id -> persist.RecordedGame, for every live game
         self.load_problems = {}   # game id -> why its save couldn't be loaded
@@ -189,6 +206,20 @@ class Hub:
             conn.user = conn.token = conn.game_id = conn.lobby_id = None
             conn.browsing = False
             return [([conn.key], {'type': 'logged_out'})]
+        if kind == 'request_reset':
+            return self._request_reset(conn, str(msg.get('email') or '').strip())
+        if kind == 'reset_password':
+            email = msg.get('email')
+            self.limits.check('login', conn.address, email)
+            try:
+                user, token = accounts.finish_reset(self.store, email, msg.get('code'), msg.get('password'))
+            except StoreError as e:
+                if e.problems == [accounts.RESET_WRONG]:
+                    self.limits.failed('login', conn.address, email)
+                raise
+            conn.user, conn.token, conn.game_id = user, token, None
+            conn.lobby_id, conn.browsing = None, False
+            return [([conn.key], {'type': 'logged_in', 'user': user, 'token': token})]
         if kind == 'register':
             self.limits.check('register', conn.address)
             self.limits.failed('register', conn.address)  # (every new account counts)
@@ -210,6 +241,21 @@ class Hub:
         conn.user, conn.token, conn.game_id = user, token, None
         conn.lobby_id, conn.browsing = None, False
         return [([conn.key], {'type': 'logged_in', 'user': user, 'token': token})]
+
+    def _request_reset(self, conn, email):
+        """Emails a reset code, if there's an account with `email` (and the same answer either way, so asking
+        doesn't tell anyone whether an email has an account here)."""
+        if self.mailer is None:
+            raise StoreError("password resets aren't set up on this server: ask an admin")
+        if not email:
+            raise StoreError('an email is needed')
+        self.limits.check('reset', conn.address, email)
+        self.limits.failed('reset', conn.address, email)  # (every request counts)
+        user, code = accounts.start_reset(self.store, email)
+        if user is not None:
+            self.mailer.send_later(user['email'], RESET_SUBJECT, RESET_TEXT.format(
+                name=user['player_name'], code=code, minutes=accounts.RESET_MINUTES))
+        return [([conn.key], {'type': 'reset_requested', 'email': email})]
 
     # ---- games -------------------------------------------------------------------------------------
 

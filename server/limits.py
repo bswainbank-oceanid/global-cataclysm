@@ -20,6 +20,8 @@ RULES = {
     'login': (10, 15 * 60),          # wrong passwords from one address
     'login_account': (5, 15 * 60),   # wrong passwords for one account, from anywhere
     'register': (5, 60 * 60),        # new accounts from one address
+    'reset': (5, 60 * 60),           # password reset codes asked for from one address
+    'reset_account': (3, 60 * 60),   # ...and for one account
 }
 
 

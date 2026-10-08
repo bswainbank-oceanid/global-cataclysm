@@ -54,8 +54,11 @@ Then:
    sudo -u gc /opt/global-cataclysm/.venv/bin/python /opt/global-cataclysm/tools/set_admin.py \
        --db /opt/global-cataclysm/server_data/global_cataclysm.sqlite3 you@example.com
    ```
-4. **Set up email** for password resets (when that feature lands): put `email.json` in
-   `/opt/global-cataclysm/server_data/` (owned by `gc`) and restart the server.
+4. **Set up email** for password resets ("Forgot password?" emails a 6-digit code): copy your
+   `server_data/email.json` (the SMTP service's settings, server/mailer.py) to
+   `/opt/global-cataclysm/server_data/`, owned by `gc` and readable only by it
+   (`sudo chown gc:gc ... && sudo chmod 600 ...`), and restart the server. Without it the server runs, but
+   says resets aren't set up.
 
 ## Building and publishing the client
 

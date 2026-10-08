@@ -9,6 +9,7 @@ extends Node
 ## logs in as <name>@dev.local (password "dev"), registering it the first time: for scripted runs.
 
 signal changed                      # logged in, logged out, or the server's mode became known
+signal reset_sent(email: String)       # a reset code was asked for (whether or not the email has an account)
 signal problem(message: String)     # a login / registration refused, in the server's words
 
 var multi := false     # the server is the multi-player one
@@ -80,6 +81,18 @@ func register(player_name: String, actual_name: String, email: String, password:
 		"email": email.strip_edges(), "password": password})
 
 
+## A forgotten password: has the server email a 6-digit code (reset_sent once it's asked).
+func request_reset(email: String) -> void:
+	_pending = "reset"
+	Net.send_msg({"type": "request_reset", "email": email.strip_edges()})
+
+
+## The code from that email, and a new password: logs in ("logged_in"), or says what's wrong (problem).
+func reset_password(email: String, code: String, password: String) -> void:
+	_pending = "reset"
+	Net.send_msg({"type": "reset_password", "email": email.strip_edges(), "code": code.strip_edges(), "password": password})
+
+
 func logout() -> void:
 	Net.send_msg({"type": "logout"})
 	_forget()
@@ -107,6 +120,9 @@ func _on_message(msg: Dictionary) -> void:
 			token = str(msg.get("token", ""))
 			_save()
 			changed.emit()
+		"reset_requested":
+			_pending = ""
+			reset_sent.emit(str(msg.get("email", "")))
 		"logged_out":
 			_forget()
 			if msg.has("reason"):  # (an admin locked the account, say)

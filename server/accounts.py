@@ -5,11 +5,14 @@ Player accounts and logins (docs/DATA_MODEL.md, "User" and "Login"), on top of s
     user, token = login(store, 'B@Example.com', 'secret')     # the email ignores case
     user = login_with_token(store, token)                      # a client logging back in
     logout(store, token)
+    user, code = start_reset(store, 'b@example.com')            # a forgotten password: email `code`
+    user, token = finish_reset(store, 'b@example.com', code, 'new secret')
 
 A user as returned here never carries the password: {id, player_name, actual_name, email, admin,
 created}. Only a salted PBKDF2 hash of the password is stored, and only a SHA-256 of each login
 token, so a copy of the database can't be used to log anyone in.
 """
+import datetime
 import hashlib
 import hmac
 import secrets
@@ -24,11 +27,15 @@ MAX_EMAIL = 254
 MAX_PASSWORD = 1024   # (hashing an enormous password would tie the server up)
 WRONG_LOGIN = 'wrong email or password'
 LOCKED = 'this account is locked: ask an admin'
+RESET_MINUTES = 30   # a reset code's life
+RESET_TRIES = 5      # wrong codes before it stops working
+RESET_WRONG = 'that code is wrong or has expired: ask for a new one'
 
 
 def public(user):
-    """`user` as the rest of the server and the client see it: everything but the password."""
-    return {k: v for k, v in user.items() if k != 'password'}
+    """`user` as the rest of the server and the client see it: everything but the password (and a reset
+    code's hash)."""
+    return {k: v for k, v in user.items() if k not in ('password', 'reset')}
 
 
 def check_profile(player_name, actual_name, email, password):
@@ -139,6 +146,58 @@ def set_admin(store, user_id, admin=True):
         user['admin'] = bool(admin)
         store.update('users', user, {'id': user_id})
     return public(user)
+
+
+# ---- a forgotten password -------------------------------------------------------------------------
+
+def start_reset(store, email):
+    """A reset code for the account with `email`: (user, code) -- the code to email them, 6 digits, which
+    works once, for RESET_MINUTES, and only RESET_TRIES times wrong. Stored only as a hash (like a password),
+    replacing any earlier code. (None, None) when there's no such account, or it's locked."""
+    user = store.fetch('users', email=str(email or '').strip())
+    if user is None or user.get('locked'):
+        return None, None
+    code = f'{secrets.randbelow(10 ** 6):06d}'
+    expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=RESET_MINUTES)
+    user['reset'] = {'code': _hash(code), 'expires': expires.strftime('%Y-%m-%dT%H:%M:%SZ'), 'wrong': 0}
+    store.update('users', user, {'id': user['id']})
+    return public(user), code
+
+
+def finish_reset(store, email, code, new_password):
+    """Sets a new password with the code start_reset sent: (user, token), logged in -- and every other login
+    of the account ended. Raises StoreError for a wrong, used up or expired code, or an unusable password."""
+    new_password = str(new_password or '')
+    problems = [p for p in check_profile('x', '', 'x@x', new_password) if 'password' in p]
+    if problems:
+        raise StoreError(problems)
+    problem = None
+    with store.transaction():
+        user = store.fetch('users', email=str(email or '').strip())
+        reset = (user or {}).get('reset')
+        if user is None or not reset:
+            problem = RESET_WRONG
+        elif user.get('locked'):
+            problem = LOCKED
+        else:
+            expired = datetime.datetime.now(datetime.timezone.utc) > datetime.datetime.fromisoformat(reset['expires'])
+            if expired or not _matches(str(code or '').strip(), reset['code']):
+                if expired or reset['wrong'] + 1 >= RESET_TRIES:
+                    user.pop('reset')
+                else:
+                    reset['wrong'] += 1
+                store.update('users', user, {'id': user['id']})  # (kept: raised only once it's saved)
+                problem = RESET_WRONG
+            else:
+                user.pop('reset')
+                user['password'] = _hash(new_password)
+                store.update('users', user, {'id': user['id']})
+                store.delete('logins', user_id=user['id'])  # (a forgotten password: anyone else logged in is out)
+                token = _new_login(store, user['id'])
+    if problem:
+        raise StoreError(problem)
+    _note_login(store, user)
+    return public(user), token
 
 
 def _note_login(store, user):

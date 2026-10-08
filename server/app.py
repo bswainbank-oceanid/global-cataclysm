@@ -52,6 +52,7 @@ from engine.stats import GameStats
 from engine.turn_log import TurnLog
 from .host import GameHost
 from .hub import Hub
+from .mailer import Mailer
 from .session import GameSession
 from .store import DEFAULT_PATH, Store
 
@@ -219,7 +220,10 @@ class MultiServer:
 
 
 async def main_multi(host, port, db, behind_proxy=False, download_url=None):
-    server = MultiServer(Hub(Store(db), download_url=download_url), behind_proxy=behind_proxy)
+    mailer = Mailer.from_file()  # (server_data/email.json: password reset codes)
+    if mailer is None:
+        logger.warning('no server_data/email.json: password resets are off')
+    server = MultiServer(Hub(Store(db), download_url=download_url, mailer=mailer), behind_proxy=behind_proxy)
     for game_id, problem in server.hub.load_problems.items():
         logger.warning("game %s wasn't loaded: %s", game_id, problem)
     logger.info('%d live game(s) loaded', len(server.hub.sessions))
