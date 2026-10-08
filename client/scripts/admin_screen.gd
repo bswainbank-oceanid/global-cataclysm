@@ -15,9 +15,7 @@ var _problem: Label
 
 
 func _build() -> void:
-	var center := CenterContainer.new()
-	add_child(center)
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var center := MenuScreen.scroll_center(self)  # (scroll bars when the window is too small for it)
 	var panel := MenuScreen.sheet(940, 10)
 	center.add_child(panel)
 	var v := MenuScreen.body(panel)

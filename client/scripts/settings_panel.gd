@@ -20,6 +20,8 @@ signal new_game_pressed
 var _new_game: Button
 var menu := false  # the main menu's Settings: the options only, not the game actions (set before adding it)
 var _fullscreen: CheckBox
+var _scroll: ScrollContainer  # holds everything: scrolls when the panel would run past the window's bottom
+var _content: VBoxContainer
 
 # Much longer than an ordinary Diplomacy hold (orders_panel.gd's 0.8s): these are
 # irreversible and can end the game, so a stray click must never fire them.
@@ -29,9 +31,17 @@ const HOLD_SECONDS := 3.0
 func _ready() -> void:
 	custom_minimum_size = Vector2(320, 0)
 	HudStyle.paper_sheet(self)
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_child(_scroll)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
-	add_child(v)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scroll.add_child(v)
+	_content = v
+	v.minimum_size_changed.connect(_fit.call_deferred)
+	visibility_changed.connect(_fit.call_deferred)
+	get_viewport().size_changed.connect(_fit.call_deferred)
 
 	v.add_child(HudStyle.label("Playback", 15, HudStyle.GOLD))
 	v.add_child(HudStyle.label("When to wait for the Next button", 12, HudStyle.TEXT_DIM))
@@ -104,6 +114,19 @@ func _ready() -> void:
 	GameStore.state_changed.connect(_sync)
 	GameStore.armistice_changed.connect(_sync)
 	_sync()
+
+
+## As tall as its contents -- or, when that would run past the bottom of the window, as tall as fits, with a
+## scroll bar.
+func _fit() -> void:
+	if not is_inside_tree() or not visible:
+		return
+	var want := _content.get_combined_minimum_size()
+	var frame := get_combined_minimum_size() - _scroll.get_combined_minimum_size()  # (the sheet's margins)
+	var room := get_viewport_rect().size.y - global_position.y - frame.y - 16.0
+	var scrolls := want.y > room
+	_scroll.custom_minimum_size = Vector2(want.x + (GCTheme.SCROLLBAR if scrolls else 0), minf(want.y, maxf(160.0, room)))
+	size = Vector2.ZERO  # (shrink back to fit, when the window grew)
 
 
 func _hold_button(parent: Control, text: String, primary: bool) -> HoldButton:

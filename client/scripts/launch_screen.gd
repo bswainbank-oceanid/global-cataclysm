@@ -148,9 +148,7 @@ func _ready() -> void:
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(art)
 	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var center := CenterContainer.new()
-	add_child(center)
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var center := MenuScreen.scroll_center(self)  # (scroll bars when the window is too small for it)
 	var panel := PanelContainer.new()
 	HudStyle.paper_sheet(panel)
 	center.add_child(panel)

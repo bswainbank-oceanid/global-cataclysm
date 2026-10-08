@@ -35,6 +35,19 @@ func _build() -> void:
 	pass
 
 
+## A CenterContainer filling `parent` (a screen) -- inside a ScrollContainer, so a sheet too big for the window
+## gets scroll bars instead of running off it (one that fits stays centred).
+static func scroll_center(parent: Control) -> CenterContainer:
+	var scroll := ScrollContainer.new()
+	parent.add_child(scroll)
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var center := CenterContainer.new()
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.add_child(center)
+	return center
+
+
 ## A paper sheet of `width`, holding a VBoxContainer (returned) -- add it where it belongs.
 static func sheet(width: float, separation := 10) -> PanelContainer:
 	var panel := PanelContainer.new()

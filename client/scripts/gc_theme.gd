@@ -67,6 +67,9 @@ static func paper() -> Theme:
 
 
 ## A flat box: `bg` fill, `edge` border `w` px (the bottom `bottom` px: a hard offset shadow), small radius.
+const SCROLLBAR := 10  # scroll bars' thickness, px
+
+
 static func box(bg: Color, edge: Color, w: int = 2, bottom: int = -1, pad := Vector4(8, 5, 8, 5)) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = bg
@@ -225,12 +228,15 @@ static func _build(on_paper: bool) -> Theme:
 	t.set_font("font", "TooltipLabel", font("body"))
 	t.set_font_size("font_size", "TooltipLabel", 12)
 
-	# scroll bars: thin, flat
+	# scroll bars: thin, flat -- SCROLLBAR px thick (a scroll bar is as thick as its styles' margins: with
+	# none it has no thickness at all, and doesn't show)
+	var m := SCROLLBAR / 2.0
+	var pad := Vector4(m, m, m, m)
 	for bar in ["VScrollBar", "HScrollBar"]:
-		t.set_stylebox("scroll", bar, box(Color(0, 0, 0, 0.12) if on_paper else NAVY_DARK, Color(0, 0, 0, 0), 0, -1, Vector4(0, 0, 0, 0)))
-		t.set_stylebox("grabber", bar, box(NAVY_LIGHT if on_paper else NAVY_EDGE, Color(0, 0, 0, 0), 0, -1, Vector4(0, 0, 0, 0)))
-		t.set_stylebox("grabber_highlight", bar, box(RED, Color(0, 0, 0, 0), 0, -1, Vector4(0, 0, 0, 0)))
-		t.set_stylebox("grabber_pressed", bar, box(RED_DARK, Color(0, 0, 0, 0), 0, -1, Vector4(0, 0, 0, 0)))
+		t.set_stylebox("scroll", bar, box(Color(0, 0, 0, 0.12) if on_paper else NAVY_DARK, Color(0, 0, 0, 0), 0, -1, pad))
+		t.set_stylebox("grabber", bar, box(NAVY_LIGHT if on_paper else NAVY_EDGE, Color(0, 0, 0, 0), 0, -1, pad))
+		t.set_stylebox("grabber_highlight", bar, box(RED, Color(0, 0, 0, 0), 0, -1, pad))
+		t.set_stylebox("grabber_pressed", bar, box(RED_DARK, Color(0, 0, 0, 0), 0, -1, pad))
 	return t
 
 

@@ -39,11 +39,19 @@ func _art_dim() -> float:
 
 func _build() -> void:
 	# the menu: a paper column at the left, over the poster's tank
+	# (in a ScrollContainer down the left side: scroll bars when the window is too short for the column)
+	var column_scroll := ScrollContainer.new()
+	column_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_child(column_scroll)
+	column_scroll.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	column_scroll.offset_right = 48 + 300 + 24 + GCTheme.SCROLLBAR
 	var column := MarginContainer.new()
 	column.add_theme_constant_override("margin_left", 48)
 	column.add_theme_constant_override("margin_top", 60)
-	add_child(column)
-	column.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	column.add_theme_constant_override("margin_bottom", 24)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column_scroll.add_child(column)
 	var holder := VBoxContainer.new()
 	holder.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.add_child(holder)
@@ -133,6 +141,7 @@ func _build() -> void:
 	settings.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	settings.position += Vector2(-20, 70)
 	_display_panel = settings
+	settings.z_index = 5  # (over the build numbers in the corner)
 
 	var bottom := VBoxContainer.new()
 	bottom.alignment = BoxContainer.ALIGNMENT_END
