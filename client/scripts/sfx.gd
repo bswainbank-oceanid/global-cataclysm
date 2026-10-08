@@ -141,41 +141,54 @@ func _stream(file: String):
 	return _streams[file]
 
 
-## The volume controls (Settings, and the main menu's Display & Sound): a slider and Mute.
+## The volume controls (Settings, and the main menu's Settings): the unit sounds' slider and Mute, and the
+## soundtrack's (Music) -- each its own volume, muted on its own.
 static func controls() -> VBoxContainer:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
+	_volume_row(box, "Sound volume", "Mute", "sound_volume", "sound_muted",
+		func(): Sfx.play_unit("Armor", "attack"))  # (a sample at the new level)
+	_volume_row(box, "Music volume", "Mute music", "music_volume", "music_muted", Callable())
+	return box
+
+
+## A volume slider and its Mute box, for Settings' `volume` / `muted` fields; `sample`: what to play after a
+## drag (to hear the new level), if anything.
+static func _volume_row(box: VBoxContainer, title: String, mute_text: String, volume: String, muted: String,
+		sample: Callable) -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	box.add_child(row)
-	row.add_child(HudStyle.label("Sound volume", 13))
-	var value := HudStyle.label("%d%%" % int(Settings.sound_volume), 13, HudStyle.TEXT_DIM)
+	var name_label := HudStyle.label(title, 13)
+	name_label.custom_minimum_size = Vector2(96, 0)
+	row.add_child(name_label)
+	var value := HudStyle.label("%d%%" % int(Settings.get(volume)), 13, HudStyle.TEXT_DIM)
 	var slider := HSlider.new()
 	slider.min_value = 0
 	slider.max_value = 100
 	slider.step = 5
-	slider.value = Settings.sound_volume
+	slider.value = Settings.get(volume)
 	slider.custom_minimum_size = Vector2(140, 20)
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	slider.focus_mode = Control.FOCUS_NONE
 	slider.value_changed.connect(func(v: float):
-		Settings.sound_volume = int(v)
+		Settings.set(volume, int(v))
 		value.text = "%d%%" % int(v)
 		Settings.commit())
-	slider.drag_ended.connect(func(_changed: bool): Sfx.play_unit("Armor", "attack"))  # (a sample at the new level)
+	if sample.is_valid():
+		slider.drag_ended.connect(func(_changed: bool): sample.call())
 	row.add_child(slider)
 	row.add_child(value)
 	var mute := CheckBox.new()
-	mute.text = "Mute"
+	mute.text = mute_text
 	mute.focus_mode = Control.FOCUS_NONE
-	mute.button_pressed = Settings.sound_muted
+	mute.button_pressed = Settings.get(muted)
 	mute.toggled.connect(func(on: bool):
-		Settings.sound_muted = on
+		Settings.set(muted, on)
 		Settings.commit())
 	box.add_child(mute)
 	Settings.changed.connect(func():  # (the other copy of these controls changed it)
 		if is_instance_valid(slider):
-			slider.set_value_no_signal(Settings.sound_volume)
-			value.text = "%d%%" % int(Settings.sound_volume)
-			mute.set_pressed_no_signal(Settings.sound_muted))
-	return box
+			slider.set_value_no_signal(Settings.get(volume))
+			value.text = "%d%%" % int(Settings.get(volume))
+			mute.set_pressed_no_signal(Settings.get(muted)))

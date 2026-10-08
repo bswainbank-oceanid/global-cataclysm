@@ -85,12 +85,13 @@ python tools/build_client.py --web
 ```
 
 That builds `exports/web/` (an `index.html` and the engine and game files, about 60 MB, about 30 MB once
-compressed in transit). It connects to the server it is loaded from (`wss://<domain>/ws`), so one build works
+compressed in transit), with the soundtrack beside it in `exports/web/music/` (about 65 MB): the page fetches
+a track only when it first plays it, so it doesn't add to the first load. It connects to the server it is loaded from (`wss://<domain>/ws`), so one build works
 for any domain. Upload it, replacing the old one:
 
 ```bash
-scp exports/web/* you@play.example.com:/tmp/gc-web/      # (make /tmp/gc-web first: ssh ... mkdir -p /tmp/gc-web)
-ssh you@play.example.com "sudo rm -rf /var/www/global-cataclysm/play/* && sudo cp /tmp/gc-web/* /var/www/global-cataclysm/play/"
+scp -r exports/web/* you@play.example.com:/tmp/gc-web/   # (make /tmp/gc-web first: ssh ... mkdir -p /tmp/gc-web)
+ssh you@play.example.com "sudo rm -rf /var/www/global-cataclysm/play/* && sudo cp -r /tmp/gc-web/* /var/www/global-cataclysm/play/"
 ```
 
 Players open `https://play.example.com/play/` (the download page links to it). Browsers check for a new

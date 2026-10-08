@@ -19,6 +19,7 @@ import argparse
 import glob
 import json
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -102,7 +103,8 @@ def build_web(godot, build):
     web = os.path.join(OUT, 'web')
     os.makedirs(web, exist_ok=True)
     for old in os.listdir(web):
-        os.remove(os.path.join(web, old))
+        path = os.path.join(web, old)
+        shutil.rmtree(path) if os.path.isdir(path) else os.remove(path)
     if os.path.exists(RELEASE):  # (no built-in server: the page connects to its own)
         os.remove(RELEASE)
     subprocess.run([godot, '--headless', '--path', CLIENT, '--import'], check=True)
@@ -111,8 +113,15 @@ def build_web(godot, build):
     if not os.path.exists(os.path.join(web, 'index.html')):
         print('the export made no page: see the messages above')
         return 1
-    size = sum(os.path.getsize(os.path.join(web, f)) for f in os.listdir(web))
-    print(f"built {web} ({size // 1024 // 1024} MB, {len(os.listdir(web))} files): {build['label']}")
+    # The soundtrack stays out of the game's package (the Web preset excludes it): it sits beside the page, in
+    # music/, for the client to fetch a track at a time (client/scripts/music.gd).
+    music = os.path.join(web, 'music')
+    os.makedirs(music, exist_ok=True)
+    for f in glob.glob(os.path.join(CLIENT, 'assets', 'music', '*.mp3')):
+        shutil.copy2(f, music)
+    size = sum(os.path.getsize(os.path.join(web, f)) for f in os.listdir(web) if os.path.isfile(os.path.join(web, f)))
+    print(f"built {web} ({size // 1024 // 1024} MB, {len(os.listdir(web)) - 1} files, plus {len(os.listdir(music))} music "
+          f"tracks fetched as they're played): {build['label']}")
     return 0
 
 

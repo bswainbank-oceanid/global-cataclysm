@@ -14,6 +14,8 @@ files the client reads:
   build.json             the client's build number (server/build.py), shown on the main menu
   history.json           the game's back story, for the History screen (data/history.json, written by
                          tools/import_history.py)
+  music.json             the soundtrack: {"base": [file, ...], "factions": {code: [file, ...]}}, the files in
+                         client/assets/music (copied from assets/sounds/music, renamed: _music_tracks)
   rules_text.json        the player's rule book, for the Rules screen (data/rules_text.json, written by
                          tools/import_rules.py)
 plus the map image (as assets/base_map.png), the unit and faction icons, the unit sounds (assets/sounds),
@@ -23,6 +25,7 @@ Run: python tools/sync_client_data.py [--scenario GC72_Scenario]
 """
 import argparse
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -76,6 +79,32 @@ def client_files(config):
 KEEP_IMPORT = '[remap]\n\nimporter="keep"\n'
 
 
+# A soundtrack file's name: "Cold Motif.mp3" / "Cold Motif - 2.mp3" (the base tracks), "NAA - Cold Motif.mp3" /
+# "NAA - 2 - Cold Motif.mp3" (a faction's; "AAC -2 - ..." too).
+MUSIC_NAME = re.compile(r'^(?:([A-Z]{2,4})\s*-\s*)?(?:(\d+)\s*-\s*)?[^-]+?(?:\s*-\s*(\d+))?\.mp3$', re.I)
+
+
+def _music_tracks(folder, factions):
+    """{'base': [(client name, source path), ...], 'factions': {code: [...]}} from the soundtrack folder,
+    each list in track order (1, 2, ...): base_1.mp3, NAA_1.mp3, NAA_2.mp3 and so on."""
+    out = {'base': [], 'factions': {}}
+    for src in sorted(folder.glob('*.mp3')) if folder.exists() else []:
+        m = MUSIC_NAME.match(src.name)
+        if not m:
+            print(f'note: {src.name} is not named like a soundtrack file; left out')
+            continue
+        code, n = m.group(1), int(m.group(2) or m.group(3) or 1)
+        if code is not None and code.upper() in factions:
+            out['factions'].setdefault(code.upper(), []).append((n, src))
+        elif code is None:
+            out['base'].append((n, src))
+        else:
+            print(f'note: {src.name} names no faction of this scenario; left out')
+    out['base'] = [(f'base_{n}.mp3', src) for n, src in sorted(out['base'])]
+    out['factions'] = {code: [(f'{code}_{n}.mp3', src) for n, src in sorted(files)] for code, files in out['factions'].items()}
+    return out
+
+
 def _keep_as_is(path):
     imp = path.with_name(path.name + '.import')
     if not imp.exists() or imp.read_text(encoding='utf-8') != KEEP_IMPORT:
@@ -119,6 +148,24 @@ def main():
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / 'assets' / 'sounds' / sound, dest)
         _keep_as_is(dest)
+    # the soundtrack (assets/sounds/music): the base tracks and each faction's own, under plain names
+    music_dir = CLIENT / 'assets' / 'music'
+    music_dir.mkdir(parents=True, exist_ok=True)
+    tracks = _music_tracks(ROOT / 'assets' / 'sounds' / 'music', set(config.factions()))
+    wanted = set()
+    for group, group_files in [('base', tracks['base'])] + sorted(tracks['factions'].items()):
+        for name, src in group_files:
+            wanted.add(name)
+            if not (music_dir / name).exists() or (music_dir / name).stat().st_size != src.stat().st_size                     or (music_dir / name).stat().st_mtime < src.stat().st_mtime:
+                shutil.copy2(src, music_dir / name)
+            _keep_as_is(music_dir / name)
+    for old in music_dir.glob('*.mp3'):
+        if old.name not in wanted:
+            old.unlink()
+            (music_dir / (old.name + '.import')).unlink(missing_ok=True)
+    with open(data_dir / 'music.json', 'w', encoding='utf-8') as f:
+        json.dump({'base': [n for n, _ in tracks['base']],
+                   'factions': {code: [n for n, _ in fs] for code, fs in sorted(tracks['factions'].items())}}, f, indent=1)
     # the style guide's fonts (assets/fonts) and the logo artwork (assets/logo), under the names the client loads
     font_dir = CLIENT / 'assets' / 'fonts'
     font_dir.mkdir(parents=True, exist_ok=True)

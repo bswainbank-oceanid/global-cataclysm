@@ -26,6 +26,8 @@ var resolve_defender := BattleModel.Resolve.UNIT_TYPE
 var fullscreen := false                  # Display Settings: the window fills the screen
 var sound_volume := 70                   # the unit sounds' volume, 0-100 (Sfx)
 var sound_muted := false
+var music_volume := 50                   # the soundtrack's volume, 0-100 (Music)
+var music_muted := false
 
 
 func _ready() -> void:
@@ -54,6 +56,8 @@ func _ready() -> void:
 	fullscreen = bool(cfg.get_value("display", "fullscreen", fullscreen))
 	sound_volume = clampi(int(cfg.get_value("sound", "volume", sound_volume)), 0, 100)
 	sound_muted = bool(cfg.get_value("sound", "muted", sound_muted))
+	music_volume = clampi(int(cfg.get_value("music", "volume", music_volume)), 0, 100)
+	music_muted = bool(cfg.get_value("music", "muted", music_muted))
 	_apply_display()
 
 
@@ -74,6 +78,8 @@ func commit() -> void:
 	cfg.set_value("display", "fullscreen", fullscreen)
 	cfg.set_value("sound", "volume", sound_volume)
 	cfg.set_value("sound", "muted", sound_muted)
+	cfg.set_value("music", "volume", music_volume)
+	cfg.set_value("music", "muted", music_muted)
 	cfg.save(PATH)
 
 

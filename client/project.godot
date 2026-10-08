@@ -32,6 +32,7 @@ Net="*res://scripts/net_client.gd"
 Stepper="*res://scripts/turn_stepper.gd"
 Account="*res://scripts/account.gd"
 Sfx="*res://scripts/sfx.gd"
+Music="*res://scripts/music.gd"
 
 [display]
 

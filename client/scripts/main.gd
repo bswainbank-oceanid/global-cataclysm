@@ -536,6 +536,7 @@ func _on_multi_message(msg: Dictionary) -> void:
 			Net.send_msg({"type": "enter_game", "game_id": msg["game_id"]})
 		"left_game":
 			if msg.has("reason") and GameStore.multi_game:  # (a bot took this player's seat: server/hub.py)
+				Music.set_in_game(false)
 				Stepper.feed_mode = false
 				Stepper.reset()
 				GameStore.set_multi_game({}, [])
@@ -552,6 +553,7 @@ func _on_multi_message(msg: Dictionary) -> void:
 				Stepper.feed_mode = true
 				Stepper.reset()
 			GameStore.set_multi_game(game, msg.get("my_factions", []), msg.get("players", {}), int(msg.get("turn_hours", 0)))
+			Music.set_in_game(true)
 			for screen in [_menu, _my_games, _login, _launch, _available, _lobby]:
 				screen.close()
 			_settings_panel.set_multi(true)
@@ -600,6 +602,7 @@ func _restore(where: String) -> void:
 
 ## Back to the main menu from a multi-player game (it carries on on the server).
 func _leave_multi_game() -> void:
+	Music.set_in_game(false)
 	Net.send_msg({"type": "leave_game"})
 	Stepper.feed_mode = false
 	Stepper.reset()
@@ -612,9 +615,11 @@ func _on_launch_message(msg: Dictionary) -> void:
 	if kind == "lobby":
 		if not Net.auto_watch:
 			_launch.open(bool(msg.get("game_running", false)), msg.get("new_scenario", {}), msg.get("setups", []))
+			Music.set_in_game(false)
 	elif kind == "setups":
 		_launch.set_setups(msg.get("setups", []), msg.get("selected"))
 	elif kind == "game_started":
+		Music.set_in_game(true)
 		_launch.close()
 	elif kind == "error" and _launch.visible:
 		_launch.show_error(str(msg.get("message", "")))

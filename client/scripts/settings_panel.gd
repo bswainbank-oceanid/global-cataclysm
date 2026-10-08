@@ -62,7 +62,7 @@ func _ready() -> void:
 	_fullscreen = _check(v, "Full screen", func(on): Settings.fullscreen = on)
 
 	v.add_child(HSeparator.new())
-	v.add_child(HudStyle.label("Sound", 13))
+	v.add_child(HudStyle.label("Sound and music", 13))
 	v.add_child(Sfx.controls())
 
 	v.add_child(HSeparator.new())
