@@ -4,8 +4,10 @@ extends Node
 ## instead, and then none of this applies (`multi` stays false).
 ##
 ## The login TOKEN is kept in user://login.cfg -- never the password -- and used to log back in on
-## every start, until the player logs out. `--profile=<name>` keeps a separate one
-## (user://login_<name>.cfg), so two clients on one machine can be two players. `--dev_user=<name>`
+## every start, until the player logs out. A server on this machine (a development copy's) has its own,
+## user://login_local.cfg, so playing on it and on the real server don't log each other out. `--profile=<name>`
+## keeps a separate one (user://login_<name>.cfg, login_local_<name>.cfg), so two clients on one machine can be
+## two players. `--dev_user=<name>`
 ## logs in as <name>@dev.local (password "dev"), registering it the first time: for scripted runs.
 
 signal changed                      # logged in, logged out, or the server's mode became known
@@ -23,9 +25,7 @@ var _pending := ""     # the account request in flight: "token_login", "login", 
 func _ready() -> void:
 	Net.raw_message.connect(_on_message)
 	Net.disconnected.connect(func(): _pending = "")  # (still logged in: the client logs back in when it reconnects)
-	var cfg := ConfigFile.new()
-	if cfg.load(_path()) == OK:
-		token = str(cfg.get_value("login", "token", ""))
+	# (the saved token is read when a server says hello: which file depends on which server it is)
 
 
 func is_logged_in() -> bool:
@@ -107,6 +107,8 @@ func _on_message(msg: Dictionary) -> void:
 			Net.auto_reconnect = true
 			Net.auto_watch = false  # (the one-game server's; here a game is entered after logging in)
 			user = {}
+			if token == "":
+				token = _saved_token()
 			if token != "":
 				_pending = "token_login"
 				Net.send_msg({"type": "token_login", "token": token})
@@ -161,6 +163,22 @@ func _save() -> void:
 	cfg.save(_path())
 
 
+## The saved token for the server connected to ("" if none).
+static func _saved_token() -> String:
+	var cfg := ConfigFile.new()
+	return str(cfg.get_value("login", "token", "")) if cfg.load(_path()) == OK else ""
+
+
+## This server's saved-login file: login.cfg, or login_local.cfg for a server on this machine (each with the
+## profile's name, if any).
 static func _path() -> String:
 	var profile := str(Dbg.args.get("profile", ""))
-	return "user://login.cfg" if profile == "" else "user://login_%s.cfg" % profile.validate_filename()
+	var name := "login_local" if is_local_server(Net.url) else "login"
+	return "user://%s.cfg" % name if profile == "" else "user://%s_%s.cfg" % [name, profile.validate_filename()]
+
+
+## Whether `url` is a server on this machine (localhost, 127.0.0.1, ::1).
+static func is_local_server(url: String) -> bool:
+	var host := url.get_slice("://", 1).get_slice("/", 0)
+	host = host.get_slice("]", 0).trim_prefix("[") if host.begins_with("[") else host.get_slice(":", 0)
+	return host in ["localhost", "127.0.0.1", "::1"]

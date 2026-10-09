@@ -58,6 +58,21 @@ func _initialize() -> void:
 	_check(account.token == "" and not account.is_logged_in(), "logging out forgets the login")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(account._path()))
 
+	# A server on this machine keeps its own saved login (login_local.cfg), apart from the real server's.
+	for u in ["ws://localhost:8765", "ws://127.0.0.1:8796/ws", "ws://[::1]:8765"]:
+		_check(account.is_local_server(u), "%s is this machine" % u)
+	for u in ["wss://play.gc1972.com/ws", "ws://192.168.1.20:8765"]:
+		_check(not account.is_local_server(u), "%s is not" % u)
+	var net = root.get_node("Net")
+	var was: String = net.url
+	net.url = "wss://play.gc1972.com/ws"
+	var live_file: String = account._path()
+	net.url = "ws://localhost:8765"
+	var local_file: String = account._path()
+	net.url = was
+	_check(live_file.get_file().begins_with("login") and not live_file.contains("local"), "the real server's: %s" % live_file)
+	_check(local_file.get_file().begins_with("login_local"), "a local server's: %s" % local_file)
+
 	# A request refused outright while the login screen waits (an older server that doesn't know it): said.
 	var said := []
 	account.problem.connect(func(m): said.append(m))
