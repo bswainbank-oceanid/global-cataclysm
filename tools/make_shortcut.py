@@ -19,11 +19,11 @@ ICON_SOURCES = [os.path.join(ROOT, 'assets', 'logo', f'Vintage Global Defense Po
 NAME = 'Global Cataclysm 1972'
 ICON_2 = os.path.join(ROOT, 'assets', 'logo', 'global-cataclysm-player2.ico')
 FONT = os.path.join(ROOT, 'assets', 'fonts', 'BarlowCondensed-Black.ttf')
-ICON_SIZES = [(256, 256), (64, 64), (48, 48), (32, 32), (16, 16)]
+ICON_SIZES = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]  # (128: the Windows build's icon wants it)
 
 
 def make_icon():
-    """A Windows .ico (256, 64, 48, 32 and 16 px) from the poster icons."""
+    """A Windows .ico (256, 128, 64, 48, 32 and 16 px) from the poster icons."""
     from PIL import Image
     big = Image.open(ICON_SOURCES[0]).convert('RGBA')
     big.save(ICON, sizes=ICON_SIZES)

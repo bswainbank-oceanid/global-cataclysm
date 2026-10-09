@@ -40,6 +40,7 @@ LOGO_FILES = {
     'Vintage Global Defense Poster Icon 64x64.png': 'icon_64.png',
     'Vintage Global Defense Poster Icon 32x32.png': 'icon_32.png',
     'global-cataclysm-mark.svg': 'mark.svg',
+    'global-cataclysm.ico': 'icon.ico',  # (the Windows build's program icon: client/export_presets.cfg)
 }
 CLIENT = ROOT / 'client'
 sys.path.insert(0, str(ROOT))
