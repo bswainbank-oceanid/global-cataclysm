@@ -1,7 +1,9 @@
 class_name CameraRig
 extends Camera2D
 ## Pan/zoom for the cylindrical map: smooth cursor-anchored zoom, drag with
-## inertia, WASD/arrow keys, trackpad pinch/pan. The map wraps east-west, so
+## inertia, WASD/arrow keys, trackpad pinch/pan -- and on a touchscreen (a tablet's browser) two-finger pinch
+## to zoom and two-finger drag to pan. One finger is the mouse (Godot turns it into mouse events): tap to
+## click, drag to pan or to move units. The map wraps east-west, so
 ## `position.x` is folded back into [0, map_w) whenever it leaves that range
 ## (the world draws three side-by-side copies, so the jump is invisible);
 ## north-south clamps at the poles. Zoom can't go out past showing the whole
@@ -35,6 +37,10 @@ var _dragging := false
 var _drag_travel := 0.0
 var _velocity := Vector2.ZERO  # world px/sec, inertia after a drag is released
 var mouse_screen := Vector2(-1, -1)  # last known cursor position in viewport px; (-1,-1) = none yet
+var _touches := {}             # touchscreen finger index -> its viewport position, while down
+var _gesture := false          # two fingers came down: zooming/panning, not clicking, until every finger lifts
+var _pinch_dist := 0.0         # the two fingers' distance apart, last time (0: start afresh)
+var _pinch_mid := Vector2.ZERO # ...and the point between them
 
 
 func _ready() -> void:
@@ -68,6 +74,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	# itself injects (Dbg.injecting) is honoured.
 	if Dbg.args.has("shot") and not Dbg.injecting:
 		return
+	if event is InputEventScreenTouch or event is InputEventScreenDrag:
+		_touch(event)
+		return
+	if _gesture and (event is InputEventMouseButton or event is InputEventMouseMotion):
+		return  # (the first finger's mouse events, during a two-finger gesture: not a click, not a drag)
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		mouse_screen = mb.position
@@ -118,6 +129,47 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventPanGesture:
 		position += (event as InputEventPanGesture).delta * 12.0 / zoom.x
 		_constrain()
+
+
+## Touchscreen fingers: a second one down starts a gesture -- the pinch zooms (anchored between the fingers)
+## and moving them together pans -- and calls off what the first finger's mouse events had begun (a pan, or a
+## unit drag). The gesture lasts until every finger has lifted, so nothing it did counts as a click.
+func _touch(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		var t := event as InputEventScreenTouch
+		if t.pressed and t.index == 0:  # (a first finger: any fingers still on record lifted somewhere unseen)
+			_touches.clear()
+			_gesture = false
+		if t.pressed:
+			_touches[t.index] = t.position
+		else:
+			_touches.erase(t.index)
+		if _touches.size() >= 2 and not _gesture:
+			_gesture = true
+			_dragging = false
+			_velocity = Vector2.ZERO
+			if _move_dragging:
+				_move_dragging = false
+				move_drag.emit("abort", t.position)
+		elif _touches.is_empty():
+			_gesture = false
+		_pinch_dist = 0.0  # (a finger came or went: measure afresh from the next move)
+		return
+	var d := event as InputEventScreenDrag
+	_touches[d.index] = d.position
+	if not _gesture or _touches.size() < 2:
+		return
+	var points: Array = _touches.values()
+	var a: Vector2 = points[0]
+	var b: Vector2 = points[1]
+	var dist := a.distance_to(b)
+	var mid := (a + b) / 2.0
+	if _pinch_dist > 0.0 and dist > 0.0:
+		_zoom_at(mid, dist / _pinch_dist)
+		position -= (mid - _pinch_mid) / zoom.x
+		_constrain()
+	_pinch_dist = dist
+	_pinch_mid = mid
 
 
 func _zoom_at(screen_pos: Vector2, factor: float) -> void:

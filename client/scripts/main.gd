@@ -31,7 +31,22 @@ var _conn_banner: PanelContainer  # the "scenarios" asked for: "new" (New Game) 
 var _settings_panel: SettingsPanel
 
 
+## In a browser (the web build) the game draws in the screen's own pixels, and a tablet's or a high-density
+## monitor's have two or three to each of an ordinary one's: the whole interface would come out half size or
+## smaller. So it's scaled by the browser's devicePixelRatio, to look the size it does on an ordinary screen
+## (the desktop build is left as it is).
+func _fit_screen_density() -> void:
+	if not OS.has_feature("web"):
+		return
+	var ratio := float(str(JavaScriptBridge.eval("window.devicePixelRatio || 1", true)))
+	var factor := maxf(1.0, ratio)
+	if not is_equal_approx(get_window().content_scale_factor, factor):
+		get_window().content_scale_factor = factor
+
+
 func _ready() -> void:
+	_fit_screen_density()
+	get_tree().root.size_changed.connect(_fit_screen_density)  # (a browser zoom changes the density too)
 	# the style guide's look (GCTheme): navy chrome for the whole window; paper panels set their own
 	get_tree().root.theme = GCTheme.chrome()
 	RenderingServer.set_default_clear_color(GCTheme.NAVY_DARK)
