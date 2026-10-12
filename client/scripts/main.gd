@@ -31,21 +31,53 @@ var _conn_banner: PanelContainer  # the "scenarios" asked for: "new" (New Game) 
 var _settings_panel: SettingsPanel
 
 
-## In a browser (the web build) the game draws in the screen's own pixels, and a tablet's or a high-density
-## monitor's have two or three to each of an ordinary one's: the whole interface would come out half size or
-## smaller. So it's scaled by the browser's devicePixelRatio, to look the size it does on an ordinary screen
-## (the desktop build is left as it is).
+## A high-density screen -- a tablet's, or a monitor that Windows is told to scale (150%, 200%) -- has two or
+## three of its pixels to each of an ordinary one's, and the game draws in the screen's own pixels: the whole
+## interface would come out half size or smaller. So it's scaled by the screen's density, to look the size it
+## does on an ordinary screen. In a browser that's its devicePixelRatio; in the Windows program, the monitor's
+## DPI over the ordinary 96 (Godot's own screen scale is always 1 there). Checked again when the browser zooms,
+## and when the window moves to a monitor with another density.
 func _fit_screen_density() -> void:
-	if not OS.has_feature("web"):
-		return
-	var ratio := float(str(JavaScriptBridge.eval("window.devicePixelRatio || 1", true)))
-	var factor := maxf(1.0, ratio)
+	var factor := screen_density()
 	if not is_equal_approx(get_window().content_scale_factor, factor):
 		get_window().content_scale_factor = factor
 
 
+## The screen's density, as a scale over an ordinary screen (1 there, never less).
+func screen_density() -> float:
+	if OS.has_feature("web"):
+		return maxf(1.0, float(str(JavaScriptBridge.eval("window.devicePixelRatio || 1", true))))
+	if DisplayServer.get_name() == "headless":
+		return 1.0
+	var screen := get_window().current_screen
+	if OS.get_name() == "Windows":
+		return maxf(1.0, DisplayServer.screen_get_dpi(screen) / 96.0)
+	return maxf(1.0, DisplayServer.screen_get_scale(screen))
+
+
+## The window opens at the project's size in the screen's own pixels, which on a scaled monitor is a small
+## window: it's enlarged by the same density (kept on the screen, and centred), so the game opens the size it
+## would on an ordinary monitor.
+func _fit_window_to_density() -> void:
+	var window := get_window()
+	var factor := window.content_scale_factor
+	if OS.has_feature("web") or factor <= 1.0 or window.mode != Window.MODE_WINDOWED:
+		return
+	var room := DisplayServer.screen_get_usable_rect(window.current_screen)
+	var want := Vector2(window.size) * factor
+	want = want.min(Vector2(room.size) * 0.95)
+	window.size = Vector2i(want)
+	window.position = room.position + (room.size - window.size) / 2
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_DPI_CHANGE and is_inside_tree():
+		_fit_screen_density()
+
+
 func _ready() -> void:
 	_fit_screen_density()
+	_fit_window_to_density()
 	get_tree().root.size_changed.connect(_fit_screen_density)  # (a browser zoom changes the density too)
 	# the style guide's look (GCTheme): navy chrome for the whole window; paper panels set their own
 	get_tree().root.theme = GCTheme.chrome()
