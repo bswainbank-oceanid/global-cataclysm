@@ -15,7 +15,7 @@ files the client reads:
   history.json           the game's back story, for the History screen (data/history.json, written by
                          tools/import_history.py)
   music.json             the soundtrack: {"base": [file, ...], "factions": {code: [file, ...]}}, the files in
-                         client/assets/music (copied from assets/sounds/music, renamed: _music_tracks)
+                         client/assets/music (copied from assets/sounds/music/music1, renamed: _music_tracks)
   rules_text.json        the player's rule book, for the Rules screen (data/rules_text.json, written by
                          tools/import_rules.py)
 plus the map image (as assets/base_map.png), the unit and faction icons, the unit sounds (assets/sounds),
@@ -80,10 +80,14 @@ def client_files(config):
 KEEP_IMPORT = '[remap]\n\nimporter="keep"\n'
 
 
-# A soundtrack file's name: a label -- "Main" (the base themes, played on the menus) or a faction's code --
-# then the track's number, then anything: "Main - 1 - GC72.mp3", "Main 4 - GC72.mp3", "NAA - 2 - GC72.mp3",
-# "GPC- 2 - GC72.mp3".
-MUSIC_NAME = re.compile(r'^\s*([A-Za-z]+)\s*-?\s*(\d+)(?!\d).*\.mp3$', re.I)
+# The soundtrack in use: assets/sounds/music/music1 (the MP3s; the WAV masters beside them stay out of the game).
+MUSIC_DIR = ROOT / 'assets' / 'sounds' / 'music' / 'music1'
+# A soundtrack file's name: a label -- "Main" (the base themes, played on the menus; "Main Theme" will do) or a
+# faction's code -- and the track's number (none: 1), around the game's tag (GC_1972, GC72), which is ignored:
+# "AAC - GC_1972.mp3", "AAC - 2 - GC_1972.mp3", "UE - 2 GC_1972.mp3", "GC_1972 - Main Theme - 2.mp3",
+# "Main - 1 - GC72.mp3", "GPC- 2 - GC72.mp3".
+MUSIC_TAG = re.compile(r'GC_?(19)?72', re.I)
+MUSIC_WORD = re.compile(r'[A-Za-z]+|\d+')
 MAIN_LABEL = 'main'
 
 
@@ -92,11 +96,13 @@ def _music_tracks(folder, factions):
     each list in track order (1, 2, ...): base_1.mp3 (Main 1), NAA_1.mp3, NAA_2.mp3 and so on."""
     out = {'base': [], 'factions': {}}
     for src in sorted(folder.glob('*.mp3')) if folder.exists() else []:
-        m = MUSIC_NAME.match(src.name)
-        if not m:
+        words = MUSIC_WORD.findall(MUSIC_TAG.sub(' ', src.stem))
+        labels = [w for w in words if not w.isdigit()]
+        numbers = [int(w) for w in words if w.isdigit()]
+        if not labels:
             print(f'note: {src.name} is not named like a soundtrack file ("Main - 1 - ...", "NAA - 2 - ..."); left out')
             continue
-        label, n = m.group(1), int(m.group(2))
+        label, n = labels[0], (numbers[0] if numbers else 1)
         if label.lower() == MAIN_LABEL:
             out['base'].append((n, src))
         elif label.upper() in factions:
@@ -151,10 +157,10 @@ def main():
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / 'assets' / 'sounds' / sound, dest)
         _keep_as_is(dest)
-    # the soundtrack (assets/sounds/music): the base tracks and each faction's own, under plain names
+    # the soundtrack (MUSIC_DIR): the base tracks and each faction's own, under plain names
     music_dir = CLIENT / 'assets' / 'music'
     music_dir.mkdir(parents=True, exist_ok=True)
-    tracks = _music_tracks(ROOT / 'assets' / 'sounds' / 'music', set(config.factions()))
+    tracks = _music_tracks(MUSIC_DIR, set(config.factions()))
     wanted = set()
     for group, group_files in [('base', tracks['base'])] + sorted(tracks['factions'].items()):
         for name, src in group_files:

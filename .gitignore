@@ -14,3 +14,6 @@ client/.godot/
 client/data/
 client/assets/
 client/shots/
+
+# The soundtrack's WAV masters (the game uses the MP3s beside them: tools/sync_client_data.py MUSIC_DIR)
+assets/sounds/music/**/*.wav
