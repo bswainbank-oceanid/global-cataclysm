@@ -184,7 +184,9 @@ func _initialize() -> void:
 		await process_frame  # let layout settle so the OK button has a real global_position/size
 	_check(buggy_report.visible and buggy_report._panel.visible and buggy_announce.visible, "both showing, overlapping, in the buggy order")
 	await _click_at(buggy_announce._ok.global_position + buggy_announce._ok.size / 2.0)
-	_check(buggy_announce.visible, "confirms the bug: with the report added AFTER the popup, the popup's OK button can't be clicked")
+	# (Since PopupOrder, a pop-up moves to the front of its siblings as it opens, so even this order no longer
+	# lets the report swallow the click: the popup is in front, and its OK works.)
+	_check(not buggy_announce.visible, "even with the report added AFTER the popup, the popup comes to the front as it opens and a real click on OK dismisses it")
 	buggy_root.queue_free()
 	store.set_game_over_report([])
 

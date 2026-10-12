@@ -13,7 +13,6 @@ var _panel: PanelContainer
 
 
 func _ready() -> void:
-	z_index = 400
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	visible = false
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -22,6 +21,7 @@ func _ready() -> void:
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 	_panel = PanelContainer.new()
+	PopupOrder.manage(self, _panel)  # (with the other pop-ups: the newest in front)
 	HudStyle.paper_sheet(_panel)
 	_panel.custom_minimum_size = Vector2(430, 0)
 	center.add_child(_panel)
