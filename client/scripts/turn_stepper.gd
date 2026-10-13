@@ -67,7 +67,7 @@ func _ready() -> void:
 	Net.raw_message.connect(_on_raw)
 	Net.disconnected.connect(func():
 		log_line.emit("[color=#e3483f]disconnected from server[/color]")
-		_awaiting = false
+		_stop_awaiting()
 		_refresh())
 
 
@@ -127,6 +127,17 @@ func _apply_feed_armistice(msg: Dictionary) -> void:
 	var a = msg.get("armistice")
 	GameStore.set_armistice({"from": a["from"], "awaiting": a["awaiting"], "automatic_after": a.get("automatic_after")}
 		if a is Dictionary else {})
+
+
+## A wait on the server ends without its answer (an error reply, a lost connection). In a multi-player game
+## that was playing back by itself it goes on doing so: the wait may have been for the feed's next step,
+## which is still coming -- and with playback stopped it would sit in the inbox, the button offering Pause,
+## until something set it going again. (Not when it was the player's own decision that was refused: their
+## phases never play by themselves, so they simply submit again.)
+func _stop_awaiting() -> void:
+	_awaiting = false
+	if feed_mode and _playing:
+		_auto = true
 
 
 ## Plays back the next step from the inbox once Next (or Settings) has asked for it: its phase_result and
@@ -268,7 +279,7 @@ func _on_message(msg: Dictionary) -> void:
 		"waiting":
 			GameStore.set_waiting_for(msg.get("for", []))
 		"error":
-			_awaiting = false
+			_stop_awaiting()
 			log_line.emit("[color=#e3483f]server: %s[/color]" % str(msg.get("message", "")))
 		"game_started":
 			reset()

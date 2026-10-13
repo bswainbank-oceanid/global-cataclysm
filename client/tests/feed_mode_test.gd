@@ -68,6 +68,39 @@ func _initialize() -> void:
 	stepper._on_raw({"type": "error", "message": "nope", "to_sender": true})
 	_check(errors.size() == 1 and stepper._inbox.size() == 1, "an error isn't held behind the inbox")
 
+	# Playing back by itself (no pauses), waiting on the server for the next step: an error reply meant for
+	# this client (a chat sent too fast, say) or a dropped connection must not stall playback -- the next step
+	# still plays when it arrives. (It used to wait in the inbox for good, the button offering Pause, until a
+	# Settings change set playback going again.)
+	for interruption in ["error", "disconnect"]:
+		settings.opp_pause = settings.OppPause.PHASE
+		var fresh: Dictionary = data["feed"].duplicate(true)
+		fresh["epoch"] = "jam test " + interruption
+		stepper._on_raw(fresh)
+		var later_steps := []
+		for m in steps:
+			var c: Dictionary = m.duplicate(true)
+			c["epoch"] = fresh["epoch"]
+			later_steps.append(c)
+		settings.opp_pause = settings.OppPause.NEVER
+		stepper._do_advance()  # Next, past the first turn's opening pause
+		for m in later_steps.slice(0, 3):
+			stepper._on_raw(m)
+		_check(stepper._queued_phase == "PURCHASE" and stepper._playing, "%s: playing by itself (%s)" % [interruption, stepper._queued_phase])
+		stepper._process(0.0)  # the step runs by itself: Next is waiting on the server
+		_check(stepper._awaiting, "%s: waiting on the server" % interruption)
+		if interruption == "error":
+			stepper._on_raw({"type": "error", "message": "slow down", "to_sender": true})
+		else:
+			root.get_node("Net").disconnected.emit()
+		stepper._process(0.0)
+		for m in later_steps.slice(3, 6):
+			stepper._on_raw(m)
+		stepper._process(0.0)
+		_check(stepper._queued_phase == "COMBAT_RESOLUTION", "%s: the next step still plays when it arrives (%s, button '%s')" % [
+			interruption, stepper._queued_phase, stepper.button_text])
+	settings.opp_pause = settings.OppPause.PHASE
+
 	# Entering while an armistice proposal is pending: this player is asked (and the game holds still);
 	# a player who isn't asked sees whose answer it is waiting for.
 	var with_armistice: Dictionary = data["feed"].duplicate(true)
