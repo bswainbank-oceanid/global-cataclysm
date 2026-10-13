@@ -5,8 +5,7 @@ extends VBoxContainer
 ## there grouped by faction and type) -- later also where orders get picked.
 ## Lower: the orders QUEUED for the current phase (what Next will execute),
 ## above the log of the phases already executed (the Game Log tab) -- and the
-## Strategy tab, filling the same space (the bots' Strategy Log, StrategyText; shown when Settings'
-## strategy_log is on) -- and in a multi-player game the Game Chat and Ally Chat tabs (server/hub.py
+## Strategy tab, filling the same space (the bots' Strategy Log, StrategyText; shown to admins) -- and in a multi-player game the Game Chat and Ally Chat tabs (server/hub.py
 ## game_chat), whose titles count the messages not yet read.
 
 var _detail: VBoxContainer
@@ -108,7 +107,6 @@ func _ready() -> void:
 			_title_chat(tab))
 	Net.raw_message.connect(_on_chat_message)
 	GameStore.state_changed.connect(_sync_chat)
-	Settings.changed.connect(_sync_log_tabs)
 	Account.changed.connect(_sync_log_tabs)  # (the Strategy Log is for admins: known once logged in)
 	_sync_log_tabs()
 	if Dbg.args.has("strategy_log"):
@@ -265,10 +263,10 @@ func log_line(text: String) -> void:
 	_log.append_text(text + "\n")
 
 
-## The Strategy tab shows only while Settings' strategy_log is on (it is always filled); the chat tabs
+## The Strategy tab shows to admins, always (Account.sees_bot_details; it is always filled); the chat tabs
 ## only in a multi-player game, the Ally Chat only while this player's faction is in an alliance.
 func _sync_log_tabs() -> void:
-	var shown := Settings.strategy_log and Account.sees_bot_details()  # (admins only)
+	var shown := Account.sees_bot_details()  # (admins only)
 	var chat := _chat_game != ""
 	var hidden := {TAB_STRATEGY: not shown, TAB_GAME_CHAT: not chat, TAB_ALLY_CHAT: not chat or _chat_ally == null}
 	for tab in hidden:

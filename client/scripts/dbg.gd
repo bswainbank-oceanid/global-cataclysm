@@ -32,7 +32,7 @@ extends Node
 ##   --drag=x1,y1,x2,y2      inject a left-button drag between two screen points
 ##   --click=x,y[;x,y;w30;...]  inject left clicks at screen points (w<n>: wait n frames between)
 ##   (injected input runs in that order: wheel, drag, click)
-##   --strategy_log     show (and open) the Strategy Log tab
+##   --strategy_log     open the Strategy Log tab (shown to admins, and on a one-game server)
 ##   --profile=<name>   keep this client's login apart (user://login_<name>.cfg): two players on one machine
 ##   --dev_user=<name>  log in to a multi-player server as <name>@dev.local (registered the first time)
 ## Other scripts read `Dbg.args` for the scene-setup ones.

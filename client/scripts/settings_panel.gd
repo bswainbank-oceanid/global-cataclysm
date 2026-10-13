@@ -9,7 +9,6 @@ var _opp: OptionButton
 var _opp_battle: CheckBox
 var _opp_battle_mine: CheckBox
 var _your_battle: CheckBox
-var _strategy_log: CheckBox
 var _note: Label
 var _surrender_btn: HoldButton
 var _armistice_btn: HoldButton
@@ -75,10 +74,6 @@ func _ready() -> void:
 	v.add_child(HudStyle.label("Sound and music", 13))
 	v.add_child(Sfx.controls())
 
-	v.add_child(HSeparator.new())
-	v.add_child(HudStyle.label("Game Log", 13))
-	_strategy_log = _check(v, "Show the bots' Strategy Log tab", func(on): Settings.strategy_log = on)
-	_strategy_log.tooltip_text = "Each bot's strategy decisions: what it chose each phase, for which objective, and why objectives went without."
 
 	var game := VBoxContainer.new()  # (the game actions: not on the main menu)
 	game.add_theme_constant_override("separation", 6)
@@ -110,7 +105,6 @@ func _ready() -> void:
 	new_game.pressed.connect(func(): new_game_pressed.emit())
 	v.add_child(new_game)
 
-	Account.changed.connect(_sync)  # (the Strategy Log checkbox is for admins: known once logged in)
 	GameStore.state_changed.connect(_sync)
 	GameStore.armistice_changed.connect(_sync)
 	_sync()
@@ -166,9 +160,7 @@ func _sync() -> void:
 	_opp_battle.set_pressed_no_signal(Settings.opp_pause_battle)
 	_opp_battle_mine.set_pressed_no_signal(Settings.opp_pause_battle_mine)
 	_your_battle.set_pressed_no_signal(Settings.your_pause_battle)
-	_strategy_log.set_pressed_no_signal(Settings.strategy_log)
 	_fullscreen.set_pressed_no_signal(Settings.fullscreen)
-	_strategy_log.visible = Account.sees_bot_details()  # (admins only)
 	var has_player := menu or GameStore.has_player()  # (on the main menu: settings for the games to come)
 	_opp_battle_mine.disabled = not has_player
 	_your_battle.disabled = not has_player
