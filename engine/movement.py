@@ -911,9 +911,12 @@ def legal_air_move_destinations(unit_type, owner, origin_id, move_type, game_sta
     # also sets contested_by even though nobody defended it, and that's
     # not a real attack target for an air unit either -- only actual
     # physical presence is.
+    # And something there the aircraft can hit: a submerging unit (a Submarine) can't be hit by air
+    # (combat.submarine_air_invisibility), so a space whose only enemies are Submarines is no target for it.
     def is_attack_target(tid):
-        return (_enemies_present(tid, owner, game_state, territories, unit_defs)
-                or _enemy_transports_present(tid, owner, game_state, territories, unit_defs))
+        return any(not _is_ally_or_self(game_state, owner, u.owner)
+                   and not abilities.has(unit_defs, u.unit_type, abilities.SUBMERGE)
+                   for u in game_state.territories[tid].units)
     return {tid for tid in reachable if is_attack_target(tid)}
 
 

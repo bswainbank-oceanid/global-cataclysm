@@ -1,38 +1,38 @@
 {
   "random_6bot": {
     "setup": "f7fe25edcb74606f22e9012ba411bd169371870e",
-    "log": "1174699c0d768d5e87d7d4aff8a6159033e00305",
-    "final": "ae986057f8b9faea4738ad601f5fd89cb4827382",
-    "events": 6290
+    "log": "bff633be0dddfdba1d7a1c96f6e8f32811fbf96c",
+    "final": "eded59fc199de9f1398d731453dc79d981d0a6be",
+    "events": 6375
   },
   "strategy_6bot": {
     "setup": "b1243c88af346a5d3c54b6c1e258716813fe66a8",
-    "log": "65962bf516c3006026d794da33dc6e4eeeece1d1",
-    "final": "8ee39ba0250637c8f0da31821c17c4b0d54016a0",
-    "events": 977
+    "log": "b67e878982f8ca52f3a2e1f32bde8af1774df724",
+    "final": "c8488f8a7344636614783c6fb562cac585ff2a1d",
+    "events": 810
   },
   "strategy_3bot_neutral": {
     "setup": "d69d2937dc8984829002b557b6e236f62f65f704",
-    "log": "df7a4c20718fdf9828a5b117135e30f04e1c01cb",
-    "final": "82d216bc57e6fdd19e83fac8c8f90b1ec1a0e48e",
-    "events": 1853
+    "log": "a717a6ded5b9209800f046e93e8c3a420e2c5161",
+    "final": "fb9029890f51297fb10428d13289c5aefdd50afd",
+    "events": 1386
   },
   "mixed_alliances": {
     "setup": "7a81690dee4cff825ae8590e585ece4660887d7f",
-    "log": "51953bc6077bacef6c9b1feaa61817dfd42135f9",
-    "final": "8ee62059aeeb9f3e026de7392ba3dd908ae12144",
-    "events": 2431
+    "log": "a2e7987e3a938f2f1595b26bb5e9bcc2b86a9b26",
+    "final": "6c6f80883ca3bf9fd40776f09a2b4ab89d923ec8",
+    "events": 2145
   },
   "fixed_order_2bot": {
     "setup": "68d80a9dbe0714e901821b3e453a5e92bed28d1a",
-    "log": "5ac477664a7478c0791c426e44955314523fdde4",
-    "final": "e918c07c6e73a4eab8e460e0ebf3b3b7d7bbd5b7",
-    "events": 2931
+    "log": "46eb13d5a6d4613601638736831902ae7a970baf",
+    "final": "883cd6966e08430d57bd06e7e825d2dcce625b75",
+    "events": 2268
   },
   "new_scenario_3bot": {
     "setup": "500738b63f20b5560c73608c4c3f5098f6502d8d",
-    "log": "725e7bae9d577db6c88552ad82c02379eb98fbcd",
-    "final": "20c6e8e70a3cfbdc9b377b2e07b3bb22d6e17c57",
-    "events": 2100
+    "log": "ef17a79686e72db26665114bb22234594c6abaa8",
+    "final": "ce7f94a96264059fc4bd44a7101452e536579476",
+    "events": 1457
   }
 }

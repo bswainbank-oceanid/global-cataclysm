@@ -889,6 +889,27 @@ class TestAirMovement(unittest.TestCase):
         dest = legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', gs, data)
         self.assertNotIn(3, dest, "still nobody there to attack, regardless of the self-marked contested flag")
 
+    def test_air_combat_move_skips_a_space_holding_only_enemy_submarines(self):
+        # A Submarine can't be hit by aircraft (the submerge ability), so a sea zone whose only enemies are
+        # Submarines is no target for them; one with anything else there (a Cruiser, a Transport) still is.
+        data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'sea'}, 3: {'type': 'sea'}, 4: {'type': 'sea'}},
+            adjacency={1: [2, 3, 4], 2: [1], 3: [1], 4: [1]},
+        )
+        gs = make_state(
+            data,
+            territory_owners={1: 'NAA'},
+            faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            units_by_territory={2: [enemy_unit(1, 'Submarine', 'AAC'), enemy_unit(2, 'Submarine', 'AAC')],
+                                3: [enemy_unit(3, 'Submarine', 'AAC'), enemy_unit(4, 'Cruiser', 'AAC')],
+                                4: [enemy_unit(5, 'Submarine', 'AAC'), enemy_unit(6, 'Mechanized Infantry', 'AAC')]},
+        )
+        for plane in ('Fighter', 'Bomber'):
+            dest = legal_air_move_destinations(plane, 'NAA', 1, 'combat', gs, data)
+            self.assertNotIn(2, dest, f'{plane}: nothing in 2 it could hit')
+            self.assertIn(3, dest, f'{plane}: the Cruiser in 3 can be hit')
+            self.assertIn(4, dest, f'{plane}: so can the Transport in 4')
+
     def test_noncombat_air_landing_on_own_land_allowed_even_if_contested(self):
         data = FakeData(
             territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}, 4: {'type': 'sea'}},
