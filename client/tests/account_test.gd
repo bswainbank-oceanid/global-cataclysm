@@ -92,7 +92,8 @@ func _initialize() -> void:
 	account._on_message({"type": "logged_in", "user": {"id": "U_000002", "player_name": "Cy"}, "token": "t2",
 		"preferences": {"music_volume": 25, "sound_muted": true}})
 	_check(settings.music_volume == 25 and settings.sound_muted, "the account's settings are applied")
-	_check(not settings.opp_pause_battle and settings.opp_pause == settings.OppPause.PHASE, "...the rest are the defaults")
+	_check(not settings.opp_pause_battle and settings.opp_pause_battle_mine and settings.your_pause_battle
+		and settings.opp_pause == settings.OppPause.PHASE and settings.sound_volume == 50, "...the rest are the defaults")
 	_check(settings.fullscreen == fullscreen_was, "...and full screen is the device's own")
 	_check(account._settings_timer.is_stopped(), "applying the account's isn't a change to send back")
 	settings.music_volume = 60

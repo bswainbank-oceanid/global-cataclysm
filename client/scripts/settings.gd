@@ -18,23 +18,23 @@ const PATH := "user://settings.cfg"
 
 var opp_pause := OppPause.PHASE          # opponents' turns: pause never / once per turn / every phase
 var opp_pause_battle := false            # ...and before every battle
-var opp_pause_battle_mine := false       # ...or only before battles involving your units
-var your_pause_battle := false           # on your own turns: before every battle
+var opp_pause_battle_mine := true        # ...or only before battles involving your units
+var your_pause_battle := true            # on your own turns: before every battle
 # Battle board: how much one press of Next Roll reveals (BattleModel.Resolve),
 # remembered per side of the board between battles.
 var resolve_attacker := BattleModel.Resolve.UNIT_TYPE
 var resolve_defender := BattleModel.Resolve.UNIT_TYPE
 var fullscreen := false                  # Display Settings: the window fills the screen
-var sound_volume := 70                   # the unit sounds' volume, 0-100 (Sfx)
+var sound_volume := 50                   # the unit sounds' volume, 0-100 (Sfx)
 var sound_muted := false
 var music_volume := 50                   # the soundtrack's volume, 0-100 (Music)
 var music_muted := false
 
 # The ones kept with the account (not full screen: that's the device's), and their defaults -- a new
 # account's, since the server keeps none for it yet.
-const ACCOUNT_DEFAULTS := {"opp_pause": OppPause.PHASE, "opp_pause_battle": false, "opp_pause_battle_mine": false,
-	"your_pause_battle": false, "resolve_attacker": BattleModel.Resolve.UNIT_TYPE,
-	"resolve_defender": BattleModel.Resolve.UNIT_TYPE, "sound_volume": 70, "sound_muted": false,
+const ACCOUNT_DEFAULTS := {"opp_pause": OppPause.PHASE, "opp_pause_battle": false, "opp_pause_battle_mine": true,
+	"your_pause_battle": true, "resolve_attacker": BattleModel.Resolve.UNIT_TYPE,
+	"resolve_defender": BattleModel.Resolve.UNIT_TYPE, "sound_volume": 50, "sound_muted": false,
 	"music_volume": 50, "music_muted": false}
 
 var _from_account := false  # applying the account's: not a change of the player's to save back
@@ -46,6 +46,7 @@ func _ready() -> void:
 		if Dbg.args.has("pause"):
 			opp_pause = OppPause[str(Dbg.args["pause"]).to_upper()]
 		opp_pause_battle = Dbg.args.has("pause_battle")
+		opp_pause_battle_mine = false
 		your_pause_battle = Dbg.args.has("your_pause_battle")
 		if Dbg.args.has("resolve"):  # --resolve=entire|round|side|type|unit, for both sides
 			var mode: int = {"entire": 0, "round": 1, "side": 2, "type": 3, "unit": 4}[str(Dbg.args["resolve"])]
