@@ -491,6 +491,7 @@ func _spin(width: float, key: String, seat: int) -> SpinBox:
 	sb.min_value = 0
 	sb.max_value = 1000
 	sb.step = 1
+	sb.update_on_text_changed = true  # a typed number counts at once, not only on Enter
 	sb.value_changed.connect(func(_x: float): _seat_setting_changed(seat, key))
 	return sb
 

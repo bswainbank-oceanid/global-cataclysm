@@ -41,6 +41,7 @@ func _build() -> void:
 	_max.max_value = 100000
 	_max.step = 1
 	_max.custom_minimum_size = Vector2(120, 32)
+	_max.update_on_text_changed = true  # (a typed number counts at once: Save takes no focus, so the box keeps it)
 	row.add_child(_max)
 	var save := Button.new()
 	save.text = "Save"
