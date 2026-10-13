@@ -20,9 +20,9 @@ for _tid, _t in TERRITORIES.items():
 ADJACENCY = {1: [2, 3, 4, 6], 2: [1, 3, 4, 5], 3: [1, 2], 4: [1, 2, 7], 5: [2], 6: [1], 7: [4]}
 
 
-def board(units, contested=None):
+def board(units, contested=None, owners=None):
     data = FakeData(territories=TERRITORIES, adjacency=ADJACENCY)
-    gs = make_state(data, {1: 'NAA', 2: 'NAA', 5: 'NAA', 3: 'AAC', 6: 'GPC'},
+    gs = make_state(data, owners or {1: 'NAA', 2: 'NAA', 5: 'NAA', 3: 'AAC', 6: 'GPC'},
                     {'NAA': FactionMode.BOT, 'AAC': FactionMode.BOT, 'GPC': FactionMode.BOT},
                     units_by_territory=units, contested=contested or {1: {'NAA', 'AAC'}}, phase=Phase.COMBAT_MOVE)
     gs.active_faction = 'NAA'
@@ -81,6 +81,40 @@ class TestLeavingAContest(unittest.TestCase):
         self.assertEqual(set(engine.legal_combat_move_options('NAA')[cruiser.unit_id]['destinations']), {7})
 
 
+
+class TestATransportInAContest(unittest.TestCase):
+    """The rule's exception: a Transport (a land unit afloat) that begins Combat Move in a contested sea zone may
+    still make an ordinary combat move -- land on an enemy shore -- or withdraw by the non-combat rules."""
+
+    def setUp(self):
+        # 2 is AAC's here: enemy land off the contested sea zone 4.
+        self.transport = make_unit('Mechanized Infantry', 'NAA')
+        self.engine, self.gs = board({4: [self.transport, make_unit('Cruiser', 'AAC')], 2: [make_unit('Infantry', 'AAC')]},
+                                     contested={4: {'NAA', 'AAC'}}, owners={1: 'NAA', 5: 'NAA', 2: 'AAC', 3: 'AAC', 6: 'GPC'})
+
+    def test_it_may_land_on_an_enemy_shore_or_withdraw(self):
+        dests = set(self.engine.legal_combat_move_options('NAA')[self.transport.unit_id]['destinations'])
+        self.assertIn(2, dests)  # the amphibious attack
+        self.assertIn(1, dests)  # the withdrawal to its own land
+
+    def test_the_amphibious_attack_is_an_ordinary_combat_move(self):
+        self.engine.submit_combat_moves('NAA', [CombatMoveOrder(self.transport.unit_id, [4, 2])])
+        self.engine.confirm_combat_moves('NAA')
+        self.assertIn(self.transport, self.gs.territories[2].units)
+        self.assertIn('NAA', self.gs.territories[2].contested_by)
+
+    def test_a_withdrawal_is_still_its_only_move(self):
+        self.engine.submit_combat_moves('NAA', [CombatMoveOrder(self.transport.unit_id, [4, 1])])
+        self.engine.confirm_combat_moves('NAA')
+        self.assertIn(self.transport, self.gs.territories[1].units)
+        self.assertTrue(self.transport.has_moved_noncombat)
+
+    def test_a_warship_there_still_cannot_attack(self):
+        cruiser = make_unit('Cruiser', 'NAA')
+        self.gs.territories[4].units.append(cruiser)
+        self.assertNotIn(2, self.engine.legal_combat_move_options('NAA').get(cruiser.unit_id, {}).get('destinations', {}))
+
+
 class TestQuietSeaContests(unittest.TestCase):
     """A sea zone's contest ends at Capture Territory once no two hostile sides have units there."""
 
@@ -101,8 +135,8 @@ class TestQuietSeaContests(unittest.TestCase):
 
 
 class TestBotsInAContest(unittest.TestCase):
-    def plan(self, units, contested):
-        engine, gs = board(units, contested)
+    def plan(self, units, contested, owners=None):
+        engine, gs = board(units, contested, owners)
         gs.phase = Phase.PURCHASE
         p = Planner(engine, 'NAA', load_settings(), 'Expansive', random.Random(1), 'full', 1500)
         p.run()
@@ -110,10 +144,18 @@ class TestBotsInAContest(unittest.TestCase):
 
     def test_a_transport_heads_for_friendly_land(self):
         transport = make_unit('Mechanized Infantry', 'NAA')
-        p = self.plan({4: [transport, make_unit('Cruiser', 'AAC')], 3: [make_unit('Infantry', 'AAC')]},
-                      {4: {'NAA', 'AAC'}})
+        # (all the land is NAA's here: nothing to attack in reach, so it withdraws)
+        p = self.plan({4: [transport, make_unit('Cruiser', 'AAC')]},
+                      {4: {'NAA', 'AAC'}}, owners={1: 'NAA', 2: 'NAA', 5: 'NAA', 3: 'NAA', 6: 'NAA'})
         self.assertIn(p.moves_combat.get(transport.unit_id, [None])[-1], (1, 2))
         self.assertEqual(p.unit_why[transport.unit_id][0], 'transport_safety')
+
+    def test_a_transport_takes_an_empty_enemy_shore_first(self):
+        transport = make_unit('Mechanized Infantry', 'NAA')
+        p = self.plan({4: [transport, make_unit('Cruiser', 'AAC')], 2: []}, {4: {'NAA', 'AAC'}},
+                      owners={1: 'NAA', 5: 'NAA', 2: 'AAC', 3: 'AAC', 6: 'NAA'})
+        self.assertEqual(p.moves_combat.get(transport.unit_id, [None])[-1], 2)
+        self.assertNotEqual(p.unit_why[transport.unit_id][0], 'transport_safety')
 
     def test_other_units_in_a_contest_are_left_to_fight(self):
         armor = make_unit('Armor', 'NAA')

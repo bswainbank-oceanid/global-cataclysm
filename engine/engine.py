@@ -618,7 +618,13 @@ class GameEngine:
                 if u.owner != faction or u.has_moved_combat:
                     continue
                 category = unit_defs[u.unit_type]['category']
-                if tid in in_contest:  # movement.contested_combat_move_rule: leave by the non-combat rules
+                if tid in in_contest and self._afloat(u, tid):
+                    # movement.contested_combat_move_rule's Transport exception: an ordinary combat move (an
+                    # amphibious attack, say), or a withdrawal by the non-combat rules
+                    destinations = {**self._contest_exit_paths(u, tid, gs),
+                                    **legal_combat_move_paths(u.unit_type, faction, tid, gs, self.data)}
+                    continuations = legal_combat_move_continuations(u.unit_type, faction, tid, gs, self.data)
+                elif tid in in_contest:  # movement.contested_combat_move_rule: leave by the non-combat rules
                     destinations = self._contest_exit_paths(u, tid, gs)
                     continuations = {}
                 elif category == 'Air':
@@ -643,6 +649,10 @@ class GameEngine:
         if key not in self._contest_starts:
             self._contest_starts = {key: frozenset(tid for tid, t in self.game_state.territories.items() if t.contested_by)}
         return self._contest_starts[key]
+
+    def _afloat(self, unit, territory_id):
+        """Is `unit` a Transport -- a land unit afloat in a sea zone (there is no separate Transport unit)?"""
+        return self.data.units()[unit.unit_type]['category'] == 'Land' and self.data.territories()[territory_id]['type'] == 'sea'
 
     def _contest_exit_paths(self, unit, origin_id, game_state):
         """{destination: path} for `unit` leaving a contest it began Combat Move in: a land or sea unit by
@@ -768,9 +778,13 @@ class GameEngine:
             origin_state = game_state.territories[origin_id]
             dest_state = game_state.territories[dest_id]
 
-            if origin_id in in_contest:
-                # movement.contested_combat_move_rule: a unit that began Combat Move in a contest leaves it by
-                # the non-combat rules -- no new fight, no capture -- and that is its only move this turn.
+            # movement.contested_combat_move_rule: a unit that began Combat Move in a contest leaves it by the
+            # non-combat rules -- no new fight, no capture -- and that is its only move this turn. A Transport is
+            # the exception: it may instead make an ordinary combat move (an amphibious attack), checked below.
+            withdrawing = origin_id in in_contest and not (
+                self._afloat(unit, origin_id)
+                and legal_combat_move_paths(unit.unit_type, faction, origin_id, game_state, self.data).get(dest_id) is not None)
+            if withdrawing:
                 if self._contest_exit_paths(unit, origin_id, game_state).get(dest_id) is None:
                     raise ValueError(f'{dest_id} is not a legal destination for unit {order.unit_id}, which began this '
                                      f'Combat Move in contested {origin_id}: only its own, allied or contested places, '

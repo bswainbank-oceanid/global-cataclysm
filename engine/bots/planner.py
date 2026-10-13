@@ -264,8 +264,12 @@ class Planner:
         if u.unit_id in self.claimed:
             return False
         if how == 'combat':
-            # (a unit in a contest is left to fight it out: see in_contest)
-            return self.allow_combat and not u.has_moved_combat and self.my_units.get(u.unit_id, (u, None))[1] not in self.in_contest
+            # (a unit in a contest is left to fight it out: see in_contest -- except a Transport, which may still
+            # make an ordinary combat move, an amphibious attack say, and otherwise withdraws: _transports_to_safety)
+            origin = self.my_units.get(u.unit_id, (u, None))[1]
+            in_contest = origin in self.in_contest and not (self.category(u) == 'Land' and origin is not None
+                                                            and not self.is_land(origin))
+            return self.allow_combat and not u.has_moved_combat and not in_contest
         if u.has_moved_noncombat:
             return False
         return self.category(u) == 'Air' or not u.has_moved_combat
@@ -1559,7 +1563,6 @@ class Planner:
             'treasonous_capture': self.objective_treasonous_capture,
             'pursue_leftovers': self.objective_pursue_leftovers,
         }
-        self._transports_to_safety()
         for step in self.settings.primary_order:
             if step.get('when') == 'treasonous' and not treasonous:
                 continue
@@ -1594,12 +1597,13 @@ class Planner:
             self.give(step['budget_share'])
             self._begin_objective(step['objective_id'])
             steps[step['objective_id']]()
+        self._transports_to_safety()
         self._objective = None
         return Plan(self)
 
     def _transports_to_safety(self):
-        """Before any objective: every Transport of mine (a land unit at sea) that began this Combat Move in a
-        contested sea zone leaves it, by the non-combat rules, for the safest place in reach -- my own or an
+        """After the objectives: every Transport of mine (a land unit at sea) that began this Combat Move in a
+        contested sea zone and wasn't given an ordinary combat move by one of them (an amphibious attack) leaves it, by the non-combat rules, for the safest place in reach -- my own or an
         ally's uncontested land first, then a sea zone with nobody else's units in it and no contest; nearest
         first. With nowhere safe in reach it stays. Logged under 'transport_safety' (not one of the numbered
         objectives)."""
@@ -1607,7 +1611,7 @@ class Planner:
             return
         self._objective, self._target = 'transport_safety', None
         for uid, (u, origin) in sorted(self.my_units.items()):
-            if self.is_land(origin) or self.category(u) != 'Land' or origin not in self.in_contest or u.has_moved_combat:
+            if self.is_land(origin) or self.category(u) != 'Land' or origin not in self.in_contest or u.has_moved_combat                     or u.unit_id in self.claimed:
                 continue
             safe = []
             for dest, path in self.engine._contest_exit_paths(u, origin, self.gs).items():
