@@ -31,6 +31,7 @@ var _pulse_layer: Node2D
 
 func _ready() -> void:
 	GameStore.state_changed.connect(queue_redraw)
+	GameStore.move_changed.connect(queue_redraw)  # (zoomed out, which units can still move picks a group's icon)
 	GameStore.state_changed.connect(_refresh_pulse)
 	GameStore.move_changed.connect(_refresh_pulse)
 	_pulse_layer = _PulseLayer.new()
@@ -177,7 +178,7 @@ func _draw_row(tid: int, groups: Array, y: float, dark: bool, marker_w: float) -
 		_draw_value_marker(tid, Vector2(x + marker_w * 0.5, y + 10))
 		x += marker_w + GAP
 	for i in groups.size():
-		_draw_group(Vector2(x, y), groups[i][0], groups[i][1], sizes[i], dark)
+		_draw_group(Vector2(x, y), groups[i][0], groups[i][1], sizes[i], dark, tid)
 		x += sizes[i].x + GAP
 
 
@@ -258,27 +259,63 @@ func _group_size(by_type: Dictionary) -> Vector2:
 			return Vector2(6 + 27 * _by_category(by_type).size(), 20)
 
 
-func _draw_group(pos: Vector2, owner: String, by_type: Dictionary, size: Vector2, dark := false) -> void:
+## Zoomed out, a group shows one icon: the unit type worth the most there -- the units' value (UV: their
+## purchase cost) added up per type, each promotion counting PROMOTION_VALUE more. During the player's own
+## Combat or Non-Combat Move only the units that can still move this phase count (the server's options), unless
+## none of theirs there can. Returns [base unit type, its highest promotion rank among those counted].
+## `tid` < 0: queued purchases (`by_type` alone: not on the board, never promoted).
+const PROMOTION_VALUE := 5
+
+
+func _flag_icon(tid: int, owner: String, by_type: Dictionary) -> Array:
+	var worth := {}  # icon type -> total value
+	var rank := {}   # icon type -> highest promotion rank
+	if tid < 0:
+		for k in by_type:
+			var b := GameStore.base_type(k)
+			worth[b] = float(worth.get(b, 0.0)) + _unit_cost(b) * by_type[k]
+			rank[b] = 0
+	else:
+		var units: Array = GameStore.units_at(tid).filter(func(u): return str(u["owner"]) == owner)
+		if GameStore.human_move_active() and owner == GameStore.move_faction():
+			var ids := GameStore.movable_ids_at(tid)
+			if not ids.is_empty():
+				units = units.filter(func(u): return ids.has(int(u["unit_id"])))
+		for u in units:
+			var promotions := int(u.get("promotions", 0))
+			# (a land unit at sea shows as its Transport, but is worth what the unit itself is)
+			var b := GameData.transport_unit(str(u["unit_type"])) if GameStore.in_transport_form(tid, u) else str(u["unit_type"])
+			worth[b] = float(worth.get(b, 0.0)) + _unit_cost(str(u["unit_type"])) + PROMOTION_VALUE * promotions
+			rank[b] = maxi(int(rank.get(b, 0)), promotions)
+	if worth.is_empty():
+		return ["", 0]
+	var types: Array = worth.keys()
+	types.sort_custom(func(a, b):
+		if worth[a] != worth[b]:
+			return worth[a] > worth[b]
+		if _unit_cost(a) != _unit_cost(b):
+			return _unit_cost(a) > _unit_cost(b)
+		return str(a) < str(b))
+	return [types[0], int(rank[types[0]])]
+
+
+func _draw_group(pos: Vector2, owner: String, by_type: Dictionary, size: Vector2, dark := false, tid := -1) -> void:
 	var col: Color = GameStore.display_color(owner)
 	# Queued purchases get a white border to set them apart from units on the board.
 	draw_rect(Rect2(pos - Vector2(1.5, 1.5), size + Vector2(3, 3)), Color(1, 1, 1, 0.95) if dark else Color(GCTheme.NAVY_DARK, 0.85))
 	draw_rect(Rect2(pos, size), col.darkened(0.5) if dark else col.lightened(0.05))
 	match _style():
 		Style.FLAG:
-			# One icon for the group: the most numerous unit type (promoted and
-			# not merged), starred if any unit of that type is promoted.
-			var merged := {}
-			var starred := {}  # base type -> its highest promotion rank among the stacks
+			# One icon for the group: the type worth the most there (_flag_icon), starred if one of the
+			# units counted for it is promoted; and how many units the group holds in all.
 			var total := 0
 			for k in by_type:
-				var b := GameStore.base_type(k)
-				merged[b] = int(merged.get(b, 0)) + by_type[k]
-				starred[b] = maxi(int(starred.get(b, 0)), GameStore.rank_of(k))
 				total += by_type[k]
-			var top: String = _sorted_types(merged)[0]
-			_glyph(top, pos + Vector2(4, 3), 14)
-			if int(starred[top]) > 0:
-				_promotion_star(pos + Vector2(4 + 14, 3), 4.5, int(starred[top]))
+			var top: Array = _flag_icon(-1 if dark else tid, owner, by_type)
+			if str(top[0]) != "":
+				_glyph(str(top[0]), pos + Vector2(4, 3), 14)
+				if int(top[1]) > 0:
+					_promotion_star(pos + Vector2(4 + 14, 3), 4.5, int(top[1]))
 			_count(str(total), pos + Vector2(22, 15), FONT_SIZE)
 		Style.STRIP:
 			var x := pos.x + 3
