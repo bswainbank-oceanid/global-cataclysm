@@ -20,11 +20,20 @@ var token := ""
 var server_build := {}  # the server's build number, from its hello (server/build.py): {build, commit, label}
 var download_url := ""  # where to get the client, from the server's hello ("" when it doesn't say)
 var _pending := ""     # the account request in flight: "token_login", "login", "register", or ""
+var _settings_timer: Timer  # a Settings change waits a moment before it's saved with the account (a slider's drag)
 
 
 func _ready() -> void:
 	Net.raw_message.connect(_on_message)
 	Net.disconnected.connect(func(): _pending = "")  # (still logged in: the client logs back in when it reconnects)
+	_settings_timer = Timer.new()
+	_settings_timer.one_shot = true
+	_settings_timer.wait_time = 1.0
+	_settings_timer.timeout.connect(_save_settings)
+	add_child(_settings_timer)
+	Settings.changed.connect(func():
+		if multi and is_logged_in() and not Settings.applying_account():
+			_settings_timer.start())
 	# (the saved token is read when a server says hello: which file depends on which server it is)
 
 
@@ -121,6 +130,13 @@ func _on_message(msg: Dictionary) -> void:
 			user = msg.get("user", {})
 			token = str(msg.get("token", ""))
 			_save()
+			# The player's Settings, kept with the account: theirs on every device. An account from before they
+			# were kept (null) takes this device's, and keeps them from now on.
+			var kept = msg.get("preferences")
+			if kept is Dictionary:
+				Settings.apply_account(kept)
+			elif msg.has("preferences"):
+				_save_settings()
 			changed.emit()
 		"reset_requested":
 			_pending = ""
@@ -147,6 +163,12 @@ func _on_message(msg: Dictionary) -> void:
 				register(name, "", "%s@dev.local" % name.to_lower(), "dev")
 			else:
 				problem.emit(str(msg.get("message", "")))
+
+
+## Keeps the player's Settings with their account (server/accounts.py save_preferences).
+func _save_settings() -> void:
+	if multi and is_logged_in():
+		Net.send_msg({"type": "save_preferences", "settings": Settings.account_values()})
 
 
 func _forget() -> void:

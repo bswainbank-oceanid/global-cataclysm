@@ -23,7 +23,7 @@ from pathlib import Path
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / 'server_data' / 'global_cataclysm.sqlite3'
 
 # Bump when the tables change, with an upgrade step in Store._upgrade.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Server-assigned ids: a prefix per kind of record, then a running number.
 ID_PREFIXES = {'user': 'U_', 'scenario': 'S_', 'game': 'G_'}
@@ -81,6 +81,10 @@ CREATE TABLE shared_scenarios (
     id TEXT PRIMARY KEY,
     doc TEXT NOT NULL
 );
+CREATE TABLE user_preferences (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    doc     TEXT NOT NULL
+);
 CREATE TABLE counters (
     kind TEXT PRIMARY KEY,
     last INTEGER NOT NULL
@@ -92,6 +96,9 @@ UPGRADES = [
     (2, ['CREATE TABLE server_settings (key TEXT PRIMARY KEY, doc TEXT NOT NULL)']),
     # the shared scenarios, out of the code's data/modules (server/shared_setups.py)
     (3, ['CREATE TABLE shared_scenarios (id TEXT PRIMARY KEY, doc TEXT NOT NULL)']),
+    # each player's own Settings, kept with the account (server/accounts.py preferences)
+    (4, ['CREATE TABLE user_preferences (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, '
+         'doc TEXT NOT NULL)']),
 ]
 
 # A unique column that is already taken, as the player should read it.

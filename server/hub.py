@@ -19,7 +19,8 @@ Client -> server (besides each game's own protocol, server/session.py's auto mod
     {"type": "register", "player_name", "actual_name", "email", "password"}
     {"type": "login", "email", "password"}
     {"type": "token_login", "token"}
-        -> {"type": "logged_in", "user": {...}, "token"}  (token_login: the same token back), or
+        -> {"type": "logged_in", "user": {...}, "token", "preferences": the player's Settings, {name: value},
+           or null when none were ever saved}  (token_login: the same token back), or
            {"type": "login_failed", "message", "problems"}
     {"type": "logout"}                          -> {"type": "logged_out"}; the token stops working
     {"type": "request_reset", "email"}          a forgotten password: emails a 6-digit code (server/mailer.py)
@@ -28,6 +29,9 @@ Client -> server (besides each game's own protocol, server/session.py's auto mod
     {"type": "reset_password", "email", "code", "password"}
                                                 -> "logged_in" with the new password (every other login of
                                                    the account ended), or "login_failed"
+    {"type": "save_preferences", "settings": {name: value}}
+                                                the player's Settings, kept with their account (no reply; a
+                                                   refusal is an "error")
     {"type": "enter_game", "game_id", ["since", "epoch"]}
                                                 -> {"type": "entered_game", "game": {...summary...},
                                                     "seats": [...], "my_factions": [...], "players":
@@ -222,7 +226,7 @@ class Hub:
                 raise
             conn.user, conn.token, conn.game_id = user, token, None
             conn.lobby_id, conn.browsing = None, False
-            return [([conn.key], {'type': 'logged_in', 'user': user, 'token': token})]
+            return [([conn.key], self._logged_in(user, token))]
         if kind == 'register':
             self.limits.check('register', conn.address)
             self.limits.failed('register', conn.address)  # (every new account counts)
@@ -243,7 +247,17 @@ class Hub:
                 raise StoreError('that login has ended: log in again')
         conn.user, conn.token, conn.game_id = user, token, None
         conn.lobby_id, conn.browsing = None, False
-        return [([conn.key], {'type': 'logged_in', 'user': user, 'token': token})]
+        return [([conn.key], self._logged_in(user, token))]
+
+    def _logged_in(self, user, token):
+        """The reply to a login of any kind: the user, their token, and their Settings as kept with the account
+        (null: none ever saved -- the client keeps its own and saves them)."""
+        return {'type': 'logged_in', 'user': user, 'token': token,
+                'preferences': accounts.preferences(self.store, user['id'])}
+
+    def _save_preferences(self, conn, msg):
+        accounts.save_preferences(self.store, conn.user['id'], msg.get('settings'))
+        return []
 
     def _request_reset(self, conn, email):
         """Emails a reset code, if there's an account with `email` (and the same answer either way, so asking
@@ -681,6 +695,7 @@ class Hub:
         'admin_overview': _admin_overview, 'admin_set_max_users': _admin_set_max_users, 'admin_find': _admin_find,
         'admin_lock': _admin_lock, 'hand_over': _hand_over, 'replace_with_bot': _replace_with_bot,
         'game_chat': _game_chat, 'game_chat_history': _game_chat_history,
+        'save_preferences': _save_preferences,
     }
 
     # ---- helpers -----------------------------------------------------------------------------------

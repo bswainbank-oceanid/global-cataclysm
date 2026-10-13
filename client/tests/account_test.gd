@@ -83,6 +83,31 @@ func _initialize() -> void:
 	_check(said.size() == 1, "an error with nothing waiting isn't the login screen's")
 	account._on_message({"type": "reset_requested", "email": "ann@x.com"})
 
+	# Settings kept with the account: a login brings the account's (left out: the default), never full screen.
+	var settings = root.get_node("Settings")
+	var original: Dictionary = settings.account_values()
+	var fullscreen_was: bool = settings.fullscreen
+	settings.music_volume = 90
+	settings.opp_pause_battle = true
+	account._on_message({"type": "logged_in", "user": {"id": "U_000002", "player_name": "Cy"}, "token": "t2",
+		"preferences": {"music_volume": 25, "sound_muted": true}})
+	_check(settings.music_volume == 25 and settings.sound_muted, "the account's settings are applied")
+	_check(not settings.opp_pause_battle and settings.opp_pause == settings.OppPause.PHASE, "...the rest are the defaults")
+	_check(settings.fullscreen == fullscreen_was, "...and full screen is the device's own")
+	_check(account._settings_timer.is_stopped(), "applying the account's isn't a change to send back")
+	settings.music_volume = 60
+	settings.commit()
+	_check(not account._settings_timer.is_stopped(), "a change of the player's is saved with the account (after a moment)")
+	_check(settings.account_values()["music_volume"] == 60 and not settings.account_values().has("fullscreen"), "what is sent")
+	account._settings_timer.stop()
+	account.logout()
+	settings.music_volume = 10
+	settings.commit()
+	_check(account._settings_timer.is_stopped(), "logged out: nothing to save it with")
+	settings.apply_account(original)  # (put the machine's own settings back)
+	settings.fullscreen = fullscreen_was
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(account._path()))
+
 	# Builds: only a client older than its server is told to get the new version.
 	var mine: Dictionary = account.client_build()
 	if not mine.is_empty():

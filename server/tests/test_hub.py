@@ -85,6 +85,34 @@ class TestLoggingIn(HubTest):
         [(_, msg)] = self.send('c3', {'type': 'token_login', 'token': self.ann_token})
         self.assertEqual(msg['type'], 'login_failed')
 
+    def test_settings_are_kept_with_the_account(self):
+        # A new account starts from the defaults ({}), not from whatever the device has.
+        self.hub.connect('c5')
+        [(_, msg)] = self.send('c5', {'type': 'token_login', 'token': self.ann_token})
+        self.assertEqual(msg['preferences'], {})
+        mine = {'opp_pause': 1, 'music_volume': 30, 'sound_muted': True}
+        self.assertEqual(self.send('c5', {'type': 'save_preferences', 'settings': mine}), [])
+        # ...and every later login, on any device, brings them back -- each account its own.
+        self.hub.connect('c6')
+        [(_, msg)] = self.send('c6', {'type': 'login', 'email': 'ann@x.com', 'password': 'pw'})
+        self.assertEqual(msg['preferences'], mine)
+        self.hub.connect('c7')
+        [(_, msg)] = self.send('c7', {'type': 'token_login', 'token': self.bob_token})
+        self.assertEqual(msg['preferences'], {})
+
+    def test_an_account_from_before_settings_were_kept_has_none(self):
+        self.store.delete('user_preferences', user_id=self.ann)
+        self.hub.connect('c8')
+        [(_, msg)] = self.send('c8', {'type': 'token_login', 'token': self.ann_token})
+        self.assertIsNone(msg['preferences'])  # (its client keeps what it has, and saves it)
+
+    def test_settings_must_be_simple_values(self):
+        for bad in [None, [1], {'a': {'nested': 1}}, {'a': 'x' * 5000}]:
+            [(_, msg)] = self.send('ann', {'type': 'save_preferences', 'settings': bad})
+            self.assertEqual(msg['type'], 'error', bad)
+        [(_, msg)] = self.send('nobody', {'type': 'save_preferences', 'settings': {}})
+        self.assertEqual(msg['type'], 'error')  # (not logged in)
+
     def test_refusals_carry_their_problems(self):
         self.hub.connect('c4')
         [(_, msg)] = self.send('c4', {'type': 'register', 'player_name': 'ann', 'email': 'new@x.com', 'password': ''})

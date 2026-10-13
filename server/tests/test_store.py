@@ -43,6 +43,22 @@ class TestCreating(unittest.TestCase):
         self.assertEqual(store._db.execute('PRAGMA user_version').fetchone()[0], SCHEMA_VERSION)
         store.close()
 
+    def test_a_database_from_an_older_server_gains_the_new_tables(self):
+        store = Store(self.path)
+        store._db.execute('DROP TABLE user_preferences')
+        store._db.execute('PRAGMA user_version = 3')
+        store.close()
+        store = Store(self.path)
+        self.add_user_to(store, 'U_000001', 'a@x', 'A')
+        store.upsert('user_preferences', {'user_id': 'U_000001', 'settings': {}}, user_id='U_000001')
+        self.assertEqual(store.fetch('user_preferences', user_id='U_000001')['settings'], {})
+        self.assertEqual(store._db.execute('PRAGMA user_version').fetchone()[0], SCHEMA_VERSION)
+        store.close()
+
+    @staticmethod
+    def add_user_to(store, uid, email, name):
+        store.insert('users', {'id': uid}, id=uid, email=email, player_name=name)
+
     def test_a_database_from_a_newer_server_is_refused(self):
         store = Store(self.path)
         store._db.execute(f'PRAGMA user_version = {SCHEMA_VERSION + 1}')

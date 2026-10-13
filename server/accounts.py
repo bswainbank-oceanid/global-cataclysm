@@ -7,6 +7,7 @@ Player accounts and logins (docs/DATA_MODEL.md, "User" and "Login"), on top of s
     logout(store, token)
     user, code = start_reset(store, 'b@example.com')            # a forgotten password: email `code`
     user, token = finish_reset(store, 'b@example.com', code, 'new secret')
+    preferences(store, user_id); save_preferences(store, user_id, {'music_volume': 40, ...})
 
 A user as returned here never carries the password: {id, player_name, actual_name, email, admin,
 created}. Only a salted PBKDF2 hash of the password is stored, and only a SHA-256 of each login
@@ -15,6 +16,7 @@ token, so a copy of the database can't be used to log anyone in.
 import datetime
 import hashlib
 import hmac
+import json
 import secrets
 
 from .store import StoreError, utc_now
@@ -30,6 +32,7 @@ LOCKED = 'this account is locked: ask an admin'
 RESET_MINUTES = 30   # a reset code's life
 RESET_TRIES = 5      # wrong codes before it stops working
 RESET_WRONG = 'that code is wrong or has expired: ask for a new one'
+MAX_PREFERENCES = 4000  # bytes of JSON: a player's Settings are a handful of numbers and switches
 
 
 def public(user):
@@ -80,8 +83,27 @@ def register(store, player_name, actual_name, email, password):
         user = {'id': uid, 'player_name': player_name, 'actual_name': actual_name, 'email': email,
                 'password': _hash(password), 'admin': False, 'created': utc_now()}
         store.insert('users', user, id=uid, email=email, player_name=player_name)
+        save_preferences(store, uid, {})  # (a new account starts from the default Settings, not the device's)
         token = _new_login(store, uid)
     return public(user), token
+
+
+def preferences(store, user_id):
+    """The player's Settings as their client last saved them ({name: value}), or None for an account that
+    has never had any saved (one from before they were kept: its client adopts what it has)."""
+    doc = store.fetch('user_preferences', user_id=user_id)
+    return doc['settings'] if doc else None
+
+
+def save_preferences(store, user_id, settings):
+    """Keeps the player's Settings with their account: a flat {name: value} of simple values, replacing
+    what was kept. What they mean is the client's business (client/scripts/settings.gd)."""
+    if not isinstance(settings, dict) or not all(
+            isinstance(k, str) and isinstance(v, (bool, int, float, str)) for k, v in settings.items()):
+        raise StoreError('settings must be a set of names and simple values')
+    if len(json.dumps(settings)) > MAX_PREFERENCES:
+        raise StoreError('too many settings')
+    store.upsert('user_preferences', {'user_id': user_id, 'settings': settings, 'saved': utc_now()}, user_id=user_id)
 
 
 def login(store, email, password):

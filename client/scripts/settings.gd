@@ -3,7 +3,9 @@ extends Node
 ## for the Next button; and the Display Settings (full screen). Read by
 ## TurnStepper; edited in SettingsPanel (Display: MainMenu); kept in
 ## user://settings.cfg (scripted screenshot runs use the defaults and never
-## write it).
+## write it) -- and, on the multi-player server, with the player's account
+## (Account: every one but full screen, which belongs to the device), so each
+## account has its own wherever it logs in.
 ##
 ## "Yours" means factions in HUMAN mode. In a bot-vs-bot game there are none,
 ## so the "involving your units" and "your turn" options can never trigger.
@@ -27,6 +29,15 @@ var sound_volume := 70                   # the unit sounds' volume, 0-100 (Sfx)
 var sound_muted := false
 var music_volume := 50                   # the soundtrack's volume, 0-100 (Music)
 var music_muted := false
+
+# The ones kept with the account (not full screen: that's the device's), and their defaults -- a new
+# account's, since the server keeps none for it yet.
+const ACCOUNT_DEFAULTS := {"opp_pause": OppPause.PHASE, "opp_pause_battle": false, "opp_pause_battle_mine": false,
+	"your_pause_battle": false, "resolve_attacker": BattleModel.Resolve.UNIT_TYPE,
+	"resolve_defender": BattleModel.Resolve.UNIT_TYPE, "sound_volume": 70, "sound_muted": false,
+	"music_volume": 50, "music_muted": false}
+
+var _from_account := false  # applying the account's: not a change of the player's to save back
 
 
 func _ready() -> void:
@@ -56,6 +67,35 @@ func _ready() -> void:
 	music_volume = clampi(int(cfg.get_value("music", "volume", music_volume)), 0, 100)
 	music_muted = bool(cfg.get_value("music", "muted", music_muted))
 	_apply_display()
+
+
+## The settings kept with the account, {name: value}.
+func account_values() -> Dictionary:
+	var out := {}
+	for key in ACCOUNT_DEFAULTS:
+		out[key] = get(key)
+	return out
+
+
+## The account's settings, as the server keeps them (any left out: the default), in place of this device's.
+func apply_account(values: Dictionary) -> void:
+	for key in ACCOUNT_DEFAULTS:
+		var v = values.get(key, ACCOUNT_DEFAULTS[key])
+		match typeof(ACCOUNT_DEFAULTS[key]):
+			TYPE_BOOL:
+				set(key, bool(v))
+			_:
+				set(key, int(v))
+	sound_volume = clampi(sound_volume, 0, 100)
+	music_volume = clampi(music_volume, 0, 100)
+	_from_account = true
+	commit()
+	_from_account = false
+
+
+## Whether the change just committed came from the account itself (Account doesn't send those back).
+func applying_account() -> bool:
+	return _from_account
 
 
 ## Call after changing a field: notifies listeners and saves.
