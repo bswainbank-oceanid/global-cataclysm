@@ -297,6 +297,7 @@
  },
  "victory": {
   "elimination_rule": "REPLACED by surrender_rule: a faction is no longer eliminated automatically for being down to 0-1 Strategic Centers (GameEngine.process_elimination_check is gone). It plays on -- purchases, income and all -- until another faction forces its surrender.",
+  "elimination_settles_contests": "When a faction is eliminated (forced to surrender, or surrendering of its own accord), every contest it was part of is settled at once rather than at someone's next Capture Territory: it leaves them, and a LAND territory left with a single faction in its contest -- and no other faction's land units there -- goes to that faction immediately (the owner keeps it, or the attacker takes it: a capture). A sea zone with no hostile sides left is no longer contested. A contest still between two or more others goes on. See GameEngine._settle_contests_of.",
   "surrender_rule": {
    "rule": "In its own Diplomacy phase a HUMAN/BOT faction may FORCE another such faction (an ally included) to surrender, as many times as it has grounds, before or after its alliance action. The target is eliminated at once: eliminated=True, every unit (and purchase awaiting deployment) removed from the board, its alliance ties cut (an alliance left with one member is dissolved); its territory stays as it is. It is not a negotiation: there is no accept or decline. Noncombatant and Neutral factions are never targets.",
    "income_multiplier": 2,

@@ -1,9 +1,9 @@
 {
   "random_6bot": {
     "setup": "f7fe25edcb74606f22e9012ba411bd169371870e",
-    "log": "bff633be0dddfdba1d7a1c96f6e8f32811fbf96c",
+    "log": "ebd1f132445ee609b0a24b5e959fc7f9ad8afa39",
     "final": "eded59fc199de9f1398d731453dc79d981d0a6be",
-    "events": 6375
+    "events": 6376
   },
   "strategy_6bot": {
     "setup": "b1243c88af346a5d3c54b6c1e258716813fe66a8",
@@ -26,7 +26,7 @@
   "fixed_order_2bot": {
     "setup": "68d80a9dbe0714e901821b3e453a5e92bed28d1a",
     "log": "46eb13d5a6d4613601638736831902ae7a970baf",
-    "final": "883cd6966e08430d57bd06e7e825d2dcce625b75",
+    "final": "38d1062d5df8cbf12de927669e65115b5022c1e0",
     "events": 2268
   },
   "new_scenario_3bot": {

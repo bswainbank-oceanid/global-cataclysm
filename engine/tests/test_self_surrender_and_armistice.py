@@ -90,6 +90,61 @@ class TestSelfSurrender(unittest.TestCase):
             engine.surrender('XYZ')
 
 
+class TestEliminationSettlesContests(unittest.TestCase):
+    """victory.elimination_settles_contests: a contest the eliminated faction was part of is settled at once --
+    a territory left with a single faction in its contest goes to it now, not at its next Capture Territory."""
+
+    def board(self, units, contested, owners=None):
+        from engine.turn_log import TurnLog
+        data = FakeData(
+            territories={1: {'type': 'land', 'value': 3}, 2: {'type': 'land', 'value': 3}, 3: {'type': 'land', 'value': 3},
+                         4: {'type': 'sea'}},
+            adjacency={1: [2, 4], 2: [1, 3, 4], 3: [2], 4: [1, 2]},
+        )
+        modes = {'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT}
+        gs = make_state(data, owners or {1: 'NAA', 2: 'UE', 3: 'GPC'}, modes, units_by_territory=units,
+                        contested=contested)
+        gs.active_faction = 'GPC'
+        engine = GameEngine(gs, data)
+        engine.turn_log = TurnLog()
+        return engine, gs
+
+    def test_the_attacker_left_alone_takes_the_territory(self):
+        from engine.tests.test_engine import make_unit
+        engine, gs = self.board({2: [make_unit('Infantry', 'NAA'), make_unit('Infantry', 'UE')]}, {2: {'NAA', 'UE'}})
+        engine.surrender('UE')
+        self.assertEqual((gs.territories[2].owner, gs.territories[2].contested_by), ('NAA', None))
+        captured = [e for e in engine.turn_log.events if e['kind'] == 'territory_captured']
+        self.assertEqual([(e['faction'], e['territory_id'], e['previous_owner']) for e in captured], [('NAA', 2, 'UE')])
+
+    def test_the_owner_left_alone_keeps_it(self):
+        from engine.tests.test_engine import make_unit
+        engine, gs = self.board({1: [make_unit('Infantry', 'NAA'), make_unit('Armor', 'GPC')]}, {1: {'NAA', 'GPC'}})
+        engine.surrender('GPC')
+        self.assertEqual((gs.territories[1].owner, gs.territories[1].contested_by), ('NAA', None))
+        self.assertFalse([e for e in engine.turn_log.events if e['kind'] == 'territory_captured'])
+
+    def test_a_contest_still_between_two_others_goes_on(self):
+        from engine.tests.test_engine import make_unit
+        engine, gs = self.board({2: [make_unit('Infantry', 'NAA'), make_unit('Infantry', 'GPC'), make_unit('Infantry', 'UE')]},
+                                {2: {'NAA', 'GPC', 'UE'}})
+        engine.surrender('UE')
+        self.assertEqual(gs.territories[2].contested_by, {'NAA', 'GPC'})
+        self.assertEqual(gs.territories[2].owner, 'UE')  # (whoever wins it takes it at their Capture Territory)
+
+    def test_a_sea_contest_with_one_side_left_ends(self):
+        from engine.tests.test_engine import make_unit
+        engine, gs = self.board({4: [make_unit('Cruiser', 'NAA'), make_unit('Cruiser', 'GPC')]}, {4: {'NAA', 'GPC'}})
+        engine.surrender('GPC')
+        self.assertIsNone(gs.territories[4].contested_by)
+
+    def test_contests_it_had_no_part_in_are_left_alone(self):
+        from engine.tests.test_engine import make_unit
+        engine, gs = self.board({2: [make_unit('Infantry', 'NAA'), make_unit('Infantry', 'UE')]}, {2: {'NAA', 'UE'}})
+        engine.surrender('GPC')
+        self.assertEqual((gs.territories[2].owner, gs.territories[2].contested_by), ('UE', {'NAA', 'UE'}))
+
+
 class TestArmistice(unittest.TestCase):
     def test_it_ends_the_game_and_logs_who_agreed(self):
         from engine.turn_log import TurnLog

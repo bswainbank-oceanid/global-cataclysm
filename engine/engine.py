@@ -2053,6 +2053,44 @@ class GameEngine:
                     f.alliance = None
         if self.turn_log is not None:
             self.turn_log.record_elimination(code)
+        self._settle_contests_of(code)
+
+    def _settle_contests_of(self, code):
+        """victory.elimination_settles_contests: the contests eliminated `code` was part of, settled at once
+        rather than at someone's next Capture Territory. It leaves them all; a LAND territory left with a single
+        faction in its contest -- and no other faction's land units there -- goes to that faction now (the
+        owner keeps it, or the attacker takes it), recorded as a capture when it changes hands; a sea zone with
+        no hostile sides left in it is simply no longer contested."""
+        gs = self.game_state
+        terrs = self.data.territories()
+        unit_defs = self.data.units()
+        for tid, t in gs.territories.items():
+            if not t.contested_by or code not in t.contested_by:
+                continue
+            t.contested_by = set(t.contested_by) - {code}
+            if terrs[tid]['type'] == 'sea':
+                owners = sorted({u.owner for u in t.units})
+                if not any(not _is_ally_or_self(gs, a, b) for i, a in enumerate(owners) for b in owners[i + 1:]):
+                    t.contested_by = None
+                continue
+            claimants = {f for f in t.contested_by if not gs.factions[f].eliminated} if t.contested_by else set()
+            land_owners = {u.owner for u in t.units if unit_defs[u.unit_type]['category'] == 'Land'}
+            if len(claimants) != 1 or not land_owners <= claimants:
+                if not t.contested_by:
+                    t.contested_by = None
+                continue
+            winner = next(iter(claimants))
+            previous_owner = t.owner
+            t.owner = winner
+            t.contested_by = None
+            t.reclaim_bonus_for = None
+            if self.stats is not None:
+                if previous_owner != winner:
+                    self.stats.record_capture(gs.global_turn, winner, tid, previous_owner)
+                else:
+                    self.stats.record_contest_ended_without_capture(tid)
+            if self.turn_log is not None and previous_owner != winner:
+                self.turn_log.record_capture(gs.global_turn, winner, tid, previous_owner)
 
     def _alliance_members(self, faction):
         """{faction} ∪ every other faction currently sharing its
