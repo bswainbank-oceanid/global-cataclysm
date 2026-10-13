@@ -54,6 +54,8 @@ var feed_mode := false   # a multi-player game: play back the server's feed (see
 var _inbox: Array = []   # feed steps received but not yet played back, oldest first
 var _feed_seq := 0       # the last feed message taken in
 var _feed_epoch := ""
+var _last_state: Dictionary = {}  # the last "state" message played back (the board as the player last saw it)
+var _left: Dictionary = {}  # the multi-player game last left for the main menu: where its playback stood
 
 const DECISION_PHASES := ["PURCHASE", "COMBAT_MOVE", "NONCOMBAT_MOVE", "DIPLOMACY"]
 
@@ -172,6 +174,7 @@ func _on_message(msg: Dictionary) -> void:
 		return
 	match str(msg.get("type", "")):
 		"state":
+			_last_state = msg
 			GameStore.set_state(msg["game_state"], msg.get("scenario", {}))
 			_check_auto_spectate()
 		"phase_queue":
@@ -718,6 +721,47 @@ func button_pressed() -> void:
 	_refresh()
 
 
+## Leaving a multi-player game for the main menu: remember where its playback stood -- the board and the
+## step as last shown, and the last feed message actually played back (anything received but not yet shown,
+## in the inbox or held behind a battle board, counts as not seen) -- so coming back plays on from there.
+func remember_left_game(game_id: String) -> void:
+	_left = {}
+	if not feed_mode or game_id == "" or _feed_epoch == "" or _last_state.is_empty() or game_over:
+		return
+	var seen := _feed_seq
+	for m in _inbox + _held + [_held_result]:
+		if m.has("seq") and str(m.get("epoch", "")) == _feed_epoch:
+			seen = mini(seen, int(m["seq"]) - 1)
+	_left = {"game_id": game_id, "epoch": _feed_epoch, "seq": seen, "state": _last_state.duplicate(true),
+		"queue": _last_queue.duplicate(true), "waiting_for": GameStore.waiting_for.duplicate()}
+
+
+## What to ask the server for on entering `game_id`: everything after where playback stood when the player
+## left it ({"since", "epoch"}), or {} (just the game as it stands now).
+func resume_point(game_id: String) -> Dictionary:
+	if str(_left.get("game_id", "")) != game_id:
+		return {}
+	return {"since": int(_left["seq"]), "epoch": str(_left["epoch"])}
+
+
+## Back in the game left for the main menu (just entered: the feed with what was missed comes next): the board
+## and step as the player left them, so the missed steps play back from there. False if it was another game.
+func resume_left_game(game_id: String) -> bool:
+	if str(_left.get("game_id", "")) != game_id:
+		_left = {}
+		return false
+	var left := _left
+	_left = {}
+	_feed_epoch = str(left["epoch"])
+	_feed_seq = int(left["seq"])
+	_on_message(left["state"])
+	if not (left["queue"] as Dictionary).is_empty():
+		_on_message(left["queue"])
+	GameStore.set_waiting_for(left["waiting_for"])
+	_refresh()
+	return true
+
+
 ## A new game replaces the running one: drop every trace of it.
 func reset() -> void:
 	game_over = false
@@ -744,6 +788,7 @@ func _queue_reset() -> void:
 	_edit_orders = []
 	GameStore.set_invitation({})
 	_was_human_eliminated = false
+	_last_state = {}
 
 
 ## The player's purchase edits: send the whole staged list to the server, which

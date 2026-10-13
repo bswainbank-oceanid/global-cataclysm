@@ -429,7 +429,10 @@ func _setup_launch_screen() -> void:
 		_menu.open())
 	_my_games.game_picked.connect(func(g: Dictionary):
 		if str(g.get("status", "")) == "live":
-			Net.send_msg({"type": "enter_game", "game_id": g["id"]})
+			# (back in a game left for the main menu: what was missed meanwhile, to play on from there)
+			var enter := {"type": "enter_game", "game_id": g["id"]}
+			enter.merge(Stepper.resume_point(str(g["id"])))
+			Net.send_msg(enter)
 		else:
 			Net.send_msg({"type": "enter_lobby", "game_id": g["id"]}))
 	_menu.new_game_pressed.connect(func():
@@ -600,6 +603,8 @@ func _on_multi_message(msg: Dictionary) -> void:
 				Stepper.feed_mode = true
 				Stepper.reset()
 			GameStore.set_multi_game(game, msg.get("my_factions", []), msg.get("players", {}), int(msg.get("turn_hours", 0)))
+			if not again:  # (back in the game left for the main menu: the board as it was left, to play on from)
+				Stepper.resume_left_game(str(game.get("id", "")))
 			Music.set_in_game(true)
 			for screen in [_menu, _my_games, _login, _launch, _available, _lobby]:
 				screen.close()
@@ -651,6 +656,7 @@ func _restore(where: String) -> void:
 func _leave_multi_game() -> void:
 	Music.set_in_game(false)
 	Net.send_msg({"type": "leave_game"})
+	Stepper.remember_left_game(str(GameStore.game_info.get("id", "")))  # (to play on from here on coming back)
 	Stepper.feed_mode = false
 	Stepper.reset()
 	GameStore.set_multi_game({}, [])

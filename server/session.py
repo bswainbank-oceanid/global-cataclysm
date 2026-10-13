@@ -240,8 +240,10 @@ Server -> client, auto mode (besides the usual phase_queue / phase_result / stat
         an answer to an invitation or an armistice proposal).
 """
 import collections
+import json
 import random
 import secrets
+import zlib
 
 from engine.bots.alliance_policy import accepts_invite, resolve_alliance_behavior, resolve_alliance_strategy
 from engine.bots.strategy_bot import StrategyBot
@@ -264,7 +266,10 @@ _HUMAN_DECISION_PHASES = (Phase.PURCHASE, Phase.COMBAT_MOVE, Phase.NONCOMBAT_MOV
 
 # Auto mode: how many broadcast messages are kept for clients catching up (a "state" is ~100 KB; a client
 # further behind than this starts again from the current state).
-FEED_LIMIT = 400
+# About three rounds of six factions (a step is 3-4 messages): far enough back for a player who left the game
+# for the main menu to come back and play on from where they were. Kept compressed -- a "state" is ~66 KB as
+# JSON, ~3 KB compressed -- and a full catch-up still fits a client's 16 MB inbound buffer (net_client.gd).
+FEED_LIMIT = 800
 
 # A proposer whose armistice was declined can't propose another for this many rounds (measured against
 # GameState.round_number -- see _handle_propose_armistice's cooldown check).
@@ -457,9 +462,9 @@ class GameSession:
         waiting = self.waiting_for()
         missed = None
         if since is not None and epoch == self.epoch:
-            oldest = self.feed[0]['seq'] if self.feed else self.seq + 1
+            oldest = self.feed[0][0] if self.feed else self.seq + 1
             if since >= oldest - 1:
-                missed = [m for m in self.feed if m['seq'] > since]
+                missed = [json.loads(zlib.decompress(packed)) for seq, packed in self.feed if seq > since]
         gs = self.engine.game_state
         armistice = None
         if self._armistice is not None:  # (a player entering later must still be asked)
@@ -490,7 +495,7 @@ class GameSession:
     def _number(self, message):
         self.seq += 1
         message = dict(message, seq=self.seq, epoch=self.epoch)
-        self.feed.append(message)
+        self.feed.append((self.seq, zlib.compress(json.dumps(message).encode('utf-8'))))  # (seq, the message)
         return message
 
     @staticmethod

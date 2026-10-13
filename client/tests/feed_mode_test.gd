@@ -116,6 +116,42 @@ func _initialize() -> void:
 	stepper._on_raw({"type": "armistice_resolved", "accepted": false, "from": "UE", "declined_by": "AAC", "seq": 99, "epoch": "a later run"})
 	_check(store.armistice.is_empty() and not stepper.button_text.begins_with("Armistice"), "resolved: the game goes on")
 
+	# Leaving for the main menu and coming back: playback goes on from where the player left it -- the steps
+	# not yet played back then (and any since) are asked for and played, not skipped.
+	store.armistice = {}
+	var entry: Dictionary = data["feed"].duplicate(true)
+	entry["epoch"] = "resume test"
+	var run := []
+	for m in steps:
+		var c: Dictionary = m.duplicate(true)
+		c["epoch"] = "resume test"
+		run.append(c)
+	stepper._on_raw(entry)
+	for m in run:
+		stepper._on_raw(m)
+	stepper._do_advance()  # one step played back: PURCHASE showing, two steps still waiting in the inbox
+	_check(stepper._queued_phase == "PURCHASE" and stepper._inbox.size() == 6, "before leaving: %s" % stepper._queued_phase)
+	stepper.remember_left_game("G_000001")
+	_check(stepper.resume_point("G_000001") == {"since": int(run[3]["seq"]) - 1, "epoch": "resume test"},
+		"it asks for everything after the last step played back: %s" % [stepper.resume_point("G_000001")])
+	_check(stepper.resume_point("G_000002").is_empty(), "...for that game only")
+	stepper.feed_mode = false  # (main.gd's _leave_multi_game)
+	stepper.reset()
+	store.set_multi_game({}, [])
+	stepper.feed_mode = true  # (and its entered_game)
+	stepper.reset()
+	store.set_multi_game({"id": "G_000001"}, ["AAC"])
+	_check(stepper.resume_left_game("G_000001"), "back in the same game")
+	_check(stepper._queued_phase == "PURCHASE" and not store.state.is_empty(), "the board and step as left (%s)" % stepper._queued_phase)
+	var catch_up: Dictionary = entry.duplicate(true)
+	catch_up["seq"] = int(run[-1]["seq"])
+	catch_up["messages"] = run.slice(3)
+	stepper._on_raw(catch_up)
+	_check(stepper._queued_phase == "PURCHASE" and stepper._inbox.size() == 6, "what was missed waits to be played back")
+	stepper._do_advance()
+	_check(stepper._queued_phase == "COMBAT_RESOLUTION", "...and plays on from there (%s)" % stepper._queued_phase)
+	_check(not stepper.resume_left_game("G_000001"), "only once")
+
 	# Leaving the game: back to the one-game behaviour.
 	stepper.feed_mode = false
 	stepper.reset()
