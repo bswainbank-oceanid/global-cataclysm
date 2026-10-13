@@ -29,6 +29,8 @@ Client -> server (besides each game's own protocol, server/session.py's auto mod
     {"type": "reset_password", "email", "code", "password"}
                                                 -> "logged_in" with the new password (every other login of
                                                    the account ended), or "login_failed"
+    {"type": "news"}                            -> {"type": "news", "title", "entries": [{id, date, title,
+                                                   paragraphs}]}, newest first (server/news.py)
     {"type": "save_preferences", "settings": {name: value}}
                                                 the player's Settings, kept with their account (no reply; a
                                                    refusal is an "error")
@@ -108,7 +110,7 @@ import random
 
 from engine.repository import default_repository
 
-from . import accounts, admin, chat, games, persist, scenarios, setups
+from . import accounts, admin, chat, games, news, persist, scenarios, setups
 from .limits import Limits
 from .shared_setups import SharedSetups
 from .build import build_info
@@ -256,6 +258,9 @@ class Hub:
         (null: none ever saved -- the client keeps its own and saves them)."""
         return {'type': 'logged_in', 'user': user, 'token': token,
                 'preferences': accounts.preferences(self.store, user['id'])}
+
+    def _news(self, conn, msg):
+        return [([conn.key], {'type': 'news', **news.load()})]
 
     def _save_preferences(self, conn, msg):
         accounts.save_preferences(self.store, conn.user['id'], msg.get('settings'))
@@ -732,7 +737,7 @@ class Hub:
         'admin_overview': _admin_overview, 'admin_set_max_users': _admin_set_max_users, 'admin_find': _admin_find,
         'admin_lock': _admin_lock, 'hand_over': _hand_over, 'replace_with_bot': _replace_with_bot,
         'game_chat': _game_chat, 'game_chat_history': _game_chat_history,
-        'save_preferences': _save_preferences,
+        'save_preferences': _save_preferences, 'news': _news,
     }
 
     # ---- helpers -----------------------------------------------------------------------------------

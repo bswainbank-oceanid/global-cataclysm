@@ -113,6 +113,18 @@ class TestLoggingIn(HubTest):
         [(_, msg)] = self.send('nobody', {'type': 'save_preferences', 'settings': {}})
         self.assertEqual(msg['type'], 'error')  # (not logged in)
 
+    def test_the_news_newest_first(self):
+        reply = self.only_reply('ann', {'type': 'news'})
+        self.assertEqual(reply['type'], 'news')
+        self.assertTrue(reply['entries'])
+        first = reply['entries'][0]
+        self.assertTrue(first['id'] and first['title'] and first['paragraphs'])
+
+    def only_reply(self, key, msg):
+        [(keys, reply)] = self.send(key, msg)
+        self.assertEqual(keys, [key])
+        return reply
+
     def test_refusals_carry_their_problems(self):
         self.hub.connect('c4')
         [(_, msg)] = self.send('c4', {'type': 'register', 'player_name': 'ann', 'email': 'new@x.com', 'password': ''})

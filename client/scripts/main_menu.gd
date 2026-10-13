@@ -1,11 +1,12 @@
 class_name MainMenu
 extends MenuScreen
 ## The main screen once logged in (reference/GC Launcher_User Profile.odt): the poster, the menu
-## (Resume Game, Join Game, New Game, Scenarios for admins, History, Rules, Quit to Desktop), the player's profile in
+## (Resume Game, Join Game, New Game, Scenarios for admins, History, Rules, News, Quit to Desktop), the player's profile in
 ## the upper right (names, Log Out), Settings (the in-game panel's options: playback, display, sound, the log), and
 ## the client's and server's build numbers in the lower right. Resume Game pulses while one of the player's
 ## games is waiting on them (their turn, or an answer): the menu asks for My Games when it opens and every
-## POLL_SECONDS while it shows.
+## POLL_SECONDS while it shows. News pulses while there's an entry the player hasn't seen (NewsScreen.unread),
+## until News is opened: the menu asks for the news when it opens.
 
 signal resume_pressed
 signal join_pressed
@@ -13,12 +14,15 @@ signal new_game_pressed
 signal scenarios_pressed
 signal history_pressed
 signal rules_pressed
+signal news_pressed
 signal admin_pressed
 
 const POLL_SECONDS := 15.0
 
 var _resume: Button
 var _pulse: Tween
+var _news: Button
+var _news_pulse: Tween
 var _poll: Timer
 var _scenarios: Button
 var _admin: Button
@@ -64,7 +68,7 @@ func _build() -> void:
 	var buttons := [
 		["Resume Game", resume_pressed, true], ["Join Game", join_pressed, false],
 		["New Game", new_game_pressed, false], ["Scenarios", scenarios_pressed, false], ["Admin", admin_pressed, false],
-		["History", history_pressed, false], ["Rules", rules_pressed, false]]
+		["History", history_pressed, false], ["Rules", rules_pressed, false], ["News", news_pressed, false]]
 	for entry in buttons:
 		var b := Button.new()
 		b.text = entry[0]
@@ -85,6 +89,8 @@ func _build() -> void:
 		if entry[0] == "Scenarios":
 			_scenarios = b
 			b.tooltip_text = "Edit the shared scenarios (admins)"
+		if entry[0] == "News":
+			_news = b
 		if entry[0] == "Admin":
 			_admin = b
 			b.tooltip_text = "The server's numbers, the most players, finding and locking players (admins)"
@@ -206,6 +212,8 @@ func open() -> void:
 	_say_if_locked()
 	visible = true
 	_ask_games()
+	if Account.is_logged_in():
+		Net.send_msg({"type": "news"})  # (the reply says whether News has an unread entry: set_news_unread)
 	_poll.start()
 
 
@@ -243,6 +251,25 @@ func _set_pulse(on: bool) -> void:
 	_pulse = create_tween().set_loops()
 	_pulse.tween_property(_resume, "modulate", Color(1.45, 1.45, 1.45), 0.7).set_trans(Tween.TRANS_SINE)
 	_pulse.tween_property(_resume, "modulate", Color.WHITE, 0.7).set_trans(Tween.TRANS_SINE)
+
+
+## News pulses while there's an entry the player hasn't seen -- red, like Resume Game's (a navy button's pulse
+## barely shows) -- and is an ordinary menu item again once it's read.
+func set_news_unread(on: bool) -> void:
+	if on == (_news_pulse != null):
+		return
+	if _news_pulse != null:
+		_news_pulse.kill()
+		_news_pulse = null
+		_news.modulate = Color.WHITE
+		_news.tooltip_text = ""
+		HudStyle.secondary(_news)
+		return
+	HudStyle.primary(_news)
+	_news.tooltip_text = "There's news you haven't read"
+	_news_pulse = create_tween().set_loops()
+	_news_pulse.tween_property(_news, "modulate", Color(1.45, 1.45, 1.45), 0.7).set_trans(Tween.TRANS_SINE)
+	_news_pulse.tween_property(_news, "modulate", Color.WHITE, 0.7).set_trans(Tween.TRANS_SINE)
 
 
 ## The logged-in player's names, and the admin-only Scenarios button.

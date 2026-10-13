@@ -29,13 +29,14 @@ var sound_volume := 50                   # the unit sounds' volume, 0-100 (Sfx)
 var sound_muted := false
 var music_volume := 50                   # the soundtrack's volume, 0-100 (Music)
 var music_muted := false
+var news_seen := ""                      # the newest News entry the player has seen (its id): News pulses for a newer one
 
 # The ones kept with the account (not full screen: that's the device's), and their defaults -- a new
 # account's, since the server keeps none for it yet.
 const ACCOUNT_DEFAULTS := {"opp_pause": OppPause.PHASE, "opp_pause_battle": false, "opp_pause_battle_mine": true,
 	"your_pause_battle": true, "resolve_attacker": BattleModel.Resolve.UNIT_TYPE,
 	"resolve_defender": BattleModel.Resolve.UNIT_TYPE, "sound_volume": 50, "sound_muted": false,
-	"music_volume": 50, "music_muted": false}
+	"music_volume": 50, "music_muted": false, "news_seen": ""}
 
 var _from_account := false  # applying the account's: not a change of the player's to save back
 
@@ -67,6 +68,7 @@ func _ready() -> void:
 	sound_muted = bool(cfg.get_value("sound", "muted", sound_muted))
 	music_volume = clampi(int(cfg.get_value("music", "volume", music_volume)), 0, 100)
 	music_muted = bool(cfg.get_value("music", "muted", music_muted))
+	news_seen = str(cfg.get_value("news", "seen", news_seen))
 	_apply_display()
 
 
@@ -85,6 +87,8 @@ func apply_account(values: Dictionary) -> void:
 		match typeof(ACCOUNT_DEFAULTS[key]):
 			TYPE_BOOL:
 				set(key, bool(v))
+			TYPE_STRING:
+				set(key, str(v))
 			_:
 				set(key, int(v))
 	sound_volume = clampi(sound_volume, 0, 100)
@@ -117,6 +121,7 @@ func commit() -> void:
 	cfg.set_value("sound", "muted", sound_muted)
 	cfg.set_value("music", "volume", music_volume)
 	cfg.set_value("music", "muted", music_muted)
+	cfg.set_value("news", "seen", news_seen)
 	cfg.save(PATH)
 
 

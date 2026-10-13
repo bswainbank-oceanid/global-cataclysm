@@ -23,6 +23,7 @@ var _my_games: MyGamesScreen
 var _available: AvailableGamesScreen
 var _history: HistoryScreen
 var _rules: RulesScreen
+var _news: NewsScreen
 var _admin: AdminScreen
 var _lobby: GameLobbyScreen
 var _scenarios_for := ""
@@ -474,6 +475,16 @@ func _setup_launch_screen() -> void:
 	_rules.back_pressed.connect(func():
 		_rules.close()
 		_menu.open())
+	_news = NewsScreen.new()
+	add_child(_news)
+	_menu.news_pressed.connect(func():
+		_menu.close()
+		_news.open()
+		_menu.set_news_unread(_news.unread()))
+	_news.back_pressed.connect(func():
+		_news.close()
+		_menu.open())
+	Settings.changed.connect(func(): _menu.set_news_unread(_news.unread()))  # (the account's "seen", on logging in)
 	_menu.history_pressed.connect(func():
 		_menu.close()
 		_history.open())
@@ -539,7 +550,7 @@ func _on_account_changed() -> void:
 			Stepper.feed_mode = false
 			Stepper.reset()
 			GameStore.set_multi_game({}, [])
-		for screen in [_available, _lobby, _my_games, _admin, _history, _rules]:
+		for screen in [_available, _lobby, _my_games, _admin, _history, _rules, _news]:
 			screen.close()
 	_launch.close()
 	if Account.is_logged_in():
@@ -564,6 +575,9 @@ func _on_multi_message(msg: Dictionary) -> void:
 		"my_games":
 			_my_games.set_games(msg.get("games", []))
 			_menu.set_games(msg.get("games", []))
+		"news":
+			_news.set_news(msg)
+			_menu.set_news_unread(_news.unread())
 		"scenarios":
 			if _launch.visible and _launch.multi:
 				_launch.set_scenarios(msg.get("scenarios", []), msg.get("selected"))
