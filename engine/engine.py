@@ -572,6 +572,12 @@ class GameEngine:
         defenders = {u.owner for u in dest_state.units if not _is_ally_or_self(game_state, faction, u.owner)}
         if dest_state.owner and not _is_ally_or_self(game_state, faction, dest_state.owner):
             defenders.add(dest_state.owner)
+        if not dest_state.contested_by and game_state.phase == Phase.COMBAT_MOVE:
+            # (a contest this Combat Move made: movement.contested_passage_rule doesn't count it -- GameState.move_contests)
+            key = (faction, game_state.global_turn)
+            if not game_state.move_contests or game_state.move_contests['key'] != key:
+                game_state.move_contests = {'key': key, 'tids': set()}
+            game_state.move_contests['tids'].add(dest_state.territory_id)
         dest_state.contested_by = (dest_state.contested_by or set()) | {faction} | defenders
 
     def legal_combat_move_options(self, faction, game_state=None):

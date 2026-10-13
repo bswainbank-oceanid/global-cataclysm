@@ -1,7 +1,7 @@
 import random
 import unittest
 
-from engine.state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode
+from engine.state import GameState, TerritoryState, FactionState, UnitInstance, FactionMode, Phase
 from engine.tests.test_engine import with_real_abilities
 from engine.movement import (
     BombardmentTrace, legal_combat_move_continuations, legal_combat_move_destinations, legal_combat_move_paths,
@@ -245,8 +245,13 @@ class TestLegalCombatMoveContinuations(unittest.TestCase):
             faction_modes={'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
             contested={2: {'NAA', 'AAC'}},  # territory 2 is empty but already self-marked, as if just blitzed through
         )
+        gs.phase = Phase.COMBAT_MOVE
+        gs.move_contests = {'key': ('NAA', gs.global_turn), 'tids': {2}}  # (as the first one's move records it)
         cont = legal_combat_move_continuations('Mechanized Infantry', 'NAA', 1, gs, data)
         self.assertEqual(cont, {2: {3: [1, 2, 3]}})
+        # movement.contested_passage_rule: a contest that stood before this Combat Move does block passing through
+        gs.move_contests = None
+        self.assertEqual(legal_combat_move_continuations('Mechanized Infantry', 'NAA', 1, gs, data), {})
 
 
 class TestOccupiedTerritoryStopsMovement(unittest.TestCase):
@@ -361,8 +366,10 @@ class TestCombatMoveIntoOwnContestedLand(unittest.TestCase):
             self.data, {1: 'NAA', 2: 'NAA', 4: 'AAC'}, self.modes, contested={2: {'AAC', 'NAA'}},
             units_by_territory={1: [enemy_unit(1, 'Mechanized Infantry', 'NAA')], 4: [enemy_unit(9, 'Infantry', 'AAC')]},
         )
-        trace = trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 4], gs, self.data)
-        self.assertEqual((trace.entered_en_route, trace.final_kind), ([], 'attack'))
+        # movement.contested_passage_rule: ...but never THROUGH it, on to attack 4 beyond
+        with self.assertRaises(ValueError):
+            trace_combat_move('Mechanized Infantry', 'NAA', [1, 2, 4], gs, self.data)
+        self.assertNotIn(4, legal_combat_move_destinations('Mechanized Infantry', 'NAA', 1, gs, self.data))
 
     def test_planes_could_already_do_it(self):
         self.assertIn(2, legal_air_move_destinations('Fighter', 'NAA', 1, 'combat', self.state(), self.data))
@@ -1420,3 +1427,39 @@ class TestTraceCombatMove(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestNoPassingThroughContestedSpaces(unittest.TestCase):
+    """movement.contested_passage_rule: land and sea units move into a contested space, out of one, or from one
+    straight to the next -- never through one, in either move phase."""
+
+    def setUp(self):
+        # 1 -- 2 (contested) -- 3, all NAA's; 2 -- 4 (contested too); 5 (sea, contested) -- 6 (sea), off 1 and 2.
+        self.data = FakeData(
+            territories={1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}, 4: {'type': 'land'},
+                         5: {'type': 'sea'}, 6: {'type': 'sea'}},
+            adjacency={1: [2, 5], 2: [1, 3, 4, 5], 3: [2], 4: [2], 5: [1, 2, 6], 6: [5]},
+        )
+        self.gs = make_state(
+            self.data, {1: 'NAA', 2: 'NAA', 3: 'NAA', 4: 'NAA'}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN},
+            contested={2: {'NAA', 'AAC'}, 4: {'NAA', 'AAC'}, 5: {'NAA', 'AAC'}},
+            units_by_territory={2: [enemy_unit(90, 'Infantry', 'AAC')], 4: [enemy_unit(91, 'Infantry', 'AAC')]},
+        )
+
+    def test_into_one_but_not_through_it(self):
+        dests = legal_noncombat_move_destinations('Mechanized Infantry', 'NAA', 1, self.gs, self.data)
+        self.assertIn(2, dests)
+        self.assertNotIn(3, dests)  # (only through 2)
+
+    def test_out_of_one_and_from_one_to_the_next(self):
+        dests = legal_noncombat_move_destinations('Mechanized Infantry', 'NAA', 2, self.gs, self.data)
+        self.assertTrue({1, 3, 4} <= dests)
+
+    def test_ships_neither(self):
+        # a Cruiser west of the contested zone 5 can't sail through it to 6 (it may stop in it)
+        data = FakeData(territories={7: {'type': 'sea'}, 5: {'type': 'sea'}, 6: {'type': 'sea'}},
+                        adjacency={7: [5], 5: [7, 6], 6: [5]})
+        sea = make_state(data, {}, {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.HUMAN}, contested={5: {'NAA', 'AAC'}})
+        dests = legal_noncombat_move_destinations('Cruiser', 'NAA', 7, sea, data)
+        self.assertIn(5, dests)
+        self.assertNotIn(6, dests)

@@ -503,6 +503,11 @@ class GameState:
     # game-meaningful (not shown to a player, not compared to anything
     # but itself).
     _next_alliance_id: int = 1
+    # Transient (never saved): the spaces the active faction's own moves have marked contested during this Combat
+    # Move, {'key': (faction, global_turn), 'tids': set} -- movement.contested_passage_rule counts only the
+    # contests that stood when the phase began, so these don't block that faction's other moves. Another
+    # turn's marks never count (the key's global_turn: one faction-turn each).
+    move_contests: Optional[dict] = None
 
     def new_unit_id(self):
         uid = self._next_unit_id

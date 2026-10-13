@@ -59,7 +59,7 @@ target/attacker in a sea battle); nothing here ever calls legal_*_move_
 destinations with unit_type='Transport'.
 """
 from . import abilities
-from .state import FactionMode, is_amphibious
+from .state import FactionMode, Phase, is_amphibious
 
 
 def graph_distances(origin_id, data_module):
@@ -176,6 +176,33 @@ STOP_AND_PASS_LAND_ONLY = _Hop(stop=True, pass_through='land_only')
 
 
 def _classify_combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_state, territories, unit_defs):
+    return _no_passing_contested(
+        dest_id, game_state,
+        _combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_state, territories, unit_defs))
+
+
+def _classify_noncombat_hop(dest_id, mover_faction, game_state, territories, unit_defs):
+    return _no_passing_contested(dest_id, game_state,
+                                 _noncombat_hop(dest_id, mover_faction, game_state, territories, unit_defs))
+
+
+def _no_passing_contested(dest_id, game_state, hop):
+    """movement.contested_passage_rule: a land or sea unit never moves THROUGH a contested territory or sea
+    zone, in either move phase -- it may move into one (where `hop` lets it stop), out of one (a move's
+    origin is never classified), or from one straight to the next -- so a contested space it reaches is the
+    end of that move. (Air units have their own rules: legal_air_move_destinations.) Only the contests that
+    stood when the phase began count: one the mover's own moves made this Combat Move (an empty territory a
+    Mechanized Infantry blitzed through, say) doesn't block its other units. And a Transport may still cross
+    contested water straight onto adjacent land (an amphibious assault, or an escape to friendly land)."""
+    if hop.pass_through is None or hop is STOP_AND_PASS_LAND_ONLY or not _is_contested(dest_id, game_state):
+        return hop
+    marked = game_state.move_contests
+    if marked and game_state.phase == Phase.COMBAT_MOVE and marked['key'][1] == game_state.global_turn             and dest_id in marked['tids']:  # (this turn's Combat Move: only its own faction moves)
+        return hop
+    return STOP_ONLY if hop.stop else BLOCKED
+
+
+def _combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_state, territories, unit_defs):
     if _is_noncombatant(dest_id, game_state):
         return BLOCKED
 
@@ -249,7 +276,7 @@ def _classify_combat_hop(dest_id, mover_faction, unit_type, is_land_unit, game_s
     return STOP_ONLY
 
 
-def _classify_noncombat_hop(dest_id, mover_faction, game_state, territories, unit_defs):
+def _noncombat_hop(dest_id, mover_faction, game_state, territories, unit_defs):
     """Noncombat move: own or allied land (contested or not), any
     territory already contested (regardless of who owns it or who's
     contesting it -- unqualified), or open/allied-occupied sea. Never a
