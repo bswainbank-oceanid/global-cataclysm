@@ -33,7 +33,7 @@ WRONG_LOGIN = 'wrong email or password'
 # A locked account: why (the user's lock.reason), and where its player asks to have it unlocked.
 LOCK_ADMIN = 'admin'            # an admin locked it (Admin panel)
 LOCK_USER_LIMIT = 'user_limit'  # made while the server had its most players (admin.max_users)
-DISCORD = 'https://discord.gg/Ys3xpKKP6M'
+DISCORD = 'https://discord.com/invite/Ys3xpKKP6M'
 RESET_MINUTES = 30   # a reset code's life
 RESET_TRIES = 5      # wrong codes before it stops working
 RESET_WRONG = 'that code is wrong or has expired: ask for a new one'

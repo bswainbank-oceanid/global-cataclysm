@@ -16,7 +16,7 @@ signal problem(message: String)     # a login / registration refused, in the ser
 signal updated                      # an admin changed the account while logged in (locked or unlocked it)
 
 # Where a locked player asks to have their account unlocked (server/accounts.py DISCORD).
-const DISCORD := "https://discord.gg/Ys3xpKKP6M"
+const DISCORD := "https://discord.com/invite/Ys3xpKKP6M"
 
 var multi := false     # the server is the multi-player one
 var user := {}         # {id, player_name, actual_name, email, admin, created, locked, lock} once logged in
