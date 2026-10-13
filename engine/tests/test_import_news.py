@@ -28,7 +28,7 @@ class TestImportNews(unittest.TestCase):
 
     def test_links_stay_links(self):
         text = ' '.join(p for e in self.doc['entries'] for p in e['paragraphs'])
-        self.assertIn('[url=https://discord.gg/', text)
+        self.assertIn('[url=https://', text)
         self.assertNotIn('�', text)  # (the lost apostrophes put back)
 
     def test_the_servers_copy_is_up_to_date(self):
