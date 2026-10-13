@@ -31,19 +31,26 @@ class TestStats(AdminTest):
         games.create(self.store, self.ann, DUEL, humans(2))  # a lobby, still forming
         cancelled = games.create(self.store, self.ann, DUEL, humans(2))['id']
         games.cancel(self.store, cancelled, self.ann)
-        self.assertEqual(admin.stats(self.store), {'players': 2, 'games_played': 2, 'games_completed': 1,
+        self.assertEqual(admin.stats(self.store), {'players': 2, 'locked': 0, 'games_played': 2, 'games_completed': 1,
                                                    'games_live': 1, 'max_users': 100})
         self.assertTrue(live)
 
 
 class TestMaxUsers(AdminTest):
-    def test_registration_stops_at_the_most_players(self):
+    def test_past_the_most_players_new_accounts_are_made_locked(self):
         admin.set_max_users(self.store, 3)
-        accounts.register(self.store, 'Cat', '', 'cat@x.com', 'pw')
-        with self.assertRaises(StoreError) as e:
-            accounts.register(self.store, 'Dan', '', 'dan@x.com', 'pw')
-        self.assertEqual(e.exception.problems, ['this server has room for 3 players, and it is full'])
+        cat, _ = accounts.register(self.store, 'Cat', '', 'cat@x.com', 'pw')
+        self.assertFalse(cat.get('locked'))
+        dan, _ = accounts.register(self.store, 'Dan', '', 'dan@x.com', 'pw')  # (let in, but locked)
+        self.assertTrue(dan['locked'])
+        self.assertEqual((dan['lock']['reason'], dan['lock']['by']), (accounts.LOCK_USER_LIMIT, None))
+        self.assertIn('all the players it takes', accounts.locked_note(dan))
+        accounts.login(self.store, 'dan@x.com', 'pw')
         accounts.login(self.store, 'ann@x.com', 'pw')  # (players already here are unaffected)
+        self.assertEqual((admin.stats(self.store)['players'], admin.stats(self.store)['locked']), (3, 1))
+        admin.set_locked(self.store, cat['id'], True, by='Ann')  # a locked account isn't counted: room again
+        eve, _ = accounts.register(self.store, 'Eve', '', 'eve@x.com', 'pw')
+        self.assertFalse(eve.get('locked'))
 
     def test_the_most_players_is_a_sensible_number(self):
         for bad in [0, -5, 'ten', 2.5, True]:
@@ -68,17 +75,23 @@ class TestLookup(AdminTest):
 
 
 class TestLocking(AdminTest):
-    def test_a_locked_account_cant_log_in_and_its_logins_end(self):
+    def test_a_locked_account_still_logs_in_and_says_who_locked_it_and_when(self):
         _, token = accounts.login(self.store, 'bob@x.com', 'pw')
-        admin.set_locked(self.store, self.bob, True)
-        self.assertIsNone(accounts.login_with_token(self.store, token))
-        with self.assertRaises(StoreError) as e:
-            accounts.login(self.store, 'bob@x.com', 'pw')
-        self.assertEqual(e.exception.problems, ['this account is locked: ask an admin'])
-        self.assertTrue(admin.find_users(self.store, 'bob')[0]['locked'])
+        admin.set_locked(self.store, self.bob, True, by='Ann')
+        user = accounts.login_with_token(self.store, token)  # (its logins don't end)
+        self.assertTrue(user['locked'])
+        user, _ = accounts.login(self.store, 'bob@x.com', 'pw')
+        self.assertEqual((user['lock']['reason'], user['lock']['by']), (accounts.LOCK_ADMIN, 'Ann'))
+        self.assertTrue(user['lock']['at'])
+        self.assertIn('an admin locked it', accounts.locked_note(user))
+        self.assertIn(accounts.DISCORD, accounts.locked_note(user))
+        [bob] = admin.find_users(self.store, 'bob')
+        self.assertTrue(bob['locked'] and bob['lock']['by'] == 'Ann')
         admin.set_locked(self.store, self.bob, False)
-        accounts.login(self.store, 'bob@x.com', 'pw')
-        self.assertTrue(self.store.fetch_all('logins', user_id=self.bob))
+        [bob] = admin.find_users(self.store, 'bob')
+        self.assertFalse(bob['locked'])
+        self.assertIsNone(bob['lock'])
+        self.assertNotIn('lock', accounts.get_user(self.store, self.bob))
 
 
 class TestUpgrading(unittest.TestCase):

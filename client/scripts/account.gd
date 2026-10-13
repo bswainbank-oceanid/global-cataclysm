@@ -13,9 +13,13 @@ extends Node
 signal changed                      # logged in, logged out, or the server's mode became known
 signal reset_sent(email: String)       # a reset code was asked for (whether or not the email has an account)
 signal problem(message: String)     # a login / registration refused, in the server's words
+signal updated                      # an admin changed the account while logged in (locked or unlocked it)
+
+# Where a locked player asks to have their account unlocked (server/accounts.py DISCORD).
+const DISCORD := "https://discord.gg/Ys3xpKKP6M"
 
 var multi := false     # the server is the multi-player one
-var user := {}         # {id, player_name, actual_name, email, admin, created} once logged in
+var user := {}         # {id, player_name, actual_name, email, admin, created, locked, lock} once logged in
 var token := ""
 var server_build := {}  # the server's build number, from its hello (server/build.py): {build, commit, label}
 var download_url := ""  # where to get the client, from the server's hello ("" when it doesn't say)
@@ -71,6 +75,29 @@ func client_outdated() -> bool:
 
 func is_admin() -> bool:
 	return bool(user.get("admin", false))
+
+
+## A locked account logs in, but can't host, join or resume games (server/hub.py refuses them).
+func is_locked() -> bool:
+	return bool(user.get("locked", false))
+
+
+## Why the account is locked, and since when: "" if it isn't.
+func lock_reason() -> String:
+	if not is_locked():
+		return ""
+	var lock: Dictionary = user.get("lock", {}) if user.get("lock") is Dictionary else {}
+	return reason_text(lock)
+
+
+## A lock ({reason, at, by}) in words, for the profile and the Admin panel.
+static func reason_text(lock: Dictionary) -> String:
+	var when := str(lock.get("at", "")).left(10)
+	var on := (" on " + when) if when != "" else ""
+	if str(lock.get("reason", "")) == "user_limit":
+		return "Locked%s: the server had all the players it takes when the account was made." % on
+	var by = lock.get("by")
+	return "Locked by an admin%s%s." % [(" (%s)" % str(by)) if by != null and str(by) != "" else "", on]
 
 
 ## Whether the bots' inner workings are shown -- which AI a bot plays (its "bot type") and their
@@ -138,6 +165,10 @@ func _on_message(msg: Dictionary) -> void:
 			elif msg.has("preferences"):
 				_save_settings()
 			changed.emit()
+		"account_updated":
+			if is_logged_in():
+				user = msg.get("user", user)
+				updated.emit()
 		"reset_requested":
 			_pending = ""
 			reset_sent.emit(str(msg.get("email", "")))

@@ -421,6 +421,12 @@ func _setup_launch_screen() -> void:
 	_my_games = MyGamesScreen.new()
 	add_child(_my_games)
 	Account.changed.connect(_on_account_changed)
+	Account.updated.connect(func():  # an admin locked (or unlocked) the account meanwhile
+		_menu.refresh()
+		_menu._say_if_locked()
+		if Account.is_locked() and _lobby.visible:  # (its seat is given up: server/hub.py)
+			_lobby.close()
+			_menu.open())
 	_menu.resume_pressed.connect(func():
 		_menu.close()
 		_my_games.open())

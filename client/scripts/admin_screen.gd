@@ -48,7 +48,7 @@ func _build() -> void:
 	HudStyle.secondary(save)
 	save.pressed.connect(func(): request.emit({"type": "admin_set_max_users", "max": int(_max.value)}))
 	row.add_child(save)
-	settings.add_child(HudStyle.label("New players are turned away once there are this many.", 12, HudStyle.TEXT_DIM))
+	settings.add_child(HudStyle.label("Past this many, new players' accounts are made locked.", 12, HudStyle.TEXT_DIM))
 
 	v.add_child(HudStyle.heading("Find a player", 15))
 	var find := HBoxContainer.new()
@@ -110,6 +110,7 @@ func set_overview(msg: Dictionary) -> void:
 		c.queue_free()
 	var s: Dictionary = msg.get("stats", {})
 	for pair in [["Players", "%d of %d" % [int(s.get("players", 0)), int(s.get("max_users", 0))]],
+			["Locked accounts", str(int(s.get("locked", 0)))],
 			["Games played", str(int(s.get("games_played", 0)))], ["Games completed", str(int(s.get("games_completed", 0)))],
 			["Live games", str(int(s.get("games_live", 0)))], ["Server", str(msg.get("build", {}).get("label", ""))]]:
 		_stats.add_child(HudStyle.label(pair[0], 14, HudStyle.TEXT_DIM))
@@ -139,6 +140,8 @@ func _row(u: Dictionary) -> Control:
 	who.add_child(HudStyle.label(title, 15, GCTheme.RED if bool(u.get("locked", false)) else HudStyle.TEXT))
 	var actual := str(u.get("actual_name", ""))
 	who.add_child(HudStyle.label("%s%s" % [str(u.get("email", "")), ("  -  " + actual) if actual != "" else ""], 12, HudStyle.TEXT_DIM))
+	if bool(u.get("locked", false)):  # how and when: by an admin, or made while the server was full
+		who.add_child(HudStyle.label(Account.reason_text(u.get("lock") if u.get("lock") is Dictionary else {}), 12, GCTheme.RED))
 	h.add_child(who)
 	var g: Dictionary = u.get("games", {})
 	var info := VBoxContainer.new()
@@ -158,7 +161,8 @@ func _row(u: Dictionary) -> Control:
 		HudStyle.primary(lock)
 	lock.custom_minimum_size = Vector2(100, 32)
 	lock.disabled = str(u.get("id", "")) == str(Account.user.get("id", ""))
-	lock.tooltip_text = "A locked player can't log in; they're logged out now, and their seats in live games go to bots." if not locked else ""
+	lock.tooltip_text = ("A locked player still logs in, but can't join, host or resume games: their seats in live games go "
+		+ "to bots, and they leave forming ones (a game they host is called off).") if not locked else ""
 	lock.pressed.connect(func(): request.emit({"type": "admin_lock", "user_id": u["id"], "locked": not locked}))
 	h.add_child(lock)
 	return box

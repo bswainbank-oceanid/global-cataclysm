@@ -91,7 +91,8 @@ Client -> server (besides each game's own protocol, server/session.py's auto mod
                                                    games_completed, games_live, max_users}, "build"}
     {"type": "admin_set_max_users", "max"}      -> "admin_overview"
     {"type": "admin_find", "query"}             -> {"type": "admin_users", "users": [...server/admin.py...]}
-    {"type": "admin_lock", "user_id", "locked"} -> "admin_users" again (for the last query); a locked player
+    {"type": "admin_lock", "user_id", "locked"} -> "admin_users" again (for the last query); the player's
+                                                   clients get {"type": "account_updated", "user"}; a locked player
                                                    is logged out wherever they are connected
         -> {"type": "chat", "message": {...}} to everyone browsing (browse) or in that lobby
 Server -> client:
@@ -192,6 +193,7 @@ class Hub:
             if conn.user is None:
                 return self._error(conn, 'log in first')
             if kind == 'enter_game':
+                self._not_locked(conn)
                 return self._enter_game(conn, msg.get('game_id'), msg.get('since'), msg.get('epoch'))
             if kind == 'leave_game':
                 conn.game_id = None
@@ -390,6 +392,7 @@ class Hub:
     # ---- game lobbies ------------------------------------------------------------------------------
 
     def _create_game(self, conn, msg):
+        self._not_locked(conn)
         uid = conn.user['id']
         scenario = self._scenario_ref(uid, msg.get('scenario') or {})
         game = games.create(self.store, uid, scenario, msg.get('settings'))
@@ -432,6 +435,7 @@ class Hub:
         return []
 
     def _join_code(self, conn, msg):
+        self._not_locked(conn)
         game = games.find_by_code(self.store, msg.get('code'))
         if game is None:
             return self._error(conn, 'no game has that code')
@@ -442,6 +446,7 @@ class Hub:
         return self._error(conn, f"that game is {game['status']}")
 
     def _enter_lobby(self, conn, msg):
+        self._not_locked(conn)
         game = games.get(self.store, msg.get('game_id'))
         if game is None:
             return self._error(conn, f"there is no game {msg.get('game_id')!r}")
@@ -456,6 +461,7 @@ class Hub:
         return [([conn.key], {'type': 'left_lobby'})]
 
     def _take_seat(self, conn, msg):
+        self._not_locked(conn)
         return self._seat_change(conn, msg, games.take_seat)
 
     def _leave_seat(self, conn, msg):
@@ -471,6 +477,7 @@ class Hub:
         return self._lobby_update(game) + self._open_games_update()
 
     def _launch(self, conn, msg):
+        self._not_locked(conn)
         if conn.lobby_id is None:
             return self._error(conn, 'enter a game lobby first')
         game = games.launch(self.store, conn.lobby_id, conn.user['id'])
@@ -494,6 +501,7 @@ class Hub:
         return out + self._open_games_update()
 
     def _chat(self, conn, msg):
+        self._not_locked(conn)
         room = msg.get('room')
         if room == chat.BROWSE:
             if not conn.browsing:
@@ -598,16 +606,45 @@ class Hub:
         if user_id == conn.user['id']:
             raise StoreError("you can't lock your own account")
         locked = bool(msg.get('locked'))
-        admin.set_locked(self.store, user_id, locked)
+        user = accounts.public(admin.set_locked(self.store, user_id, locked, by=conn.user['player_name']))
         out = []
-        if locked:
-            for c in self.connections.values():  # logged out wherever they are
-                if c.user and c.user['id'] == user_id:
-                    c.user = c.token = c.game_id = c.lobby_id = None
+        if locked:  # out of the games: seats in live ones go to bots, in forming ones are given up
+            out += self._hand_seats_to_bots(user_id) + self._give_up_forming(user_id)
+        for c in self.connections.values():  # still logged in wherever they are: told what changed
+            if c.user and c.user['id'] == user_id:
+                c.user = user
+                if locked:
+                    c.game_id = c.lobby_id = None
                     c.browsing = False
-                    out.append(([c.key], {'type': 'logged_out', 'reason': accounts.LOCKED}))
-            out += self._hand_seats_to_bots(user_id)
+                out.append(([c.key], {'type': 'account_updated', 'user': user}))
         return out + self._admin_find(conn, {'query': getattr(conn, 'admin_query', '')})
+
+    def _not_locked(self, conn):
+        """A locked account can't take part in games: hosting, joining, a seat, entering one, chatting."""
+        user = accounts.get_user(self.store, conn.user['id'])  # (as it is now: an admin may have just locked it)
+        if user is not None and user.get('locked'):
+            raise StoreError(accounts.locked_note(user))
+
+    def _give_up_forming(self, user_id):
+        """A locked player's forming games: those they host are called off, their seats in others given up."""
+        out = []
+        for record in self.store.fetch_all('games', status=games.FORMING):
+            if record['host_id'] == user_id:
+                game = games.cancel(self.store, record['id'], user_id)
+                members = self._in_lobby(game['id'])
+                for c in self.connections.values():
+                    if c.lobby_id == game['id']:
+                        c.lobby_id = None
+                if members:
+                    out.append((members, {'type': 'game_cancelled', 'game_id': game['id']}))
+                continue
+            game = record
+            for s in record['seats']:
+                if s.get('user_id') == user_id:
+                    game = games.leave_seat(self.store, record['id'], user_id, s['seat'])
+            if game is not record:
+                out += self._lobby_update(game)
+        return out + (self._open_games_update() if out else [])
 
     def _hand_seats_to_bots(self, user_id):
         """A locked player's seats in live games go to bots."""

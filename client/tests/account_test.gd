@@ -109,6 +109,24 @@ func _initialize() -> void:
 	settings.fullscreen = fullscreen_was
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(account._path()))
 
+	# A locked account: logged in all the same; why it's locked, in words; an admin's change mid-session arrives.
+	account._on_message({"type": "logged_in", "user": {"id": "U_000003", "player_name": "Dee", "locked": true,
+		"lock": {"reason": "user_limit", "at": "2026-10-13T14:00:00Z", "by": null}}, "token": "t3"})
+	_check(account.is_logged_in() and account.is_locked(), "a locked account logs in")
+	_check(account.lock_reason() == "Locked on 2026-10-13: the server had all the players it takes when the account was made.",
+		"the user limit, in words: %s" % account.lock_reason())
+	var updates := [0]
+	account.updated.connect(func(): updates[0] += 1)
+	account._on_message({"type": "account_updated", "user": {"id": "U_000003", "player_name": "Dee", "locked": true,
+		"lock": {"reason": "admin", "at": "2026-10-14T09:00:00Z", "by": "Ann"}}})
+	_check(updates[0] == 1 and account.lock_reason() == "Locked by an admin (Ann) on 2026-10-14.",
+		"an admin's lock arrives, in words: %s" % account.lock_reason())
+	account._on_message({"type": "account_updated", "user": {"id": "U_000003", "player_name": "Dee", "locked": false}})
+	_check(not account.is_locked() and account.lock_reason() == "", "...and an unlock")
+	account._settings_timer.stop()
+	account.logout()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(account._path()))
+
 	# Builds: only a client older than its server is told to get the new version.
 	var mine: Dictionary = account.client_build()
 	if not mine.is_empty():

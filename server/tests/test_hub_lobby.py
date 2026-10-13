@@ -218,19 +218,53 @@ class TestAdminPanel(LobbyTest):
         self.assertEqual(self.only('ann', {'type': 'admin_set_max_users', 'max': 3})['stats']['max_users'], 3)
         self.hub.connect('dan')
         [(_, msg)] = self.hub.handle('dan', {'type': 'register', 'player_name': 'Dan', 'email': 'dan@x.com', 'password': 'pw'})
-        self.assertEqual(msg['type'], 'login_failed')
+        self.assertEqual(msg['type'], 'logged_in')  # (a full server lets a new player in -- locked)
+        self.assertEqual(msg['user']['lock']['reason'], accounts.LOCK_USER_LIMIT)
+        [dan] = self.only('ann', {'type': 'admin_find', 'query': 'dan'})['users']
+        self.assertTrue(dan['locked'] and dan['lock']['reason'] == accounts.LOCK_USER_LIMIT)
         users = self.only('ann', {'type': 'admin_find', 'query': 'b'})['users']
         self.assertEqual([u['player_name'] for u in users], ['Bob'])
 
-    def test_locking_logs_the_player_out_everywhere(self):
+    def test_a_locked_player_stays_logged_in_but_takes_no_part_in_games(self):
         accounts.set_admin(self.store, self.ann)
-        self.only('bob', {'type': 'browse'})
+        game = self.lobby()
+        self.send('ann', {'type': 'take_seat', 'seat': 1})
+        self.only('bob', {'type': 'enter_lobby', 'game_id': game['id']})
+        self.send('bob', {'type': 'take_seat', 'seat': 2})
         out = self.send('ann', {'type': 'admin_lock', 'user_id': self.bob, 'locked': True})
-        self.assertEqual(self.got(out, 'bob'), [{'type': 'logged_out', 'reason': 'this account is locked: ask an admin'}])
-        self.assertTrue(self.got(out, 'ann')[-1]['type'] == 'admin_users')
-        self.assertEqual(self.only('bob', {'type': 'browse'})['message'], 'log in first')
+        [told] = [m for m in self.got(out, 'bob') if m['type'] == 'account_updated']
+        self.assertTrue(told['user']['locked'])
+        self.assertEqual((told['user']['lock']['reason'], told['user']['lock']['by']), (accounts.LOCK_ADMIN, 'Ann'))
+        [view] = [m for m in self.got(out, 'ann') if m['type'] == 'game_lobby']  # his seat is given up
+        self.assertIsNone(view['game']['seats'][1]['player_name'])
+        self.assertEqual(self.got(out, 'ann')[-1]['type'], 'admin_users')
+        # Still logged in: the menu's panels show (My Games, the open games, the scenarios)...
+        self.assertEqual(self.only('bob', {'type': 'my_games'})['type'], 'my_games')
+        self.assertEqual(self.only('bob', {'type': 'browse'})['type'], 'open_games')
+        self.assertEqual(self.only('bob', {'type': 'scenarios'})['type'], 'scenarios')
+        # ...but no hosting, joining, seats, entering a game or chatting -- each refusal says why and where to ask.
+        for msg in [{'type': 'create_game', 'scenario': FIXED, 'settings': TWO_HUMANS},
+                    {'type': 'join_code', 'code': game['code']}, {'type': 'enter_lobby', 'game_id': game['id']},
+                    {'type': 'take_seat', 'seat': 2}, {'type': 'launch'},
+                    {'type': 'enter_game', 'game_id': game['id']}, {'type': 'chat', 'room': 'browse', 'text': 'hi'}]:
+            [problem] = self.only('bob', msg)['problems']
+            self.assertIn('an admin locked it', problem, msg)
+            self.assertIn(accounts.DISCORD, problem, msg)
         self.assertEqual(self.only('ann', {'type': 'admin_lock', 'user_id': self.ann, 'locked': True})['problems'],
                          ["you can't lock your own account"])
+        # Unlocked: told so, and back in.
+        out = self.send('ann', {'type': 'admin_lock', 'user_id': self.bob, 'locked': False})
+        [told] = [m for m in self.got(out, 'bob') if m['type'] == 'account_updated']
+        self.assertFalse(told['user']['locked'])
+        self.assertEqual(self.only('bob', {'type': 'enter_lobby', 'game_id': game['id']})['type'], 'game_lobby')
+
+    def test_locking_a_host_calls_off_their_forming_game(self):
+        accounts.set_admin(self.store, self.ann)
+        game = self.lobby(host='bob')
+        self.only('cat', {'type': 'enter_lobby', 'game_id': game['id']})
+        out = self.send('ann', {'type': 'admin_lock', 'user_id': self.bob, 'locked': True})
+        self.assertIn({'type': 'game_cancelled', 'game_id': game['id']}, self.got(out, 'cat'))
+        self.assertEqual(games.get(self.store, game['id'])['status'], games.CANCELLED)
 
 
 if __name__ == '__main__':

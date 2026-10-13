@@ -10,7 +10,9 @@ Player accounts and logins (docs/DATA_MODEL.md, "User" and "Login"), on top of s
     preferences(store, user_id); save_preferences(store, user_id, {'music_volume': 40, ...})
 
 A user as returned here never carries the password: {id, player_name, actual_name, email, admin,
-created}. Only a salted PBKDF2 hash of the password is stored, and only a SHA-256 of each login
+created, locked, lock}. A LOCKED account logs in like any other, but can't take part in games (server/hub.py
+refuses it): `lock` says why -- {reason: LOCK_ADMIN | LOCK_USER_LIMIT, at, by (the admin's player name)} --
+and locked_note() tells the player how to have it unlocked. Only a salted PBKDF2 hash of the password is stored, and only a SHA-256 of each login
 token, so a copy of the database can't be used to log anyone in.
 """
 import datetime
@@ -28,7 +30,10 @@ MAX_ACTUAL_NAME = 60
 MAX_EMAIL = 254
 MAX_PASSWORD = 1024   # (hashing an enormous password would tie the server up)
 WRONG_LOGIN = 'wrong email or password'
-LOCKED = 'this account is locked: ask an admin'
+# A locked account: why (the user's lock.reason), and where its player asks to have it unlocked.
+LOCK_ADMIN = 'admin'            # an admin locked it (Admin panel)
+LOCK_USER_LIMIT = 'user_limit'  # made while the server had its most players (admin.max_users)
+DISCORD = 'https://discord.gg/Ys3xpKKP6M'
 RESET_MINUTES = 30   # a reset code's life
 RESET_TRIES = 5      # wrong codes before it stops working
 RESET_WRONG = 'that code is wrong or has expired: ask for a new one'
@@ -74,14 +79,14 @@ def register(store, player_name, actual_name, email, password):
     problems = check_profile(player_name, actual_name, email, password)
     if problems:
         raise StoreError(problems)
-    from .admin import max_users  # (an admin's setting: the most players this server takes)
-    limit = max_users(store)
-    if len(store.fetch_all('users')) >= limit:
-        raise StoreError(f'this server has room for {limit} players, and it is full')
+    from .admin import max_users, player_count  # (an admin's setting: the most players this server takes)
     with store.transaction():
         uid = store.next_id('user')
         user = {'id': uid, 'player_name': player_name, 'actual_name': actual_name, 'email': email,
                 'password': _hash(password), 'admin': False, 'created': utc_now()}
+        if player_count(store) >= max_users(store):  # the server is full: the account is made, but locked
+            user['locked'] = True
+            user['lock'] = {'reason': LOCK_USER_LIMIT, 'at': user['created'], 'by': None}
         store.insert('users', user, id=uid, email=email, player_name=player_name)
         save_preferences(store, uid, {})  # (a new account starts from the default Settings, not the device's)
         token = _new_login(store, uid)
@@ -116,8 +121,6 @@ def login(store, email, password):
         raise StoreError(WRONG_LOGIN)
     if not _matches(password, user['password']):
         raise StoreError(WRONG_LOGIN)
-    if user.get('locked'):
-        raise StoreError(LOCKED)
     _note_login(store, user)
     return public(user), _new_login(store, user['id'])
 
@@ -129,7 +132,7 @@ def login_with_token(store, token):
     if login_doc is None:
         return None
     user = store.fetch('users', id=login_doc['user_id'])
-    if user is None or user.get('locked'):
+    if user is None:
         return None
     store.update('logins', {**login_doc, 'last_used': utc_now()}, {'token_hash': key})
     _note_login(store, user)
@@ -175,9 +178,9 @@ def set_admin(store, user_id, admin=True):
 def start_reset(store, email):
     """A reset code for the account with `email`: (user, code) -- the code to email them, 6 digits, which
     works once, for RESET_MINUTES, and only RESET_TRIES times wrong. Stored only as a hash (like a password),
-    replacing any earlier code. (None, None) when there's no such account, or it's locked."""
+    replacing any earlier code. (None, None) when there's no such account."""
     user = store.fetch('users', email=str(email or '').strip())
-    if user is None or user.get('locked'):
+    if user is None:
         return None, None
     code = f'{secrets.randbelow(10 ** 6):06d}'
     expires = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=RESET_MINUTES)
@@ -199,8 +202,6 @@ def finish_reset(store, email, code, new_password):
         reset = (user or {}).get('reset')
         if user is None or not reset:
             problem = RESET_WRONG
-        elif user.get('locked'):
-            problem = LOCKED
         else:
             expired = datetime.datetime.now(datetime.timezone.utc) > datetime.datetime.fromisoformat(reset['expires'])
             if expired or not _matches(str(code or '').strip(), reset['code']):
@@ -220,6 +221,15 @@ def finish_reset(store, email, code, new_password):
         raise StoreError(problem)
     _note_login(store, user)
     return public(user), token
+
+
+def locked_note(user):
+    """What a locked player is told: why their account is locked, and how to have it unlocked."""
+    lock = user.get('lock') or {}
+    why = ('the server had all the players it takes when it was made' if lock.get('reason') == LOCK_USER_LIMIT
+           else 'an admin locked it')
+    return (f"Your account is locked ({why}), so you can't join, host or resume games. To have it unlocked, "
+            f"ask on the public GC:72 Discord server: {DISCORD}")
 
 
 def _note_login(store, user):

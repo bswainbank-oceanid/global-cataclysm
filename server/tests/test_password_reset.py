@@ -121,10 +121,11 @@ class TestResetting(ResetTest):
         self.ask()
         self.assertEqual(self.reset(self.mailer.code(), '')['message'], 'a password needs at least one character')
 
-    def test_a_locked_account_gets_no_code(self):
+    def test_a_locked_account_gets_a_code_too(self):
+        # (a locked player still logs in -- to see why it's locked -- so a forgotten password can still be reset)
         admin.set_locked(self.store, self.store.fetch('users', email='ann@x.com')['id'], True)
         self.assertEqual(self.ask()['type'], 'reset_requested')
-        self.assertEqual(self.mailer.sent, [])
+        self.assertEqual(len(self.mailer.sent), 1)
 
 
 class TestMailerSettings(unittest.TestCase):

@@ -28,6 +28,8 @@ var _display_panel: PanelContainer
 var _player_name: Label
 var _actual_name: Label
 var _email: Label
+var _lock_box: VBoxContainer  # in the profile, when the account is locked: why, and where to ask
+var _lock_reason: Label
 var _note: Label
 var _builds: Label  # the client's and server's build numbers, bottom right
 var _download: Button  # above them, when the builds differ and the server says where to get the client
@@ -124,6 +126,27 @@ func _build() -> void:
 	p.add_child(_actual_name)
 	_email = HudStyle.label("", 13, HudStyle.TEXT_DIM)
 	p.add_child(_email)
+	_lock_box = VBoxContainer.new()
+	_lock_box.add_theme_constant_override("separation", 6)
+	_lock_box.visible = false
+	p.add_child(_lock_box)
+	_lock_box.add_child(HSeparator.new())
+	_lock_box.add_child(HudStyle.label("ACCOUNT LOCKED", 15, GCTheme.RED))
+	_lock_reason = HudStyle.label("", 13)
+	_lock_reason.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_lock_box.add_child(_lock_reason)
+	var how := HudStyle.label("You can look around, but you can't join, host or resume games. To have the account "
+		+ "unlocked, ask on the public GC:72 Discord server:", 13, HudStyle.TEXT_DIM)
+	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_lock_box.add_child(how)
+	var discord := Button.new()
+	discord.text = "Open the GC:72 Discord"
+	HudStyle.primary(discord)
+	discord.tooltip_text = Account.DISCORD
+	discord.pressed.connect(func(): OS.shell_open(Account.DISCORD))
+	_lock_box.add_child(discord)
+	var link := HudStyle.label(Account.DISCORD, 12, HudStyle.TEXT_DIM)
+	_lock_box.add_child(link)
 	var logout := Button.new()
 	logout.text = "Log Out"
 	HudStyle.secondary(logout)
@@ -180,6 +203,7 @@ func open() -> void:
 	_profile_panel.visible = false
 	_display_panel.visible = false
 	_note.text = ""
+	_say_if_locked()
 	visible = true
 	_ask_games()
 	_poll.start()
@@ -229,6 +253,8 @@ func refresh() -> void:
 	var actual := str(u.get("actual_name", ""))
 	_actual_name.text = actual if actual != "" else "(no actual name given)"
 	_email.text = str(u.get("email", ""))
+	_lock_box.visible = Account.is_locked()
+	_lock_reason.text = Account.lock_reason()
 	_scenarios.visible = Account.is_admin()
 	_admin.visible = Account.is_admin()
 	var client := str(Account.client_build().get("label", "Build unknown"))
@@ -252,6 +278,14 @@ func refresh() -> void:
 
 func _say(text: String) -> void:
 	_note.text = text
+
+
+## A locked account: say so under the menu (the profile, upper right, says why and where to ask).
+func _say_if_locked() -> void:
+	if Account.is_locked():
+		_say("Your account is locked: you can't join, host or resume games. Your profile (upper right) says why, and how to have it unlocked.")
+	elif _note.text.begins_with("Your account is locked"):
+		_say("")
 
 
 func _drop_panel() -> PanelContainer:
