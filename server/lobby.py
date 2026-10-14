@@ -12,7 +12,7 @@ Settings (the "new_game" message's "settings"):
                  "faction": "random" | "NAA" | "UE" | "UER" | "GPC" | "PAF" | "AAC",
                  "alliance": 0 | 1 | 2 | 3,             # 0 = none; players only
                  "strategy": "random" | aggressive | passive | counterweight | independent | variable,   # bots only
-                 "ai": "strategy" | "random" | "claude",                                                  # bots only: the heuristic bot (default), the random baseline, or Claude itself
+                 "ai": "strategy" | "strategy_alt" | "random" | "claude",                                 # bots only: the heuristic bot (default; strategy_alt: on the alternate strategy profiles), the random baseline, or Claude itself
                  "behavior": "random" | loyal | opportunistic | treacherous | variable,                   # bots only
                  "territory_value", "initial_mpc", "units_mpc", "promotions", "scs"},                      # a new scenario's players (omitted: defaults)
                 ... one per faction (six) ...],
