@@ -904,6 +904,7 @@ class GameEngine:
                         rider.has_moved_combat = True
 
             unit.has_moved_combat = True
+        self._hand_over_abandoned(faction, game_state)
 
     def submit_combat_moves(self, faction, orders):
         """Validates and stages `orders` (a list of CombatMoveOrder) as
@@ -1513,6 +1514,31 @@ class GameEngine:
             for u in territory_state.units
         )
 
+    def _hand_over_abandoned(self, faction, game_state):
+        """combat.true_territory_loss, by moving out: a contested territory of `faction`'s that its (Combat or
+        Non-Combat) moves just left with none of its or its allies' land units in it passes at once to whoever
+        still occupies it (_true_territory_loss_winner) -- not at their next Capture Territory. The losing-a-
+        battle case is _apply_battle_outcome's. Except a contest an alliance break made (reclaim_bonus_for):
+        the former ally only ever claims that on its own turn."""
+        unit_defs = self.data.units()
+        terrs = self.data.territories()
+        for tid, t in game_state.territories.items():
+            if terrs[tid]['type'] != 'land' or t.owner != faction or not t.contested_by or t.reclaim_bonus_for is not None:
+                continue
+            if any(unit_defs[u.unit_type]['category'] == 'Land' and _is_ally_or_self(game_state, faction, u.owner)
+                   for u in t.units):
+                continue  # (still held)
+            winner = self._true_territory_loss_winner(t, faction)
+            if winner is None:
+                continue  # (nobody else on the ground either: nothing to hand over)
+            t.owner = winner
+            t.contested_by = None
+            if game_state is self.game_state:  # (not a staged run's scratch copy: recorded once, for real)
+                if self.stats is not None:
+                    self.stats.record_capture(game_state.global_turn, winner, tid, faction)
+                if self.turn_log is not None:
+                    self.turn_log.record_capture(game_state.global_turn, winner, tid, faction)
+
     def _true_territory_loss_winner(self, territory_state, faction):
         """Called only when `faction` just lost its OWN territory
         outright (see combat.true_territory_loss in _apply_battle_outcome
@@ -1714,6 +1740,7 @@ class GameEngine:
                 game_state.territories[origin_id].units.remove(rider)
                 game_state.territories[order.destination].units.append(rider)
                 rider.has_moved_noncombat = True
+        self._hand_over_abandoned(faction, game_state)
 
     def submit_noncombat_moves(self, faction, orders):
         """Validates and stages `orders` (a list of NonCombatMoveOrder)
