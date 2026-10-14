@@ -14,6 +14,12 @@ def auto_game(settings):
     return persist.RecordedGame(session, persist.setup_for(session, seats, settings))
 
 
+def watched(game):
+    """A viewer keeping up with an all-bot game's playback (session.AHEAD_OF_VIEWER): it may step on."""
+    game.session.viewer_seq = game.session.seq
+    return game
+
+
 def run(game, limit=10_000):
     """Steps until the game stops (waiting or over); returns every message the steps broadcast."""
     out = []
@@ -32,6 +38,36 @@ def human_of(game):
 ONE_HUMAN = {'seats': [seat('HUMAN'), bot(), bot(), seat('NONCOMBATANT'), seat('NONCOMBATANT'), seat('NONCOMBATANT')]}
 
 
+class TestAllBotGamesKeepPaceWithTheirViewers(unittest.TestCase):
+    """An all-bot game needs nobody's decisions: it runs only session.AHEAD_OF_VIEWER feed messages past the furthest
+    a viewer has played back ("played"), so it waits -- live, resumable -- while nobody watches."""
+
+    def test_it_waits_a_little_way_ahead_of_its_viewers(self):
+        from server.session import AHEAD_OF_VIEWER
+        game = auto_game({'seats': [bot(), bot()] + [seat('NONCOMBATANT')] * 4, 'seed': 45})
+        run(game)
+        self.assertFalse(game.engine.game_state.game_over)
+        self.assertFalse(game.can_step())
+        self.assertGreaterEqual(game.seq, AHEAD_OF_VIEWER)
+        stopped_at = game.seq
+        self.assertEqual(game.handle_message({'type': 'played', 'seq': stopped_at, 'epoch': game.epoch}), [])
+        run(game)
+        self.assertGreater(game.seq, stopped_at)  # (playback caught up: it ran on)
+        self.assertLess(game.seq - stopped_at, AHEAD_OF_VIEWER + 10)
+
+    def test_another_runs_playback_or_a_bad_report_changes_nothing(self):
+        game = auto_game({'seats': [bot(), bot()] + [seat('NONCOMBATANT')] * 4, 'seed': 46})
+        run(game)
+        for bad in ({'type': 'played', 'seq': 10 ** 6, 'epoch': 'another run'}, {'type': 'played', 'seq': 'x', 'epoch': game.epoch}):
+            game.handle_message(bad)
+            self.assertFalse(game.can_step(), bad)
+
+    def test_a_game_with_a_human_is_not_paced(self):
+        game = auto_game(dict(ONE_HUMAN, seed=47))
+        run(game)
+        self.assertEqual(game.waiting_for(), [human_of(game)])  # (it ran until the human's turn, as always)
+
+
 class TestRunningItself(unittest.TestCase):
     def test_an_all_bot_game_plays_exactly_as_one_stepped_with_next(self):
         settings = {'seats': [bot() for _ in range(6)], 'seed': 31}
@@ -39,7 +75,7 @@ class TestRunningItself(unittest.TestCase):
         manual, _ = build_session(settings)
         manual.handle_message({'type': 'watch'})
         for _ in range(150):
-            auto.step()
+            watched(auto).step()
             manual.handle_message({'type': 'next'})
         self.assertEqual(fingerprint(auto), fingerprint(manual))
 
@@ -107,7 +143,7 @@ class TestRunningItself(unittest.TestCase):
 class TestTheFeed(unittest.TestCase):
     def test_broadcasts_are_numbered_from_one_in_order_with_the_epoch(self):
         game = auto_game({'seats': [bot() for _ in range(6)], 'seed': 41})
-        msgs = [m for _ in range(20) for m in game.step()]
+        msgs = [m for _ in range(20) for m in watched(game).step()]
         self.assertEqual([m['seq'] for m in msgs], list(range(1, len(msgs) + 1)))
         self.assertEqual({m['epoch'] for m in msgs}, {game.epoch})
 

@@ -231,6 +231,9 @@ Client -> server, auto mode:
         codes], "armistice": a pending proposal {from, awaiting, automatic_after} or null, "game_over": the
         report or null}. "since" null: just the current picture. ("watch" is
         the same as a follow with no "since".)
+    {"type": "played", "seq": 41, "epoch": "a1b2c3d4"}
+        A viewer's playback has reached feed message `seq` (no reply). A game with no human in it runs only
+        AHEAD_OF_VIEWER messages past the furthest any viewer has reached -- it waits while nobody watches.
     {"type": "end_phase", "faction": "NAA"}
         A HUMAN faction is done with its Purchase / Combat Move / Non-Combat Move / Diplomacy (what it
         staged is confirmed), and the game moves on. "next" is refused in auto mode.
@@ -270,6 +273,10 @@ _HUMAN_DECISION_PHASES = (Phase.PURCHASE, Phase.COMBAT_MOVE, Phase.NONCOMBAT_MOV
 # for the main menu to come back and play on from where they were. Kept compressed -- a "state" is ~66 KB as
 # JSON, ~3 KB compressed -- and a full catch-up still fits a client's 16 MB inbound buffer (net_client.gd).
 FEED_LIMIT = 800
+# A game with no human in it (all bots) needs nobody's decisions, and would otherwise play straight through to the
+# end in a minute: it runs only this many feed messages (about ten steps) ahead of the furthest any viewer has
+# played back ("played"), so it waits -- live, resumable from My Games -- while nobody watches.
+AHEAD_OF_VIEWER = 40
 
 # A proposer whose armistice was declined can't propose another for this many rounds (measured against
 # GameState.round_number -- see _handle_propose_armistice's cooldown check).
@@ -315,6 +322,7 @@ class GameSession:
         self.epoch = secrets.token_hex(4)  # (never from the game's own generators: a replay must not shift them)
         self.seq = 0
         self.feed = collections.deque(maxlen=FEED_LIMIT)
+        self.viewer_seq = 0  # the furthest feed message a viewer has played back (this epoch): AHEAD_OF_VIEWER
 
     def connect(self, faction):
         """A client just identified itself as `faction` ("join"). Pure
@@ -420,7 +428,13 @@ class GameSession:
         return []
 
     def can_step(self):
-        return self.auto and not self.engine.game_state.game_over and not self.waiting_for()
+        if not self.auto or self.engine.game_state.game_over or self.waiting_for():
+            return False
+        return not self.paced() or self.seq - self.viewer_seq < AHEAD_OF_VIEWER
+
+    def paced(self):
+        """An all-bot game (no human faction still in it): it keeps pace with its viewers (AHEAD_OF_VIEWER)."""
+        return not any(f.mode == FactionMode.HUMAN and not f.eliminated for f in self.engine.game_state.factions.values())
 
     def step(self):
         """Auto mode: executes the one step queued now and returns what it broadcast (numbered) -- or None
@@ -445,7 +459,18 @@ class GameSession:
         if kind == 'next':
             return [self._to_sender(self._error(None, 'this game moves on by itself: finish a phase with end_phase'))]
         if kind in ('follow', 'watch'):
-            return [self._follow(msg.get('since') if kind == 'follow' else None, msg.get('epoch'))]
+            since = msg.get('since') if kind == 'follow' else None
+            if since is None or msg.get('epoch') != self.epoch:
+                self.viewer_seq = self.seq  # (starting from the game as it stands now)
+            elif isinstance(since, int):
+                self.viewer_seq = max(self.viewer_seq, since)
+            return [self._follow(since, msg.get('epoch'))]
+        if kind == 'played':
+            # a viewer's playback has reached this feed message: an all-bot game may run on (AHEAD_OF_VIEWER)
+            seq = msg.get('seq')
+            if msg.get('epoch') == self.epoch and isinstance(seq, int) and not isinstance(seq, bool):
+                self.viewer_seq = max(self.viewer_seq, min(seq, self.seq))
+            return []
         if kind == 'end_phase':
             out = self._end_phase(msg.get('faction'))
         else:

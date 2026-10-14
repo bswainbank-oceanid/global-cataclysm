@@ -224,6 +224,9 @@ func _on_message(msg: Dictionary) -> void:
 				header += " (bombardment %d of %d)" % [int(msg["bombardment"]["index"]) + 1, int(msg["bombardment"]["count"])]
 			queue_shown.emit(header, msg.get("skipped", []), msg["events"])
 		"phase_result":
+			if feed_mode and msg.has("seq"):
+				# (playback has reached this step: an all-bot game runs only a little ahead of its viewers)
+				Net.send_msg({"type": "played", "seq": int(msg["seq"]), "epoch": str(msg.get("epoch", _feed_epoch))})
 			if _battle_open:
 				_held_result = msg
 				battle_result.emit(msg["events"])
