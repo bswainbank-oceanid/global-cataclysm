@@ -2,7 +2,7 @@
  "module_type": "PrimaryObjectiveOrder",
  "id": "GC72_PrimaryOrder_Alt",
  "name": "Strategy bot planning order (alternate)",
- "_alternate": "Changed from the standard order (GC72_PrimaryOrder): a second Fill defensive gaps at the very end (final), after every other objective has placed its units -- so a territory an earlier objective emptied (Hold the frontier pulling its last defender out) is garrisoned again. Every other step and share as the standard order's.",
+ "_alternate": "Changed from the standard order (GC72_PrimaryOrder): (1) a second Fill defensive gaps at the very end (final), after every other objective has placed its units -- so a territory an earlier objective emptied is garrisoned again; (2) planner_options (engine/bots/strategy_settings.py PLANNER_OPTIONS): aircraft bought into sea zones come with a carrier place, Control Oceans buys no Mechanized Infantry, and an SC pursuit across the sea buys Mechanized Infantry first, with a warship escort in any sea zone it's bought into. Every other step and share as the standard order's.",
  "_note": "The planner works through `steps` in order, each after taking `budget_share` of its planning budget; treasonous_capture only runs when the bot means to betray its alliance this turn. The secondary objectives come next (each taking secondary_budget_share, in an order drawn by the strategy weights), then `final`.",
  "objectives_id": "GC72_Objectives",
  "steps": [
@@ -15,6 +15,11 @@
   {"objective_id": "treasonous_capture", "budget_share": 0.1, "when": "treasonous"}
  ],
  "secondary_budget_share": 0.12,
+ "planner_options": {
+  "carrier_for_sea_aircraft": true,
+  "no_mech_inf_for_control_oceans": true,
+  "amphibious_sc_pursuit": true
+ },
  "final": [
   {"objective_id": "pursue_leftovers", "budget_share": 0.25},
   {"objective_id": "fill_gaps", "budget_share": 0.05}

@@ -8,6 +8,19 @@ of 0 is never drawn.
 """
 from .. import data as _default_data
 
+# Switches a bot set may turn on in its PrimaryObjectiveOrder's "planner_options" (all off by default: the
+# standard set's behaviour) -- ways of planning tried out in the alternate set (engine/game_config.py's bot sets):
+PLANNER_OPTIONS = (
+    # an aircraft bought into a sea zone for Control Oceans or the SC pursuits comes with a place on a carrier
+    # there: a carrier is bought with it when there's no room, or the aircraft isn't bought at all
+    'carrier_for_sea_aircraft',
+    # Control Oceans never buys Mechanized Infantry (Transports)
+    'no_mech_inf_for_control_oceans',
+    # an SC pursuit that must cross the sea buys Mechanized Infantry for its land units, first, and a warship
+    # with any bought into a sea zone that has none of mine
+    'amphibious_sc_pursuit',
+)
+
 
 class StrategySettings:
     def __init__(self, raw):
@@ -25,6 +38,11 @@ class StrategySettings:
         self.secondary_budget_share = raw.get('secondary_budget_share')
         self.final_order = raw.get('final_order', [])
         self.objective_names = {o['id']: o['name'] for o in raw.get('objectives', [])}
+        self.options = dict(raw.get('planner_options') or {})  # PLANNER_OPTIONS turned on: {name: true}
+
+    def option(self, name):
+        """Whether planner option `name` (PLANNER_OPTIONS) is on in this set."""
+        return bool(self.options.get(name))
 
     def objective_name(self, objective_id):
         return self.objective_names.get(objective_id, objective_id.replace('_', ' ').capitalize())

@@ -418,6 +418,8 @@ class Planner:
         contested = bool(self.gs.territories[tid].contested_by) and self.is_land(tid)
         sea_target = not self.is_land(tid)
         sea_ok = sea_target and self.sea_zone_safe(tid)
+        objective = self._objective or name
+        no_transports = objective == 'control_oceans' and self.settings.option('no_mech_inf_for_control_oceans')
         candidates = []
         for cat in categories:
             for t in self.category_pool[cat]:
@@ -427,6 +429,8 @@ class Planner:
                 if contested and t not in self.mustering:
                     continue
                 if sea_target and d['category'] == 'Land' and not (sea_ok and is_amphibious(d)):
+                    continue
+                if no_transports and is_amphibious(d):
                     continue
                 if only is not None and t not in only:
                     continue
@@ -445,8 +449,13 @@ class Planner:
             order = [prefer] + [t for t in order if t != prefer]
         for unit_type in order:
             unit_type = deployment.substitute(self.data, unit_type, tid)  # e.g. no Armor on islands
+            companions = self._companions(unit_type, tid, objective)
+            if companions is None:
+                continue  # (it would need a companion that can't be bought here)
             key = (unit_type, tid)
             trial = dict(self.purchases)
+            for c in companions:
+                trial[(c, tid)] = trial.get((c, tid), 0) + 1
             trial[key] = trial.get(key, 0) + 1
             orders = [PurchaseOrder(t, q, where) for (t, where), q in sorted(trial.items())]
             try:
@@ -457,11 +466,57 @@ class Planner:
                 continue
             self.purchases = trial
             self.treasury = self.gs.factions[self.me].treasury_mpc - total
-            self.purchase_why.append((unit_type, tid, self._objective or name, self._target if self._target is not None else tid))
-            stub = self._stub(unit_type)
-            self.stubs.setdefault(tid, []).append(stub)
+            for c in companions + [unit_type]:
+                self.purchase_why.append((c, tid, self._objective or name, self._target if self._target is not None else tid))
+                stub = self._stub(c)
+                self.stubs.setdefault(tid, []).append(stub)
             return stub
         return None
+
+    def _companions(self, unit_type, tid, objective):
+        """The units that must be bought along with a `unit_type` at `tid` (the planner options: none for the
+        standard set) -- [] for none, or None when one is needed but there is none to buy:
+        - carrier_for_sea_aircraft: an aircraft for Control Oceans or an SC pursuit, bought into a sea zone with
+          no free carrier place of mine (counting what's bought this turn), comes with a carrier;
+        - amphibious_sc_pursuit: a Mechanized Infantry bought into a sea zone for an SC pursuit, where I have no
+          warship (nor one bought this turn), comes with one -- an escort for the Transport."""
+        if self.is_land(tid):
+            return []
+        d = self.unit_defs[unit_type]
+        pursuit = objective.startswith('pursue')
+        if d['category'] == 'Air' and (pursuit or objective == 'control_oceans') \
+                and self.settings.option('carrier_for_sea_aircraft') and self._carrier_room(tid) < 1:
+            carrier = self._buyable(lambda t: abilities.has(self.unit_defs, t, abilities.CARRIER_AIR_WING))
+            return [carrier] if carrier else None
+        if d['category'] == 'Land' and is_amphibious(d) and pursuit and self.settings.option('amphibious_sc_pursuit') \
+                and not self._warships_at(tid):
+            escort = self._buyable(lambda t: self.unit_defs[t]['category'] == 'Sea'
+                                   and not abilities.has(self.unit_defs, t, abilities.CARRIER_AIR_WING)
+                                   and not abilities.has(self.unit_defs, t, abilities.SUBMERGE),
+                                   by=lambda t: -(self.unit_defs[t].get('defense') or 0))
+            return [escort] if escort else None
+        return []
+
+    def _buyable(self, which, by=None):
+        """A purchasable unit type of the kind `which` picks (the first by `by`, else by name), or None."""
+        types = sorted((t for t, d in self.unit_defs.items() if d.get('purchasable') and which(t)), key=by or (lambda t: t))
+        return types[0] if types else None
+
+    def _carrier_room(self, tid):
+        """Free places on my carriers in sea zone `tid` -- those there and those bought there this turn -- less my
+        aircraft there and bought there."""
+        def capacity(t):
+            return abilities.param(self.unit_defs, t, abilities.CARRIER_AIR_WING, 'capacity', 0) \
+                if abilities.has(self.unit_defs, t, abilities.CARRIER_AIR_WING) else 0
+        here = [u.unit_type for u in self.gs.territories[tid].units if u.owner == self.me]
+        here += [t for (t, where), q in self.purchases.items() if where == tid for _ in range(q)]
+        return sum(capacity(t) for t in here) - sum(1 for t in here if self.unit_defs[t]['category'] == 'Air')
+
+    def _warships_at(self, tid):
+        """My warships in sea zone `tid`, and those bought there this turn (Sea units: Transports are land units)."""
+        here = [u.unit_type for u in self.gs.territories[tid].units if u.owner == self.me]
+        here += [t for (t, where), q in self.purchases.items() if where == tid for _ in range(q)]
+        return [t for t in here if self.unit_defs[t]['category'] == 'Sea']
 
     def _landmass(self, tid):
         """The land territories joined to `tid` by land."""
@@ -482,7 +537,10 @@ class Planner:
         island and `spot` is not on it, only the amphibious ones (Mechanized Infantry) -- nothing else could
         ever get there. None: no limit."""
         target = self._target
-        if target is None or not self.is_land(target) or target not in deployment.islands(self.data):
+        if target is None or not self.is_land(target):
+            return None
+        overseas = (self._objective or '').startswith('pursue') and self.settings.option('amphibious_sc_pursuit')
+        if target not in deployment.islands(self.data) and not overseas:
             return None
         if self.is_land(spot) and spot in self._landmass(target):
             return None
@@ -502,7 +560,11 @@ class Planner:
         spots = sorted(self._purchase_spots,
                        key=lambda t: (dist.get(t, 1 << 30) - (SC_BIAS if t in self._sc_spots else 0), t))
         for tid in spots[:10]:
-            stub = self.buy(tid, categories, name, only=only, land_types=self._island_land_types(tid), without=without)
+            land_types = self._island_land_types(tid)
+            # amphibious_sc_pursuit: a pursuit that must cross the sea from here buys its Mechanized Infantry first
+            prefer = land_types[0] if land_types and 'Land' in categories and (self._objective or '').startswith('pursue') \
+                and self.settings.option('amphibious_sc_pursuit') else None
+            stub = self.buy(tid, categories, name, prefer=prefer, only=only, land_types=land_types, without=without)
             if stub is not None:
                 return stub
         return None
