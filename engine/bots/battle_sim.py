@@ -198,10 +198,12 @@ def _award(side, hp, alive_before_mask, dealt, xp, extras):
     return changed
 
 
-def simulate_once(rng, att, dfn, air_round, max_rounds=MAX_ROUNDS, capture=False):
+def simulate_once(rng, att, dfn, air_round, max_rounds=MAX_ROUNDS, capture=False, land_hold=False):
     """One battle. Returns 'attacker', 'defender', 'neither' -- or, when the rounds are limited and ran out
     with both sides standing, 'contested'. With `capture` (a battle for land), the attacker only wins if a
-    land unit of its survives to take the territory; defenders wiped out by aircraft alone is 'neither'."""
+    land unit of its survives to take the territory; defenders wiped out by aircraft alone is 'neither'.
+    With `land_hold` (and `capture`): the attacker wins if it ends with a land unit and the defender with none --
+    the defender's aircraft left in the air don't hold the ground."""
     ahp, dhp = list(att.hp0), list(dfn.hp0)
     axp, dxp = list(att.xp0), list(dfn.xp0)
     aex, dex = [0] * att.n, [0] * dfn.n
@@ -255,6 +257,11 @@ def simulate_once(rng, att, dfn, air_round, max_rounds=MAX_ROUNDS, capture=False
             dtabs.clear()
 
     a_left, d_left = any(h > 0 for h in ahp), any(h > 0 for h in dhp)
+    if capture and land_hold:
+        a_land = any(h > 0 and not air for h, air in zip(ahp, att.is_air))
+        d_land = any(h > 0 and not air for h, air in zip(dhp, dfn.is_air))
+        if a_land and not d_land:
+            return 'attacker'
     if a_left and not d_left:
         if capture and not any(h > 0 and not air for h, air in zip(ahp, att.is_air)):
             return 'neither'  # no land unit left to take it
@@ -270,7 +277,7 @@ BATCH = 25
 
 
 def estimate(attackers, defenders, battle_type, unit_defs, rules, rng=None, samples=200, round1_bonus_side=None,
-             cut=None, max_rounds=None, capture=False):
+             cut=None, max_rounds=None, capture=False, land_hold=False):
     """Odds for a battle between `attackers` and `defenders` (lists of UnitInstance; not modified).
     round1_bonus_side: None | 'attacker' | 'defender', as GameEngine.round1_bonus reports it.
     cut: attacker-win probabilities the caller is going to compare the answer with; sampling stops early
@@ -295,7 +302,7 @@ def estimate(attackers, defenders, battle_type, unit_defs, rules, rng=None, samp
     done = 0
     while done < samples:
         for _ in range(min(BATCH, samples - done)):
-            counts[simulate_once(rng, att, dfn, air_round, rounds, capture)] += 1
+            counts[simulate_once(rng, att, dfn, air_round, rounds, capture, land_hold)] += 1
             done += 1
         if cut and done >= 2 * BATCH and done < samples:
             p = counts['attacker'] / done

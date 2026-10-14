@@ -2,7 +2,7 @@
  "module_type": "PrimaryObjectiveOrder",
  "id": "GC72_PrimaryOrder_Alt",
  "name": "Strategy bot planning order (alternate)",
- "_alternate": "Changed from the standard order (GC72_PrimaryOrder): (1) a second Fill defensive gaps among the final steps, after every other objective has placed its units but BEFORE Pursue leftovers -- so a territory an earlier objective emptied is garrisoned again, with first call on the money Pursue leftovers would otherwise spend on attacks; (2) planner_options (engine/bots/strategy_settings.py PLANNER_OPTIONS): aircraft bought into sea zones come with a carrier place, Control Oceans buys no Mechanized Infantry, an SC pursuit across the sea buys Mechanized Infantry first, with a warship escort in any sea zone it's bought into, and no objective takes the last unit out of a threatened territory unless something replaces it. Every other step and share as the standard order's.",
+ "_alternate": "Changed from the standard order (GC72_PrimaryOrder): (1) a second Fill defensive gaps among the final steps, after every other objective has placed its units but BEFORE Pursue leftovers -- so a territory an earlier objective emptied is garrisoned again, with first call on the money Pursue leftovers would otherwise spend on attacks; (2) planner_options (engine/bots/strategy_settings.py PLANNER_OPTIONS): aircraft bought into sea zones come with a carrier place, Control Oceans buys no Mechanized Infantry, an SC pursuit across the sea buys Mechanized Infantry first, with a warship escort in any sea zone it's bought into, no objective takes the last unit out of a threatened territory unless something replaces it, a land territory's hold chance is judged by one real 3-round battle, and Expand territory weighs only targets its free units can reach, nearest first. Every other step and share as the standard order's.",
  "_note": "The planner works through `steps` in order, each after taking `budget_share` of its planning budget; treasonous_capture only runs when the bot means to betray its alliance this turn. The secondary objectives come next (each taking secondary_budget_share, in an order drawn by the strategy weights), then `final`.",
  "objectives_id": "GC72_Objectives",
  "steps": [
@@ -19,7 +19,9 @@
   "carrier_for_sea_aircraft": true,
   "no_mech_inf_for_control_oceans": true,
   "amphibious_sc_pursuit": true,
-  "keep_last_defender": true
+  "keep_last_defender": true,
+  "hold_one_battle": true,
+  "expand_nearest_first": true
  },
  "final": [
   {"objective_id": "fill_gaps", "budget_share": 0.05},

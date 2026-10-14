@@ -82,6 +82,42 @@ class TestCarriersOnlyWithAircraft(unittest.TestCase):
         self.assertEqual(bought(p, tid), [stub.unit_type])  # (no aircraft, no carrier)
 
 
+class TestHoldOneBattle(unittest.TestCase):
+    def test_defenders_left_only_in_the_air_dont_hold_the_ground(self):
+        from engine.bots import battle_sim
+        from engine.tests.test_engine import make_unit
+        session, _ = build_session({'seats': [bot('strategy'), bot('strategy')] + [seat('NONCOMBATANT')] * 4, 'seed': 41})
+        data = session.engine.data
+        attackers = [make_unit('Infantry', 'X'), make_unit('Infantry', 'X')]
+        defenders = [make_unit('Fighter', 'Y')]  # (a defender with no land unit at all)
+        whole = battle_sim.estimate(attackers, defenders, 'land', data.units(), data.rules(), random.Random(1), 400,
+                                    max_rounds=3, capture=True)
+        held = battle_sim.estimate(attackers, defenders, 'land', data.units(), data.rules(), random.Random(1), 400,
+                                   max_rounds=3, capture=True, land_hold=True)
+        self.assertGreater(held.attacker_wins, whole.attacker_wins)  # (the Fighter still flying doesn't save it)
+
+    def test_one_battle_needs_no_more_defenders_than_a_fight_to_the_finish(self):
+        from engine.tests.test_keep_last_defender import border_board
+        _, planner, fronts = border_board(61)
+        alt, std = planner('alternate'), planner('standard')
+        for tid in fronts:
+            defenders = alt.defenders_at(tid, claimed_only=False)
+            self.assertGreaterEqual(alt.hold_chance(tid, defenders, fast=False, samples=400),
+                                    std.hold_chance(tid, defenders, fast=False, samples=400) - 0.05, tid)
+
+
+class TestExpandNearestFirst(unittest.TestCase):
+    def test_expand_weighs_only_what_free_land_units_can_reach_weakest_nearest_first(self):
+        from engine.tests.test_keep_last_defender import border_board
+        _, planner, _ = border_board(62)
+        p = planner('alternate')
+        p.run()
+        reach = planner('alternate')._free_reach()
+        considered = [a['target'] for a in p.attempts if a['objective'] == 'expand_territory']
+        self.assertTrue(considered)
+        self.assertTrue(all(t in reach for t in considered), considered)
+
+
 class TestNoMechInfForControlOceans(unittest.TestCase):
     def test_control_oceans_never_buys_mech_inf_in_the_alternate_set(self):
         p = planner('alternate', 'control_oceans')

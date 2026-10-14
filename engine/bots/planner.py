@@ -302,7 +302,8 @@ class Planner:
     def _sig(units):
         return tuple(sorted((u.unit_type, u.current_hp, u.promotions, u.xp) for u in units))
 
-    def attacker_odds(self, attackers, defenders, kind, bonus=None, fast=True, cut=None, samples=None, max_rounds=None):
+    def attacker_odds(self, attackers, defenders, kind, bonus=None, fast=True, cut=None, samples=None, max_rounds=None,
+                      land_hold=False):
         """The chance the attackers eliminate every defender and survive -- over land, with a land unit left to
         take the territory -- run without a round limit, or within `max_rounds` (the rest counts as not won)."""
         if not attackers:
@@ -311,12 +312,12 @@ class Planner:
             return 1.0 if kind != 'land' or self._has_land(attackers) else 0.0
         samples = samples or (self.fast_samples if fast else self.samples)
         cut = cut if cut is not None else self._cut
-        key = (kind, bonus, samples, max_rounds, self._sig(attackers), self._sig(defenders))
+        key = (kind, bonus, samples, max_rounds, land_hold, self._sig(attackers), self._sig(defenders))
         got = self._odds_cache.get(key)
         if got is None:
             self.evaluations += 1
             odds = battle_sim.estimate(attackers, defenders, kind, self.unit_defs, self.rules, self.rng, samples, bonus, cut=cut,
-                                       max_rounds=max_rounds, capture=kind == 'land')
+                                       max_rounds=max_rounds, capture=kind == 'land', land_hold=land_hold)
             self.sims_used += odds.samples
             got = odds.attacker_wins
             self._odds_cache[key] = got
@@ -381,8 +382,10 @@ class Planner:
             if kind == 'land' and not self._has_land(attackers):
                 continue  # aircraft alone cannot take land
             cut = [1.0 - c for c in self._cut] if self._cut else None
+            one_battle = kind == 'land' and self.settings.option('hold_one_battle')
             worst = max(worst, self.attacker_odds(attackers, defenders, kind, fast=fast, cut=cut, samples=samples,
-                                                  max_rounds=None if kind == 'land' else self.battle_rounds))
+                                                  max_rounds=None if kind == 'land' and not one_battle else self.battle_rounds,
+                                                  land_hold=one_battle))
         return 1.0 - worst
 
     # ==== resources ============================================================================
@@ -1026,12 +1029,19 @@ class Planner:
             return
         limits = self.settings.limits(self.style, 'expand_territory')
         targets = []
+        reach = self._free_reach() if self.settings.option('expand_nearest_first') else None
         for tid, t in self.gs.territories.items():
             if self.is_land(tid) and self.capturable(t.owner) and not self.is_sc(tid):
+                if reach is not None:
+                    if tid not in reach:
+                        continue  # (expand_nearest_first: nothing of mine free can get there this turn)
+                    enemies = self.enemies_at(tid)
+                    targets.append((1 if enemies else 0, reach[tid], sum(self.cost(u) for u in enemies), -self.value(tid), tid))
+                    continue
                 # empty territory first (a free capture for whoever can reach it), then the most valuable
-                targets.append((1 if self.enemies_at(tid) else 0, -self.value(tid), tid))
+                targets.append((1 if self.enemies_at(tid) else 0, 0, 0, -self.value(tid), tid))
         failed = []
-        for _, _, tid in sorted(targets):
+        for *_, tid in sorted(targets):
             if self.out_of_time():
                 break
             if not self.assault(tid, 'expand_territory', limits, ('Land', 'Air')):
@@ -1041,6 +1051,20 @@ class Planner:
             if self.out_of_time():
                 return
             self._build_up(tid, ('Land', 'Air'), 'expand_territory', limits)
+
+    def _free_reach(self):
+        """expand_nearest_first: {territory: the fewest moves any of my LAND units still free for a combat move needs
+        to reach it}. Land units only: only they can take a territory, and aircraft reach nearly everywhere, so they
+        would make every target look equally near."""
+        reach = {}
+        for uid, (u, origin) in self.my_units.items():
+            if self.category(u) != 'Land' or not self.free_for(u, 'combat'):
+                continue
+            for dest, path in self.combat_paths(u, origin).items():
+                hops = len(path) - 1
+                if hops < reach.get(dest, 1 << 30):
+                    reach[dest] = hops
+        return reach
 
     def _near_my_land(self, tid, hops=3):
         return self._my_land_within(tid, hops)

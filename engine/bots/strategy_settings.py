@@ -23,6 +23,12 @@ PLANNER_OPTIONS = (
     # no objective takes the last unit out of a threatened territory of mine (an enemy land unit could reach it, or
     # enemies are in it) unless something replaces it: a purchase there, or another of my units moving in
     'keep_last_defender',
+    # a land territory's hold chance is judged by one real battle (its 3 rounds): lost only if the attacker ends
+    # with a land unit and I with none -- not by a fight to the finish
+    'hold_one_battle',
+    # Expand Territory weighs only the targets my free land units can reach this turn: empty ones first, then the
+    # nearest, then the most weakly defended, then the most valuable -- not every enemy territory on the map by value
+    'expand_nearest_first',
 )
 
 
