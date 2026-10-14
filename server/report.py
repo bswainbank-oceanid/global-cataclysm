@@ -105,7 +105,7 @@ def _bot_info(bot):
     if bot is None:
         return None, None
     if isinstance(bot, StrategyBot):
-        return 'Strategy', bot.base_style
+        return ('Strategy (Alt)' if bot.bot_set != 'standard' else 'Strategy'), bot.base_style
     return 'Random', None
 
 

@@ -131,7 +131,7 @@ def take_snapshot(session):
     for faction, bot in session.bots.items():
         entry = {'kind': _bot_kind(bot), 'rng': _rng_state(bot.rng)}
         if isinstance(bot, StrategyBot):
-            entry.update(base_style=bot.base_style, budget=bot.budget)
+            entry.update(base_style=bot.base_style, budget=bot.budget, bot_set=bot.bot_set)
         bots[faction] = entry
     logs = {f: {'start': log._start, 'last_start': log._last_start} for f, log in stepper._strategy_logs.items()}
     armistice = session._armistice
@@ -216,7 +216,8 @@ def _bot_kind(bot):
 def _bot(engine, faction, entry):
     kind = entry['kind']
     if kind == 'strategy':
-        bot = StrategyBot(engine, faction, rng=random.Random(0), budget=entry['budget'])
+        bot = StrategyBot(engine, faction, rng=random.Random(0), budget=entry['budget'],
+                          bot_set=entry.get('bot_set', 'standard'))  # (a save from before bot sets: standard)
         bot.base_style = bot.style = entry['base_style']
     elif kind == 'claude':
         from engine.bots.claude_bot import ClaudeBot  # (needs ANTHROPIC_API_KEY, like at game start)

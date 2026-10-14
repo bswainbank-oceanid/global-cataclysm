@@ -91,14 +91,15 @@ def weighted_order(rng, items, weights):
     return out
 
 
-def load_settings(data_module=None):
-    """The StrategySettings for `data_module`'s scenario (the default scenario if it has no bot settings)."""
-    global _cache
+def load_settings(data_module=None, bot_set='standard'):
+    """The StrategySettings for `data_module`'s scenario (the default scenario if it has no bot settings), from
+    its bot set `bot_set` ('standard', or 'alternate': engine.game_config.BOT_SETS)."""
     source = data_module if data_module is not None and hasattr(data_module, 'bot_settings') else _default_data
-    raw = source.bot_settings()
-    if _cache is None or _cache[0] is not raw:
-        _cache = (raw, StrategySettings(raw))
-    return _cache[1]
+    raw = source.bot_settings(bot_set)
+    cached = _cache.get(bot_set)
+    if cached is None or cached[0] is not raw:
+        cached = _cache[bot_set] = (raw, StrategySettings(raw))
+    return cached[1]
 
 
-_cache = None
+_cache = {}  # bot set -> (raw, StrategySettings)

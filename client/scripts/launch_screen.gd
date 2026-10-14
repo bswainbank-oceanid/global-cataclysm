@@ -51,7 +51,7 @@ const ALLIANCES := ["None", "Alliance 1", "Alliance 2", "Alliance 3"]
 const STRATEGIES := ["random", "aggressive", "passive", "counterweight", "independent", "adversarial", "underdog", "variable"]
 # Which AI a bot seat plays (server/lobby.py's BOT_AIS): the heuristic bot (default), the random baseline, and
 # Claude itself (needs ANTHROPIC_API_KEY on the server). Shown to admins only (Account.sees_bot_details).
-const BOT_AIS := [["Strategy", "strategy"], ["Random", "random"], ["Claude", "claude"]]
+const BOT_AIS := [["Strategy", "strategy"], ["Strategy (Alt)", "strategy_alt"], ["Random", "random"], ["Claude", "claude"]]
 const BEHAVIORS := ["random", "loyal", "opportunistic", "treacherous", "underdog", "variable"]
 # A new scenario's seat settings: [key, header, width]; the Neutral row has no initial MPC.
 const SEAT_KEYS := [["territory_value", "Territory", 84], ["initial_mpc", "Initial MPC", 84], ["units_mpc", "Units MPC", 84],
@@ -429,7 +429,7 @@ func _build_seat_table(parent: VBoxContainer) -> void:
 		row["behavior"] = _option(BEHAVIORS.map(func(s): return str(s).capitalize()), 150)
 		behavior_col.add_child(row["behavior"])
 		row["ai"] = _option(BOT_AIS.map(func(a): return a[0]), 120)
-		row["ai"].tooltip_text = "Strategy: the heuristic bot (styles, objectives, risk checks).\nRandom: the baseline bot, for comparison.\nClaude: Claude plays it (the server needs ANTHROPIC_API_KEY)."
+		row["ai"].tooltip_text = "Strategy: the heuristic bot (styles, objectives, risk checks).\nStrategy (Alt): the same bot playing the alternate set of strategy profiles, to test changes against the standard set.\nRandom: the baseline bot, for comparison.\nClaude: Claude plays it (the server needs ANTHROPIC_API_KEY)."
 		_ai_col.add_child(row["ai"])
 		_territory_auto[i] = true
 

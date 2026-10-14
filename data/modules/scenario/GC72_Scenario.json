@@ -19,5 +19,13 @@
   "strategy_threshold_set_id": "GC72_StrategyThresholds",
   "objectives_id": "GC72_Objectives",
   "primary_objective_order_id": "GC72_PrimaryOrder"
+ },
+ "bot_sets": {
+  "alternate": {
+   "faction_weight_set_id": "GC72_FactionWeights_Alt",
+   "strategy_threshold_set_id": "GC72_StrategyThresholds_Alt",
+   "objectives_id": "GC72_Objectives_Alt",
+   "primary_objective_order_id": "GC72_PrimaryOrder_Alt"
+  }
  }
 }

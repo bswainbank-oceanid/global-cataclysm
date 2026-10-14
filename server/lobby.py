@@ -101,7 +101,9 @@ PLAYER_MODES = ('HUMAN', 'BOT')
 # The heuristic bot (engine/bots/strategy_bot.py), the random baseline, and Claude itself
 # (engine/bots/claude_bot.py -- needs ANTHROPIC_API_KEY in the server's own environment; checked at
 # ClaudeBot construction time below, not here, so this list itself never depends on a key being set).
-BOT_AIS = ('strategy', 'random', 'claude')
+# 'strategy_alt' is the heuristic bot playing the scenario's ALTERNATE set of strategy profiles (its bot_sets:
+# engine/game_config.py), to test a changed set against the standard one.
+BOT_AIS = ('strategy', 'strategy_alt', 'random', 'claude')
 DEFAULT_BOT_AI = 'strategy'
 DEFAULT_MAX_ALLIANCE_SIZE = 3
 DEFAULT_ARMISTICE_ROUNDS = 10  # the game proposes an armistice once this many rounds are played (0: never)
@@ -309,6 +311,7 @@ def build_session(settings, rng=None, auto=False, max_humans=1):
             # to this seat's first turn.
             bots[a['faction']] = ClaudeBot(engine, a['faction'], rng=bot_rng)
         else:
-            bots[a['faction']] = StrategyBot(engine, a['faction'], rng=bot_rng, budget=budget)
+            bots[a['faction']] = StrategyBot(engine, a['faction'], rng=bot_rng, budget=budget,
+                                             bot_set='alternate' if a['ai'] == 'strategy_alt' else 'standard')
     seats = [dict(a, seat=i) for i, a in enumerate(assignments, 1)]
     return GameSession(engine, turn_log, bots, auto=auto), seats

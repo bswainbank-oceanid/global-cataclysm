@@ -21,9 +21,10 @@ from .strategy_settings import load_settings
 
 
 class StrategyBot(RandomBot):
-    def __init__(self, engine, faction, rng=None, settings=None, budget=DEFAULT_BUDGET):
+    def __init__(self, engine, faction, rng=None, settings=None, budget=DEFAULT_BUDGET, bot_set='standard'):
         super().__init__(engine, faction, rng)
-        self.settings = settings or load_settings(engine.data)
+        self.bot_set = bot_set  # which set of strategy profiles it plays by ('standard' or 'alternate')
+        self.settings = settings or load_settings(engine.data, bot_set)
         self.budget = budget  # planning effort per pass, in simulated battles (not seconds: seeded games replay exactly)
         self.base_style = self.settings.draw_style(faction, self.rng)
         self.style = self.base_style  # the concrete style this turn (differs from base only when Variable)

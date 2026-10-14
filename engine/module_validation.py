@@ -457,6 +457,8 @@ class _Checker:
                     'objectives_id': 'Objectives', 'primary_objective_order_id': 'PrimaryObjectiveOrder'}
         for k, t in bot_refs.items():
             self.ref(where, t, (s.get('bots') or {}).get(k))
+            for name, refs in (s.get('bot_sets') or {}).items():  # (other sets of strategy profiles: alternate)
+                self.ref(f'{where} bot set {name}', t, (refs or {}).get(k))
         # The pieces must describe the same map, factions and units.
         if got['map_values_id'] and got['map_values_id']['map_id'] != s.get('map_id'):
             self.err(where, 'map values are for a different map')

@@ -110,6 +110,8 @@ func _initialize() -> void:
 	_check(not (_row(screen, 1)["ai"] as OptionButton).disabled and (_row(screen, 0)["ai"] as OptionButton).disabled,
 		"a bot seat can choose its Bot type; a human's can't")
 	_pick(screen, 1, "ai", 1)
+	_check(screen.settings()["seats"][1]["ai"] == "strategy_alt", "the alternate set of strategy profiles can be chosen")
+	_pick(screen, 1, "ai", 2)
 	_check(screen.settings()["seats"][1]["ai"] == "random", "the choice is sent")
 	_pick(screen, 1, "ai", 0)
 

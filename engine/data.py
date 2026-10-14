@@ -93,6 +93,6 @@ def initial_setup(kind):
     return config().initial_setup(kind)
 
 
-def bot_settings():
-    """The strategy bots' weights, thresholds and planning order."""
-    return config().bot_settings()
+def bot_settings(bot_set='standard'):
+    """The strategy bots' weights, thresholds and planning order (of bot set `bot_set`: GameConfig.bot_module)."""
+    return config().bot_settings(bot_set)

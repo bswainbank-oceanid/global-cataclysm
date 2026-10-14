@@ -11,6 +11,12 @@ use, and must be treated as read-only.
 from .repository import DEFAULT_SCENARIO_ID, default_repository
 
 
+
+# The strategy bots' settings sets (GameConfig.bot_module): the standard one, and an alternate one -- a copy
+# to alter and test against it (tools/setup_eval.py; the launcher's "Strategy (Alt)" bot type).
+STANDARD_BOT_SET = 'standard'
+BOT_SETS = (STANDARD_BOT_SET, 'alternate')
+
 class GameConfig:
     def __init__(self, scenario_id=DEFAULT_SCENARIO_ID, repository=None):
         self.repo = repository or default_repository()
@@ -63,12 +69,17 @@ class GameConfig:
         s = self.scenario['setups'][kind]
         return self.module('InitialSetup', s['initial_setup_id']), self.module('UnitPromotions', s['unit_promotions_id'])
 
-    def bot_module(self, key):
+    def bot_module(self, key, bot_set=STANDARD_BOT_SET):
         """One of the scenario's bot modules: 'faction_weight_set', 'strategy_threshold_set', 'objectives'
-        or 'primary_objective_order'."""
+        or 'primary_objective_order' -- of the standard set (the scenario's 'bots'), or of another of its
+        'bot_sets' (BOT_SETS: 'alternate', a second set of strategy profiles to alter and test against the
+        standard one). A set the scenario doesn't have is the standard one."""
         types = {'faction_weight_set': 'FactionWeightSet', 'strategy_threshold_set': 'StrategyThresholdSet',
                  'objectives': 'Objectives', 'primary_objective_order': 'PrimaryObjectiveOrder'}
-        return self.module(types[key], self.scenario['bots'][f'{key}_id'])
+        refs = self.scenario['bots']
+        if bot_set != STANDARD_BOT_SET:
+            refs = (self.scenario.get('bot_sets') or {}).get(bot_set) or refs
+        return self.module(types[key], refs[f'{key}_id'])
 
     # ---- views ------------------------------------------------------------------------------------
 
@@ -194,12 +205,13 @@ class GameConfig:
         return self._view('rules', lambda: {k: v for k, v in self.rule_set.items()
                                             if k not in ('module_type', 'id', 'name', '_moved')})
 
-    def bot_settings(self):
+    def bot_settings(self, bot_set=STANDARD_BOT_SET):
         """The strategy bots' settings in engine/bots/strategy_settings.py's shape: unit_weights,
-        strategy_weights, thresholds, distance_costs, plus the planning order."""
+        strategy_weights, thresholds, distance_costs, plus the planning order -- of bot set `bot_set`
+        (bot_module)."""
         def build():
-            weights = self.bot_module('faction_weight_set')
-            thresholds = self.bot_module('strategy_threshold_set')
+            weights = self.bot_module('faction_weight_set', bot_set)
+            thresholds = self.bot_module('strategy_threshold_set', bot_set)
             out = {
                 'unit_weights': {f['faction_id']: {w['unit_type_id']: w['weight'] for w in f['unit_weights']}
                                  for f in weights['factions']},
@@ -223,11 +235,11 @@ class GameConfig:
                         row['max'] = o['max_risk']
                     rows[o['objective_id']] = row
                 out['thresholds'][s['id']] = rows
-            order = self.bot_module('primary_objective_order')
+            order = self.bot_module('primary_objective_order', bot_set)
             out['primary_order'] = order['steps']
             out['secondary_budget_share'] = order['secondary_budget_share']
             out['final_order'] = order['final']
-            out['objectives'] = self.bot_module('objectives')['objectives']
+            out['objectives'] = self.bot_module('objectives', bot_set)['objectives']
             out['neutral_unit_weights'] = {w['unit_type_id']: w['weight'] for w in weights.get('neutral_unit_weights', [])}
             return out
-        return self._view('bot_settings', build)
+        return self._view(f'bot_settings:{bot_set}', build)
