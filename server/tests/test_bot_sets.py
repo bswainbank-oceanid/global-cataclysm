@@ -22,8 +22,8 @@ class TestBotSets(unittest.TestCase):
         for field in ('thresholds', 'strategy_weights', 'unit_weights', 'distance_costs', 'primary_order',
                       'secondary', 'styles', 'secondary_budget_share'):
             self.assertEqual(getattr(standard, field), getattr(alternate, field), field)
-        # Its change so far: a second Fill defensive gaps at the very end, after every other objective.
-        self.assertEqual(alternate.final_order, standard.final_order + [{'objective_id': 'fill_gaps', 'budget_share': 0.05}])
+        # Its change so far: a second Fill defensive gaps among the final steps, just before Pursue leftovers.
+        self.assertEqual(alternate.final_order, [{'objective_id': 'fill_gaps', 'budget_share': 0.05}] + standard.final_order)
 
     def test_an_alternate_bot_fills_gaps_again_last(self):
         from engine.bots.planner import Planner
@@ -34,7 +34,7 @@ class TestBotSets(unittest.TestCase):
             planned = [o['id'] for o in planner.objective_order]
             self.assertTrue({'hold_sc', 'capture_sc'} <= set(planned), planned)
             if b.bot_set == 'alternate':
-                self.assertEqual((planned.count('fill_gaps'), planned[-1]), (2, 'fill_gaps'), planned)
+                self.assertEqual((planned.count('fill_gaps'), planned[-2:]), (2, ['fill_gaps', 'pursue_leftovers']), planned)
             else:
                 self.assertEqual(planned.count('fill_gaps'), 1, planned)
 
