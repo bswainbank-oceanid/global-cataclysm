@@ -19,24 +19,24 @@ class TestBotSets(unittest.TestCase):
     def test_the_alternate_set_is_a_separate_copy_of_the_standard_one_with_its_changes(self):
         standard, alternate = load_settings(None, 'standard'), load_settings(None, 'alternate')
         self.assertIsNot(standard, alternate)
-        for field in ('thresholds', 'strategy_weights', 'unit_weights', 'distance_costs', 'final_order',
+        for field in ('thresholds', 'strategy_weights', 'unit_weights', 'distance_costs', 'primary_order',
                       'secondary', 'styles', 'secondary_budget_share'):
             self.assertEqual(getattr(standard, field), getattr(alternate, field), field)
-        # Its changes so far: no Hold SCs or Capture SCs primary steps -- every other step as the standard's.
-        self.assertEqual(alternate.primary_order,
-                         [step for step in standard.primary_order if step['objective_id'] not in ('hold_sc', 'capture_sc')])
+        # Its change so far: a second Fill defensive gaps at the very end, after every other objective.
+        self.assertEqual(alternate.final_order, standard.final_order + [{'objective_id': 'fill_gaps', 'budget_share': 0.05}])
 
-    def test_an_alternate_bot_plans_without_hold_or_capture_scs(self):
+    def test_an_alternate_bot_fills_gaps_again_last(self):
         from engine.bots.planner import Planner
         session, _ = build_session(mixed(34))
         for b in session.bots.values():
             planner = Planner(session.engine, b.faction, b.settings, b.base_style, b.rng, 'full', 50)
             planner.run()
-            planned = {o['id'] for o in planner.objective_order}
+            planned = [o['id'] for o in planner.objective_order]
+            self.assertTrue({'hold_sc', 'capture_sc'} <= set(planned), planned)
             if b.bot_set == 'alternate':
-                self.assertFalse(planned & {'hold_sc', 'capture_sc'}, planned)
+                self.assertEqual((planned.count('fill_gaps'), planned[-1]), (2, 'fill_gaps'), planned)
             else:
-                self.assertTrue({'hold_sc', 'capture_sc'} <= planned, planned)
+                self.assertEqual(planned.count('fill_gaps'), 1, planned)
 
     def test_a_seat_chooses_its_set(self):
         self.assertEqual(check_settings(mixed()), [])
