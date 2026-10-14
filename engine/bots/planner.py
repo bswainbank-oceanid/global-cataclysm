@@ -263,6 +263,8 @@ class Planner:
         """Can this unit of mine still be committed to a `how` ('combat' | 'nc') move?"""
         if u.unit_id in self.claimed:
             return False
+        if self._last_defender(u):
+            return False
         if how == 'combat':
             # (a unit in a contest is left to fight it out: see in_contest -- except a Transport, which may still
             # make an ordinary combat move, an amphibious attack say, and otherwise withdraws: _transports_to_safety)
@@ -493,6 +495,47 @@ class Planner:
             stub = self._stub(t)
             self.stubs.setdefault(tid, []).append(stub)
         return stub
+
+    def _threatened(self, tid):
+        """keep_last_defender: a land territory of mine an enemy land unit could reach this turn, or with enemies in it."""
+        if not self.is_land(tid) or self.owner(tid) != self.me:
+            return False
+        if self.enemies_at(tid):
+            return True
+        return any(self.category(v) == 'Land' for units in self.threats(tid).values() for v in units)
+
+    def _last_defender(self, u):
+        """keep_last_defender: `u` is the one thing defending its threatened territory -- nothing else stays there,
+        and nothing is bought for it or moving in -- so it may not be taken away."""
+        if not self.settings.option('keep_last_defender'):
+            return False
+        origin = self.my_units.get(u.unit_id, (u, None))[1]
+        if origin is None or not self._threatened(origin):
+            return False
+        return not [v for v in self.defenders_at(origin, claimed_only=False) if v.unit_id != u.unit_id]
+
+    def _keep_last_defenders(self):
+        """keep_last_defender, the safety net once the plan is made: a threatened territory of mine that the plan
+        leaves with nobody in it (and nothing bought for it or moving in) keeps one of the units it was sending
+        away -- the cheapest land unit, else the cheapest."""
+        if not self.settings.option('keep_last_defender'):
+            return
+        leaving = {}
+        for uid in list(self.moves_combat) + list(self.moves_nc):
+            u, origin = self.my_units.get(uid, (None, None))
+            if u is not None:
+                leaving.setdefault(origin, []).append(u)
+        for tid in sorted(leaving):
+            if not self._threatened(tid) or self.defenders_at(tid, claimed_only=False):
+                continue
+            u = min(leaving[tid], key=lambda v: (self.category(v) != 'Land', self.cost(v), v.unit_id))
+            self.moves_combat.pop(u.unit_id, None)
+            self.moves_nc.pop(u.unit_id, None)
+            self.claimed[u.unit_id] = 'keep_last_defender'
+            self.unit_why[u.unit_id] = ('keep_last_defender', tid)
+            self.stay.add(u.unit_id)
+            self.note(f'keep_last_defender: a {u.unit_type} stays to hold {self.terrs[tid]["name"]}')
+            self.attempt(tid, 'pursued', f'its last unit, a {u.unit_type}, stays')
 
     def _carrier_rule(self, objective):
         """carrier_for_sea_aircraft applies to this objective's purchases (Control Oceans and the SC pursuits)."""
@@ -1689,6 +1732,7 @@ class Planner:
             self._begin_objective(step['objective_id'])
             steps[step['objective_id']]()
         self._transports_to_safety()
+        self._keep_last_defenders()
         self._objective = None
         return Plan(self)
 

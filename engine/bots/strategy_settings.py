@@ -20,6 +20,9 @@ PLANNER_OPTIONS = (
     # an SC pursuit that must cross the sea buys Mechanized Infantry for its land units, first, and a warship
     # with any bought into a sea zone that has none of mine
     'amphibious_sc_pursuit',
+    # no objective takes the last unit out of a threatened territory of mine (an enemy land unit could reach it, or
+    # enemies are in it) unless something replaces it: a purchase there, or another of my units moving in
+    'keep_last_defender',
 )
 
 
