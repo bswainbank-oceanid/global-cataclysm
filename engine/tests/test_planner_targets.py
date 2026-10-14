@@ -115,8 +115,9 @@ class TestHoldChance(unittest.TestCase):
     """The defensive objectives judge land by the battle fought to completion, lost only if the attacker ends
     with a land unit standing; a fleet's safety is judged by the next turn's real battle, its 3 rounds."""
 
-    def test_land_is_judged_by_the_battle_fought_to_completion(self):
-        # 12 Infantry at NAA's capital against 6 Armor next door: a long fight lost, though seldom within 3 rounds
+    def test_land_is_judged_by_one_real_battle(self):
+        # 12 Infantry at NAA's capital against 6 Armor next door: a long fight lost, though seldom within 3 rounds --
+        # judged by one real battle (planner option hold_one_battle, on in the bot sets), it holds
         engine, gs = game({1: [make_unit('Infantry', 'NAA') for _ in range(12)],
                            2: [make_unit('Armor', 'GPC') for _ in range(6)]},
                           owners={1: 'NAA', 2: 'GPC', 6: 'NAA', 4: 'GPC', 5: 'GPC'})
@@ -125,9 +126,9 @@ class TestHoldChance(unittest.TestCase):
         attackers = p.threats(1)['GPC']
         hold = p.hold_chance(1, defenders, fast=False)
         to_completion = 1.0 - p.attacker_odds(attackers, defenders, 'land', fast=False)
-        three_rounds = 1.0 - p.attacker_odds(attackers, defenders, 'land', fast=False, max_rounds=3)
-        self.assertAlmostEqual(hold, to_completion, delta=0.1)
-        self.assertLess(hold, three_rounds - 0.2)
+        one_battle = 1.0 - p.attacker_odds(attackers, defenders, 'land', fast=False, max_rounds=3, land_hold=True)
+        self.assertAlmostEqual(hold, one_battle, delta=0.1)
+        self.assertGreater(hold, to_completion + 0.2)
 
     def test_a_fleet_is_judged_by_the_three_rounds(self):
         m = TestControlOceans
@@ -176,7 +177,9 @@ class TestControlOceans(unittest.TestCase):
 
     def test_an_island_fighter_attacks_an_enemy_transport(self):
         fighter = make_unit('Fighter', 'NAA')
-        p = self.plan({20: [fighter], 21: [make_unit('Mechanized Infantry', 'GPC')], 22: [make_unit('Infantry', 'GPC')]})
+        # (an Infantry holds the island too: a threatened territory's last defender stays -- keep_last_defender)
+        p = self.plan({20: [fighter, make_unit('Infantry', 'NAA')], 21: [make_unit('Mechanized Infantry', 'GPC')],
+                       22: [make_unit('Infantry', 'GPC')]})
         self.assertEqual(p.moves_combat.get(fighter.unit_id), [20, 21])
         self.assertEqual(p.unit_why[fighter.unit_id], ('control_oceans', 21))
 

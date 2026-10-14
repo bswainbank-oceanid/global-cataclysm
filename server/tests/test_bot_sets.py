@@ -16,16 +16,14 @@ def mixed(seed=31):
 
 
 class TestBotSets(unittest.TestCase):
-    def test_the_alternate_set_is_a_separate_copy_of_the_standard_one_with_its_changes(self):
+    def test_the_alternate_set_is_a_separate_copy_of_the_standard_one(self):
         standard, alternate = load_settings(None, 'standard'), load_settings(None, 'alternate')
         self.assertIsNot(standard, alternate)
-        for field in ('thresholds', 'strategy_weights', 'unit_weights', 'distance_costs', 'primary_order',
-                      'secondary', 'styles', 'secondary_budget_share'):
+        for field in ('thresholds', 'strategy_weights', 'unit_weights', 'distance_costs', 'primary_order', 'final_order',
+                      'secondary', 'styles', 'secondary_budget_share', 'options'):
             self.assertEqual(getattr(standard, field), getattr(alternate, field), field)
-        # Its change so far: a second Fill defensive gaps among the final steps, just before Pursue leftovers.
-        self.assertEqual(alternate.final_order, [{'objective_id': 'fill_gaps', 'budget_share': 0.05}] + standard.final_order)
 
-    def test_an_alternate_bot_fills_gaps_again_last(self):
+    def test_both_sets_fill_gaps_again_before_pursuing_leftovers(self):
         from engine.bots.planner import Planner
         session, _ = build_session(mixed(34))
         for b in session.bots.values():
@@ -33,10 +31,7 @@ class TestBotSets(unittest.TestCase):
             planner.run()
             planned = [o['id'] for o in planner.objective_order]
             self.assertTrue({'hold_sc', 'capture_sc'} <= set(planned), planned)
-            if b.bot_set == 'alternate':
-                self.assertEqual((planned.count('fill_gaps'), planned[-2:]), (2, ['fill_gaps', 'pursue_leftovers']), planned)
-            else:
-                self.assertEqual(planned.count('fill_gaps'), 1, planned)
+            self.assertEqual((planned.count('fill_gaps'), planned[-2:]), (2, ['fill_gaps', 'pursue_leftovers']), planned)
 
     def test_a_seat_chooses_its_set(self):
         self.assertEqual(check_settings(mixed()), [])

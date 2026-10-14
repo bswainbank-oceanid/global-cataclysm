@@ -1,4 +1,4 @@
-"""Planner option keep_last_defender (on in the alternate strategy profiles): no objective takes the last unit out of
+"""Planner option keep_last_defender (on in the bot sets): no objective takes the last unit out of
 a threatened territory of mine -- an enemy land unit could reach it, or enemies are in it -- unless something
 replaces it (a purchase there, or another of my units moving in)."""
 import random
@@ -37,7 +37,8 @@ def border_board(seed):
             break
 
     def planner(bot_set):
-        return Planner(engine, me, load_settings(engine.data, bot_set), 'Expansive', random.Random(seed), 'full', 1500)
+        from engine.tests.test_planner_options import settings_for
+        return Planner(engine, me, settings_for(engine.data, bot_set), 'Expansive', random.Random(seed), 'full', 1500)
     return session, planner, fronts
 
 
@@ -54,17 +55,17 @@ def stripped(p):
 
 
 class TestKeepLastDefender(unittest.TestCase):
-    def test_no_threatened_territory_is_left_empty_by_the_alternate_set(self):
+    def test_no_threatened_territory_is_left_empty(self):
         for seed in (61, 62):
             _, planner, fronts = border_board(seed)
             self.assertTrue(fronts)
-            p = planner('alternate')
+            p = planner('on')
             p.run()
             self.assertEqual([t for t in stripped(p) if t in fronts], [], f'seed {seed}')
 
     def test_the_last_defender_is_not_free_but_a_replacement_frees_it(self):
         _, planner, fronts = border_board(61)
-        p = planner('alternate')
+        p = planner('on')
         tid = fronts[0]
         u = next(u for u in p.gs.territories[tid].units if u.owner == p.me)
         self.assertTrue(p._threatened(tid))
@@ -72,7 +73,7 @@ class TestKeepLastDefender(unittest.TestCase):
         self.assertFalse(p.free_for(u, 'combat'))
         p.stubs.setdefault(tid, []).append(p._stub('Infantry'))  # (an Infantry bought for it)
         self.assertTrue(p.free_for(u, 'nc'))
-        q = planner('standard')  # (the standard set: no such rule)
+        q = planner('off')  # (options off: no such rule)
         self.assertTrue(q.free_for(next(v for v in q.gs.territories[tid].units if v.owner == q.me), 'nc'))
 
 
