@@ -420,6 +420,8 @@ class Planner:
         sea_ok = sea_target and self.sea_zone_safe(tid)
         objective = self._objective or name
         no_transports = objective == 'control_oceans' and self.settings.option('no_mech_inf_for_control_oceans')
+        # carrier_for_sea_aircraft: a carrier is never bought on its own -- only with the aircraft it's for
+        carriers_paired = sea_target and self._carrier_rule(objective)
         candidates = []
         for cat in categories:
             for t in self.category_pool[cat]:
@@ -431,6 +433,8 @@ class Planner:
                 if sea_target and d['category'] == 'Land' and not (sea_ok and is_amphibious(d)):
                     continue
                 if no_transports and is_amphibious(d):
+                    continue
+                if carriers_paired and abilities.has(self.unit_defs, t, abilities.CARRIER_AIR_WING):
                     continue
                 if only is not None and t not in only:
                     continue
@@ -450,28 +454,54 @@ class Planner:
         for unit_type in order:
             unit_type = deployment.substitute(self.data, unit_type, tid)  # e.g. no Armor on islands
             companions = self._companions(unit_type, tid, objective)
-            if companions is None:
-                continue  # (it would need a companion that can't be bought here)
-            key = (unit_type, tid)
-            trial = dict(self.purchases)
-            for c in companions:
-                trial[(c, tid)] = trial.get((c, tid), 0) + 1
-            trial[key] = trial.get(key, 0) + 1
-            orders = [PurchaseOrder(t, q, where) for (t, where), q in sorted(trial.items())]
-            try:
-                total, _ = self.engine._resolve_and_cost(orders, self.me)
-            except ValueError:
-                continue
-            if total > self.gs.factions[self.me].treasury_mpc:
-                continue
-            self.purchases = trial
-            self.treasury = self.gs.factions[self.me].treasury_mpc - total
-            for c in companions + [unit_type]:
-                self.purchase_why.append((c, tid, self._objective or name, self._target if self._target is not None else tid))
-                stub = self._stub(c)
-                self.stubs.setdefault(tid, []).append(stub)
-            return stub
+            needs_carrier = companions is not None and any(
+                abilities.has(self.unit_defs, c, abilities.CARRIER_AIR_WING) for c in companions)
+            if companions is not None:
+                stub = self._take([*companions, unit_type], tid, name)
+                if stub is not None:
+                    return stub
+            if needs_carrier or (companions is None and self.unit_defs[unit_type]['category'] == 'Air'):
+                # carrier_for_sea_aircraft: the aircraft and its carrier can't be bought together here -- a
+                # Submarine or a Cruiser instead (by the faction's odds), never a costlier aircraft in its place
+                ships = [t for t in self._plain_warships() if t in self.category_pool['Sea']]
+                weights = self.settings.unit_odds(self.me, ships)
+                for ship in weighted_order(self.rng, ships, weights if any(w > 0 for w in weights) else [1] * len(ships)):
+                    stub = self._take([ship], tid, name)
+                    if stub is not None:
+                        return stub
+                return None
         return None
+
+    def _take(self, unit_types, tid, name):
+        """Buys `unit_types` together at `tid` if the treasury and the deploy capacity allow all of them: the
+        stub of the last one, or None (nothing bought)."""
+        trial = dict(self.purchases)
+        for t in unit_types:
+            trial[(t, tid)] = trial.get((t, tid), 0) + 1
+        orders = [PurchaseOrder(t, q, where) for (t, where), q in sorted(trial.items())]
+        try:
+            total, _ = self.engine._resolve_and_cost(orders, self.me)
+        except ValueError:
+            return None
+        if total > self.gs.factions[self.me].treasury_mpc:
+            return None
+        self.purchases = trial
+        self.treasury = self.gs.factions[self.me].treasury_mpc - total
+        stub = None
+        for t in unit_types:
+            self.purchase_why.append((t, tid, self._objective or name, self._target if self._target is not None else tid))
+            stub = self._stub(t)
+            self.stubs.setdefault(tid, []).append(stub)
+        return stub
+
+    def _carrier_rule(self, objective):
+        """carrier_for_sea_aircraft applies to this objective's purchases (Control Oceans and the SC pursuits)."""
+        return self.settings.option('carrier_for_sea_aircraft') and (objective == 'control_oceans' or objective.startswith('pursue'))
+
+    def _plain_warships(self):
+        """The purchasable warships other than carriers: Submarines and Cruisers."""
+        return [t for t, d in self.unit_defs.items() if d.get('purchasable') and d['category'] == 'Sea'
+                and not abilities.has(self.unit_defs, t, abilities.CARRIER_AIR_WING)]
 
     def _companions(self, unit_type, tid, objective):
         """The units that must be bought along with a `unit_type` at `tid` (the planner options: none for the
@@ -484,8 +514,7 @@ class Planner:
             return []
         d = self.unit_defs[unit_type]
         pursuit = objective.startswith('pursue')
-        if d['category'] == 'Air' and (pursuit or objective == 'control_oceans') \
-                and self.settings.option('carrier_for_sea_aircraft') and self._carrier_room(tid) < 1:
+        if d['category'] == 'Air' and self._carrier_rule(objective) and self._carrier_room(tid) < 1:
             carrier = self._buyable(lambda t: abilities.has(self.unit_defs, t, abilities.CARRIER_AIR_WING))
             return [carrier] if carrier else None
         if d['category'] == 'Land' and is_amphibious(d) and pursuit and self.settings.option('amphibious_sc_pursuit') \

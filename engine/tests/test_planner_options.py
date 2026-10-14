@@ -61,6 +61,27 @@ class TestCarrierForSeaAircraft(unittest.TestCase):
         self.assertEqual(bought(p, tid).count(CARRIER), 2)  # (the fourth needs another)
 
 
+class TestCarriersOnlyWithAircraft(unittest.TestCase):
+    def test_a_carrier_is_never_bought_on_its_own(self):
+        p = planner('alternate', 'control_oceans')
+        tid = quiet_sea_spot(p, room=6)
+        self.assertIsNone(p.buy(tid, ('Sea',), 'control_oceans', only=(CARRIER,)))
+        for _ in range(5):
+            p.buy(tid, ('Sea',), 'control_oceans')
+        self.assertNotIn(CARRIER, bought(p, tid))
+        p = planner('standard', 'control_oceans')  # (the standard set: as before)
+        tid = quiet_sea_spot(p)
+        self.assertIsNotNone(p.buy(tid, ('Sea',), 'control_oceans', only=(CARRIER,)))
+
+    def test_when_the_pair_cant_be_bought_a_submarine_or_cruiser_instead(self):
+        p = planner('alternate', 'pursue_sc_1')
+        tid = quiet_sea_spot(p)
+        p.gs.factions[p.me].treasury_mpc = 15  # (a Fighter and a carrier: 21)
+        stub = p.buy(tid, ('Air',), 'pursue_sc_1', only=('Fighter', 'Bomber'))
+        self.assertIn(stub.unit_type, ('Submarine', CRUISER))
+        self.assertEqual(bought(p, tid), [stub.unit_type])  # (no aircraft, no carrier)
+
+
 class TestNoMechInfForControlOceans(unittest.TestCase):
     def test_control_oceans_never_buys_mech_inf_in_the_alternate_set(self):
         p = planner('alternate', 'control_oceans')

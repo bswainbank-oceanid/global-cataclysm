@@ -11,8 +11,9 @@ from .. import data as _default_data
 # Switches a bot set may turn on in its PrimaryObjectiveOrder's "planner_options" (all off by default: the
 # standard set's behaviour) -- ways of planning tried out in the alternate set (engine/game_config.py's bot sets):
 PLANNER_OPTIONS = (
-    # an aircraft bought into a sea zone for Control Oceans or the SC pursuits comes with a place on a carrier
-    # there: a carrier is bought with it when there's no room, or the aircraft isn't bought at all
+    # Control Oceans' and the SC pursuits' sea purchases: an aircraft comes with a place on a carrier there -- a
+    # carrier is bought with it when there's no room; when the pair can't be bought, a Submarine or Cruiser instead
+    # (never a costlier aircraft). A carrier is never bought on its own.
     'carrier_for_sea_aircraft',
     # Control Oceans never buys Mechanized Infantry (Transports)
     'no_mech_inf_for_control_oceans',
