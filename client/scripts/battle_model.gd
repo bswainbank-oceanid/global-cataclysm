@@ -21,6 +21,10 @@ extends RefCounted
 ##
 ## Every pulse also leaves a plain-words account (prev_lines) and the model can say
 ## what the next press will do (next_action): the board's text box and button label.
+##
+## Whatever the Resolve, playback pauses at the end of the Air Superiority round (Entire Battle would otherwise
+## run straight on) and at the end of the battle's last round (round 3, or wherever it ended): that round's
+## losses and promotions show first, and the next press ("Finish") brings up the battle's result.
 
 enum Resolve { ENTIRE_BATTLE, ROUND, SIDE, UNIT_TYPE, UNIT }
 const RESOLVE_NAMES := ["Entire Battle", "Round", "Side", "Unit Type", "Unit"]
@@ -248,9 +252,11 @@ func press(resolve: Dictionary) -> void:
 			beat_pending = true
 		if side_index >= r["sides"].size():
 			_end_round()
+			# A pause at the end of the Air Superiority round and of the last round, whatever the Resolve: the
+			# round's results show; the next press goes on (after the last round: to the battle's result).
+			if int(r["round"]) == 0 or round_index + 1 >= rounds.size():
+				return
 		if mode != Resolve.ENTIRE_BATTLE:
-			if side_index >= r["sides"].size() and round_index + 1 >= rounds.size():
-				_finish()  # that was the battle's very last roll
 			return
 		# Entire Battle: keep going until the end.
 
@@ -532,6 +538,8 @@ func next_action(resolve: Dictionary) -> Dictionary:
 	else:
 		var ri := round_index + 1
 		if ri >= rounds.size():
+			if round_index >= 0:  # (the pause at the end of the last round)
+				return {"label": "Finish", "text": "Next: the battle's result."}
 			return {"label": "End Battle", "text": "Neither side has a legal target: the battle ends."}
 		r = rounds[ri]
 		if r["sides"].is_empty():

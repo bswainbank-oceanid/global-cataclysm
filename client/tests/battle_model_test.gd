@@ -49,10 +49,20 @@ func _initialize() -> void:
 	_check(m.finished and rolled == total_rolls, "Unit mode reveals all %d rolls (got %d)" % [total_rolls, rolled])
 	_check(beats >= m.rounds.size(), "Unit mode pauses at the start of the sides (%d pauses over %d rounds)" % [beats, m.rounds.size()])
 
-	# Entire Battle: one press to the end.
+	# Entire Battle: straight through the rounds, but with a pause at the end of the Air Superiority round
+	# (when there is one) and at the end of the last round -- whose press, "Finish", brings up the result.
 	m = _load(path)
-	m.press(_all(BattleModel.Resolve.ENTIRE_BATTLE))
-	_check(m.finished, "Entire Battle finishes in one press")
+	var has_air := int(m.rounds[0]["round"]) == 0
+	var entire := 0
+	while not m.finished and entire < 10:
+		var before_last: bool = m.next_action(_all(BattleModel.Resolve.ENTIRE_BATTLE))["label"] == "Finish"
+		m.press(_all(BattleModel.Resolve.ENTIRE_BATTLE))
+		entire += 1
+		if before_last:
+			_check(m.finished, "Finish brings up the battle's result")
+		elif not m.finished:
+			_check(str(m.prev_lines.back()).contains("ends."), "a pause shows the round that just ended: %s" % str(m.prev_lines))
+	_check(m.finished and entire == (3 if has_air else 2), "Entire Battle: %d presses (air superiority: %s)" % [entire, has_air])
 	for id in m.unit_order:
 		_check(m.units[id]["present"], "every unit is back at the end")
 		_check((m.units[id]["mark"] == BattleModel.Mark.DEAD) == m.eliminated.has(id), "X exactly on the eliminated units")
@@ -63,7 +73,7 @@ func _initialize() -> void:
 	while not m.finished and round_presses < 20:
 		m.press(_all(BattleModel.Resolve.ROUND))
 		round_presses += 1
-	_check(m.finished and round_presses <= m.rounds.size(), "Round mode: at most one press per round")
+	_check(m.finished and round_presses <= m.rounds.size() + 1, "Round mode: at most one press per round, then Finish")
 
 	# Side / Unit Type never cross a side boundary.
 	for mode in [BattleModel.Resolve.SIDE, BattleModel.Resolve.UNIT_TYPE]:
