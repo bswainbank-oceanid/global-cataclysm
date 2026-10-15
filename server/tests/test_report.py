@@ -42,6 +42,11 @@ class TestBuildGameReport(unittest.TestCase):
         self.assertEqual(by_fac['NAA']['strategic_centers'], 1)  # tile 1 -- tile 2 has none
         self.assertEqual(by_fac['UE']['strategic_centers'], 1)
 
+    def test_the_built_in_neutral_faction_is_left_off(self):
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'NEU': FactionMode.NEUTRAL})
+        self.assertIn('NEU', gs.factions)
+        self.assertEqual(sorted(r['faction'] for r in build_game_report(engine, TurnLog(), {})), ['NAA', 'UE'])
+
     def test_noncombatant_and_neutral_seats_have_no_victory_status(self):
         engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.NONCOMBATANT, 'AAC': FactionMode.NEUTRAL})
         rows = build_game_report(engine, TurnLog(), {})
