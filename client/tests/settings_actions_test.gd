@@ -131,6 +131,13 @@ func _initialize() -> void:
 		if c is Label:
 			cell_texts.append(str(c.text))
 	_check(cell_texts.has("3") and cell_texts.has("NAA"), "round eliminated and who eliminated them show up as cells: %s" % str(cell_texts))
+	# The alliance record: each faction it names shows as that faction's box, between the words.
+	var line: Control = report_panel._history_line("T7: left (UE, NAA)")
+	var bits := []
+	for c in line.get_children():
+		bits.append(("[%s]" % c.get_child(0).text) if c is PanelContainer else str(c.text))
+	_check(bits == ["T7: left (", "[UE]", ",", "[NAA]", ")"], "faction boxes in the alliance record: %s" % str(bits))
+	line.free()
 	store.toggle_game_over_report_minimized()
 	await process_frame
 	_check(store.game_over_report_minimized and report_panel.visible and not report_panel._panel.visible and report_panel._tab.visible,

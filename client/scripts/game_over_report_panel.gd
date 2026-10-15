@@ -117,7 +117,9 @@ func _rebuild(report: Array) -> void:
 func _add_row(row: Dictionary) -> void:
 	var code := str(row.get("faction", ""))
 	var col: Color = GameData.factions[code].color if GameData.factions.has(code) else HudStyle.TEXT
-	_cell(code, col)
+	var own := HBoxContainer.new()
+	own.add_child(_faction_box(code))
+	_grid.add_child(own)
 	_cell(_or_dash(row.get("victory_status")), col)
 	var reasons: Array = row.get("elimination_reason", []) if row.get("elimination_reason") != null else []
 	_cell(", ".join(reasons) if not reasons.is_empty() else "-", HudStyle.TEXT_DIM)
@@ -151,6 +153,54 @@ func _or_dash(v) -> String:
 ## "3.0" rather than "3" without this cast.
 func _int_or_dash(v) -> String:
 	return "-" if v == null else str(int(v))
+
+
+## One line of the alliance record ("T5: joined with UE", "T7: left (UE, NAA)", "T9: UE left"), each faction
+## named in it shown as its faction box, so who joined or left whom reads at a glance.
+func _history_line(line: String) -> Control:
+	var h := HFlowContainer.new()
+	h.add_theme_constant_override("h_separation", 4)
+	h.add_theme_constant_override("v_separation", 2)
+	var words := RegEx.create_from_string("\\b[A-Z]{2,4}\\b")
+	var at := 0
+	for m in words.search_all(line):
+		if not GameData.factions.has(m.get_string()):
+			continue
+		_text_bit(h, line.substr(at, m.get_start() - at))
+		h.add_child(_faction_box(m.get_string()))
+		at = m.get_end()
+	_text_bit(h, line.substr(at))
+	return h
+
+
+func _text_bit(into: Container, text: String) -> void:
+	text = text.strip_edges()
+	if text != "":
+		var l := HudStyle.label(text, 12, HudStyle.TEXT_DIM)
+		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		into.add_child(l)
+
+
+## A faction's box: its code, white on its own colour, its name as the tooltip.
+static func _faction_box(code: String) -> Control:
+	var box := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = GameData.factions[code].color if GameData.factions.has(code) else HudStyle.TEXT_DIM
+	sb.set_corner_radius_all(3)
+	sb.content_margin_left = 5
+	sb.content_margin_right = 5
+	sb.content_margin_top = 1
+	sb.content_margin_bottom = 1
+	box.add_theme_stylebox_override("panel", sb)
+	box.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	box.tooltip_text = str(GameData.factions[code].name) if GameData.factions.has(code) else code
+	box.mouse_filter = Control.MOUSE_FILTER_PASS
+	var l := HudStyle.label(code, 12, Color.WHITE)
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+	l.add_theme_constant_override("outline_size", 3)
+	box.add_child(l)
+	return box
 
 
 func _cell(text: String, colour: Color = HudStyle.TEXT) -> void:
