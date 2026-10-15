@@ -109,7 +109,7 @@ func _initialize() -> void:
 	stepper._on_message({"type": "game_over", "report": [{
 		"faction": "NAA", "seat_type": "HUMAN", "victory_status": "Armistice", "elimination_reason": null,
 		"strategic_centers": 3, "territory_mpc": 20, "units_produced": 5, "units_destroyed": 2,
-		"alliance_history": [], "bot_type": null, "bot_strategy": null, "alliance_strategy": null, "alliance_behavior": null,
+		"alliance_history": ["T4: joined with UE"], "bot_type": null, "bot_strategy": null, "alliance_strategy": null, "alliance_behavior": null,
 		"rounds_in_game": 6, "round_eliminated": null, "eliminated_by": null}, {
 		"faction": "UE", "seat_type": "BOT", "victory_status": "Forced to Surrender", "elimination_reason": ["Economic"],
 		"strategic_centers": 0, "territory_mpc": 0, "units_produced": 2, "units_destroyed": 1,
@@ -127,9 +127,15 @@ func _initialize() -> void:
 	_check(report_panel.visible and report_panel._panel.visible and not report_panel._tab.visible, "the table shows once there's a report")
 	_check(str(report_panel._title.text).contains("6 rounds"), "the title names how many rounds the game lasted: %s" % report_panel._title.text)
 	var cell_texts := []
-	for c in report_panel._grid.get_children():
-		if c is Label:
-			cell_texts.append(str(c.text))
+	var frames: Array = report_panel._grid.get_children().filter(func(r): return r is PanelContainer)
+	_check(frames.size() == 2, "one framed row per faction: %d" % frames.size())
+	for r in report_panel._grid.get_children():
+		for c in r.get_child(0).get_children():
+			if c is Label:
+				cell_texts.append(str(c.text))
+	var naa_cells: Array = frames[0].get_child(0).get_children()
+	_check(naa_cells[-1] is VBoxContainer and naa_cells[-1].get_child(0).get_child(1) is PanelContainer,
+		"the alliance history column shows its factions as boxes")
 	_check(cell_texts.has("3") and cell_texts.has("NAA"), "round eliminated and who eliminated them show up as cells: %s" % str(cell_texts))
 	# The alliance record: each faction it names shows as that faction's box, between the words.
 	var line: Control = report_panel._history_line("T7: left (UE, NAA)")

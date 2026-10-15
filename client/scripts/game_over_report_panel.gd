@@ -16,7 +16,8 @@ const COLUMNS := [
 ]
 
 var _panel: PanelContainer
-var _grid: GridContainer
+var _grid: VBoxContainer  # the header, then one framed row per faction
+var _row: HBoxContainer  # the row being filled (_add_row)
 var _tab: Button  # the minimized state's reopen affordance
 var _title: Label
 
@@ -59,10 +60,8 @@ func _ready() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	v.add_child(scroll)
-	_grid = GridContainer.new()
-	_grid.columns = COLUMNS.size()
-	_grid.add_theme_constant_override("h_separation", 10)
-	_grid.add_theme_constant_override("v_separation", 4)
+	_grid = VBoxContainer.new()
+	_grid.add_theme_constant_override("separation", 4)
 	scroll.add_child(_grid)
 
 	_tab = Button.new()
@@ -104,22 +103,62 @@ func _rebuild(report: Array) -> void:
 	for c in _grid.get_children():
 		_grid.remove_child(c)
 		c.queue_free()
-	var columns := _columns()
-	_grid.columns = columns.size()
-	for col in columns:
-		var h := HudStyle.label(str(col[0]), 12, HudStyle.GOLD)
-		h.custom_minimum_size = Vector2(float(col[1]), 0)
-		_grid.add_child(h)
+	# The header lines up with the rows' cells: the same inset as a row's frame.
+	var head := MarginContainer.new()
+	for side in ["left", "right"]:
+		head.add_theme_constant_override("margin_" + side, ROW_INSET)
+	_row = _row_hbox()
+	head.add_child(_row)
+	_grid.add_child(head)
+	for col in _columns():
+		_row.add_child(HudStyle.label(str(col[0]), 12, HudStyle.GOLD))
+	_fit_columns()
 	for row in report:
 		_add_row(row)
+
+
+const ROW_INSET := 8  # a row frame's border plus its padding, each side
+
+
+static func _row_hbox() -> HBoxContainer:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	return h
+
+
+## Gives the row's cells their columns' widths, so every row's columns line up.
+func _fit_columns() -> void:
+	var columns := _columns()
+	var cells := _row.get_children()
+	for i in mini(cells.size(), columns.size()):
+		var c: Control = cells[i]
+		c.custom_minimum_size.x = float(columns[i][1])
+		c.size_flags_horizontal = Control.SIZE_FILL
+		if c is Label:
+			c.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 
 func _add_row(row: Dictionary) -> void:
 	var code := str(row.get("faction", ""))
 	var col: Color = GameData.factions[code].color if GameData.factions.has(code) else HudStyle.TEXT
+	# Each faction's entries framed together, in its colour.
+	var frame := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(col, 0.06)
+	sb.border_color = Color(col, 0.85)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(4)
+	sb.content_margin_left = ROW_INSET - 2
+	sb.content_margin_right = ROW_INSET - 2
+	sb.content_margin_top = 4
+	sb.content_margin_bottom = 4
+	frame.add_theme_stylebox_override("panel", sb)
+	_grid.add_child(frame)
+	_row = _row_hbox()
+	frame.add_child(_row)
 	var own := HBoxContainer.new()
 	own.add_child(_faction_box(code))
-	_grid.add_child(own)
+	_row.add_child(own)
 	_cell(_or_dash(row.get("victory_status")), col)
 	var reasons: Array = row.get("elimination_reason", []) if row.get("elimination_reason") != null else []
 	_cell(", ".join(reasons) if not reasons.is_empty() else "-", HudStyle.TEXT_DIM)
@@ -136,7 +175,15 @@ func _add_row(row: Dictionary) -> void:
 	_cell(_or_dash(row.get("alliance_strategy")))
 	_cell(_or_dash(row.get("alliance_behavior")))
 	var hist: Array = row.get("alliance_history", [])
-	_cell("\n".join(hist) if not hist.is_empty() else "-", HudStyle.TEXT_DIM)
+	if hist.is_empty():
+		_cell("-", HudStyle.TEXT_DIM)
+	else:
+		var lines := VBoxContainer.new()
+		lines.add_theme_constant_override("separation", 3)
+		for line in hist:
+			lines.add_child(_history_line(str(line)))
+		_row.add_child(lines)
+	_fit_columns()
 
 
 ## The report's columns: Bot type only for admins (Account.sees_bot_details).
@@ -206,4 +253,4 @@ static func _faction_box(code: String) -> Control:
 func _cell(text: String, colour: Color = HudStyle.TEXT) -> void:
 	var l := HudStyle.label(text, 12, colour)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_grid.add_child(l)
+	_row.add_child(l)
