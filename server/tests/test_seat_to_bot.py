@@ -62,7 +62,13 @@ class TestHandingOver(SeatTest):
         record = games.get(self.store, gid)
         seat2 = next(s for s in record['seats'] if s['seat'] == 2)
         self.assertEqual((seat2['mode'], seat2['user_id'], seat2['handed_over']['user_id']), ('BOT', None, self.bob))
-        self.assertEqual(self.only('bob', {'type': 'enter_game', 'game_id': gid})['message'], 'you are not playing in that game')
+        # Still his to watch, to see how it ends: in his My Games, and he may come back in -- with no faction of his own.
+        [mine] = [m for keys, m in self.send('bob', {'type': 'my_games'})]
+        self.assertIn(gid, [g['id'] for g in mine['games']])
+        entered = next(m for _, m in self.send('bob', {'type': 'enter_game', 'game_id': gid}) if m['type'] == 'entered_game')
+        self.assertEqual(entered['my_factions'], [])
+        self.assertEqual(self.only('bob', {'type': 'hand_over', 'faction': bob_f})['problems'], [f'you are not playing {bob_f}'])
+        self.send('bob', {'type': 'leave_game'})
         self.run_game(gid)  # the bot plays bob's turns now: the game only ever waits for ann
         self.assertEqual(self.session(gid).waiting_for(), [self.faction(gid, self.ann)])
 

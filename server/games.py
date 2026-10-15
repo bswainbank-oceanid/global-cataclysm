@@ -194,11 +194,17 @@ def open_games(store):
 
 
 def my_games(store, user_id, statuses=(LIVE,)):
-    """The games `user_id` hosts or holds a seat in, with one of `statuses` (default: My Live Games),
-    newest first, each as summary(store, game, user_id)."""
+    """The games `user_id` hosts, holds a seat in, or held one in until handing it to a bot (to watch how it
+    ends), with one of `statuses` (default: My Live Games), newest first, each as summary(store, game, user_id)."""
     games = store.fetch_all('games', order='rowid DESC', status=list(statuses))
-    return [summary(store, g, user_id) for g in games
-            if g['host_id'] == user_id or any(s['user_id'] == user_id for s in g['seats'])]
+    return [summary(store, g, user_id) for g in games if takes_part(g, user_id)]
+
+
+def takes_part(game, user_id):
+    """`user_id` hosts the game, holds a seat in it, or held one until it went to a bot (seat_to_bot): they may
+    watch it -- to its end, even after it's over."""
+    return game['host_id'] == user_id or any(
+        s['user_id'] == user_id or (s.get('handed_over') or {}).get('user_id') == user_id for s in game['seats'])
 
 
 def live_game_ids(store):

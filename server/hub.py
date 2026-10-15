@@ -755,7 +755,8 @@ class Hub:
             raise StoreError([m['message'] for m in out if m.get('type') == 'error'])
         record = games.seat_to_bot(self.store, game_id, faction, reason)
         deliveries = self._route(game_id, None, out)
-        if loser is not None and not self._takes_part(loser, record):
+        if loser is not None and not any(s['user_id'] == loser for s in record['seats']) and record['host_id'] != loser:
+            # (out of the game now -- though it stays in their Resume list, to watch how it ends)
             for c in self.connections.values():
                 if c.game_id == game_id and c.user and c.user['id'] == loser:
                     c.game_id = None
@@ -827,7 +828,7 @@ class Hub:
 
     @staticmethod
     def _takes_part(user_id, game):
-        return game['host_id'] == user_id or any(s['user_id'] == user_id for s in game['seats'])
+        return games.takes_part(game, user_id)  # (a player whose seat went to a bot too: to watch it end)
 
     @staticmethod
     def _factions_of(game, user_id):
