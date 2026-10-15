@@ -111,16 +111,23 @@ func _apply_feed(msg: Dictionary) -> void:
 		_refresh()
 		return
 	_queue_reset()
-	_feed_epoch = str(msg.get("epoch", ""))
-	_feed_seq = int(msg.get("seq", 0))
+	# "resume": the server picked up where this player left off (server/hub.py _resume_from_log) -- the state and
+	# step as they stood then, and everything since to play back (the game's end too, if it's over).
+	var resume = msg.get("resume")
+	var resuming: bool = resume is Dictionary and missed is Array
+	_feed_epoch = str(resume["epoch"]) if resuming else str(msg.get("epoch", ""))
+	_feed_seq = int(resume["seq"]) if resuming else int(msg.get("seq", 0))
 	_inbox = []
 	_on_message({"type": "state", "game_state": msg["state"]["game_state"], "scenario": msg["state"].get("scenario", {})})
 	if msg.get("queue") != null:
 		_on_message(msg["queue"])
 	GameStore.set_waiting_for(msg.get("waiting_for", []))
 	_apply_feed_armistice(msg)
-	if msg.get("game_over") != null:
+	if msg.get("game_over") != null and not resuming:
 		_on_message({"type": "game_over", "report": msg["game_over"]})
+	if resuming:
+		for m in missed:
+			_on_raw(m)
 	_refresh()
 
 

@@ -23,7 +23,7 @@ from pathlib import Path
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / 'server_data' / 'global_cataclysm.sqlite3'
 
 # Bump when the tables change, with an upgrade step in Store._upgrade.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Server-assigned ids: a prefix per kind of record, then a running number.
 ID_PREFIXES = {'user': 'U_', 'scenario': 'S_', 'game': 'G_'}
@@ -85,6 +85,20 @@ CREATE TABLE user_preferences (
     user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     doc     TEXT NOT NULL
 );
+CREATE TABLE game_feed (
+    game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    epoch   TEXT NOT NULL,
+    seq     INTEGER NOT NULL,
+    kind    TEXT NOT NULL,
+    doc     TEXT NOT NULL
+);
+CREATE INDEX game_feed_by_game ON game_feed(game_id, epoch, seq);
+CREATE TABLE game_viewers (
+    game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    doc     TEXT NOT NULL,
+    PRIMARY KEY (game_id, user_id)
+);
 CREATE TABLE counters (
     kind TEXT PRIMARY KEY,
     last INTEGER NOT NULL
@@ -99,6 +113,12 @@ UPGRADES = [
     # each player's own Settings, kept with the account (server/accounts.py preferences)
     (4, ['CREATE TABLE user_preferences (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, '
          'doc TEXT NOT NULL)']),
+    # each game's playback kept for good, and how far each player has watched it (server/feed_log.py)
+    (5, ['CREATE TABLE game_feed (game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE, epoch TEXT NOT NULL, '
+         'seq INTEGER NOT NULL, kind TEXT NOT NULL, doc TEXT NOT NULL)',
+         'CREATE INDEX game_feed_by_game ON game_feed(game_id, epoch, seq)',
+         'CREATE TABLE game_viewers (game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE, user_id TEXT NOT NULL '
+         'REFERENCES users(id) ON DELETE CASCADE, doc TEXT NOT NULL, PRIMARY KEY (game_id, user_id))']),
 ]
 
 # A unique column that is already taken, as the player should read it.
@@ -231,6 +251,17 @@ class Store:
         if limit is not None:
             sql += f' LIMIT {int(limit)}'
         return [json.loads(r['doc']) for r in self._db.execute(sql, args)]
+
+    def query(self, sql, args=()):
+        """A read of the store's own, for a table kept in order rather than looked up by key (server/feed_log.py's
+        playback): its rows as {column: value}, a 'doc' column parsed."""
+        out = []
+        for r in self._db.execute(sql, list(args)):
+            row = dict(r)
+            if 'doc' in row:
+                row['doc'] = json.loads(row['doc'])
+            out.append(row)
+        return out
 
     def delete(self, table, **key):
         """Removes the records matching `key`; returns how many there were."""

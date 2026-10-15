@@ -119,6 +119,10 @@ func _row(g: Dictionary) -> Control:
 	if str(g.get("status", "")) == "forming":
 		status.add_child(_text("Forming", 15, GCTheme.CREAM, true))
 		status.add_child(_text("%d open seat(s)" % int(g.get("open_seats", 0)), 12, GCTheme.CREAM_DIM))
+	elif str(g.get("status", "")) == "finished":
+		# (it ended while this player was away: it stays here until they've watched it to the end)
+		status.add_child(_text("Game over", 15, GCTheme.CREAM, true))
+		status.add_child(_text("Watch the end", 12, GCTheme.RED_LIGHT))
 	else:
 		var round_text := "Round %d" % int(progress.get("round", 1)) if progress is Dictionary else "Starting"
 		status.add_child(_text(round_text, 15, GCTheme.CREAM, true))

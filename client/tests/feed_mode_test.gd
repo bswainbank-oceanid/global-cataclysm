@@ -152,6 +152,31 @@ func _initialize() -> void:
 	_check(stepper._queued_phase == "COMBAT_RESOLUTION", "...and plays on from there (%s)" % stepper._queued_phase)
 	_check(not stepper.resume_left_game("G_000001"), "only once")
 
+	# A fresh client entering where the server last saw this player watch (a "resume" reply -- even a game that
+	# has ended since): the state and step as they stood then, and what followed played back from there.
+	stepper.feed_mode = false
+	stepper.reset()
+	store.set_multi_game({}, [])
+	stepper.feed_mode = true
+	stepper.reset()
+	store.set_multi_game({"id": "G_000001"}, ["AAC"])
+	var later_run := []
+	for m in steps:
+		var c: Dictionary = m.duplicate(true)
+		c["epoch"] = "an older run"
+		later_run.append(c)
+	var resumed: Dictionary = data["feed"].duplicate(true)
+	resumed["epoch"] = "this run"
+	resumed["seq"] = 7
+	resumed["messages"] = later_run
+	resumed["resume"] = {"epoch": "an older run", "seq": int(later_run[0]["seq"]) - 1}
+	resumed["game_over"] = null
+	stepper._on_raw(resumed)
+	_check(stepper._queued_phase == "START_OF_TURN" and stepper._inbox.size() == later_run.size(),
+		"resumed: the step as it stood, everything since waiting to be played (%s, %d)" % [stepper._queued_phase, stepper._inbox.size()])
+	stepper._do_advance()
+	_check(stepper._queued_phase == "PURCHASE", "and it plays on from there (%s)" % stepper._queued_phase)
+
 	# Leaving the game: back to the one-game behaviour.
 	stepper.feed_mode = false
 	stepper.reset()

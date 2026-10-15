@@ -46,6 +46,8 @@ class TestCreating(unittest.TestCase):
     def test_a_database_from_an_older_server_gains_the_new_tables(self):
         store = Store(self.path)
         store._db.execute('DROP TABLE user_preferences')
+        store._db.execute('DROP TABLE game_feed')
+        store._db.execute('DROP TABLE game_viewers')
         store._db.execute('PRAGMA user_version = 3')
         store.close()
         store = Store(self.path)

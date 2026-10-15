@@ -110,7 +110,7 @@ import random
 
 from engine.repository import default_repository
 
-from . import accounts, admin, chat, games, news, persist, scenarios, setups
+from . import accounts, admin, chat, feed_log, games, news, persist, scenarios, setups
 from .limits import Limits
 from .shared_setups import SharedSetups
 from .build import build_info
@@ -323,8 +323,10 @@ class Hub:
             return self._error(conn, f'there is no game {game_id!r}')
         if not self._takes_part(conn.user['id'], game):
             return self._error(conn, 'you are not playing in that game')
-        if game['status'] != games.LIVE:
+        if game['status'] not in (games.LIVE, games.FINISHED):
             return self._error(conn, f"that game is {game['status']}")
+        if game['status'] == games.FINISHED and game_id not in self.sessions:
+            self._load(game_id)  # (a finished game, to watch to its end: from its last save)
         if game_id not in self.sessions:
             problem = self.load_problems.get(game_id, 'it is not running')
             return self._error(conn, f"that game can't be played right now: {problem}")
@@ -338,13 +340,35 @@ class Hub:
                    'my_factions': sorted(self._factions_of(game, conn.user['id'])),
                    'turn_hours': int(game['settings'].get('turn_hours', 0) or 0)}
         feed = self.sessions[game_id].handle_message({'type': 'follow', 'since': since, 'epoch': epoch})
+        self._resume_from_log(game_id, conn.user['id'], feed, since, epoch)
         return [([conn.key], entered)] + self._route(game_id, conn, feed)
+
+    def _resume_from_log(self, game_id, user_id, feed, since, epoch):
+        """A player entering a game picks up its playback where they left off, from the kept playback
+        (server/feed_log.py) when the session's own recent feed can't say: they ask from a point the server has
+        since restarted past, or their client doesn't know (a fresh start: where the server last saw them
+        watch). The feed then carries what was missed, and the state and step as they stood at that point
+        ("resume"); the game's end, if it's over, comes at the end of that playback."""
+        reply = feed[0] if feed else None
+        if reply is None or reply.get('type') != 'feed' or reply.get('messages') is not None:
+            return
+        if since is None:
+            mine = feed_log.watched(self.store, game_id, user_id)
+            if mine is None or mine.get('done'):
+                return
+            since, epoch = mine['seq'], mine['epoch']
+        got = feed_log.since(self.store, game_id, epoch, since)
+        if got is None or not got['messages'] or got['state'] is None:
+            return
+        reply.update(messages=got['messages'], resume={'epoch': str(epoch), 'seq': int(since)},
+                     state=got['state'], queue=got['queue'], game_over=None)
 
     def _game_message(self, conn, msg):
         game_id = conn.game_id
         game = games.get(self.store, game_id)
         session = self.sessions.get(game_id)
-        if game is None or session is None or game['status'] != games.LIVE:
+        finished = game is not None and game['status'] == games.FINISHED and msg.get('type') in ('follow', 'watch', 'played')
+        if game is None or session is None or (game['status'] != games.LIVE and not finished):
             conn.game_id = None
             return self._error(conn, 'that game is no longer running')
         if msg.get('type') in INTERNAL:
@@ -357,6 +381,11 @@ class Hub:
             return self._error(conn, 'say which of your factions this is for')
         if msg.get('type') == 'propose_armistice' and faction is None and game['host_id'] != conn.user['id']:
             return self._error(conn, 'only the host can propose an armistice without a faction')
+        if msg.get('type') == 'played' and isinstance(msg.get('seq'), int) and msg.get('epoch') is not None:
+            # how far this player has watched (they resume from there; a finished game leaves their Resume
+            # list once they've seen its end)
+            feed_log.note_played(self.store, game_id, conn.user['id'], str(msg['epoch']), msg['seq'],
+                                 game_over=session.engine.game_state.game_over)
         out = session.handle_message(msg)
         if msg.get('type') not in ('follow', 'watch', 'played'):
             self._save(game_id)
@@ -425,10 +454,17 @@ class Hub:
         raise StoreError('a game needs the scenario it starts from (fixed, new, shared or own)')
 
     def _my_games(self, conn, msg):
-        mine = games.my_games(self.store, conn.user['id'], (games.LIVE, games.FORMING))
+        uid = conn.user['id']
+        mine = [g for g in games.my_games(self.store, uid, (games.LIVE, games.FORMING, games.FINISHED))
+                if g['status'] != games.FINISHED or self._to_watch(g['id'], uid)]
         for g in mine:
-            g['loadable'] = g['status'] != games.LIVE or g['id'] in self.sessions
+            g['loadable'] = g['status'] == games.FORMING or g['id'] in self.sessions or g['status'] == games.FINISHED
         return [([conn.key], {'type': 'my_games', 'games': mine})]
+
+    def _to_watch(self, game_id, user_id):
+        """A finished game this player hasn't watched to its end: it stays in their Resume list (only one with
+        its playback kept: finished since that began)."""
+        return feed_log.last_result(self.store, game_id) is not None and not feed_log.seen_the_end(self.store, game_id, user_id)
 
     def _browse(self, conn, msg):
         conn.browsing, conn.lobby_id = True, None
@@ -770,6 +806,9 @@ class Hub:
 
     def _route(self, game_id, sender, messages):
         """(connections, message) pairs for a game's outgoing messages."""
+        for m in messages:
+            if 'seq' in m and 'epoch' in m and not m.get('to_sender') and not m.get('to'):
+                feed_log.append(self.store, game_id, m)  # (the game's playback, kept for good)
         in_game = [c for c in self.connections.values() if c.game_id == game_id]
         record = games.get(self.store, game_id)
         users = self._users_by_faction(record) if record else {}

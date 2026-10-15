@@ -435,8 +435,9 @@ func _setup_launch_screen() -> void:
 		_my_games.close()
 		_menu.open())
 	_my_games.game_picked.connect(func(g: Dictionary):
-		if str(g.get("status", "")) == "live":
-			# (back in a game left for the main menu: what was missed meanwhile, to play on from there)
+		if str(g.get("status", "")) in ["live", "finished"]:
+			# (back in a game left for the main menu -- or one that ended meanwhile, to watch to its end: what
+			# was missed, to play on from there)
 			var enter := {"type": "enter_game", "game_id": g["id"]}
 			enter.merge(Stepper.resume_point(str(g["id"])))
 			Net.send_msg(enter)
