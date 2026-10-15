@@ -2,7 +2,7 @@
  "module_type": "PrimaryObjectiveOrder",
  "id": "GC72_PrimaryOrder",
  "name": "Strategy bot planning order",
- "_history": "2026-10-14: the improvements tried and measured in the alternate set (GC72_PrimaryOrder_Alt, tools/setup_eval.py) became the standard -- a second Fill defensive gaps among the final steps, just before Pursue leftovers (a territory an earlier objective emptied is garrisoned again, with first call on the money left), and planner_options (engine/bots/strategy_settings.py PLANNER_OPTIONS): aircraft bought into sea zones come with a carrier place (a carrier only with them; a Submarine or Cruiser when the pair can't be bought), Control Oceans buys no Mechanized Infantry, an SC pursuit across the sea buys Mechanized Infantry first with a warship escort, no objective takes the last unit out of a threatened territory unless something replaces it, a land territory's hold chance is judged by one real 3-round battle, and Expand territory weighs only targets its free land units can reach -- nearest, then weakest, first.",
+ "_history": "2026-10-14: the improvements tried and measured in the alternate set (GC72_PrimaryOrder_Alt, tools/setup_eval.py) became the standard -- a second Fill defensive gaps among the final steps, just before Pursue leftovers (a territory an earlier objective emptied is garrisoned again, with first call on the money left), and planner_options (engine/bots/strategy_settings.py PLANNER_OPTIONS): aircraft bought into sea zones come with a carrier place (a carrier only with them; a Submarine or Cruiser when the pair can't be bought), Control Oceans buys no Mechanized Infantry, an SC pursuit across the sea buys Mechanized Infantry first with a warship escort, no objective takes the last unit out of a threatened territory unless something replaces it, a land territory's hold chance is judged by one real 3-round battle, and Expand territory weighs only targets its free land units can reach -- nearest, then weakest, first. 2026-10-15: budget_scale 10 -- ten times the planning effort per pass (simulated battles, and the clock limit); measured in the alternate set first, it won 85 of 100 two-bot games and led 73% of six-bot free-for-alls, for about 11% more time per turn.",
  "_note": "The planner works through `steps` in order, each after taking `budget_share` of its planning budget; treasonous_capture only runs when the bot means to betray its alliance this turn. The secondary objectives come next (each taking secondary_budget_share, in an order drawn by the strategy weights), then `final`.",
  "objectives_id": "GC72_Objectives",
  "steps": [
@@ -15,6 +15,7 @@
   {"objective_id": "treasonous_capture", "budget_share": 0.1, "when": "treasonous"}
  ],
  "secondary_budget_share": 0.12,
+ "budget_scale": 10,
  "planner_options": {
   "carrier_for_sea_aircraft": true,
   "no_mech_inf_for_control_oceans": true,
