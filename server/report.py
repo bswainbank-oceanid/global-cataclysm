@@ -8,7 +8,7 @@ each attach its result to every 'game_over' message they send (see their own _ga
 """
 from engine.bots.strategy_bot import StrategyBot
 from engine.economy import compute_income
-from engine.state import FactionMode
+from engine.state import FactionMode, Phase
 
 # Victory status, best (lowest rank) first; a row with no status (Neutral/Noncombatant seats) sorts last.
 _STATUS_RANK = {'Winner': 0, 'Armistice': 1, 'Forced to Surrender': 2, 'Surrendered': 3}
@@ -83,19 +83,36 @@ def _victory_status(code, gs, active_at_end, armistice_participants, elim_event)
 
 def _alliance_history(code, turn_log):
     """This faction's alliance timeline, one short line per change, in turn order -- 'Alliance history'
-    in the report. Reads the whole game's turn_log (kept in full for exactly this)."""
+    in the report -- each told by its round ('R3: ...'), the round the latest start_of_turn event names.
+    Reads the whole game's turn_log (kept in full for exactly this)."""
     lines = []
+    rnd = 1
     for e in turn_log.events:
         kind = e['kind']
+        if kind == 'start_of_turn':
+            rnd = e.get('round', rnd)
         if kind == 'alliance_joined' and code in (e['faction'], e['target']):
             other = e['target'] if e['faction'] == code else e['faction']
-            lines.append(f"T{e['turn']}: joined with {other}")
+            lines.append(f"R{rnd}: joined with {other}")
         elif kind == 'alliance_withdrawal' and e['faction'] == code:
             others = [m for m in e['former_members'] if m != code]
-            lines.append(f"T{e['turn']}: left" + (f" ({', '.join(others)})" if others else ''))
+            lines.append(f"R{rnd}: left" + (f" ({', '.join(others)})" if others else ''))
         elif kind == 'alliance_withdrawal' and e['faction'] != code and code in e['former_members']:
-            lines.append(f"T{e['turn']}: {e['faction']} left")
+            lines.append(f"R{rnd}: {e['faction']} left")
     return lines
+
+
+def _rounds_played(gs, armistice):
+    """How many rounds the game lasted: GameState.round_number, less the round just begun if the game ended
+    before anyone played into it -- an automatic armistice (proposed as the next round begins: its
+    automatic_after is the rounds played), or any ending while the round's first faction is still at the
+    top of its turn. Ended at the start of round 11 -> 10 rounds."""
+    if armistice is not None and armistice.get('automatic_after') is not None:
+        return armistice['automatic_after']
+    active = gs.active_factions()
+    if gs.round_number > 1 and active and gs.active_faction == active[0] and gs.phase == Phase.PURCHASE:
+        return gs.round_number - 1
+    return gs.round_number
 
 
 def _bot_info(bot):
@@ -137,6 +154,7 @@ def build_game_report(engine, turn_log, bots):
 
     # The built-in Neutral faction (NEU: the neutral nations' territory) is never a player: it isn't reported.
     neutral = engine.data.neutral_faction()['id'] if hasattr(engine.data, 'neutral_faction') else 'NEU'
+    rounds_in_game = _rounds_played(gs, armistice)
     rows = []
     for code, fstate in gs.factions.items():
         if code == neutral:
@@ -159,7 +177,7 @@ def build_game_report(engine, turn_log, bots):
             'bot_strategy': bot_strategy,
             'alliance_strategy': fstate.alliance_strategy,
             'alliance_behavior': fstate.alliance_behavior,
-            'rounds_in_game': gs.round_number,
+            'rounds_in_game': rounds_in_game,
             'round_eliminated': _round_eliminated(elim_event),
             'eliminated_by': _eliminated_by(elim_event),
         })

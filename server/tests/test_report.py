@@ -6,7 +6,7 @@ import unittest
 from engine.bots.random_bot import RandomBot
 from engine.bots.strategy_bot import StrategyBot
 from engine.engine import GameEngine
-from engine.state import FactionMode
+from engine.state import FactionMode, Phase
 from engine.stats import GameStats
 from engine.tests.test_engine import FakeData, make_state, make_unit
 from engine.turn_log import TurnLog
@@ -151,18 +151,20 @@ class TestBuildGameReport(unittest.TestCase):
         rows = build_game_report(engine, TurnLog(), {})
         self.assertTrue(all(r['units_produced'] == 0 and r['units_destroyed'] == 0 for r in rows))
 
-    def test_alliance_history_is_told_in_turn_order(self):
+    def test_alliance_history_is_told_in_turn_order_by_round(self):
         engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT})
         log = TurnLog()
-        log.record_alliance_joined(2, 'NAA', 'UE', 'ALLIANCE_1', new_alliance=True)
+        log.record_alliance_joined(2, 'NAA', 'UE', 'ALLIANCE_1', new_alliance=True)  # (before any start_of_turn: round 1)
+        log.record_start_of_turn('GPC', 2, 4, 3)
         log.record_alliance_joined(4, 'GPC', 'NAA', 'ALLIANCE_1', new_alliance=False)
+        log.record_start_of_turn('NAA', 3, 9, 3)
         log.record_alliance_withdrawal(9, 'NAA', 'ALLIANCE_1', ['NAA', 'UE', 'GPC'])
         rows = build_game_report(engine, log, {})
         by_fac = {r['faction']: r for r in rows}
         self.assertEqual(by_fac['NAA']['alliance_history'],
-                         ['T2: joined with UE', 'T4: joined with GPC', 'T9: left (GPC, UE)'])
-        self.assertEqual(by_fac['UE']['alliance_history'], ['T2: joined with NAA', 'T9: NAA left'])
-        self.assertEqual(by_fac['GPC']['alliance_history'], ['T4: joined with NAA', 'T9: NAA left'])
+                         ['R1: joined with UE', 'R2: joined with GPC', 'R3: left (GPC, UE)'])
+        self.assertEqual(by_fac['UE']['alliance_history'], ['R1: joined with NAA', 'R3: NAA left'])
+        self.assertEqual(by_fac['GPC']['alliance_history'], ['R2: joined with NAA', 'R3: NAA left'])
 
     def test_bot_type_and_strategy_come_from_the_actual_bot_instances(self):
         engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT})
@@ -192,8 +194,21 @@ class TestBuildGameReport(unittest.TestCase):
     def test_rounds_in_game_is_the_games_current_round_number_on_every_row(self):
         engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.NONCOMBATANT})
         gs.round_number = 4
+        gs.active_faction = gs.active_factions()[1]  # (round 4 under way)
         rows = build_game_report(engine, TurnLog(), {})
         self.assertTrue(all(r['rounds_in_game'] == 4 for r in rows))  # same value on every row, Noncombatant included
+
+    def test_a_game_ended_as_a_round_begins_counts_the_rounds_played(self):
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT})
+        gs.round_number = 11
+        gs.active_faction = gs.active_factions()[0]
+        gs.phase = Phase.PURCHASE
+        self.assertEqual(build_game_report(engine, TurnLog(), {})[0]['rounds_in_game'], 10)
+        gs.phase = Phase.COMBAT_MOVE  # (the round's first turn under way: it counts)
+        self.assertEqual(build_game_report(engine, TurnLog(), {})[0]['rounds_in_game'], 11)
+        log = TurnLog()
+        log.record_armistice(40, None, ['NAA', 'UE'], automatic_after=10)
+        self.assertEqual(build_game_report(engine, log, {})[0]['rounds_in_game'], 10)
 
     def test_round_eliminated_comes_from_the_round_number_recorded_at_elimination(self):
         engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT})

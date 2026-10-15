@@ -109,7 +109,7 @@ func _initialize() -> void:
 	stepper._on_message({"type": "game_over", "report": [{
 		"faction": "NAA", "seat_type": "HUMAN", "victory_status": "Armistice", "elimination_reason": null,
 		"strategic_centers": 3, "territory_mpc": 20, "units_produced": 5, "units_destroyed": 2,
-		"alliance_history": ["T4: joined with UE"], "bot_type": null, "bot_strategy": null, "alliance_strategy": null, "alliance_behavior": null,
+		"alliance_history": ["R4: joined with UE"], "bot_type": null, "bot_strategy": null, "alliance_strategy": null, "alliance_behavior": null,
 		"rounds_in_game": 6, "round_eliminated": null, "eliminated_by": null}, {
 		"faction": "UE", "seat_type": "BOT", "victory_status": "Forced to Surrender", "elimination_reason": ["Economic"],
 		"strategic_centers": 0, "territory_mpc": 0, "units_produced": 2, "units_destroyed": 1,
@@ -138,11 +138,11 @@ func _initialize() -> void:
 		"the alliance history column shows its factions as boxes")
 	_check(cell_texts.has("3") and cell_texts.has("NAA"), "round eliminated and who eliminated them show up as cells: %s" % str(cell_texts))
 	# The alliance record: each faction it names shows as that faction's box, between the words.
-	var line: Control = report_panel._history_line("T7: left (UE, NAA)")
+	var line: Control = report_panel._history_line("R7: left (UE, NAA)")
 	var bits := []
 	for c in line.get_children():
 		bits.append(("[%s]" % c.get_child(0).text) if c is PanelContainer else str(c.text))
-	_check(bits == ["T7: left (", "[UE]", ",", "[NAA]", ")"], "faction boxes in the alliance record: %s" % str(bits))
+	_check(bits == ["R7: left (", "[UE]", ",", "[NAA]", ")"], "faction boxes in the alliance record: %s" % str(bits))
 	line.free()
 	store.toggle_game_over_report_minimized()
 	await process_frame
