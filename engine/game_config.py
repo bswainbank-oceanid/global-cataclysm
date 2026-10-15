@@ -240,6 +240,7 @@ class GameConfig:
             out['secondary_budget_share'] = order['secondary_budget_share']
             out['final_order'] = order['final']
             out['planner_options'] = dict(order.get('planner_options') or {})  # (strategy_settings.PLANNER_OPTIONS)
+            out['budget_scale'] = float(order.get('budget_scale', 1))  # (strategy_settings: the planning effort's scale)
             out['objectives'] = self.bot_module('objectives', bot_set)['objectives']
             out['neutral_unit_weights'] = {w['unit_type_id']: w['weight'] for w in weights.get('neutral_unit_weights', [])}
             return out

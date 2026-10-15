@@ -16,12 +16,20 @@ def mixed(seed=31):
 
 
 class TestBotSets(unittest.TestCase):
-    def test_the_alternate_set_is_a_separate_copy_of_the_standard_one(self):
+    def test_a_bot_plans_with_its_sets_effort(self):
+        session, _ = build_session(mixed(35))
+        efforts = {b.bot_set: b._effort() for b in session.bots.values()}
+        base = efforts['standard']
+        self.assertEqual(efforts['alternate'], {'budget': base['budget'] * 10, 'hard_seconds': base['hard_seconds'] * 10})
+
+    def test_the_alternate_set_is_a_separate_copy_of_the_standard_one_with_its_changes(self):
         standard, alternate = load_settings(None, 'standard'), load_settings(None, 'alternate')
         self.assertIsNot(standard, alternate)
         for field in ('thresholds', 'strategy_weights', 'unit_weights', 'distance_costs', 'primary_order', 'final_order',
                       'secondary', 'styles', 'secondary_budget_share', 'options'):
             self.assertEqual(getattr(standard, field), getattr(alternate, field), field)
+        # Its change so far: ten times the planning effort.
+        self.assertEqual((standard.budget_scale, alternate.budget_scale), (1.0, 10.0))
 
     def test_both_sets_fill_gaps_again_before_pursuing_leftovers(self):
         from engine.bots.planner import Planner

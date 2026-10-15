@@ -49,6 +49,9 @@ class StrategySettings:
         self.final_order = raw.get('final_order', [])
         self.objective_names = {o['id']: o['name'] for o in raw.get('objectives', [])}
         self.options = dict(raw.get('planner_options') or {})  # PLANNER_OPTIONS turned on: {name: true}
+        # How much harder this set's bots think than the game's own setting: their planning budget (simulated
+        # battles per pass) and its clock limit, times this (the module's "budget_scale"; 1: as set).
+        self.budget_scale = float(raw.get('budget_scale', 1) or 1)
 
     def option(self, name):
         """Whether planner option `name` (PLANNER_OPTIONS) is on in this set."""

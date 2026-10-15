@@ -32,6 +32,12 @@ class StrategyBot(RandomBot):
         self._plan_turn = None
         self.last_plan = None  # the latest Plan, for inspection and the arena's reports
 
+    def _effort(self):
+        """The planning effort for a pass: the bot's budget and the clock limit, each times its set's budget_scale
+        (applied here, not to self.budget, which a saved game keeps as set)."""
+        scale = self.settings.budget_scale
+        return {'budget': int(self.budget * scale), 'hard_seconds': 20.0 * scale}
+
     # ---- Purchase (and the plan for the whole turn) ---------------------------------------------------
 
     def plan_purchase_phase(self):
@@ -40,7 +46,7 @@ class StrategyBot(RandomBot):
             self._maybe_reroll_variable_alliance_settings()
             self._maybe_roll_treacherous_intent()
             self.style = self.settings.turn_style(self.faction, self.base_style, self.rng)
-            planner = Planner(self.engine, self.faction, self.settings, self.style, self.rng, 'full', self.budget)
+            planner = Planner(self.engine, self.faction, self.settings, self.style, self.rng, 'full', **self._effort())
             self._plan = planner.run(treasonous=False)
             self._plan_turn = gs.global_turn
             self.last_plan = self._plan
@@ -83,7 +89,7 @@ class StrategyBot(RandomBot):
         """Plan the turn without staging purchases (the Purchase phase has already passed)."""
         gs = self.engine.game_state
         self.style = self.settings.turn_style(self.faction, self.base_style, self.rng)
-        planner = Planner(self.engine, self.faction, self.settings, self.style, self.rng, 'full', self.budget)
+        planner = Planner(self.engine, self.faction, self.settings, self.style, self.rng, 'full', **self._effort())
         planner.allow_purchase = False
         self._plan = planner.run(treasonous=False)
         self._plan_turn = gs.global_turn
@@ -96,7 +102,7 @@ class StrategyBot(RandomBot):
             self.engine.process_return_to_base(self.faction)
         gs = self.engine.game_state
         treasonous = bool(gs.factions[self.faction].pending_treacherous_withdrawal) and gs.factions[self.faction].alliance is not None
-        planner = Planner(self.engine, self.faction, self.settings, self.style, self.rng, 'noncombat', self.budget)
+        planner = Planner(self.engine, self.faction, self.settings, self.style, self.rng, 'noncombat', **self._effort())
         plan = planner.run(treasonous=treasonous)
         self.last_plan = plan
         working = copy.deepcopy(gs)
