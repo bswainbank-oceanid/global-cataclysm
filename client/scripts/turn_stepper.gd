@@ -606,7 +606,7 @@ func execute_open_battle() -> void:
 		_do_advance()
 
 
-## End Battle: show what was held back -- the log entry, then the new state and
+## Finish (the battle board closed): show what was held back -- the log entry, then the new state and
 ## whatever comes next -- exactly as if the battle had just been fought.
 func release_battle() -> void:
 	if not _battle_open:
@@ -650,7 +650,7 @@ func _fire_bombardment() -> void:
 
 ## The player's acknowledgement of a shown bombardment result (there's no
 ## board of its own with a "closed" signal to call this from) -- release
-## whatever was held back, same as End Battle does.
+## whatever was held back, same as the battle board's Finish does.
 func release_bombardment() -> void:
 	if not _bombardment_open:
 		return

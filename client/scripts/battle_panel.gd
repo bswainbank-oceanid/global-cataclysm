@@ -12,14 +12,14 @@ extends Control
 ## a pause of its own before it rolls. A text box under the chart says what the
 ## last pulse did and what the next will do, and the button is labelled to match.
 ## At the end every unit is back on the board, casualties marked, the battle
-## summary is in the text box, and End Battle closes the board.
+## summary is in the text box, and Finish closes the board.
 ##
 ## The dice are already decided by the engine. The first Next Roll asks the
 ## server to fight the battle (roll_requested); its events arrive through
 ## receive_events(), and the press that asked for them then plays.
 
 signal roll_requested   # the battle hasn't been fought yet: the server must do it
-signal closed           # End Battle pressed
+signal closed           # Finish pressed (the battle over)
 
 const TABLE_W := 940.0
 const COL_DEF := 62.0
