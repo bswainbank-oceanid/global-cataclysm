@@ -7,7 +7,7 @@ Expansive, Controlling, Variable), and by type of victory:
 
 The setup is read from the server's database (server_data/global_cataclysm.sqlite3: the shared scenarios,
 as saved there), or else data/modules/scenario_setup/<id>.json; a HUMAN seat is played by a bot like the rest.
-A game ends as a live one does: by surrender down to the last faction standing (or an alliance of all that
+A game ends as a live one does (with up to six bots, and alliances if the setup allows them): by surrender down to the last faction standing (or an alliance of all that
 are left), or by the automatic armistice once its 'armistice_rounds' have been played (the bots always
 accept it). At an armistice the faction AHEAD wins, ranked as the game report ranks: the most Strategic
 Centers, then the most MCP (income: its uncontested territories' value), then the most unit value. Types of
@@ -15,6 +15,7 @@ victory:
     SC          the loser was forced to surrender for Strategic Center loss (with or without Economic)
     Economic    forced to surrender for income alone
     Armistice   ahead when the armistice ended the game
+    Alliance    every faction left is allied: they all win (each counted as a winner)
 A seat's bot type 'strategy_alt' (or --alt-seats: those seats, numbered from 1) plays the alternate set of strategy profiles (engine/game_config.py's bot sets):
 set one seat to it in the setup and the report compares the two sets head to head. Writes every game's
 details to exports/eval/<setup>_<games>g.json.
@@ -99,12 +100,17 @@ def play(args):
         winner = max(alive, key=lambda f: (standing[f]['scs'], standing[f]['income'], standing[f]['unit_value']))
         tied = [f for f in alive if (standing[f]['scs'], standing[f]['income']) ==
                 (standing[winner]['scs'], standing[winner]['income'])]
+        winners = [winner]
+    elif len(alive) > 1:  # (the game over with more than one left: an alliance of all that remain won together)
+        kind, winners, winner, tied = 'Alliance', sorted(alive), None, []
     else:
-        winner = alive[0] if len(alive) == 1 else None
+        winner = alive[0] if alive else None
+        winners = [winner] if winner else []
         last = surrenders[-1] if surrenders else None
         kind = ('SC' if last and 'strategic_center' in last['reasons'] else 'Economic' if last else 'Other')
         tied = [winner]
-    return {'seed': seed, 'winner': winner, 'profile': standing[winner]['profile'] if winner else None,
+    return {'seed': seed, 'winner': winner, 'winners': winners,
+            'profile': standing[winner]['profile'] if winner else None,
             'bot_set': standing[winner]['bot_set'] if winner else None,
             'kind': kind, 'both_grounds': bool(surrenders and set(surrenders[-1]['reasons']) >= {'strategic_center', 'income'}),
             'close_call': len(tied) > 1, 'round': gs.round_number, 'seconds': round(time.time() - start, 1),
@@ -132,14 +138,24 @@ def main(argv=None):
     with ProcessPoolExecutor(max_workers=a.workers) as pool:
         for r in pool.map(play, [(settings, a.seed + g, a.budget, alt_seats) for g in range(a.games)]):
             results.append(r)
+            who = ', '.join(f"{w} ({r['standing'][w]['profile']}, {r['standing'][w]['bot_set']})" for w in r['winners']) or 'nobody'
             s = r['standing'].get(r['winner'], {})
-            print(f"game {len(results):3d} (seed {r['seed']}): {r['winner']} ({r['profile']}) by {r['kind']}, round "
-                  f"{r['round']}, SCs {s.get('scs')} MCP {s.get('income')} UV {s.get('unit_value')}  [{r['seconds']}s]", flush=True)
+            print(f"game {len(results):3d} (seed {r['seed']}): {who} by {r['kind']}, round {r['round']}"
+                  + (f", SCs {s.get('scs')} MCP {s.get('income')} UV {s.get('unit_value')}" if s else '') + f"  [{r['seconds']}s]", flush=True)
 
     n = len(results)
     print(f'\n{n} games in {time.time() - started:.0f}s\n')
-    for title, key in (('Winning faction', 'winner'), ('Winning strategy profile', 'profile'), ('Type of victory', 'kind')):
-        counts = collections.Counter(r[key] for r in results)
+    def won_by(r):  # each winner's standing (an alliance's members all count)
+        return [r['standing'][w] for w in r['winners']]
+
+    for title, key in (('Winning faction (each alliance member counts)', 'winner'), ('Winning strategy profile', 'profile'),
+                       ('Winning bot set', 'bot_set'), ('Type of victory', 'kind')):
+        if key == 'kind':
+            counts = collections.Counter(r['kind'] for r in results)
+        elif key == 'winner':
+            counts = collections.Counter(w for r in results for w in r['winners'])
+        else:
+            counts = collections.Counter(s[key] for r in results for s in won_by(r))
         print(title)
         for value, c in counts.most_common():
             print(f'  {str(value):<12} {c:4d}  {pct(c, n)}')
@@ -149,21 +165,30 @@ def main(argv=None):
     profiles = collections.Counter(s['profile'] for r in results for s in r['standing'].values())
     print('Win rate when playing (wins / games played)')
     for f, c in seated.most_common():
-        w = sum(1 for r in results if r['winner'] == f)
+        w = sum(1 for r in results if f in r['winners'])
         print(f'  {f:<12} {w:3d}/{c:<3d} {pct(w, c)}')
     for p, c in profiles.most_common():
-        w = sum(1 for r in results if r['profile'] == p)
+        w = sum(1 for r in results for s in won_by(r) if s['profile'] == p)
         print(f'  {p:<12} {w:3d}/{c:<3d} {pct(w, c)}')
     sets = collections.Counter(s['bot_set'] for r in results for s in r['standing'].values())
     if len(sets) > 1:  # (the alternate strategy profiles in play: the two sets head to head)
         print('\nBy bot set (wins / games played)')
         for b, c in sets.most_common():
-            w = sum(1 for r in results if r['bot_set'] == b)
+            w = sum(1 for r in results for s in won_by(r) if s['bot_set'] == b)
             print(f'  {b:<12} {w:3d}/{c:<3d} {pct(w, c)}')
             for p in sorted({s['profile'] for r in results for s in r['standing'].values() if s['bot_set'] == b}):
                 played = sum(1 for r in results for s in r['standing'].values() if s['bot_set'] == b and s['profile'] == p)
-                won = sum(1 for r in results if r['bot_set'] == b and r['profile'] == p)
+                won = sum(1 for r in results for s in won_by(r) if s['bot_set'] == b and s['profile'] == p)
                 print(f'    {p:<10} {won:3d}/{played:<3d} {pct(won, played)}')
+    if len(sets) > 1:  # each faction's win rate in each set's hands
+        print('\nBy faction and bot set (wins / games played)')
+        for f in sorted(seated):
+            cells = []
+            for b in sorted(sets):
+                played = sum(1 for r in results if f in r['standing'] and r['standing'][f]['bot_set'] == b)
+                won = sum(1 for r in results if f in r['winners'] and r['standing'][f]['bot_set'] == b)
+                cells.append(f'{b} {won:2d}/{played:<3d} {pct(won, played)}')
+            print(f'  {f:<6} ' + '   '.join(cells))
     print(f"\nSurrenders on both SC and Economic grounds (counted as SC): {sum(r['both_grounds'] for r in results)}")
     print(f"Armistices level on SCs and MCP (decided by unit value): {sum(r['close_call'] for r in results)}")
     out = os.path.join(ROOT, 'exports', 'eval', f'{a.setup}_{n}g.json')
