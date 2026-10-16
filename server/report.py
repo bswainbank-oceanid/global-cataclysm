@@ -130,11 +130,11 @@ def build_game_report(engine, turn_log, bots):
     """[{faction, seat_type, victory_status, elimination_reason, strategic_centers, territory_mpc,
     units_produced, units_destroyed, alliance_history, bot_type, bot_strategy, alliance_strategy,
     alliance_behavior, rounds_in_game, round_eliminated, eliminated_by}, ...] -- one row per seated
-    faction (all 6, Neutral/Noncombatant included), sorted by the report's own order: Victory status, then
-    Strategic Centers, Territory MPC, Units produced, Units destroyed, each descending (a None victory
-    status -- Neutral/Noncombatant -- sorts after every real one), a final alphabetical tie-break.
+    faction that played (no row for a Neutral or Noncombatant seat, nor the built-in NEU/NCB factions),
+    sorted by the report's own order: Victory status, then Strategic Centers, Territory MPC, Units produced,
+    Units destroyed, each descending, a final alphabetical tie-break.
     elimination_reason is only for an eliminated faction (why it's out -- see _elimination_reason), None
-    for anyone still in the game and for Neutral/Noncombatant seats. Units produced/destroyed are 0 if
+    for anyone still in the game. Units produced/destroyed are 0 if
     `engine.stats` is None (a GameStats wasn't attached) rather than an error -- purely cosmetic, never
     required for the game itself to run. rounds_in_game (GameState.round_number, the SAME value on every
     row) is how long the whole game ran; round_eliminated (per row, None unless the faction was actually
@@ -159,7 +159,7 @@ def build_game_report(engine, turn_log, bots):
     rounds_in_game = _rounds_played(gs, armistice)
     rows = []
     for code, fstate in gs.factions.items():
-        if code in left_off:
+        if code in left_off or fstate.mode in (FactionMode.NEUTRAL, FactionMode.NONCOMBATANT):  # (nor any seat set so)
             continue
         sc_count = sum(1 for tid, t in gs.territories.items()
                        if t.owner == code and terrs[tid]['type'] == 'land' and gs.is_strategic_center(tid, terrs[tid]))

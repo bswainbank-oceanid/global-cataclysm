@@ -36,9 +36,8 @@ class TestBuildGameReport(unittest.TestCase):
         engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.NONCOMBATANT, 'AAC': FactionMode.NEUTRAL})
         rows = build_game_report(engine, TurnLog(), {})
         by_fac = {r['faction']: r for r in rows}
-        self.assertEqual(set(by_fac), {'NAA', 'UE', 'GPC', 'AAC'})
+        self.assertEqual(set(by_fac), {'NAA', 'UE'})  # (no row for a Noncombatant or Neutral seat)
         self.assertEqual(by_fac['NAA']['seat_type'], 'HUMAN')
-        self.assertEqual(by_fac['GPC']['seat_type'], 'NONCOMBATANT')
         self.assertEqual(by_fac['NAA']['strategic_centers'], 1)  # tile 1 -- tile 2 has none
         self.assertEqual(by_fac['UE']['strategic_centers'], 1)
 
@@ -48,13 +47,11 @@ class TestBuildGameReport(unittest.TestCase):
         self.assertIn('NCB', gs.factions)
         self.assertEqual(sorted(r['faction'] for r in build_game_report(engine, TurnLog(), {})), ['NAA', 'UE'])
 
-    def test_noncombatant_and_neutral_seats_have_no_victory_status(self):
+    def test_noncombatant_and_neutral_seats_are_left_off(self):
         engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.NONCOMBATANT, 'AAC': FactionMode.NEUTRAL})
         rows = build_game_report(engine, TurnLog(), {})
-        by_fac = {r['faction']: r for r in rows}
-        self.assertIsNone(by_fac['GPC']['victory_status'])
-        self.assertIsNone(by_fac['AAC']['victory_status'])
-        self.assertIsNotNone(by_fac['NAA']['victory_status'])
+        self.assertEqual(sorted(r['faction'] for r in rows), ['NAA', 'UE'])
+        self.assertTrue(all(r['victory_status'] is not None for r in rows))
 
     def test_the_last_faction_standing_is_the_winner_and_the_rest_are_out(self):
         engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT})
@@ -100,7 +97,6 @@ class TestBuildGameReport(unittest.TestCase):
         self.assertEqual(by_fac['UE']['elimination_reason'], ['Economic'])
         self.assertEqual(by_fac['GPC']['elimination_reason'], ['SC Loss', 'Economic'])  # SC loss named first
         self.assertIsNone(by_fac['NAA']['elimination_reason'])   # still in the game
-        self.assertIsNone(by_fac['AAC']['elimination_reason'])   # Neutral, never a competitor
 
     def test_elimination_reason_for_a_self_surrender(self):
         engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT})
@@ -197,7 +193,7 @@ class TestBuildGameReport(unittest.TestCase):
         gs.round_number = 4
         gs.active_faction = gs.active_factions()[1]  # (round 4 under way)
         rows = build_game_report(engine, TurnLog(), {})
-        self.assertTrue(all(r['rounds_in_game'] == 4 for r in rows))  # same value on every row, Noncombatant included
+        self.assertTrue(all(r['rounds_in_game'] == 4 for r in rows))  # the same value on every row
 
     def test_a_game_ended_as_a_round_begins_counts_the_rounds_played(self):
         engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT})
@@ -270,9 +266,9 @@ class TestBuildGameReport(unittest.TestCase):
         gs.factions['GPC'].eliminated = True
         rows = build_game_report(engine, log, {})
         # winners (NAA, UE, both still active) first, sorted by SC/MPC among themselves; GPC (eliminated)
-        # after them; AAC (Neutral, no status) last.
-        statuses = [r['victory_status'] for r in rows]
-        self.assertEqual(statuses.index(None), len(statuses) - 1)  # Neutral/Noncombatant always sort last
+        # after them; AAC (Neutral) not listed.
+        self.assertEqual([r['faction'] for r in rows][-1], 'GPC')
+        self.assertNotIn('AAC', [r['faction'] for r in rows])
         winners = [r for r in rows if r['victory_status'] == 'Winner']
         self.assertEqual([r['faction'] for r in winners], ['NAA', 'UE'])  # NAA has more SC-weighted territory
 
