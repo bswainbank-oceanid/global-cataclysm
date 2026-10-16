@@ -115,6 +115,35 @@ class TestATransportInAContest(unittest.TestCase):
         self.assertNotIn(2, self.engine.legal_combat_move_options('NAA').get(cruiser.unit_id, {}).get('destinations', {}))
 
 
+class TestCarrierAircraftInAContest(unittest.TestCase):
+    """The rule's other exception: an aircraft on its carrier in a contested sea zone may attack the land next to it."""
+
+    def setUp(self):
+        # 2 and 3 are AAC's; 2 is off the contested sea zone 4, 3 isn't (it's inland, past 2).
+        self.fighter = make_unit('Fighter', 'NAA')
+        self.engine, self.gs = board({4: [make_unit('Aircraft Carrier', 'NAA'), self.fighter, make_unit('Cruiser', 'AAC')],
+                                      2: [make_unit('Infantry', 'AAC')], 3: [make_unit('Infantry', 'AAC')]},
+                                     contested={4: {'NAA', 'AAC'}}, owners={1: 'NAA', 5: 'NAA', 2: 'AAC', 3: 'AAC', 6: 'GPC'})
+
+    def test_it_may_strike_adjacent_land_or_land_elsewhere(self):
+        dests = set(self.engine.legal_combat_move_options('NAA')[self.fighter.unit_id]['destinations'])
+        self.assertIn(2, dests)  # the strike on the shore
+        self.assertNotIn(3, dests)  # not beyond it
+        self.assertIn(1, dests)  # or away to its own land
+
+    def test_the_strike_is_an_ordinary_air_attack(self):
+        self.engine.submit_combat_moves('NAA', [CombatMoveOrder(self.fighter.unit_id, [4, 2])])
+        self.engine.confirm_combat_moves('NAA')
+        self.assertIn(self.fighter, self.gs.territories[2].units)
+        self.assertIn('NAA', self.gs.territories[2].contested_by)
+        self.assertEqual(self.fighter.combat_move_origin, 4)  # (it flies back to its carrier afterwards)
+        self.assertFalse(self.fighter.has_moved_noncombat)
+
+    def test_but_not_inland(self):
+        with self.assertRaises(ValueError):
+            self.engine.submit_combat_moves('NAA', [CombatMoveOrder(self.fighter.unit_id, [4, 3])])
+
+
 class TestQuietSeaContests(unittest.TestCase):
     """A sea zone's contest ends at Capture Territory once no two hostile sides have units there."""
 

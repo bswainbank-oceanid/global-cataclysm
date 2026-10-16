@@ -632,6 +632,8 @@ class GameEngine:
                     continuations = legal_combat_move_continuations(u.unit_type, faction, tid, gs, self.data)
                 elif tid in in_contest:  # movement.contested_combat_move_rule: leave by the non-combat rules
                     destinations = self._contest_exit_paths(u, tid, gs)
+                    # (...or, an aircraft at sea there, strike the land next to it)
+                    destinations.update({dest: [tid, dest] for dest in self._air_strikes_from_contested_sea(u, tid, gs)})
                     continuations = {}
                 elif category == 'Air':
                     legal = legal_air_move_destinations(u.unit_type, faction, tid, 'combat', gs, self.data)
@@ -655,6 +657,16 @@ class GameEngine:
         if key not in self._contest_starts:
             self._contest_starts = {key: frozenset(tid for tid, t in self.game_state.territories.items() if t.contested_by)}
         return self._contest_starts[key]
+
+    def _air_strikes_from_contested_sea(self, unit, origin_id, game_state):
+        """movement.contested_combat_move_rule's aircraft exception: an aircraft (on its carrier) that began Combat
+        Move in a contested sea zone may attack the land next to that zone -- an ordinary air combat move to an
+        adjacent land territory. The set of such destinations ({} for anything else)."""
+        terrs = self.data.territories()
+        if self.data.units()[unit.unit_type]['category'] != 'Air' or terrs[origin_id]['type'] != 'sea':
+            return set()
+        legal = legal_air_move_destinations(unit.unit_type, unit.owner, origin_id, 'combat', game_state, self.data)
+        return {d for d in self.data.adjacency().get(origin_id, []) if terrs[d]['type'] == 'land' and d in legal}
 
     def _afloat(self, unit, territory_id):
         """Is `unit` a Transport -- a land unit afloat in a sea zone (there is no separate Transport unit)?"""
@@ -789,7 +801,8 @@ class GameEngine:
             # the exception: it may instead make an ordinary combat move (an amphibious attack), checked below.
             withdrawing = origin_id in in_contest and not (
                 self._afloat(unit, origin_id)
-                and legal_combat_move_paths(unit.unit_type, faction, origin_id, game_state, self.data).get(dest_id) is not None)
+                and legal_combat_move_paths(unit.unit_type, faction, origin_id, game_state, self.data).get(dest_id) is not None
+            ) and dest_id not in self._air_strikes_from_contested_sea(unit, origin_id, game_state)
             if withdrawing:
                 if self._contest_exit_paths(unit, origin_id, game_state).get(dest_id) is None:
                     raise ValueError(f'{dest_id} is not a legal destination for unit {order.unit_id}, which began this '
