@@ -281,6 +281,10 @@ AHEAD_OF_VIEWER = 40
 # A proposer whose armistice was declined can't propose another for this many rounds (measured against
 # GameState.round_number -- see _handle_propose_armistice's cooldown check).
 ARMISTICE_COOLDOWN_ROUNDS = 5
+# Who answers the automatic armistice proposal in a game with no human player left: whoever is watching (a
+# spectator answers with no faction). It stands in a proposal's 'pending' set, as a faction code would.
+SPECTATOR = 'spectator'
+
 # The automatic armistice proposal (GameState.armistice_after_rounds): when one is declined, the game
 # proposes again this many rounds later.
 ARMISTICE_REPEAT_ROUNDS = 5
@@ -646,31 +650,36 @@ class GameSession:
     def _maybe_propose_armistice(self):
         """The automatic armistice proposal: once GameState.armistice_after_rounds rounds have been played
         (as the next round begins) the game itself proposes an armistice -- exactly like a spectator's
-        proposal: every bot accepts at once, every human is asked. Declined, it is proposed again
+        proposal: every bot accepts at once, every human is asked -- or, with no human left in the game, the
+        spectator watching it (SPECTATOR: they may decline, and the bots play on). Declined, it is proposed again
         ARMISTICE_REPEAT_ROUNDS rounds later. [] when it isn't time (or a proposal is already pending)."""
         gs = self.engine.game_state
         due = self._auto_armistice_round
         if due is None or gs.game_over or self._armistice is not None or gs.round_number < due:
             return []
         active = gs.active_factions()
-        pending = {c for c in active if gs.factions[c].mode == FactionMode.HUMAN}
+        humans = {c for c in active if gs.factions[c].mode == FactionMode.HUMAN}
+        pending = humans or {SPECTATOR}
         played = gs.round_number - 1
-        self._armistice = {'from': None, 'pending': pending, 'accepted': set(active) - pending, 'automatic_after': played}
+        self._armistice = {'from': None, 'pending': pending, 'accepted': set(active) - humans, 'automatic_after': played}
         if pending:
             return [{'type': 'armistice_proposed', 'from': None, 'awaiting': sorted(pending), 'automatic_after': played}]
         return self._resolve_armistice(accepted=True)
 
     def _handle_respond_armistice(self, faction, accept):
-        """A HUMAN's answer to a pending armistice proposal."""
+        """A HUMAN's answer to a pending armistice proposal -- or, with no faction, a spectator's (SPECTATOR:
+        the automatic proposal in a game with no human left)."""
         info = self._armistice
-        if info is None or faction not in info['pending']:
+        answer_for = faction or SPECTATOR
+        if info is None or answer_for not in info['pending']:
             return [self._error(faction, 'no armistice proposal is awaiting your answer')]
         if accept is None:
             return [self._error(faction, "'accept' is required (true or false)")]
         if not accept:
             return self._resolve_armistice(accepted=False, declined_by=faction)
-        info['pending'].discard(faction)
-        info['accepted'].add(faction)
+        info['pending'].discard(answer_for)
+        if faction:
+            info['accepted'].add(faction)
         if info['pending']:
             message = {'type': 'armistice_proposed', 'from': info['from'], 'awaiting': sorted(info['pending'])}
             if info.get('automatic_after') is not None:
@@ -1063,4 +1072,6 @@ class GameSession:
 
     @staticmethod
     def _error(faction, message):
+        if faction is None:  # (a spectator's request: the reply is theirs alone)
+            return {'type': 'error', 'to_sender': True, 'message': message}
         return {'type': 'error', 'to': faction, 'message': message}

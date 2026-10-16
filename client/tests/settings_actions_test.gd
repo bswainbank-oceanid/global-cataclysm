@@ -68,6 +68,14 @@ func _initialize() -> void:
 	_check(store.armistice_pending(), "NAA is awaited, so it's pending for them")
 	store.set_armistice({"from": "NAA", "awaiting": ["GPC"]})
 	_check(not store.armistice_pending(), "NAA proposed it themselves: never asked to answer their own")
+	# An all-bot game's automatic proposal awaits a spectator: one with no faction of their own may answer it.
+	var held: Array = store.my_factions
+	store.set_armistice({"from": null, "awaiting": ["spectator"], "automatic_after": 10})
+	store.my_factions = []
+	_check(store.armistice_pending() and store.armistice_for_spectator(), "a spectator is asked in an all-bot game")
+	store.my_factions = ["NAA"]
+	_check(not store.armistice_pending(), "...but not a player with a faction of their own")
+	store.my_factions = held
 	store.set_armistice({})
 
 	# ArmisticeWindow shows only while the human's own answer is awaited.

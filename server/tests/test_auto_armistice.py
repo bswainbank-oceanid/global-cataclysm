@@ -4,7 +4,7 @@ are played the game proposes an armistice itself -- bots accept at once, a human
 import unittest
 
 from server.lobby import build_session, check_settings
-from server.session import ARMISTICE_REPEAT_ROUNDS
+from server.session import ARMISTICE_REPEAT_ROUNDS, SPECTATOR
 
 BOT = {'mode': 'BOT', 'faction': 'random', 'alliance': 0, 'strategy': 'random', 'behavior': 'random', 'ai': 'random'}
 HUMAN = {'mode': 'HUMAN', 'faction': 'random', 'alliance': 0}
@@ -29,9 +29,14 @@ def step_until(session, stop, limit=3000):
 
 
 class TestAutoArmistice(unittest.TestCase):
-    def test_an_all_bot_game_ends_by_armistice_after_the_set_rounds(self):
+    def test_an_all_bot_game_ends_by_armistice_after_the_set_rounds_once_the_spectator_accepts(self):
         session = game([BOT, BOT, BOT], 2)
-        seen = step_until(session, lambda m: False)
+        proposed = lambda msgs: any(m.get('type') == 'armistice_proposed' for m in msgs)  # noqa: E731
+        seen = step_until(session, proposed)
+        self.assertEqual(next(m for m in seen if m.get('type') == 'armistice_proposed')['awaiting'], [SPECTATOR])
+        self.assertEqual(session.waiting_for(), [SPECTATOR])
+        self.assertEqual(session.handle_message({'type': 'next'})[0]['type'], 'error', 'the game waits for the answer')
+        seen += session.handle_message({'type': 'respond_armistice', 'accept': True})  # (a spectator: no faction)
         gs = session.engine.game_state
         self.assertTrue(gs.game_over)
         self.assertEqual(gs.round_number, 3, 'proposed as round 3 begins, once 2 rounds are played')
@@ -56,6 +61,26 @@ class TestAutoArmistice(unittest.TestCase):
         done = session.handle_message({'type': 'respond_armistice', 'faction': human, 'accept': True})
         self.assertTrue(session.engine.game_state.game_over)
         self.assertEqual([m['type'] for m in done][:1], ['armistice_resolved'])
+
+    def test_the_spectator_of_an_all_bot_game_may_decline_and_the_bots_play_on(self):
+        session = game([BOT, BOT], 1)
+        proposed = lambda msgs: any(m.get('type') == 'armistice_proposed' for m in msgs)  # noqa: E731
+        step_until(session, proposed)
+        asked_in = session.engine.game_state.round_number
+        [declined] = session.handle_message({'type': 'respond_armistice', 'accept': False})
+        self.assertEqual((declined['accepted'], declined['next_round']), (False, asked_in + ARMISTICE_REPEAT_ROUNDS))
+        self.assertFalse(session.engine.game_state.game_over)
+        self.assertEqual(session.waiting_for(), [])
+        step_until(session, proposed)  # (asked again five rounds on, unless the bots finish it first)
+        gs = session.engine.game_state
+        self.assertTrue(gs.game_over or gs.round_number == asked_in + ARMISTICE_REPEAT_ROUNDS)
+
+    def test_a_player_cannot_answer_for_the_spectator(self):
+        session = game([BOT, BOT], 1)
+        step_until(session, lambda msgs: any(m.get('type') == 'armistice_proposed' for m in msgs))
+        bot = next(iter(session.bots))
+        [reply] = session.handle_message({'type': 'respond_armistice', 'faction': bot, 'accept': False})
+        self.assertEqual(reply['type'], 'error')
 
     def test_zero_never_proposes(self):
         session = game([BOT, BOT], 0)

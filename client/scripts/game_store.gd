@@ -256,7 +256,13 @@ func set_armistice(info: Dictionary) -> void:
 ## else proposed it (proposing counts as agreeing, so a proposer is never asked to
 ## answer their own; see server/session.py's _handle_propose_armistice).
 func armistice_pending() -> bool:
-	return armistice_faction() != ""
+	return armistice_faction() != "" or armistice_for_spectator()
+
+
+## True while the automatic armistice proposal in a game with no human player left awaits a spectator's
+## answer, and this player is one (no faction of their own): they may accept or decline it.
+func armistice_for_spectator() -> bool:
+	return not armistice.is_empty() and my_factions.is_empty() and (armistice.get("awaiting", []) as Array).has("spectator")
 
 
 ## The faction of this player's that a pending armistice proposal is still asking ("" if none).

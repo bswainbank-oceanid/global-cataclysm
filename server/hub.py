@@ -129,7 +129,7 @@ It works once, for the next {minutes} minutes. If you didn't ask for it, ignore 
 hasn't changed.
 """
 # A game's messages that a player may send without naming a faction of theirs.
-FACTIONLESS = ('follow', 'watch', 'played', 'seen_end', 'propose_armistice')
+FACTIONLESS = ('follow', 'watch', 'played', 'seen_end', 'propose_armistice', 'respond_armistice')
 # A game's messages only the server itself sends (server/session.py).
 INTERNAL = ('convert_to_bot',)
 SEAT_LOST = {'handed_over': 'you handed your seat over to a bot',
@@ -381,6 +381,8 @@ class Hub:
             return self._error(conn, 'say which of your factions this is for')
         if msg.get('type') == 'propose_armistice' and faction is None and game['host_id'] != conn.user['id']:
             return self._error(conn, 'only the host can propose an armistice without a faction')
+        if msg.get('type') == 'respond_armistice' and faction is None and mine:
+            return self._error(conn, 'say which of your factions this is for')  # (no faction: a spectator's answer)
         if msg.get('type') == 'played' and isinstance(msg.get('seq'), int) and msg.get('epoch') is not None:
             # how far this player has watched (they resume from there; a finished game leaves their Resume
             # list once they've seen its end)

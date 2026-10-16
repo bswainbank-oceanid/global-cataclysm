@@ -224,7 +224,11 @@ class TestRunningGames(HubTest):
         self.assertEqual(msg['type'], 'error')  # not theirs
 
     def test_a_game_that_ends_is_marked_finished(self):
-        gid = self.one_human_game(s=settings(bot(), bot(), seed=63, armistice_rounds=1))  # (all bots accept)
+        gid = self.one_human_game(s=settings(bot(), bot(), seed=63, armistice_rounds=1))
+        self.run_game(gid)  # (to the armistice proposal: with no human in it, the spectator is asked)
+        self.assertEqual(self.hub.sessions[gid].waiting_for(), ['spectator'])
+        self.send('ann', {'type': 'enter_game', 'game_id': gid})
+        self.send('ann', {'type': 'respond_armistice', 'accept': True})
         self.run_game(gid)
         self.assertTrue(self.hub.sessions[gid].engine.game_state.game_over)
         self.assertEqual(games.get(self.store, gid)['status'], 'finished')

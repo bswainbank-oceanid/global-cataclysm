@@ -898,8 +898,10 @@ func propose_armistice() -> void:
 
 ## The human's own answer to someone ELSE's pending armistice proposal.
 func respond_armistice(accept: bool) -> void:
-	if GameStore.armistice_pending():
+	if GameStore.armistice_faction() != "":
 		Net.send_msg({"type": "respond_armistice", "faction": GameStore.armistice_faction(), "accept": accept})
+	elif GameStore.armistice_for_spectator():  # (no faction: the spectator's answer)
+		Net.send_msg({"type": "respond_armistice", "accept": accept})
 
 
 ## When the human's own faction is eliminated, default to letting the rest of the game
