@@ -109,6 +109,16 @@ class TestWithdrawing(UnderdogTest):
         self.assertTrue(gs.factions['NAA'].pending_treacherous_withdrawal)  # what drives the treasonous moves
         self.assertTrue(policy.should_withdraw(engine, 'NAA'))
 
+    def test_no_plan_to_leave_when_the_game_does_not_allow_withdrawing(self):
+        engine, gs = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)},
+                               alliances={'NAA': 'A1', 'UE': 'A1'})
+        gs.can_withdraw_from_alliances = False
+        gs.factions['NAA'].pending_treacherous_withdrawal = True  # (left over from earlier)
+        bot = RandomBot(engine, 'NAA', rng=random.Random(1))
+        bot._maybe_roll_treacherous_intent()
+        self.assertFalse(gs.factions['NAA'].pending_treacherous_withdrawal)  # so no treasonous captures
+        self.assertNotEqual(bot.plan_alliance_phase()['action'], 'withdraw')
+
     def test_the_names_are_offered(self):
         self.assertIn('underdog', policy.STRATEGIES)
         self.assertIn('underdog', policy.BEHAVIORS)

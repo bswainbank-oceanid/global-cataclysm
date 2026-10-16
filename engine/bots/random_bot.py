@@ -408,7 +408,10 @@ class RandomBot:
         gs = self.engine.game_state
         fstate = gs.factions[self.faction]
         behavior = alliance_policy.effective_alliance_behavior(gs, self.faction)
-        if behavior == 'treacherous' and fstate.alliance is not None:
+        if not gs.can_withdraw_from_alliances:
+            # (nobody may leave an alliance in this game: no plan to, so no treasonous captures either)
+            fstate.pending_treacherous_withdrawal = False
+        elif behavior == 'treacherous' and fstate.alliance is not None:
             fstate.pending_treacherous_withdrawal = self.rng.random() < 0.15
         elif behavior == 'underdog' and fstate.alliance is not None:
             # (no dice: it plans to leave once its alliance has become the favourite -- alliance_policy)
