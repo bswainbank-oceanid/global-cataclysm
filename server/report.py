@@ -152,12 +152,14 @@ def build_game_report(engine, turn_log, bots):
     armistice = next((e for e in reversed(turn_log.events) if e['kind'] == 'armistice'), None)
     armistice_participants = set(armistice['participants']) if armistice is not None else None
 
-    # The built-in Neutral faction (NEU: the neutral nations' territory) is never a player: it isn't reported.
-    neutral = engine.data.neutral_faction()['id'] if hasattr(engine.data, 'neutral_faction') else 'NEU'
+    # The built-in Neutral (NEU: the neutral nations' territory) and Noncombatant (NCB) factions are never players:
+    # they aren't reported.
+    left_off = ({engine.data.neutral_faction()['id'], engine.data.noncombatant_faction()['id']}
+                if hasattr(engine.data, 'neutral_faction') else {'NEU', 'NCB'})
     rounds_in_game = _rounds_played(gs, armistice)
     rows = []
     for code, fstate in gs.factions.items():
-        if code == neutral:
+        if code in left_off:
             continue
         sc_count = sum(1 for tid, t in gs.territories.items()
                        if t.owner == code and terrs[tid]['type'] == 'land' and gs.is_strategic_center(tid, terrs[tid]))
