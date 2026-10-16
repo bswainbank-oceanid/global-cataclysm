@@ -83,6 +83,16 @@ class TestWatchToTheEnd(unittest.TestCase):
         self.hub.handle('ann', {'type': 'played', 'seq': last['seq'], 'epoch': last['epoch']})
         self.assertNotIn(game_id, self.my_games())
 
+    def test_a_game_whose_report_she_has_seen_is_not_listed(self):
+        out = self.hub.handle('ann', {'type': 'create_game', 'scenario': {'kind': 'fixed', 'id': 'fixed'}, 'settings': ALL_BOTS})
+        game_id = next(m['game']['id'] for _, m in out if m['type'] == 'entered_game')
+        self.hub.handle('ann', {'type': 'seen_end'})  # (not over yet: nothing to see)
+        self.play(game_id, unpaced=True)  # watched live, to the end
+        self.assertIn(game_id, self.my_games())
+        replies = [m for _, m in self.hub.handle('ann', {'type': 'seen_end'})]
+        self.assertEqual([m for m in replies if m.get('type') == 'error'], [])
+        self.assertNotIn(game_id, self.my_games())
+
     def test_a_finished_game_she_watched_to_the_end_is_not_listed(self):
         out = self.hub.handle('ann', {'type': 'create_game', 'scenario': {'kind': 'fixed', 'id': 'fixed'}, 'settings': ALL_BOTS})
         game_id = next(m['game']['id'] for _, m in out if m['type'] == 'entered_game')

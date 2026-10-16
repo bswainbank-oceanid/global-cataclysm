@@ -129,7 +129,7 @@ It works once, for the next {minutes} minutes. If you didn't ask for it, ignore 
 hasn't changed.
 """
 # A game's messages that a player may send without naming a faction of theirs.
-FACTIONLESS = ('follow', 'watch', 'played', 'propose_armistice')
+FACTIONLESS = ('follow', 'watch', 'played', 'seen_end', 'propose_armistice')
 # A game's messages only the server itself sends (server/session.py).
 INTERNAL = ('convert_to_bot',)
 SEAT_LOST = {'handed_over': 'you handed your seat over to a bot',
@@ -367,7 +367,7 @@ class Hub:
         game_id = conn.game_id
         game = games.get(self.store, game_id)
         session = self.sessions.get(game_id)
-        finished = game is not None and game['status'] == games.FINISHED and msg.get('type') in ('follow', 'watch', 'played')
+        finished = game is not None and game['status'] == games.FINISHED and msg.get('type') in ('follow', 'watch', 'played', 'seen_end')
         if game is None or session is None or (game['status'] != games.LIVE and not finished):
             conn.game_id = None
             return self._error(conn, 'that game is no longer running')
@@ -386,6 +386,11 @@ class Hub:
             # list once they've seen its end)
             feed_log.note_played(self.store, game_id, conn.user['id'], str(msg['epoch']), msg['seq'],
                                  game_over=session.engine.game_state.game_over)
+        if msg.get('type') == 'seen_end':
+            # the Game Over report has been shown to this player: the game leaves their Resume list
+            if session.engine.game_state.game_over:
+                feed_log.note_seen_end(self.store, game_id, conn.user['id'])
+            return []
         out = session.handle_message(msg)
         if msg.get('type') not in ('follow', 'watch', 'played'):
             self._save(game_id)

@@ -302,6 +302,8 @@ func _on_message(msg: Dictionary) -> void:
 			_playing = false
 			game_over = true
 			GameStore.set_game_over_report(msg.get("report", []))
+			if feed_mode:
+				Net.send_msg({"type": "seen_end"})  # (the report is in front of them: off their Resume list)
 			log_line.emit("[b]Game over[/b]")
 			announced.emit([game_over_announcement()])
 	_refresh()

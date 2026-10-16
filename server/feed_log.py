@@ -86,6 +86,15 @@ def note_played(store, game_id, user_id, epoch, seq, game_over=False):
                                   'done': done}, game_id=game_id, user_id=user_id)
 
 
+def note_seen_end(store, game_id, user_id):
+    """`user_id` has seen this (finished) game's end -- its Game Over report shown to them, live or played back:
+    done, whatever position they'd played back to."""
+    mine = watched(store, game_id, user_id)
+    epoch, seq = (mine['epoch'], mine['seq']) if mine else (last_result(store, game_id) or ('', 0))
+    store.upsert('game_viewers', {'game_id': game_id, 'user_id': user_id, 'epoch': str(epoch), 'seq': int(seq),
+                                  'done': True}, game_id=game_id, user_id=user_id)
+
+
 def seen_the_end(store, game_id, user_id):
     mine = watched(store, game_id, user_id)
     return bool(mine and mine.get('done'))
