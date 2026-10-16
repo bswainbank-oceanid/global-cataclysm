@@ -82,7 +82,7 @@ func _sync() -> void:
 	if after != null:  # the game's own proposal (the setup's 'Rounds until armistice proposal')
 		_title.text = "%d rounds played: armistice proposed" % int(after)
 		text = "%d rounds have been played, so the game proposes ending it right here -- an armistice." % int(after)
-	text += "\n\nNobody wins: the game simply stops, and the Game Over report shows how everyone stood when it did."
+	text += "\n\nThe faction ahead wins: the most Strategic Centers, then the most MCP, then the most unit value. The Game Over report shows how everyone stood."
 	text += "\n\nIf anyone declines, the proposal falls through and the game continues as normal." if after == null \
 		else "\n\nThe bots have accepted. If you decline, the game continues, and an armistice is proposed again in 5 rounds."
 	_body.text = text

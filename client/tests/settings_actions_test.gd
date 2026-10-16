@@ -107,7 +107,7 @@ func _initialize() -> void:
 	announced_items.clear()
 	stepper.game_over = false
 	stepper._on_message({"type": "game_over", "report": [{
-		"faction": "NAA", "seat_type": "HUMAN", "victory_status": "Armistice", "elimination_reason": null,
+		"faction": "NAA", "seat_type": "HUMAN", "victory_status": "Winner", "by_armistice": true, "elimination_reason": null,
 		"strategic_centers": 3, "territory_mpc": 20, "units_produced": 5, "units_destroyed": 2,
 		"alliance_history": ["R4: joined with UE"], "bot_type": null, "bot_strategy": null, "alliance_strategy": null, "alliance_behavior": null,
 		"rounds_in_game": 6, "round_eliminated": null, "eliminated_by": null}, {
@@ -118,6 +118,8 @@ func _initialize() -> void:
 	_check(stepper.game_over and store.game_over_report.size() == 2, "the report lands in GameStore")
 	_check(store.game_ended_by_armistice(), "...and is recognised as an armistice ending")
 	_check(announced_items.size() == 1 and str(announced_items[0]["body"]).contains("armistice"), "an armistice-ended game says so, not 'last faction standing'")
+	_check(str(announced_items[0]["body"]).contains("wins the game") and store.game_winners() == ["NAA"],
+		"...and names the faction ahead as the winner: %s" % str(announced_items[0]["body"]))
 
 	# GameOverReportPanel: opens with the report, and minimize/restore toggles what shows.
 	_check(not store.game_over_report_minimized, "starts expanded")

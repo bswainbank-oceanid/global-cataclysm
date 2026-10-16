@@ -113,9 +113,9 @@ class TestProposeArmistice(unittest.TestCase):
         self.assertIsNone(resolved['declined_by'])
         report = _by_type(reply, 'game_over')[0]['report']
         by_fac = {r['faction']: r for r in report}
-        self.assertEqual(by_fac['NAA']['victory_status'], 'Armistice')
-        self.assertEqual(by_fac['UE']['victory_status'], 'Armistice')
-        self.assertEqual(by_fac['GPC']['victory_status'], 'Armistice')
+        # the faction ahead wins; the others agreed to the armistice
+        self.assertEqual(sorted(by_fac[c]['victory_status'] for c in ('NAA', 'UE', 'GPC')), ['Armistice', 'Armistice', 'Winner'])
+        self.assertEqual(report[0]['victory_status'], 'Winner')
 
     def test_a_second_human_is_asked_and_next_is_refused_until_they_answer(self):
         session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
@@ -238,8 +238,7 @@ class TestSpectatorArmistice(unittest.TestCase):
         self.assertIsNone(resolved['from'])
         report = _by_type(reply, 'game_over')[0]['report']
         by_fac = {r['faction']: r for r in report}
-        for code in ('NAA', 'UE', 'GPC'):
-            self.assertEqual(by_fac[code]['victory_status'], 'Armistice')
+        self.assertEqual(sorted(by_fac[c]['victory_status'] for c in ('NAA', 'UE', 'GPC')), ['Armistice', 'Armistice', 'Winner'])
 
     def test_a_spectator_alongside_a_seated_human_still_asks_the_human(self):
         session = _session(humans=('NAA',), bots=('UE', 'GPC'))

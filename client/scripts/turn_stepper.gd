@@ -367,7 +367,7 @@ func _announce(events: Array) -> void:
 				items.append({"title": "Armistice agreed", "color": GCTheme.NAVY,
 					"body": ("After %d rounds the game proposed an armistice" % int(e["automatic_after"]) if e.get("automatic_after") != null
 						else "%s proposed an armistice" % _proposer_name(e.get("faction")))
-						+ (", and everyone agreed: %s.\n\nThe game ends here; nobody is declared the winner." % ", ".join(names))})
+						+ (", and everyone agreed: %s.\n\nThe game ends here, and the faction ahead wins: the most Strategic Centers, then the most MCP, then the most unit value." %", ".join(names))})
 			"faction_eliminated":
 				var f := str(e["faction"])
 				if not surrendered.has(f):
@@ -404,9 +404,18 @@ func _announce(events: Array) -> void:
 func game_over_announcement() -> Dictionary:
 	if GameStore.game_ended_by_armistice():
 		# The "Armistice agreed" announcement (above, from the 'armistice' turn_log event) already
-		# named the participants; this one just marks that the game itself is over now.
-		return {"title": "Game over", "color": GCTheme.NAVY,
-			"body": "The game has ended by armistice: every remaining faction agreed to stop here. See the Game Over report for the final standings."}
+		# named the participants; this one names the winner: the faction ahead when it stopped.
+		var winners: Array = GameStore.game_winners()
+		var names := []
+		for c in winners:
+			names.append(_name(str(c)))
+		var who := ""
+		if winners.size() == 1:
+			who = "%s was ahead, and wins the game." % names[0]
+		elif winners.size() > 1:
+			who = "%s were level in the lead, and share the win." % " and ".join(names)
+		return {"title": "Game over", "color": _color(str(winners[0])) if winners.size() == 1 else GCTheme.NAVY,
+			"body": "The game has ended by armistice. %s\n\nSee the Game Over report for the final standings." % who}
 	var left: Array = GameStore.active_factions()
 	var body := ""
 	var color := GCTheme.NAVY

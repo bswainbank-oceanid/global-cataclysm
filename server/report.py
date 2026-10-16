@@ -81,6 +81,20 @@ def _victory_status(code, gs, active_at_end, armistice_participants, elim_event)
     return 'Forced to Surrender'  # unreachable in practice: not eliminated, not active, no armistice
 
 
+def _crown_the_armistice_leader(rows):
+    """An armistice's winner: of the factions that agreed to it, the one ahead -- the most Strategic Centers, then
+    the most Territory MPC, then the most unit value (what its units on the board cost). Its 'Armistice' becomes
+    'Winner' (all of them, should several be level on all three)."""
+    agreed = [r for r in rows if r['victory_status'] == 'Armistice']
+    if not agreed:
+        return
+    standing = lambda r: (r['strategic_centers'], r['territory_mpc'], r['unit_value'])
+    best = max(standing(r) for r in agreed)
+    for r in agreed:
+        if standing(r) == best:
+            r['victory_status'] = 'Winner'
+
+
 def _alliance_history(code, turn_log):
     """This faction's alliance timeline, one short line per change, in turn order -- 'Alliance history'
     in the report -- each told by its round ('R3: ...'), the round the latest start_of_turn event names.
@@ -157,6 +171,7 @@ def build_game_report(engine, turn_log, bots):
     left_off = ({engine.data.neutral_faction()['id'], engine.data.noncombatant_faction()['id']}
                 if hasattr(engine.data, 'neutral_faction') else {'NEU', 'NCB'})
     rounds_in_game = _rounds_played(gs, armistice)
+    units = data.units()
     rows = []
     for code, fstate in gs.factions.items():
         if code in left_off or fstate.mode in (FactionMode.NEUTRAL, FactionMode.NONCOMBATANT):  # (nor any seat set so)
@@ -182,7 +197,11 @@ def build_game_report(engine, turn_log, bots):
             'rounds_in_game': rounds_in_game,
             'round_eliminated': _round_eliminated(elim_event),
             'eliminated_by': _eliminated_by(elim_event),
+            'unit_value': sum(units[u.unit_type].get('cost') or 0 for t in gs.territories.values() for u in t.units
+                              if u.owner == code),
+            'by_armistice': armistice is not None,
         })
+    _crown_the_armistice_leader(rows)
 
     rows.sort(key=lambda r: (
         _STATUS_RANK.get(r['victory_status'], len(_STATUS_RANK)),

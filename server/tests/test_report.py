@@ -77,13 +77,27 @@ class TestBuildGameReport(unittest.TestCase):
         self.assertEqual(by_fac['GPC']['victory_status'], 'Surrendered')
         self.assertEqual(by_fac['NAA']['victory_status'], 'Winner')
 
-    def test_armistice_participants_are_neither_winners_nor_eliminated(self):
+    def test_at_an_armistice_the_faction_ahead_wins(self):
         engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT})
         log = TurnLog()
         engine.turn_log = log
         engine.end_by_armistice('NAA', ['NAA', 'UE', 'GPC'])
         rows = build_game_report(engine, log, {})
-        self.assertTrue(all(r['victory_status'] == 'Armistice' for r in rows if r['faction'] in ('NAA', 'UE', 'GPC')))
+        # NAA and UE have an SC each; NAA's territory is worth more (8 MPC to 5)
+        self.assertEqual([(r['faction'], r['victory_status']) for r in rows],
+                         [('NAA', 'Winner'), ('UE', 'Armistice'), ('GPC', 'Armistice')])
+        self.assertTrue(all(r['by_armistice'] for r in rows))
+
+    def test_level_on_scs_and_mpc_the_armistice_goes_to_unit_value(self):
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT},
+                           units_by_territory={3: [make_unit('Infantry', 'UE')]})
+        engine.data.territories()[2]['value'] = 0  # (NAA and UE: an SC and 5 MPC each)
+        engine.turn_log = log = TurnLog()
+        engine.end_by_armistice(None, ['NAA', 'UE', 'GPC'])
+        by_fac = {r['faction']: r for r in build_game_report(engine, log, {})}
+        level = lambda f: (by_fac[f]['strategic_centers'], by_fac[f]['territory_mpc'])
+        self.assertEqual(level('NAA'), level('UE'))
+        self.assertEqual((by_fac['UE']['victory_status'], by_fac['NAA']['victory_status']), ('Winner', 'Armistice'))
 
     def test_elimination_reason_names_sc_loss_or_economic_or_both(self):
         engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT, 'AAC': FactionMode.NEUTRAL})
@@ -118,8 +132,8 @@ class TestBuildGameReport(unittest.TestCase):
         engine.end_by_armistice('NAA', ['UE', 'GPC'])  # NAA proposes; UE and GPC (the ones still playing) agree
         rows = build_game_report(engine, log, {})
         by_fac = {r['faction']: r for r in rows}
-        self.assertEqual(by_fac['NAA']['victory_status'], 'Surrendered')
-        self.assertEqual(by_fac['UE']['victory_status'], 'Armistice')
+        self.assertEqual(by_fac['NAA']['victory_status'], 'Surrendered')  # (NAA's lead doesn't count: it's out)
+        self.assertEqual(by_fac['UE']['victory_status'], 'Winner')  # ahead of GPC
         self.assertEqual(by_fac['GPC']['victory_status'], 'Armistice')
 
     def test_territory_mpc_is_the_uncontested_territory_value(self):

@@ -295,9 +295,18 @@ func toggle_game_over_report_minimized() -> void:
 ## than the ordinary elimination/alliance victory condition (server/report.py's rows).
 func game_ended_by_armistice() -> bool:
 	for row in game_over_report:
-		if row.get("victory_status") == "Armistice":
+		if bool(row.get("by_armistice", false)) or row.get("victory_status") == "Armistice":
 			return true
 	return false
+
+
+## The Game Over report's winners (the faction ahead, after an armistice), best first.
+func game_winners() -> Array:
+	var out := []
+	for row in game_over_report:
+		if row.get("victory_status") == "Winner":
+			out.append(str(row.get("faction", "")))
+	return out
 
 
 const NONCOMBATANT_COLOR := Color(0.93, 0.87, 0.68)
