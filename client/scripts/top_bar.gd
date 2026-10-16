@@ -46,10 +46,10 @@ func _title_block() -> Control:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 6)
 	var mark := TextureRect.new()
-	mark.texture = load("res://assets/logo/mark.svg")
+	mark.texture = load("res://assets/logo/icon_64.png")  # (the poster icon)
 	mark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	mark.custom_minimum_size = Vector2(20, 20)
+	mark.custom_minimum_size = Vector2(24, 24)
 	head.add_child(mark)
 	head.add_child(HudStyle.label("Global Cataclysm 1972", 15, HudStyle.GOLD))
 	v.add_child(head)
