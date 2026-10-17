@@ -370,6 +370,13 @@ def _opportunistic_strength_mismatch(engine, faction):
     )
 
 
+def withdraws_to_go_on(engine, faction):
+    """An opportunistic, treacherous or underdog faction always withdraws, at Diplomacy, if the game would otherwise
+    end on its own turn -- whatever it planned as the turn began."""
+    behavior = effective_alliance_behavior(engine.game_state, faction)
+    return behavior in ('opportunistic', 'treacherous', 'underdog') and engine.would_game_end()
+
+
 def should_withdraw(engine, faction):
     """Whether `faction`'s (effective) alliance_behavior wants to
     withdraw this Diplomacy phase. Caller must still confirm `faction` is

@@ -600,10 +600,11 @@ class TestRandomBotAllianceIntegration(unittest.TestCase):
         bot = RandomBot(engine, 'NAA', rng=random.Random(1))
         bot.take_purchase_phase()
         self.assertIn(gs.factions['NAA'].current_alliance_behavior, alliance_policy._CONCRETE_BEHAVIORS)
-        if gs.factions['NAA'].current_alliance_behavior == 'treacherous':
-            self.assertIsInstance(gs.factions['NAA'].pending_treacherous_withdrawal, bool)
-        else:
+        # (the whole withdraw decision is made now: any behavior but loyal may plan to leave)
+        if gs.factions['NAA'].current_alliance_behavior == 'loyal':
             self.assertFalse(gs.factions['NAA'].pending_treacherous_withdrawal)
+        else:
+            self.assertIsInstance(gs.factions['NAA'].pending_treacherous_withdrawal, bool)
 
     def test_take_alliance_phase_withdrawal_blocked_by_setting_falls_through_to_nothing(self):
         # can_withdraw_from_alliances False means the withdrawal branch is

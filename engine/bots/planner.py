@@ -131,6 +131,11 @@ class Planner:
         self._nc_dests = {}
         self._threat = None
         self._dest_cache = {}
+        # Planning to withdraw from my alliance this turn (decided as the turn began -- RandomBot.
+        # _maybe_roll_treacherous_intent): the allies I'm leaving are enemies to every defensive objective.
+        mine = self.gs.factions[faction]
+        self.leaving = bool(mine.pending_treacherous_withdrawal) and mine.alliance is not None
+        self._split = None
         self._costs = {}
         self._excluded_zones = excluded_naval_purchase_zones(self.data)
         self._purchase_spots = None
@@ -185,6 +190,23 @@ class Planner:
 
     def mobile_hostile(self, other):
         return self.hostile(other) and self.gs.factions[other].mode in (FactionMode.HUMAN, FactionMode.BOT)
+
+    def turning_on(self, other):
+        """An ally I plan to leave this turn (self.leaving): a threat to me from then on, so the defensive
+        objectives reckon with it as an enemy."""
+        if not self.leaving or other is None or other == self.me or not self.allied(other):
+            return False
+        f = self.gs.factions[other]
+        return f.mode in (FactionMode.HUMAN, FactionMode.BOT) and not f.eliminated
+
+    def _after_split(self):
+        """The board as it will be once I've left my alliance: where my former allies' units could then attack."""
+        if self._split is None:
+            self._split = copy.copy(self.gs)
+            self._split.factions = dict(self.gs.factions)
+            me = self._split.factions[self.me] = copy.copy(self.gs.factions[self.me])
+            me.alliance = None
+        return self._split
 
     def is_land(self, tid):
         return self.terrs[tid]['type'] == 'land'
@@ -284,15 +306,19 @@ class Planner:
             self._threat = {}
             for origin, t in self.gs.territories.items():
                 for u in t.units:
-                    if not self.mobile_hostile(u.owner):
+                    turning = self.turning_on(u.owner)
+                    if not self.mobile_hostile(u.owner) and not turning:
                         continue
                     key = (u.owner, u.unit_type, origin)
                     dests = self._dest_cache.get(key)
                     if dests is None:
+                        board = self._after_split() if turning else self.gs
                         if self.unit_defs[u.unit_type]['category'] == 'Air':
-                            dests = set(legal_air_move_destinations(u.unit_type, u.owner, origin, 'combat', self.gs, self.data))
+                            dests = set(legal_air_move_destinations(u.unit_type, u.owner, origin, 'combat', board, self.data))
                         else:
-                            dests = set(legal_combat_move_paths(u.unit_type, u.owner, origin, self.gs, self.data))
+                            dests = set(legal_combat_move_paths(u.unit_type, u.owner, origin, board, self.data))
+                        if turning:
+                            dests.add(origin)  # (already standing in what will be enemy territory: a contest at once)
                         self._dest_cache[key] = dests
                     for d in dests:
                         self._threat.setdefault(d, {}).setdefault(u.owner, []).append(u)

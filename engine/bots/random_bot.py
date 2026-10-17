@@ -416,6 +416,13 @@ class RandomBot:
         elif behavior == 'underdog' and fstate.alliance is not None:
             # (no dice: it plans to leave once its alliance has become the favourite -- alliance_policy)
             fstate.pending_treacherous_withdrawal = alliance_policy.underdog_wants_out(self.engine, self.faction)
+        if gs.can_withdraw_from_alliances and fstate.alliance is not None:
+            # The whole decision, made now, as the turn's planning begins (the dice above are one input; an
+            # opportunist's strength check another): pending_treacherous_withdrawal is then this turn's plan to
+            # withdraw at Diplomacy -- and the planner treats the allies it is leaving as enemies all turn.
+            fstate.pending_treacherous_withdrawal = alliance_policy.should_withdraw(self.engine, self.faction)
+        else:
+            fstate.pending_treacherous_withdrawal = False
 
     def take_alliance_phase(self):
         self.commit_alliance_phase(self.plan_alliance_phase())
@@ -440,8 +447,11 @@ class RandomBot:
         gs = self.engine.game_state
         fstate = gs.factions[self.faction]
 
+        planned, fstate.pending_treacherous_withdrawal = fstate.pending_treacherous_withdrawal, False
         if fstate.alliance is not None and gs.can_withdraw_from_alliances:
-            if alliance_policy.should_withdraw(self.engine, self.faction):
+            # decided as the turn began (_maybe_roll_treacherous_intent) -- or, still, to keep the game from
+            # ending on this turn (alliance_policy.withdraws_to_go_on)
+            if planned or alliance_policy.withdraws_to_go_on(self.engine, self.faction):
                 return {'action': 'withdraw'}
 
         target = alliance_policy.choose_invite_target(self.engine, self.faction, self.rng)

@@ -19,9 +19,9 @@
   },
   "mixed_alliances": {
     "setup": "7a81690dee4cff825ae8590e585ece4660887d7f",
-    "log": "24615a5b8ce84cb3829547aa6fd99ee1cd0949a0",
-    "final": "88de85248291c0ec835ef897b69d320d109979b1",
-    "events": 2261
+    "log": "46d2d30bc5ab696f0590ce14b20e34790e0b75bb",
+    "final": "d76a7b4b05cd9fc3e42c6f78a60adc5dfda57267",
+    "events": 2142
   },
   "fixed_order_2bot": {
     "setup": "68d80a9dbe0714e901821b3e453a5e92bed28d1a",
