@@ -177,6 +177,15 @@ func _initialize() -> void:
 	stepper._do_advance()
 	_check(stepper._queued_phase == "PURCHASE", "and it plays on from there (%s)" % stepper._queued_phase)
 
+	# A faction of mine that surrendered on its own turn has no decision left: its queued phase never holds
+	# playback up waiting for me (the game goes on, if I chose to let it).
+	stepper._queued_faction = "AAC"
+	stepper._queued_phase = "PURCHASE"
+	_check(stepper._is_my_decision(), "my own Purchase, queued: mine to decide")
+	store.state["factions"]["AAC"]["eliminated"] = true
+	_check(not stepper._is_my_decision(), "...but not once AAC is out of the game")
+	store.state["factions"]["AAC"]["eliminated"] = false
+
 	# Leaving the game: back to the one-game behaviour.
 	stepper.feed_mode = false
 	stepper.reset()

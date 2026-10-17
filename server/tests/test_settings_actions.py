@@ -53,7 +53,8 @@ class TestSelfSurrender(unittest.TestCase):
         session.handle_message({'type': 'next'})  # ...but nobody has to be ON it: advance past it first
         reply = session.handle_message({'type': 'surrender', 'faction': 'NAA'})
         # (NAA was the only human: it is asked whether the bots play on -- tests/test_last_human_surrender.py)
-        self.assertEqual([m['type'] for m in reply], ['self_surrender_result', 'state', 'last_human_choice'])
+        # (still NAA's own turn, its Purchase: that turn ends, and the next faction's is queued)
+        self.assertEqual([m['type'] for m in reply], ['self_surrender_result', 'state', 'phase_queue', 'last_human_choice'])
         self.assertEqual([e['kind'] for e in reply[0]['events']], ['self_surrender', 'faction_eliminated'])
         self.assertTrue(gs.factions['NAA'].eliminated)
         self.assertFalse(gs.game_over)  # EU and GPC are both still around, unallied

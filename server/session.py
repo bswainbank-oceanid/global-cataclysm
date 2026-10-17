@@ -608,6 +608,10 @@ class GameSession:
         if gs.active_faction != active_before:
             self.stepper.turn_ended()  # (it gave up on its own turn: that turn is over -- GameEngine.surrender)
         messages = [{'type': 'self_surrender_result', 'faction': faction, 'events': events}, self._state_message()]
+        if gs.active_faction != active_before and not gs.game_over:
+            # the next faction's turn is what's queued now (a watcher's view of the old one, its own, is over)
+            self.stepper._plan_current_phase()
+            messages.append(self.stepper._queue)
         if gs.game_over:
             messages.append(self._game_over_message())
         elif not any(gs.factions[c].mode == FactionMode.HUMAN for c in gs.active_factions()):

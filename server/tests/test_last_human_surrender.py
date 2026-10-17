@@ -47,8 +47,11 @@ class TestSurrenderingOnYourOwnTurn(unittest.TestCase):
         order = [c for c in gs.factions if c in gs.active_factions()]
         following = order[(order.index(human) + 1) % len(order)]
         round_before = gs.round_number
-        session.handle_message({'type': 'surrender', 'faction': human})
+        reply = session.handle_message({'type': 'surrender', 'faction': human})
         self.assertEqual(gs.active_faction, following)
+        # the next faction's turn is what's queued now -- so no watcher stays on the one that just gave up
+        [queued] = [m for m in reply if m.get('type') == 'phase_queue']
+        self.assertEqual((queued['faction'], queued['phase']), (following, 'START_OF_TURN'))
         self.assertEqual(gs.phase.name, 'PURCHASE')
         self.assertEqual(gs.round_number, round_before + (1 if order.index(following) == 0 else 0))
         session.handle_message({'type': 'choose_end', 'faction': human, 'end': False})
@@ -136,6 +139,29 @@ class TestInAMultiPlayerGame(SeatTest):
         self.assertNotIn('error', [m['type'] for m in self.got(
             self.send('ann', {'type': 'respond_armistice', 'accept': True}), 'ann')])
         self.assertTrue(self.session(gid).engine.game_state.game_over)
+
+
+class TestOnYourOwnTurnInAMultiPlayerGame(SeatTest):
+    def test_choosing_to_play_on_the_bots_do(self):
+        reply = self.send('ann', {'type': 'create_game', 'scenario': {'kind': 'fixed', 'id': 'fixed'},
+                                  'settings': settings(seat('HUMAN'), bot(), bot(), seed=61, armistice_rounds=0)})
+        gid = next(m['game']['id'] for m in self.got(reply, 'ann') if m['type'] == 'entered_game')
+        self.run_game(gid)  # (to Ann's first decision: her own turn)
+        mine = self.faction(gid, self.ann)
+        session = self.session(gid).session
+        gs = session.engine.game_state
+        self.assertEqual((gs.active_faction, session.waiting_for()), (mine, [mine]))
+        out = self.send('ann', {'type': 'surrender', 'faction': mine})
+        self.assertIn('phase_queue', [m['type'] for m in self.got(out, 'ann')])
+        self.send('ann', {'type': 'choose_end', 'faction': mine, 'end': False})
+        turn = gs.global_turn
+        for _ in range(400):
+            session.viewer_seq = session.seq  # (as if Ann watched on)
+            if gid not in self.hub.runnable():
+                break
+            self.hub.step(gid)
+            self.assertNotEqual(session.waiting_for(), [mine])
+        self.assertGreater(gs.global_turn, turn + 2)  # the bots took their turns: nothing waits on Ann
 
 
 class TestAnotherHumanStillPlaying(unittest.TestCase):

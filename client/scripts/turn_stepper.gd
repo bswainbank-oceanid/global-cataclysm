@@ -174,7 +174,9 @@ func queued_faction() -> String:
 
 ## The queued step is one of this player's own decisions (their Purchase, moves or Diplomacy).
 func _is_my_decision() -> bool:
-	return GameStore.is_player(_queued_faction) and DECISION_PHASES.has(_queued_phase)
+	# (never a faction of mine that is out of the game: one that surrendered on its own turn has none left to make)
+	return (GameStore.is_player(_queued_faction) and DECISION_PHASES.has(_queued_phase)
+		and not bool(GameStore.faction_state(_queued_faction).get("eliminated", false)))
 
 
 func _on_message(msg: Dictionary) -> void:
