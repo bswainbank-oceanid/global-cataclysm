@@ -14,6 +14,8 @@ signal answered(accept: bool)
 var _title: Label
 var _body: RichTextLabel
 var _panel: PanelContainer
+var _yes: Button
+var _no: Button
 
 
 func _ready() -> void:
@@ -46,12 +48,12 @@ func _ready() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 14)
 	v.add_child(row)
-	var accept := _button("Accept", true)
-	accept.pressed.connect(func(): answered.emit(true))
-	row.add_child(accept)
-	var decline := _button("Decline", false)
-	decline.pressed.connect(func(): answered.emit(false))
-	row.add_child(decline)
+	_yes = _button("Accept", true)
+	_yes.pressed.connect(func(): answered.emit(true))
+	row.add_child(_yes)
+	_no = _button("Decline", false)
+	_no.pressed.connect(func(): answered.emit(false))
+	row.add_child(_no)
 	GameStore.armistice_changed.connect(_sync)
 	_sync()
 
@@ -68,9 +70,21 @@ func _button(text: String, primary: bool) -> Button:
 
 
 func _sync() -> void:
-	visible = GameStore.armistice_pending()
+	visible = GameStore.armistice_pending() or GameStore.last_human_choice_mine()
 	if not visible:
 		return
+	if GameStore.last_human_choice_mine():
+		# The last human player has surrendered: end the game here, or let the bots play it out (yes = end it).
+		_title.text = "You have surrendered"
+		_body.text = ("You were the last human player in this game. End it here, or let the bots play it out while you watch?"
+			+ "\n\nEnding it is an armistice among the factions still in it: the faction ahead wins -- the most Strategic"
+			+ " Centers, then the most MCP, then the most unit value.")
+		_yes.text = "End the game"
+		_no.text = "Let them play on"
+		_panel.tooltip_text = "Choose to continue"
+		return
+	_yes.text = "Accept"
+	_no.text = "Decline"
 	if Dbg.args.has("shot"):
 		print("[dbg] armistice window shown")
 	# "from" is null when a pure SPECTATOR proposed it (nobody's own faction) rather than a faction.

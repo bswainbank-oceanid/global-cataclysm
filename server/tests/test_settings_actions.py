@@ -52,7 +52,8 @@ class TestSelfSurrender(unittest.TestCase):
         gs = session.engine.game_state
         session.handle_message({'type': 'next'})  # ...but nobody has to be ON it: advance past it first
         reply = session.handle_message({'type': 'surrender', 'faction': 'NAA'})
-        self.assertEqual([m['type'] for m in reply], ['self_surrender_result', 'state'])
+        # (NAA was the only human: it is asked whether the bots play on -- tests/test_last_human_surrender.py)
+        self.assertEqual([m['type'] for m in reply], ['self_surrender_result', 'state', 'last_human_choice'])
         self.assertEqual([e['kind'] for e in reply[0]['events']], ['self_surrender', 'faction_eliminated'])
         self.assertTrue(gs.factions['NAA'].eliminated)
         self.assertFalse(gs.game_over)  # EU and GPC are both still around, unallied
@@ -64,25 +65,19 @@ class TestSelfSurrender(unittest.TestCase):
         self.assertEqual(reply[-1]['type'], 'game_over')
         self.assertTrue(reply[-1]['report'])
 
-    def test_a_stale_queue_does_not_wedge_the_game(self):
-        # NAA's own Purchase phase is the one currently queued when NAA surrenders mid-that: the queue
-        # (rebuilt fresh) still names NAA -- GameState.active_faction only moves at advance_turn() -- but
-        # with nothing left to decide (see _commit's active guards), and "next" walks straight past it to
-        # a faction that is still actually playing.
+    def test_surrendering_on_your_own_turn_ends_it_there(self):
+        # NAA's own Purchase phase is the one currently queued when NAA surrenders mid-that: its turn ends there
+        # (GameEngine.surrender), and the queue names the next faction still playing -- nothing more of NAA's.
         session = _session()
         session.handle_message({'type': 'watch'})
         session.handle_message({'type': 'surrender', 'faction': 'NAA'})
+        session.handle_message({'type': 'choose_end', 'faction': 'NAA', 'end': False})
         queue = _by_type(session.handle_message({'type': 'watch'}), 'phase_queue')[0]
-        self.assertEqual(queue['events'], [])
-        seen = set()
+        self.assertIn(queue['faction'], ('EU', 'GPC'))
         for _ in range(30):
             messages = session.handle_message({'type': 'next'})
             self.assertNotIn('error', [m['type'] for m in messages])
-            for q in _by_type(messages, 'phase_queue'):
-                seen.add(q['faction'])
-            if 'EU' in seen or 'GPC' in seen:
-                break
-        self.assertTrue({'EU', 'GPC'} & seen)
+            self.assertNotIn('NAA', [q['faction'] for q in _by_type(messages, 'phase_queue')])
 
     def test_cannot_surrender_twice(self):
         session = _session(humans=('NAA',), bots=('EU', 'GPC'))
@@ -99,6 +94,8 @@ class TestSelfSurrender(unittest.TestCase):
         session = _session(humans=('NAA',), bots=('EU', 'GPC'))
         session.handle_message({'type': 'watch'})
         session.handle_message({'type': 'surrender', 'faction': 'NAA'})
+        self.assertEqual(session.handle_message({'type': 'next'})[0]['type'], 'error')  # (NAA chooses first)
+        session.handle_message({'type': 'choose_end', 'faction': 'NAA', 'end': False})
         reply = session.handle_message({'type': 'next'})
         self.assertNotIn('error', [m['type'] for m in reply])
 

@@ -136,6 +136,8 @@ func _apply_feed_armistice(msg: Dictionary) -> void:
 	var a = msg.get("armistice")
 	GameStore.set_armistice({"from": a["from"], "awaiting": a["awaiting"], "automatic_after": a.get("automatic_after")}
 		if a is Dictionary else {})
+	# (and the last human player's choice, if one is awaited: the one asked is asked again on entering)
+	GameStore.set_last_human_choice(str(msg["last_human_choice"]) if msg.get("last_human_choice") != null else "")
 
 
 ## A wait on the server ends without its answer (an error reply, a lost connection). In a multi-player game
@@ -276,6 +278,16 @@ func _on_message(msg: Dictionary) -> void:
 					int(msg["automatic_after"]), ", ".join(msg["awaiting"])])
 			else:
 				log_line.emit("[color=#fffdf8]%s proposes an armistice -- awaiting: %s[/color]" % [_proposer_name(msg["from"]), ", ".join(msg["awaiting"])])
+		"last_human_choice":
+			# The last human player has surrendered: the game holds still while they choose to end it or play on.
+			GameStore.set_last_human_choice(str(msg["faction"]))
+			if not GameStore.last_human_choice_mine():
+				log_line.emit("[color=#fffdf8]%s, the last human player, has surrendered -- they choose whether the game goes on[/color]" % str(msg["faction"]))
+		"last_human_choice_made":
+			GameStore.set_last_human_choice("")
+			if not bool(msg.get("end", false)):
+				announced.emit([{"title": "The bots play on", "color": GCTheme.NAVY,
+					"body": "%s, the last human player, surrendered and chose to let the bots play the game out." % _name(str(msg["faction"]))}])
 		"armistice_resolved":
 			GameStore.set_armistice({})
 			if bool(msg.get("accepted", false)):
@@ -364,10 +376,15 @@ func _announce(events: Array) -> void:
 				var names := []
 				for p in e.get("participants", []):
 					names.append(_name(str(p)))
-				items.append({"title": "Armistice agreed", "color": GCTheme.NAVY,
-					"body": ("After %d rounds the game proposed an armistice" % int(e["automatic_after"]) if e.get("automatic_after") != null
-						else "%s proposed an armistice" % _proposer_name(e.get("faction")))
-						+ (", and everyone agreed: %s.\n\nThe game ends here, and the faction ahead wins: the most Strategic Centers, then the most MCP, then the most unit value." %", ".join(names))})
+				if e.get("after_surrender") != null:
+					items.append({"title": "The game ends", "color": GCTheme.NAVY,
+						"body": "%s, the last human player, surrendered and ended the game: an armistice among %s.\n\nThe faction ahead wins: the most Strategic Centers, then the most MCP, then the most unit value." % [
+							_name(str(e["after_surrender"])), ", ".join(names)]})
+				else:
+					items.append({"title": "Armistice agreed", "color": GCTheme.NAVY,
+						"body": ("After %d rounds the game proposed an armistice" % int(e["automatic_after"]) if e.get("automatic_after") != null
+							else "%s proposed an armistice" % _proposer_name(e.get("faction")))
+							+ (", and everyone agreed: %s.\n\nThe game ends here, and the faction ahead wins: the most Strategic Centers, then the most MCP, then the most unit value." %", ".join(names))})
 			"faction_eliminated":
 				var f := str(e["faction"])
 				if not surrendered.has(f):
@@ -442,6 +459,9 @@ func _refresh() -> void:
 	needs_hold = false
 	if game_over:
 		button_text = "Game over"
+	elif GameStore.last_human_choice != "":  # the game holds still while the last human player chooses
+		button_text = ("End the game, or let the bots play on?" if GameStore.last_human_choice_mine()
+			else "Waiting for %s to choose whether the game goes on..." % GameStore.last_human_choice)
 	elif feed_mode and not GameStore.armistice.is_empty():  # the game holds still until everyone asked answers
 		if GameStore.armistice_pending():
 			button_text = "Answer the armistice proposal"
@@ -898,7 +918,9 @@ func propose_armistice() -> void:
 
 ## The human's own answer to someone ELSE's pending armistice proposal.
 func respond_armistice(accept: bool) -> void:
-	if GameStore.armistice_faction() != "":
+	if GameStore.last_human_choice_mine():  # (the same window: having surrendered last, yes ends the game)
+		Net.send_msg({"type": "choose_end", "faction": GameStore.last_human_choice, "end": accept})
+	elif GameStore.armistice_faction() != "":
 		Net.send_msg({"type": "respond_armistice", "faction": GameStore.armistice_faction(), "accept": accept})
 	elif GameStore.armistice_for_spectator():  # (no faction: the spectator's answer)
 		Net.send_msg({"type": "respond_armistice", "accept": accept})

@@ -316,6 +316,9 @@ class GameSession:
         # _handle_propose_armistice) -> GameState.round_number at the moment their LAST proposal was
         # declined. Checked (and enforced) by _handle_propose_armistice, set by _resolve_armistice.
         self._armistice_cooldown = {}
+        # The last human player has just surrendered (their faction code), or None: the game holds still until they
+        # choose -- "choose_end": end it here (the faction ahead wins, as at an armistice) or let the bots play on.
+        self._last_human_choice = None
         # The automatic armistice proposal: the round in which the game next proposes one by itself (it is
         # made as that round begins, once every faction has played GameState.armistice_after_rounds rounds),
         # or None (the setting is 0: never).
@@ -379,6 +382,8 @@ class GameSession:
         if msg_type == 'next':
             if self._armistice is not None:
                 return [{'type': 'error', 'message': "an armistice proposal is awaiting an answer"}]
+            if self._last_human_choice is not None:
+                return [{'type': 'error', 'message': f'{self._last_human_choice} is choosing whether the game goes on'}]
             messages = self.stepper.next()
             return messages + self._maybe_propose_armistice()
         if msg_type == 'surrender':
@@ -387,6 +392,8 @@ class GameSession:
             return self._handle_propose_armistice(faction)
         if msg_type == 'respond_armistice':
             return self._handle_respond_armistice(faction, msg.get('accept'))
+        if msg_type == 'choose_end':
+            return self._handle_choose_end(faction, msg.get('end'))
         if msg_type == 'diplomacy_action':
             return self.stepper.diplomacy_action(faction, msg.get('action'), msg.get('target'))
         if msg_type == 'respond_invitation':
@@ -421,6 +428,8 @@ class GameSession:
             return []
         if self._armistice is not None:
             return sorted(self._armistice['pending'])
+        if self._last_human_choice is not None:
+            return [self._last_human_choice]
         if stepper._queue is None:
             stepper._plan_current_phase()
         stepper.drop_lapsed_invitation()
@@ -501,7 +510,7 @@ class GameSession:
                          'automatic_after': self._armistice.get('automatic_after')}
         return {'type': 'feed', 'to_sender': True, 'epoch': self.epoch, 'seq': self.seq, 'messages': missed,
                 'state': self.stepper._state_message(), 'queue': self.stepper._queue, 'waiting_for': waiting,
-                'armistice': armistice,
+                'armistice': armistice, 'last_human_choice': self._last_human_choice,
                 'game_over': self.stepper._game_over_message()['report'] if gs.game_over else None}
 
     def _publish(self, messages):
@@ -589,16 +598,43 @@ class GameSession:
         if faction not in gs.factions or gs.factions[faction].mode != FactionMode.HUMAN:
             return [self._error(faction, f'{faction} is not a human-controlled faction')]
         start = len(self.turn_log.events)
+        active_before = gs.active_faction
         try:
             self.engine.surrender(faction)
         except ValueError as e:
             return [self._error(faction, str(e))]
         events = self.turn_log.events[start:]
         self.stepper.invalidate_queue()  # its cached queue may reference the faction that just left
+        if gs.active_faction != active_before:
+            self.stepper.turn_ended()  # (it gave up on its own turn: that turn is over -- GameEngine.surrender)
         messages = [{'type': 'self_surrender_result', 'faction': faction, 'events': events}, self._state_message()]
-        if self.engine.game_state.game_over:
+        if gs.game_over:
             messages.append(self._game_over_message())
+        elif not any(gs.factions[c].mode == FactionMode.HUMAN for c in gs.active_factions()):
+            # the last human player is out: theirs to say whether the bots play it out
+            self._last_human_choice = faction
+            messages.append({'type': 'last_human_choice', 'faction': faction})
         return messages
+
+    def _handle_choose_end(self, faction, end):
+        """The last human player's answer, having surrendered: `end` the game here -- as an armistice among the
+        factions still in it (the faction ahead wins: server/report.py) -- or let the bots play it out."""
+        if self._last_human_choice is None or faction != self._last_human_choice:
+            return [self._error(faction, 'there is no choice of yours to make')]
+        if end is None:
+            return [self._error(faction, "'end' is required (true or false)")]
+        self._last_human_choice = None
+        if not end:
+            return [{'type': 'last_human_choice_made', 'faction': faction, 'end': False}]
+        gs = self.engine.game_state
+        start = len(self.turn_log.events)
+        self.engine.end_by_armistice(None, gs.active_factions())
+        self.turn_log.events[-1]['after_surrender'] = faction  # (the record: the last human player ended it)
+        events = self.turn_log.events[start:]
+        self.stepper.invalidate_queue()
+        return [{'type': 'last_human_choice_made', 'faction': faction, 'end': True},
+                {'type': 'armistice_resolved', 'from': None, 'accepted': True, 'declined_by': None, 'events': events},
+                self._state_message(), self._game_over_message()]
 
     def _handle_propose_armistice(self, faction):
         """The Settings 'Propose Armistice' action. Every other currently ACTIVE faction must agree: a

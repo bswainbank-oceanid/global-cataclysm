@@ -147,7 +147,8 @@ def take_snapshot(session):
         'strategy_logs': logs,
         'session': {'pending_invite': copy.deepcopy(session._pending_invite), 'armistice': armistice,
                     'armistice_cooldown': [[k, v] for k, v in session._armistice_cooldown.items()],
-                    'auto_armistice_round': session._auto_armistice_round},
+                    'auto_armistice_round': session._auto_armistice_round,
+                    'last_human_choice': session._last_human_choice},
     }
 
 
@@ -171,6 +172,7 @@ def restore_snapshot(snap, setup):
                                                  for k, v in a.items()}
     session._armistice_cooldown = {k: v for k, v in s['armistice_cooldown']}
     session._auto_armistice_round = s['auto_armistice_round']
+    session._last_human_choice = s.get('last_human_choice')
     for faction, entry in snap['strategy_logs'].items():
         log = StrategyLogger(engine, bots[faction])
         log._start, log._last_start = entry['start'], entry['last_start']

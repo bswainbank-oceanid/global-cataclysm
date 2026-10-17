@@ -92,6 +92,21 @@ func _initialize() -> void:
 	var announced_items := []
 	stepper.announced.connect(func(items: Array): announced_items.append_array(items))
 
+	# The last human player surrenders: the same window asks them to end the game or let the bots play on.
+	stepper._on_message({"type": "last_human_choice", "faction": "NAA"})
+	_check(store.last_human_choice_mine() and armistice_window.visible and armistice_window._yes.text == "End the game"
+		and armistice_window._no.text == "Let them play on", "the last human player is asked: end it, or play on")
+	stepper._refresh()
+	_check(stepper.button_text.begins_with("End the game, or let the bots play on"), "and the game holds still: %s" % stepper.button_text)
+	stepper._on_message({"type": "last_human_choice_made", "faction": "NAA", "end": false})
+	_check(store.last_human_choice == "" and not armistice_window.visible, "answered: the window goes")
+	_check(announced_items.size() == 1 and str(announced_items[0]["title"]) == "The bots play on", "playing on is announced")
+	announced_items.clear()
+	stepper._announce([{"kind": "armistice", "turn": 9, "faction": null, "participants": ["EU", "GPC"], "after_surrender": "NAA"}])
+	_check(announced_items.size() == 1 and str(announced_items[0]["title"]) == "The game ends"
+		and str(announced_items[0]["body"]).contains("last human player"), "ending it is told as the last human player's end")
+	announced_items.clear()
+
 	stepper._on_message({"type": "self_surrender_result", "faction": "NAA", "events": [
 		{"kind": "self_surrender", "turn": 1, "faction": "NAA"}, {"kind": "faction_eliminated", "faction": "NAA"}]})
 	_check(announced_items.size() == 1 and str(announced_items[0]["title"]) == "NAA surrenders", "a self-surrender is announced once, not twice over")

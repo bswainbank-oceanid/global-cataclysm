@@ -2066,6 +2066,10 @@ class GameEngine:
             self.turn_log.record_self_surrender(gs.global_turn, gs.round_number, faction)
         self._eliminate(faction)
         gs.game_over = self.would_game_end()
+        if not gs.game_over and gs.active_faction == faction:
+            # It gave up on its own turn: the turn ends there, and the next faction's begins.
+            gs.phase = Phase.DIPLOMACY
+            self.advance_turn()
 
     def end_by_armistice(self, proposer, participants, automatic_after=None):
         """The Settings 'Propose Armistice' action, once every other active faction has accepted it
@@ -2535,9 +2539,14 @@ class GameEngine:
             self.game_state.game_over = True
             return
 
-        next_index = (active.index(finishing) + 1) % len(active) if finishing in active else 0
-        if next_index == 0:
+        # The next in turn order after the one finishing -- which may itself be out of the game now (it
+        # surrendered on its own turn): its place in the order still says who comes next.
+        order = list(self.game_state.factions)
+        at = order.index(finishing) if finishing in order else -1
+        later = [c for c in active if order.index(c) > at]
+        nxt = later[0] if later else active[0]
+        if not later:
             self.game_state.round_number += 1  # wrapped back to the top of the (possibly-shrunk) turn order: a new lap
-        self.game_state.active_faction = active[next_index]
+        self.game_state.active_faction = nxt
         self.game_state.global_turn += 1
         self.game_state.phase = Phase.PURCHASE

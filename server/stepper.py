@@ -204,6 +204,16 @@ class PhaseStepper:
         is no longer in the game, or its legal_surrender_targets no longer holds)."""
         self._queue = None
 
+    def turn_ended(self):
+        """The active faction's turn ended outside the step-by-step flow (it surrendered on its own turn): any
+        Combat Resolution under way, and a Diplomacy plan or invitation of its, go with it."""
+        self._queue = None
+        self._bombardments, self._bombardment_index = None, 0
+        self._battles, self._battle_index = None, 0
+        self._combat_resolution_begun = False
+        self._alliance_plan = self._alliance_plan_for = None
+        self._invitation = None
+
     def watch(self):
         """Current state, plus the queue awaiting execution (planned now if
         this is the very first join)."""

@@ -154,6 +154,7 @@ func reset() -> void:
 	human_alliance = {}
 	invitation = {}
 	armistice = {}
+	last_human_choice = ""
 	armistice_cooldown_until_round = -1
 	game_over_report = []
 	game_over_report_minimized = false
@@ -245,6 +246,23 @@ func set_waiting_for(factions: Array) -> void:
 
 ## A Propose Armistice proposal in flight, from the phase queue (independent of it,
 ## really -- it can happen in any phase) ({} = none pending).
+## The last human player in the game has surrendered (their faction code, "" if not): the game holds still while
+## they choose to end it or let the bots play it out (server/session.py's choose_end).
+var last_human_choice := ""
+
+
+func set_last_human_choice(code: String) -> void:
+	if code == last_human_choice:
+		return
+	last_human_choice = code
+	armistice_changed.emit()
+
+
+## True while that choice is this player's own to make.
+func last_human_choice_mine() -> bool:
+	return last_human_choice != "" and is_player(last_human_choice)
+
+
 func set_armistice(info: Dictionary) -> void:
 	if info == armistice:
 		return
@@ -262,7 +280,15 @@ func armistice_pending() -> bool:
 ## True while the automatic armistice proposal in a game with no human player left awaits a spectator's
 ## answer, and this player is one (no faction of their own): they may accept or decline it.
 func armistice_for_spectator() -> bool:
-	return not armistice.is_empty() and my_factions.is_empty() and (armistice.get("awaiting", []) as Array).has("spectator")
+	return not armistice.is_empty() and _watching_only() and (armistice.get("awaiting", []) as Array).has("spectator")
+
+
+## No faction of this player's own still in the game: they watch it (a spectator, or one whose factions are out).
+func _watching_only() -> bool:
+	for code in my_factions:
+		if not bool(faction_state(str(code)).get("eliminated", false)):
+			return false
+	return true
 
 
 ## The faction of this player's that a pending armistice proposal is still asking ("" if none).

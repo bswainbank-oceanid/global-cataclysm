@@ -26,6 +26,20 @@ class TestSelfSurrender(unittest.TestCase):
         self.assertTrue(gs.factions['NAA'].eliminated)
         self.assertNotIn('NAA', gs.active_factions())
 
+    def test_on_its_own_turn_the_turn_ends_and_the_next_in_order_begins(self):
+        engine, gs = world({'NAA': FactionMode.BOT, 'EU': FactionMode.HUMAN, 'GPC': FactionMode.BOT})
+        round_before, turn_before = gs.round_number, gs.global_turn
+        engine.surrender('EU')  # EU's own Combat Move: NAA, EU, GPC is the order
+        self.assertEqual((gs.active_faction, gs.phase), ('GPC', Phase.PURCHASE))
+        self.assertEqual((gs.round_number, gs.global_turn), (round_before, turn_before + 1))  # (no lap skipped)
+
+    def test_the_last_in_order_giving_up_on_its_turn_starts_the_next_round(self):
+        engine, gs = world({'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'GPC': FactionMode.HUMAN})
+        gs.active_faction = 'GPC'
+        round_before = gs.round_number
+        engine.surrender('GPC')
+        self.assertEqual((gs.active_faction, gs.round_number), ('NAA', round_before + 1))
+
     def test_it_removes_units_and_pending_purchases_and_cuts_alliance_ties(self):
         from engine.tests.test_engine import make_unit
         engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT})
