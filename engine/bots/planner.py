@@ -126,6 +126,8 @@ class Planner:
         self._stub_id = -1
         self._odds_cache = {}
         self._combat_paths = {}
+        self._fight_at = {}  # unit_id -> the enemy sea zone its combat path fights through before it lands
+        self._survivor_cache = {}
         self._nc_dests = {}
         self._threat = None
         self._dest_cache = {}
@@ -757,6 +759,57 @@ class Planner:
             return self.contest_odds(attackers, defenders, self.kind(tid), bonus)
         return self.attacker_odds(attackers, defenders, self.kind(tid), bonus)
 
+    def through_sea_battles(self, units, odds):
+        """`odds(units)` for a land attack, allowing for its amphibious landings: a Mechanized Infantry whose path
+        fights through an enemy-held sea zone (as a Transport) must live through that sea battle -- every sea
+        battle is fought before any land battle -- or it never lands. Each such sea zone's battle (the
+        Transports, with my ships already there or sent there this turn, against what holds it) is simulated for
+        who comes out of it, and the land attack's odds are weighed over those outcomes."""
+        crossing = {}
+        for u in units:
+            zone = self._fight_at.get(u.unit_id) if self.category(u) == 'Land' else None
+            if zone is not None:
+                crossing.setdefault(zone, []).append(u)
+        if not crossing:
+            return odds(units)
+        outcomes = [(frozenset(), 1.0)]  # (Transports lost, probability)
+        for zone, movers in crossing.items():
+            ids = {u.unit_id for u in movers}
+            dist = self._sea_survivors(zone, movers)
+            outcomes = [(lost | frozenset(ids - left), p * q) for lost, p in outcomes for left, q in dist.items()]
+            if len(outcomes) > 48:  # (several crossings: keep the likeliest outcomes, weights renormalised)
+                outcomes.sort(key=lambda o: -o[1])
+                outcomes = outcomes[:48]
+                total = sum(p for _, p in outcomes)
+                outcomes = [(lost, p / total) for lost, p in outcomes]
+        merged = {}
+        for lost, p in outcomes:
+            merged[lost] = merged.get(lost, 0.0) + p
+        return sum(p * odds([u for u in units if u.unit_id not in lost]) for lost, p in merged.items())
+
+    def _sea_survivors(self, zone, movers):
+        """{unit_ids of `movers` that come out of the sea battle at `zone` alive: probability} -- my units already
+        in the zone, and those sent into it this turn, fight it alongside them."""
+        ids = {u.unit_id for u in movers}
+        side = list(movers)
+        for u in self.mine_at(zone) + [u for uid, (u, _) in self.my_units.items()
+                                       if self.moves_combat.get(uid) and self.moves_combat[uid][-1] == zone]:
+            if u.unit_id not in ids and all(u.unit_id != v.unit_id for v in side):
+                side.append(u)
+        defenders = self.enemies_at(zone)
+        key = (zone, tuple(sorted(ids)), self._sig(side), self._sig(defenders))
+        got = self._survivor_cache.get(key)
+        if got is None:
+            self.evaluations += 1
+            whole = battle_sim.survivors(side, defenders, 'sea', self.unit_defs, self.rules, self.rng,
+                                         samples=self.fast_samples // 2, max_rounds=self.battle_rounds)
+            got = {}
+            for left, p in whole.items():
+                k = frozenset(left & ids)
+                got[k] = got.get(k, 0.0) + p
+            self._survivor_cache[key] = got
+        return got
+
     def _has_any(self, u, abilities_):
         return any(abilities.has(self.unit_defs, u.unit_type, a) for a in abilities_)
 
@@ -773,7 +826,9 @@ class Planner:
             out.append((u, path))
             if self.category(u) == 'Land' and len(path) > 1:
                 try:
-                    crossed[u.unit_id] = trace_combat_move(u.unit_type, self.me, path, self.gs, self.data).crossed_water
+                    trace = trace_combat_move(u.unit_type, self.me, path, self.gs, self.data)
+                    crossed[u.unit_id] = trace.crossed_water
+                    self._fight_at[u.unit_id] = trace.fight_at
                 except ValueError:
                     crossed[u.unit_id] = False
         out.sort(key=lambda c: (self.cost(c[0]), c[0].unit_id))
@@ -809,20 +864,26 @@ class Planner:
             self.attempt(tid, 'not_pursued', self._why_no_attackers(tid, categories, without))
             return False
 
-        def chance(units, fast=True):
+        def landing_chance(units, fast=True):
             land = [u for u in units if self.category(u) == 'Land']
             if kind == 'land' and not land and self.capturable(self.owner(tid)):
                 return 0.0  # aircraft alone cannot take land
             return self.attacker_odds(units, defenders, kind, self._bonus_side(tid, land, crossed), fast=fast)
 
+        def chance(units, fast=True):
+            return self.through_sea_battles(units, lambda us: landing_chance(us, fast))
+
         def floor(units, fast=True):
             """What the min risk is measured against."""
             if not min_is_contest:
                 return chance(units, fast)
-            land = [u for u in units if self.category(u) == 'Land']
-            if kind == 'land' and not land and self.capturable(self.owner(tid)):
-                return 0.0
-            return self.contest_odds(units, defenders, kind, self._bonus_side(tid, land, crossed), fast=fast)
+
+            def contest(us):
+                land = [u for u in us if self.category(u) == 'Land']
+                if kind == 'land' and not land and self.capturable(self.owner(tid)):
+                    return 0.0
+                return self.contest_odds(us, defenders, kind, self._bonus_side(tid, land, crossed), fast=fast)
+            return self.through_sea_battles(units, contest)
 
         if candidates:
             best = floor(present + [u for u, _ in candidates])

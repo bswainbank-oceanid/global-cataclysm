@@ -39,6 +39,14 @@ class TestWatchToTheEnd(unittest.TestCase):
             session = self.hub.sessions[game_id].session  # (the hub keeps it inside a RecordedGame)
             if unpaced:
                 session.viewer_seq = session.seq
+            if session.waiting_for() == ['spectator']:  # the automatic armistice, put to whoever watches: accepted
+                away = self.hub.connections['ann'].game_id != game_id
+                if away:
+                    self.hub.handle('ann', {'type': 'enter_game', 'game_id': game_id})
+                self.hub.handle('ann', {'type': 'respond_armistice', 'accept': True})
+                if away:
+                    self.hub.handle('ann', {'type': 'leave_game'})
+                continue
             if game_id not in self.hub.runnable():
                 break
             self.hub.step(game_id)

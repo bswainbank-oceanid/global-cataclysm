@@ -204,6 +204,26 @@ def simulate_once(rng, att, dfn, air_round, max_rounds=MAX_ROUNDS, capture=False
     land unit of its survives to take the territory; defenders wiped out by aircraft alone is 'neither'.
     With `land_hold` (and `capture`): the attacker wins if it ends with a land unit and the defender with none --
     the defender's aircraft left in the air don't hold the ground."""
+    ahp, dhp = _fight(rng, att, dfn, air_round, max_rounds)
+    a_left, d_left = any(h > 0 for h in ahp), any(h > 0 for h in dhp)
+    if capture and land_hold:
+        a_land = any(h > 0 and not air for h, air in zip(ahp, att.is_air))
+        d_land = any(h > 0 and not air for h, air in zip(dhp, dfn.is_air))
+        if a_land and not d_land:
+            return 'attacker'
+    if a_left and not d_left:
+        if capture and not any(h > 0 and not air for h, air in zip(ahp, att.is_air)):
+            return 'neither'  # no land unit left to take it
+        return 'attacker'
+    if d_left and not a_left:
+        return 'defender'
+    if a_left and d_left and max_rounds < MAX_ROUNDS:
+        return 'contested'
+    return 'neither'
+
+
+def _fight(rng, att, dfn, air_round, max_rounds):
+    """Fights one battle out; the two sides' hit points at its end."""
     ahp, dhp = list(att.hp0), list(dfn.hp0)
     axp, dxp = list(att.xp0), list(dfn.xp0)
     aex, dex = [0] * att.n, [0] * dfn.n
@@ -255,22 +275,7 @@ def simulate_once(rng, att, dfn, air_round, max_rounds=MAX_ROUNDS, capture=False
             atabs.clear()
         if _award(dfn, dhp, d_alive, ddealt, dxp, dex):
             dtabs.clear()
-
-    a_left, d_left = any(h > 0 for h in ahp), any(h > 0 for h in dhp)
-    if capture and land_hold:
-        a_land = any(h > 0 and not air for h, air in zip(ahp, att.is_air))
-        d_land = any(h > 0 and not air for h, air in zip(dhp, dfn.is_air))
-        if a_land and not d_land:
-            return 'attacker'
-    if a_left and not d_left:
-        if capture and not any(h > 0 and not air for h, air in zip(ahp, att.is_air)):
-            return 'neither'  # no land unit left to take it
-        return 'attacker'
-    if d_left and not a_left:
-        return 'defender'
-    if a_left and d_left and max_rounds < MAX_ROUNDS:
-        return 'contested'
-    return 'neither'
+    return ahp, dhp
 
 
 BATCH = 25
@@ -310,3 +315,25 @@ def estimate(attackers, defenders, battle_type, unit_defs, rules, rng=None, samp
             if all(abs(p - c) > margin for c in cut):
                 break
     return BattleOdds(counts['attacker'] / done, counts['defender'] / done, counts['neither'] / done, done, counts['contested'] / done)
+
+
+def survivors(attackers, defenders, battle_type, unit_defs, rules, rng=None, samples=40, max_rounds=3):
+    """How the attackers come out of a battle (the real one's `max_rounds` rounds): {frozenset of the unit_ids
+    still standing: the fraction of `samples` battles that left exactly them}. For the bots' amphibious
+    landings: a Transport (a land unit afloat) must live through the sea battle on its way before it lands."""
+    rng = rng or random.Random()
+    if not attackers or not defenders:
+        return {frozenset(u.unit_id for u in attackers): 1.0}
+    type_order = resolution_order(unit_defs, battle_type)
+    xp_required = rules['promotion']['xp_required']
+    att = _Side(list(attackers), False, False, battle_type, unit_defs, type_order, xp_required, rules['promotion'])
+    dfn = _Side(list(defenders), True, False, battle_type, unit_defs, type_order, xp_required, rules['promotion'])
+    air_round = any(att.is_air) and any(dfn.is_air) and any(abilities.triggers_air_superiority(unit_defs, t)
+                                                           for t in att.type + dfn.type)
+    ids = [u.unit_id for u in att.units]
+    out = {}
+    for _ in range(samples):
+        ahp, _ = _fight(rng, att, dfn, air_round, max_rounds)
+        left = frozenset(uid for uid, h in zip(ids, ahp) if h > 0)
+        out[left] = out.get(left, 0) + 1
+    return {k: n / samples for k, n in out.items()}
