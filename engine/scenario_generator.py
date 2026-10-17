@@ -24,7 +24,8 @@ The deal:
   2. Strategic Centers. Round by round, each faction draws one of its territories -- weighted
      value + 1, + faction_weight if it is one of that faction's Strategic Centers on the base map, or
      + half of it if it is one of the faction's other territories there -- at least sc_min_distance steps (the adjacency graph, land and sea) from every Strategic
-     Center placed so far, its last one also at least sc_final_min_distance from its own others;
+     Center placed so far -- except its last one, which must instead be at least sc_final_min_distance from its
+     own others (and still sc_min_distance from everyone else's);
      then the Neutral ones, sc_min_distance from all. A deal that cannot place them all is
      retried; if it keeps failing, the distances are relaxed one step at a time (reported).
   3. Units, per faction, from its units MPC (spent out of its initial MPC): an Infantry (the
@@ -59,7 +60,8 @@ OPTIONS = {
     'sc_min_distance': ('Minimum distance', 'int', 0, 12,
                         'Fewest steps between any two Strategic Centers (relaxed if they cannot all fit).'),
     'sc_final_min_distance': ('Final SC min. distance', 'int', 0, 12,
-                              "Fewest steps between one of each player's Strategic Centers and its others."),
+                              "Fewest steps between one of each player's Strategic Centers and its own others "
+                              "(in place of the Minimum distance, which still applies to everyone else's)."),
     'infantry_in_every_territory': ('Infantry in each location', 'bool', None, None,
                                     "Start by putting an Infantry in each of a player's territories."),
     'neutral_infantry_in_every_territory': ('Neutral Infantry in each location', 'bool', None, None,
@@ -310,9 +312,9 @@ def _try_scs(terrs, dist, seats, owner, neutral_id, min_d, final_d, rng, faction
             if rnd >= want[f]:
                 continue
             final = rnd == want[f] - 1 and want[f] > 1
+            # (its final one: final_d from its own others -- in place of min_d -- and min_d from everyone else's)
             cands = [t for t in holdings[f] if t not in placed
-                     and all(dist[t].get(s, 999) >= min_d for s in placed)
-                     and (not final or all(dist[t].get(s, 999) >= final_d for s in own[f]))]
+                     and all(dist[t].get(s, 999) >= (final_d if final and s in own[f] else min_d) for s in placed)]
             pick = _weighted(rng, cands, lambda t: _sc_weight(terrs[t], f, faction_weight))
             if pick is None:
                 return None

@@ -122,6 +122,25 @@ class TestStrategicCenters(unittest.TestCase):
             return hits
         self.assertGreater(base_sc_picks(30), base_sc_picks(0) * 1.3)
 
+    def test_the_final_sc_distance_is_from_its_own_others_only(self):
+        # A line of land 1-2-3-4-5-6: NAA holds 1 to 5 and wants two Strategic Centers, GPC holds 6 and wants one.
+        terrs = {t: {'type': 'land', 'value': 1} for t in range(1, 7)}
+        dist = gen._distances({t: [n for n in (t - 1, t + 1) if 1 <= n <= 6] for t in range(1, 7)})
+        owner = {1: 'NAA', 2: 'NAA', 3: 'NAA', 4: 'NAA', 5: 'NAA', 6: 'GPC'}
+        seats = {'players': {'NAA': {'scs': 2}, 'GPC': {'scs': 1}}, 'neutral': {'scs': 0}}
+        rng = random.Random(1)
+        dealt = [gen._try_scs(terrs, dist, seats, owner, 'NEU', 1, 4, rng) for _ in range(40)]  # (a bad deal is retried)
+        # final 4 from its own: 1 and 5 -- and 5 may be right beside GPC's 6 (only the Minimum distance, 1, there)
+        self.assertEqual({tuple(sorted(p)) for p in dealt if p is not None}, {(1, 5, 6)})
+        # the final distance stands in for the minimum between a player's own: 3 apart from GPC's, 1 from its own
+        owner.update({4: None, 5: None})
+        for seed in range(20):
+            placed = gen._try_scs(terrs, dist, seats, owner, 'NEU', 3, 1, random.Random(seed))
+            self.assertIsNotNone(placed, 'two of 1-3 for NAA (1 apart), each at least 3 from 6')
+            naa = [t for t in placed if owner[t] == 'NAA']
+            self.assertEqual(len(naa), 2)
+            self.assertTrue(all(dist[t][6] >= 3 for t in naa))
+
     def test_impossible_distances_are_relaxed_and_reported(self):
         _, _, _, _, report = deal(PLAYERS_6, sc_min_distance=12, sc_final_min_distance=12)
         self.assertEqual(len(report['strategic_centers']), 18)
