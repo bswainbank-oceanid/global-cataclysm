@@ -338,8 +338,7 @@ func _finish() -> void:
 		u["present"] = true  # bring every unit back
 		if eliminated.has(id):
 			u["mark"] = Mark.DEAD
-		elif u["mark"] == Mark.HIT:
-			u["mark"] = Mark.NONE
+		# (a "/" HIT mark stays: the last round's hits -- the defender's, as often as not -- still show)
 	prev_lines.append("[b]The battle is over:[/b] " + end_text())
 
 

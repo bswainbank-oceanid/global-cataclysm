@@ -317,14 +317,15 @@ func _sync() -> void:
 	_refresh_texts()
 	_layout(true)
 	_show_dice()
-	_play_reactions()
+	# (the battle's end brings every unit back onto the board: the last round's shakes wait for that to settle)
+	_play_reactions(SLIDE_SECONDS if _model.finished else 0.0)
 
 
 ## Every roll on show shakes the unit that made it; every hit bounces the unit that took it.
-func _play_reactions() -> void:
+func _play_reactions(after := 0.0) -> void:
 	var n := 0
 	for e in _model.last_rolls:
-		var delay := minf(0.05 * n, 0.9)
+		var delay := after + minf(0.05 * n, 0.9)
 		n += 1
 		var id := int(e["unit_id"])
 		if _tiles.has(id):

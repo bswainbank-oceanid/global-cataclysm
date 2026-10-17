@@ -49,6 +49,20 @@ func _initialize() -> void:
 	_check(m.finished and rolled == total_rolls, "Unit mode reveals all %d rolls (got %d)" % [total_rolls, rolled])
 	_check(beats >= m.rounds.size(), "Unit mode pauses at the start of the sides (%d pauses over %d rounds)" % [beats, m.rounds.size()])
 
+	# The battle's last press keeps its hits on show: the "/" on a unit hit (and not killed) in it stays.
+	for mode in [BattleModel.Resolve.SIDE, BattleModel.Resolve.UNIT]:
+		m = _load(path)
+		while not m.finished:
+			m.press(_all(mode))
+		var marked := true
+		for e in m.last_rolls:
+			if bool(e.get("hit", false)) and e.get("target_unit_id") != null and not m.eliminated.has(int(e["target_unit_id"])):
+				marked = marked and m.units[int(e["target_unit_id"])]["mark"] == BattleModel.Mark.HIT
+		_check(marked, "%s mode: the last press's hits keep their marks once the battle is over" % BattleModel.RESOLVE_NAMES[mode])
+		if mode == BattleModel.Resolve.SIDE:
+			_check(not m.last_rolls.is_empty() and str(m.last_rolls[0]["side"]) == "defender",
+				"the last press is the defender's last round, on show (rolls to shake): %d" % m.last_rolls.size())
+
 	# Entire Battle on both sides: one press, straight to the end -- the last round's results and the outcome,
 	# with Finish to close the board.
 	m = _load(path)
