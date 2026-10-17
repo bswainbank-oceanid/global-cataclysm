@@ -48,7 +48,7 @@
    ]
   },
   {
-   "faction_id": "UE",
+   "faction_id": "EU",
    "unit_weights": [
     {"unit_type_id": "Infantry", "weight": 3},
     {"unit_type_id": "Mechanized Infantry", "weight": 3},

@@ -82,7 +82,7 @@ class TestSetup(unittest.TestCase):
         # disable it here since this test checks a specific, deterministic
         # first-mover, not the randomization itself.
         gs = build_game_state(modes, randomize_play_order=False)
-        self.assertEqual(gs.active_faction, 'UE')
+        self.assertEqual(gs.active_faction, 'EU')
         self.assertNotIn('NAA', gs.active_factions())
 
     def test_starting_treasury_is_31_mpc_for_every_faction(self):
@@ -155,39 +155,39 @@ if __name__ == '__main__':
 
 class TestStartingAlliances(unittest.TestCase):
     def _modes(self, **kw):
-        modes = {c: FactionMode.NONCOMBATANT for c in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+        modes = {c: FactionMode.NONCOMBATANT for c in ('NAA', 'EU', 'UER', 'GPC', 'PAF', 'AAC')}
         modes.update({k: v for k, v in kw.items()})
         return modes
 
     def test_members_start_allied_and_share_one_tag(self):
-        modes = self._modes(NAA=FactionMode.HUMAN, UE=FactionMode.BOT, GPC=FactionMode.BOT, AAC=FactionMode.BOT)
+        modes = self._modes(NAA=FactionMode.HUMAN, EU=FactionMode.BOT, GPC=FactionMode.BOT, AAC=FactionMode.BOT)
         gs = build_game_state(modes, randomize_play_order=False,
-                              max_alliance_size=2, starting_alliances=[['NAA', 'UE']])
-        self.assertEqual(gs.factions['NAA'].alliance, gs.factions['UE'].alliance)
+                              max_alliance_size=2, starting_alliances=[['NAA', 'EU']])
+        self.assertEqual(gs.factions['NAA'].alliance, gs.factions['EU'].alliance)
         self.assertIsNotNone(gs.factions['NAA'].alliance)
         self.assertIsNone(gs.factions['GPC'].alliance)
 
     def test_two_groups_get_different_tags(self):
-        modes = self._modes(NAA=FactionMode.BOT, UE=FactionMode.BOT, GPC=FactionMode.BOT, AAC=FactionMode.BOT, PAF=FactionMode.BOT)
+        modes = self._modes(NAA=FactionMode.BOT, EU=FactionMode.BOT, GPC=FactionMode.BOT, AAC=FactionMode.BOT, PAF=FactionMode.BOT)
         gs = build_game_state(modes, randomize_play_order=False,
-                              max_alliance_size=2, starting_alliances=[['NAA', 'UE'], ['GPC', 'AAC']])
+                              max_alliance_size=2, starting_alliances=[['NAA', 'EU'], ['GPC', 'AAC']])
         self.assertNotEqual(gs.factions['NAA'].alliance, gs.factions['GPC'].alliance)
         self.assertIsNone(gs.factions['PAF'].alliance)
 
     def test_new_alliances_formed_later_do_not_reuse_a_starting_tag(self):
-        modes = self._modes(NAA=FactionMode.BOT, UE=FactionMode.BOT, GPC=FactionMode.BOT, AAC=FactionMode.BOT)
+        modes = self._modes(NAA=FactionMode.BOT, EU=FactionMode.BOT, GPC=FactionMode.BOT, AAC=FactionMode.BOT)
         gs = build_game_state(modes, randomize_play_order=False,
-                              max_alliance_size=2, starting_alliances=[['NAA', 'UE']])
+                              max_alliance_size=2, starting_alliances=[['NAA', 'EU']])
         self.assertEqual(gs._next_alliance_id, 2)
 
     def test_rejected_setups(self):
         bot = FactionMode.BOT
         cases = {
-            'a group of one': (self._modes(NAA=bot, UE=bot, GPC=bot), [['NAA']], 3),
-            'a noncombatant member': (self._modes(NAA=bot, UE=bot, GPC=bot), [['NAA', 'AAC']], 3),
-            'in two groups': (self._modes(NAA=bot, UE=bot, GPC=bot, AAC=bot), [['NAA', 'UE'], ['UE', 'GPC']], 3),
-            'too big for max size': (self._modes(NAA=bot, UE=bot, GPC=bot, AAC=bot), [['NAA', 'UE', 'GPC']], 2),
-            'everyone allied': (self._modes(NAA=bot, UE=bot, GPC=bot), [['NAA', 'UE', 'GPC']], 3),
+            'a group of one': (self._modes(NAA=bot, EU=bot, GPC=bot), [['NAA']], 3),
+            'a noncombatant member': (self._modes(NAA=bot, EU=bot, GPC=bot), [['NAA', 'AAC']], 3),
+            'in two groups': (self._modes(NAA=bot, EU=bot, GPC=bot, AAC=bot), [['NAA', 'EU'], ['EU', 'GPC']], 3),
+            'too big for max size': (self._modes(NAA=bot, EU=bot, GPC=bot, AAC=bot), [['NAA', 'EU', 'GPC']], 2),
+            'everyone allied': (self._modes(NAA=bot, EU=bot, GPC=bot), [['NAA', 'EU', 'GPC']], 3),
         }
         for name, (modes, groups, size) in cases.items():
             with self.assertRaises(ValueError, msg=name):

@@ -54,7 +54,7 @@ class TestGameConfig(unittest.TestCase):
     def test_the_gc72_scenario(self):
         self.assertEqual(len(self.c.territories()), 144)
         self.assertEqual(sum(1 for t in self.c.territories().values() if t['type'] == 'land'), 82)
-        self.assertEqual(list(self.c.factions()), ['NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC'])
+        self.assertEqual(list(self.c.factions()), ['NAA', 'EU', 'UER', 'GPC', 'PAF', 'AAC'])
         self.assertEqual(self.c.sc_bonus(), 2)
         self.assertEqual(self.c.naval_deploy_excluded(), [43])
         self.assertTrue(self.c.map_info()['wraps_east_west'])

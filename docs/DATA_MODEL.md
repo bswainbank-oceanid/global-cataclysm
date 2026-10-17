@@ -21,7 +21,7 @@ Source: `reference/GC Data Model.rtf`, plus the decisions recorded below.
   `<id>.json`. Ids of the shipped game are prefixed `GC72_`.
 - References between modules are by id (`map_id`, `unit_set_id`, ...).
 - Location ids are the map's integers (1-144 on the GC72 map); faction ids are
-  the faction codes (`NAA`, `UE`, ...); unit type ids are the unit names
+  the faction codes (`NAA`, `EU`, ...); unit type ids are the unit names
   (`Infantry`, `Mechanized Infantry`, ...).
 - List order is meaningful where the engine iterates (locations, unit types,
   factions, adjacency) and is preserved exactly.
@@ -269,9 +269,9 @@ new name makes a new scenario of the player's own, whichever New Scenario it was
  "scenario": {"kind": "fixed" | "shared" | "own", "id": "Setup_002", "name": "Duel"},
  "settings": {...the launch settings, frozen when the game is created...},
  "seats": [{"seat": 1, "mode": "HUMAN", "faction": "random", "user_id": "U_000001"},
-           {"seat": 2, "mode": "HUMAN", "faction": "UE", "user_id": null},
+           {"seat": 2, "mode": "HUMAN", "faction": "EU", "user_id": null},
            {"seat": 3, "mode": "BOT", "faction": "random", "user_id": null}, ...],
- "factions": {"1": "UER", "2": "UE", ...},
+ "factions": {"1": "UER", "2": "EU", ...},
  "progress": {"round": 4, "turn": 2, "active_faction": "GPC", "waiting_for": ["U_000002"]},
  "created": "...", "started": "...", "ended": "..."}
 ```

@@ -20,7 +20,7 @@ Client -> server:
                         Non-Combat Move ({"unit_id", "destination"}): replace the
                         staged move list with this COMPLETE one, one order per unit.
                         Same validation/reply/commit pattern as stage_purchase.
-    {"type": "diplomacy_action", "faction": "NAA", "action": "invite"|"withdraw"|"surrender", "target": "UE"}
+    {"type": "diplomacy_action", "faction": "NAA", "action": "invite"|"withdraw"|"surrender", "target": "EU"}
                         a HUMAN faction's Diplomacy phase: one action, carried out AT ONCE
                         (the client makes each a long-click). "invite" / "withdraw" is the phase's
                         one alliance action; "surrender" forces `target` to surrender (any
@@ -128,7 +128,7 @@ Server -> client (always broadcast to watchers):
     {"type": "state", "game_state": ...}   sent after every executed phase.
     {"type": "self_surrender_result", "faction": "NAA", "events": [...]}
         The events a "surrender" logged (self_surrender, faction_eliminated) -- shown in the Events box.
-    {"type": "armistice_proposed", "from": "NAA", "awaiting": ["UE", "GPC"]}
+    {"type": "armistice_proposed", "from": "NAA", "awaiting": ["EU", "GPC"]}
         A "propose_armistice" was accepted for consideration: `awaiting` lists the HUMAN factions still
         asked to answer (every BOT already has, synchronously). Every asked human's client shows the
         popup; watchers just see it happen. If `awaiting` is already empty (every other active faction
@@ -151,7 +151,7 @@ Server -> client (always broadcast to watchers):
 Settings actions, client -> server (handled by GameSession, not this class -- see its own docstring):
     {"type": "surrender", "faction": "NAA"}
     {"type": "propose_armistice", "faction": "NAA"}          -- faction omitted/null: a pure spectator
-    {"type": "respond_armistice", "faction": "UE", "accept": true}
+    {"type": "respond_armistice", "faction": "EU", "accept": true}
         propose_armistice is refused (an "error") while another proposal is already pending, once the
         game is over, or -- new this session -- while the proposer (the same faction, or the same "null"
         spectator identity) is still cooling down from their last proposal having been declined: see

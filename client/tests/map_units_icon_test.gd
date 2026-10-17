@@ -55,11 +55,11 @@ func _initialize() -> void:
 
 	# The player's own move phase: only what can still move counts -- unless nothing there can.
 	var armor := _unit("Armor")
-	_board({33: [_unit("Infantry"), _unit("Infantry"), _unit("Infantry"), armor, _unit("Cruiser", "UE"), _unit("Infantry", "UE")]})
+	_board({33: [_unit("Infantry"), _unit("Infantry"), _unit("Infantry"), armor, _unit("Cruiser", "EU"), _unit("Infantry", "EU")]})
 	store.set_human_move("NAA", {"kind": "combat", "orders": [], "options": {
 		str(armor["unit_id"]): {"unit_type": "Armor", "territory_id": 33, "destinations": {"34": [33, 34]}}}})
 	_check(badges._flag_icon(33, "NAA", {})[0] == "Armor", "moving: only the Armor can move, so it shows")
-	_check(badges._flag_icon(33, "UE", {})[0] == "Cruiser", "another faction's group there counts everything")
+	_check(badges._flag_icon(33, "EU", {})[0] == "Cruiser", "another faction's group there counts everything")
 	store.set_human_move("NAA", {"kind": "combat", "orders": [], "options": {}})
 	_check(badges._flag_icon(33, "NAA", {})[0] == "Infantry", "moving, but nothing there can: every unit counts")
 	store.set_human_move("NAA", {})

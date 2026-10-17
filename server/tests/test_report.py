@@ -14,18 +14,18 @@ from server.report import build_game_report
 
 
 def world(modes, units_by_territory=None):
-    # NAA/UE/GPC/AAC/PAF are real faction codes (StrategyBot needs one to draw a style from the real sheet).
+    # NAA/EU/GPC/AAC/PAF are real faction codes (StrategyBot needs one to draw a style from the real sheet).
     data = FakeData(
         territories={
             1: {'type': 'land', 'value': 5, 'strategic_center': True, 'name': 'NAA Home'},
             2: {'type': 'land', 'value': 3, 'name': 'NAA Extra'},
-            3: {'type': 'land', 'value': 5, 'strategic_center': True, 'name': 'UE Home'},
+            3: {'type': 'land', 'value': 5, 'strategic_center': True, 'name': 'EU Home'},
             4: {'type': 'land', 'value': 2, 'name': 'GPC Home'},
             5: {'type': 'land', 'value': 1, 'name': 'AAC Home'},
         },
         adjacency={1: [2], 2: [1, 3], 3: [2, 4], 4: [3, 5], 5: [4]},
     )
-    gs = make_state(data, {1: 'NAA', 2: 'NAA', 3: 'UE', 4: 'GPC', 5: 'AAC'}, modes,
+    gs = make_state(data, {1: 'NAA', 2: 'NAA', 3: 'EU', 4: 'GPC', 5: 'AAC'}, modes,
                     units_by_territory=units_by_territory)
     engine = GameEngine(gs, data)
     return engine, gs
@@ -33,87 +33,87 @@ def world(modes, units_by_territory=None):
 
 class TestBuildGameReport(unittest.TestCase):
     def test_a_row_per_seat_with_the_basics(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.NONCOMBATANT, 'AAC': FactionMode.NEUTRAL})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.NONCOMBATANT, 'AAC': FactionMode.NEUTRAL})
         rows = build_game_report(engine, TurnLog(), {})
         by_fac = {r['faction']: r for r in rows}
-        self.assertEqual(set(by_fac), {'NAA', 'UE'})  # (no row for a Noncombatant or Neutral seat)
+        self.assertEqual(set(by_fac), {'NAA', 'EU'})  # (no row for a Noncombatant or Neutral seat)
         self.assertEqual(by_fac['NAA']['seat_type'], 'HUMAN')
         self.assertEqual(by_fac['NAA']['strategic_centers'], 1)  # tile 1 -- tile 2 has none
-        self.assertEqual(by_fac['UE']['strategic_centers'], 1)
+        self.assertEqual(by_fac['EU']['strategic_centers'], 1)
 
     def test_the_built_in_neutral_and_noncombatant_factions_are_left_off(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'NEU': FactionMode.NEUTRAL,
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'NEU': FactionMode.NEUTRAL,
                             'NCB': FactionMode.NONCOMBATANT})
         self.assertIn('NCB', gs.factions)
-        self.assertEqual(sorted(r['faction'] for r in build_game_report(engine, TurnLog(), {})), ['NAA', 'UE'])
+        self.assertEqual(sorted(r['faction'] for r in build_game_report(engine, TurnLog(), {})), ['EU', 'NAA'])
 
     def test_noncombatant_and_neutral_seats_are_left_off(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.NONCOMBATANT, 'AAC': FactionMode.NEUTRAL})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.NONCOMBATANT, 'AAC': FactionMode.NEUTRAL})
         rows = build_game_report(engine, TurnLog(), {})
-        self.assertEqual(sorted(r['faction'] for r in rows), ['NAA', 'UE'])
+        self.assertEqual(sorted(r['faction'] for r in rows), ['EU', 'NAA'])
         self.assertTrue(all(r['victory_status'] is not None for r in rows))
 
     def test_the_last_faction_standing_is_the_winner_and_the_rest_are_out(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT})
         log = TurnLog()
         engine.turn_log = log
-        engine.surrender('UE')
+        engine.surrender('EU')
         rows = build_game_report(engine, log, {})
         by_fac = {r['faction']: r for r in rows}
         self.assertEqual(by_fac['NAA']['victory_status'], 'Winner')
-        self.assertEqual(by_fac['UE']['victory_status'], 'Surrendered')
+        self.assertEqual(by_fac['EU']['victory_status'], 'Surrendered')
 
     def test_a_forced_surrender_is_told_apart_from_a_self_surrender(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT})
         log = TurnLog()
         engine.turn_log = log
-        log.record_surrender(3, 1, 'NAA', 'UE', ['income'])
-        gs.factions['UE'].eliminated = True
+        log.record_surrender(3, 1, 'NAA', 'EU', ['income'])
+        gs.factions['EU'].eliminated = True
         log.record_self_surrender(5, 2, 'GPC')
         gs.factions['GPC'].eliminated = True
         rows = build_game_report(engine, log, {})
         by_fac = {r['faction']: r for r in rows}
-        self.assertEqual(by_fac['UE']['victory_status'], 'Forced to Surrender')
+        self.assertEqual(by_fac['EU']['victory_status'], 'Forced to Surrender')
         self.assertEqual(by_fac['GPC']['victory_status'], 'Surrendered')
         self.assertEqual(by_fac['NAA']['victory_status'], 'Winner')
 
     def test_at_an_armistice_the_faction_ahead_wins(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT})
         log = TurnLog()
         engine.turn_log = log
-        engine.end_by_armistice('NAA', ['NAA', 'UE', 'GPC'])
+        engine.end_by_armistice('NAA', ['NAA', 'EU', 'GPC'])
         rows = build_game_report(engine, log, {})
-        # NAA and UE have an SC each; NAA's territory is worth more (8 MPC to 5)
+        # NAA and EU have an SC each; NAA's territory is worth more (8 MPC to 5)
         self.assertEqual([(r['faction'], r['victory_status']) for r in rows],
-                         [('NAA', 'Winner'), ('UE', 'Armistice'), ('GPC', 'Armistice')])
+                         [('NAA', 'Winner'), ('EU', 'Armistice'), ('GPC', 'Armistice')])
         self.assertTrue(all(r['by_armistice'] for r in rows))
 
     def test_level_on_scs_and_mpc_the_armistice_goes_to_unit_value(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT},
-                           units_by_territory={3: [make_unit('Infantry', 'UE')]})
-        engine.data.territories()[2]['value'] = 0  # (NAA and UE: an SC and 5 MPC each)
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT},
+                           units_by_territory={3: [make_unit('Infantry', 'EU')]})
+        engine.data.territories()[2]['value'] = 0  # (NAA and EU: an SC and 5 MPC each)
         engine.turn_log = log = TurnLog()
-        engine.end_by_armistice(None, ['NAA', 'UE', 'GPC'])
+        engine.end_by_armistice(None, ['NAA', 'EU', 'GPC'])
         by_fac = {r['faction']: r for r in build_game_report(engine, log, {})}
         level = lambda f: (by_fac[f]['strategic_centers'], by_fac[f]['territory_mpc'])
-        self.assertEqual(level('NAA'), level('UE'))
-        self.assertEqual((by_fac['UE']['victory_status'], by_fac['NAA']['victory_status']), ('Winner', 'Armistice'))
+        self.assertEqual(level('NAA'), level('EU'))
+        self.assertEqual((by_fac['EU']['victory_status'], by_fac['NAA']['victory_status']), ('Winner', 'Armistice'))
 
     def test_elimination_reason_names_sc_loss_or_economic_or_both(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT, 'AAC': FactionMode.NEUTRAL})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT, 'AAC': FactionMode.NEUTRAL})
         log = TurnLog()
-        log.record_surrender(3, 1, 'NAA', 'UE', ['income'])
-        gs.factions['UE'].eliminated = True
+        log.record_surrender(3, 1, 'NAA', 'EU', ['income'])
+        gs.factions['EU'].eliminated = True
         log.record_surrender(4, 2, 'NAA', 'GPC', ['strategic_center', 'income'])
         gs.factions['GPC'].eliminated = True
         rows = build_game_report(engine, log, {})
         by_fac = {r['faction']: r for r in rows}
-        self.assertEqual(by_fac['UE']['elimination_reason'], ['Economic'])
+        self.assertEqual(by_fac['EU']['elimination_reason'], ['Economic'])
         self.assertEqual(by_fac['GPC']['elimination_reason'], ['SC Loss', 'Economic'])  # SC loss named first
         self.assertIsNone(by_fac['NAA']['elimination_reason'])   # still in the game
 
     def test_elimination_reason_for_a_self_surrender(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT})
         log = TurnLog()
         engine.turn_log = log
         engine.surrender('NAA')
@@ -124,26 +124,26 @@ class TestBuildGameReport(unittest.TestCase):
     def test_an_eliminated_proposer_keeps_its_surrender_status_not_armistice(self):
         # An already-out human can still propose an armistice among the survivors (Settings lets them);
         # they aren't relabeled 'Armistice' just for having proposed it -- they're still 'Surrendered'.
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT})
         log = TurnLog()
         engine.turn_log = log
         log.record_self_surrender(2, 1, 'NAA')
         gs.factions['NAA'].eliminated = True
-        engine.end_by_armistice('NAA', ['UE', 'GPC'])  # NAA proposes; UE and GPC (the ones still playing) agree
+        engine.end_by_armistice('NAA', ['EU', 'GPC'])  # NAA proposes; EU and GPC (the ones still playing) agree
         rows = build_game_report(engine, log, {})
         by_fac = {r['faction']: r for r in rows}
         self.assertEqual(by_fac['NAA']['victory_status'], 'Surrendered')  # (NAA's lead doesn't count: it's out)
-        self.assertEqual(by_fac['UE']['victory_status'], 'Winner')  # ahead of GPC
+        self.assertEqual(by_fac['EU']['victory_status'], 'Winner')  # ahead of GPC
         self.assertEqual(by_fac['GPC']['victory_status'], 'Armistice')
 
     def test_territory_mpc_is_the_uncontested_territory_value(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT})
         rows = build_game_report(engine, TurnLog(), {})
         by_fac = {r['faction']: r for r in rows}
         self.assertEqual(by_fac['NAA']['territory_mpc'], 5 + 2 + 3)  # tile 1 (5 value + 2 SC bonus) + tile 2 (3)
 
     def test_units_produced_and_destroyed_come_from_stats(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT})
         stats = GameStats()
         stats.record_deploy('NAA', 'Infantry', 3)
         stats.record_deploy('NAA', 'Armor', 1)
@@ -154,63 +154,63 @@ class TestBuildGameReport(unittest.TestCase):
         by_fac = {r['faction']: r for r in rows}
         self.assertEqual(by_fac['NAA']['units_produced'], 4)
         self.assertEqual(by_fac['NAA']['units_destroyed'], 2)
-        self.assertEqual(by_fac['UE']['units_produced'], 0)
+        self.assertEqual(by_fac['EU']['units_produced'], 0)
 
     def test_units_produced_and_destroyed_are_zero_with_no_stats_attached(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT})
         self.assertIsNone(engine.stats)
         rows = build_game_report(engine, TurnLog(), {})
         self.assertTrue(all(r['units_produced'] == 0 and r['units_destroyed'] == 0 for r in rows))
 
     def test_alliance_history_is_told_in_turn_order_by_round(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT})
         log = TurnLog()
-        log.record_alliance_joined(2, 'NAA', 'UE', 'ALLIANCE_1', new_alliance=True)  # (before any start_of_turn: round 1)
+        log.record_alliance_joined(2, 'NAA', 'EU', 'ALLIANCE_1', new_alliance=True)  # (before any start_of_turn: round 1)
         log.record_start_of_turn('GPC', 2, 4, 3)
         log.record_alliance_joined(4, 'GPC', 'NAA', 'ALLIANCE_1', new_alliance=False)
         log.record_start_of_turn('NAA', 3, 9, 3)
-        log.record_alliance_withdrawal(9, 'NAA', 'ALLIANCE_1', ['NAA', 'UE', 'GPC'])
+        log.record_alliance_withdrawal(9, 'NAA', 'ALLIANCE_1', ['NAA', 'EU', 'GPC'])
         rows = build_game_report(engine, log, {})
         by_fac = {r['faction']: r for r in rows}
         self.assertEqual(by_fac['NAA']['alliance_history'],
-                         ['R1: joined with UE', 'R2: joined with GPC', 'R3: left (GPC, UE)'])
-        self.assertEqual(by_fac['UE']['alliance_history'], ['R1: joined with NAA', 'R3: NAA left'])
+                         ['R1: joined with EU', 'R2: joined with GPC', 'R3: left (EU, GPC)'])
+        self.assertEqual(by_fac['EU']['alliance_history'], ['R1: joined with NAA', 'R3: NAA left'])
         self.assertEqual(by_fac['GPC']['alliance_history'], ['R2: joined with NAA', 'R3: NAA left'])
 
     def test_bot_type_and_strategy_come_from_the_actual_bot_instances(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT})
         bots = {
-            'UE': RandomBot(engine, 'UE', rng=random.Random(1)),
+            'EU': RandomBot(engine, 'EU', rng=random.Random(1)),
             'GPC': StrategyBot(engine, 'GPC', rng=random.Random(1)),
         }
         rows = build_game_report(engine, TurnLog(), bots)
         by_fac = {r['faction']: r for r in rows}
         self.assertEqual(by_fac['NAA']['bot_type'], None)
         self.assertIsNone(by_fac['NAA']['bot_strategy'])
-        self.assertEqual(by_fac['UE']['bot_type'], 'Random')
-        self.assertIsNone(by_fac['UE']['bot_strategy'])
+        self.assertEqual(by_fac['EU']['bot_type'], 'Random')
+        self.assertIsNone(by_fac['EU']['bot_strategy'])
         self.assertEqual(by_fac['GPC']['bot_type'], 'Strategy')
         self.assertEqual(by_fac['GPC']['bot_strategy'], bots['GPC'].base_style)
         self.assertIn(by_fac['GPC']['bot_strategy'], ('Strategic', 'Defensive', 'Expansive', 'Controlling', 'Variable'))
 
     def test_alliance_strategy_and_behavior_come_from_faction_state(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT})
-        gs.factions['UE'].alliance_strategy = 'aggressive'
-        gs.factions['UE'].alliance_behavior = 'treacherous'
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT})
+        gs.factions['EU'].alliance_strategy = 'aggressive'
+        gs.factions['EU'].alliance_behavior = 'treacherous'
         rows = build_game_report(engine, TurnLog(), {})
         by_fac = {r['faction']: r for r in rows}
-        self.assertEqual((by_fac['UE']['alliance_strategy'], by_fac['UE']['alliance_behavior']), ('aggressive', 'treacherous'))
+        self.assertEqual((by_fac['EU']['alliance_strategy'], by_fac['EU']['alliance_behavior']), ('aggressive', 'treacherous'))
         self.assertIsNone(by_fac['NAA']['alliance_strategy'])
 
     def test_rounds_in_game_is_the_games_current_round_number_on_every_row(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.NONCOMBATANT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.NONCOMBATANT})
         gs.round_number = 4
         gs.active_faction = gs.active_factions()[1]  # (round 4 under way)
         rows = build_game_report(engine, TurnLog(), {})
         self.assertTrue(all(r['rounds_in_game'] == 4 for r in rows))  # the same value on every row
 
     def test_a_game_ended_as_a_round_begins_counts_the_rounds_played(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT})
         gs.round_number = 11
         gs.active_faction = gs.active_factions()[0]
         gs.phase = Phase.PURCHASE
@@ -218,22 +218,22 @@ class TestBuildGameReport(unittest.TestCase):
         gs.phase = Phase.COMBAT_MOVE  # (the round's first turn under way: it counts)
         self.assertEqual(build_game_report(engine, TurnLog(), {})[0]['rounds_in_game'], 11)
         log = TurnLog()
-        log.record_armistice(40, None, ['NAA', 'UE'], automatic_after=10)
+        log.record_armistice(40, None, ['NAA', 'EU'], automatic_after=10)
         self.assertEqual(build_game_report(engine, log, {})[0]['rounds_in_game'], 10)
 
     def test_round_eliminated_comes_from_the_round_number_recorded_at_elimination(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT})
         log = TurnLog()
         engine.turn_log = log
         gs.round_number = 2
-        log.record_surrender(3, 2, 'NAA', 'UE', ['income'])
-        gs.factions['UE'].eliminated = True
+        log.record_surrender(3, 2, 'NAA', 'EU', ['income'])
+        gs.factions['EU'].eliminated = True
         gs.round_number = 3  # GPC is eliminated one round later
         log.record_self_surrender(7, 3, 'GPC')
         gs.factions['GPC'].eliminated = True
         rows = build_game_report(engine, log, {})
         by_fac = {r['faction']: r for r in rows}
-        self.assertEqual(by_fac['UE']['round_eliminated'], 2)
+        self.assertEqual(by_fac['EU']['round_eliminated'], 2)
         self.assertEqual(by_fac['GPC']['round_eliminated'], 3)
         self.assertIsNone(by_fac['NAA']['round_eliminated'])  # still in the game
 
@@ -241,13 +241,13 @@ class TestBuildGameReport(unittest.TestCase):
         # The whole point of a STORED round_number, rather than deriving one after the fact from
         # global_turn -- an earlier elimination's round must stay correct even once later ones have
         # shrunk active_factions() (see GameState.round_number's own docstring).
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT, 'AAC': FactionMode.NEUTRAL})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT, 'AAC': FactionMode.NEUTRAL})
         log = TurnLog()
         engine.turn_log = log
         gs.global_turn = 20
         gs.round_number = 5
-        log.record_self_surrender(20, 5, 'UE')
-        gs.factions['UE'].eliminated = True
+        log.record_self_surrender(20, 5, 'EU')
+        gs.factions['EU'].eliminated = True
         # The game keeps going and racks up many more turns/rounds after that...
         gs.global_turn = 60
         gs.round_number = 15
@@ -255,36 +255,36 @@ class TestBuildGameReport(unittest.TestCase):
         gs.factions['GPC'].eliminated = True
         rows = build_game_report(engine, log, {})
         by_fac = {r['faction']: r for r in rows}
-        self.assertEqual(by_fac['UE']['round_eliminated'], 5)  # NOT recomputed against the final round_number (15)
+        self.assertEqual(by_fac['EU']['round_eliminated'], 5)  # NOT recomputed against the final round_number (15)
         self.assertEqual(by_fac['GPC']['round_eliminated'], 15)
         self.assertTrue(all(r['rounds_in_game'] == 15 for r in rows))  # the game's own final length, though
 
     def test_eliminated_by_names_the_demander_for_a_forced_surrender_and_nobody_for_a_self_surrender(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT})
         log = TurnLog()
         engine.turn_log = log
-        log.record_surrender(3, 1, 'NAA', 'UE', ['income'])
-        gs.factions['UE'].eliminated = True
+        log.record_surrender(3, 1, 'NAA', 'EU', ['income'])
+        gs.factions['EU'].eliminated = True
         log.record_self_surrender(5, 2, 'GPC')
         gs.factions['GPC'].eliminated = True
         rows = build_game_report(engine, log, {})
         by_fac = {r['faction']: r for r in rows}
-        self.assertEqual(by_fac['UE']['eliminated_by'], 'NAA')
+        self.assertEqual(by_fac['EU']['eliminated_by'], 'NAA')
         self.assertIsNone(by_fac['GPC']['eliminated_by'])  # self-surrendered: nobody eliminated them but themselves
         self.assertIsNone(by_fac['NAA']['eliminated_by'])  # still in the game
 
     def test_the_sort_order_is_status_then_scs_then_mpc_then_produced_then_destroyed(self):
-        engine, gs = world({'NAA': FactionMode.HUMAN, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT, 'AAC': FactionMode.NEUTRAL})
+        engine, gs = world({'NAA': FactionMode.HUMAN, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT, 'AAC': FactionMode.NEUTRAL})
         log = TurnLog()
         log.record_surrender(3, 1, 'NAA', 'GPC', ['income'])
         gs.factions['GPC'].eliminated = True
         rows = build_game_report(engine, log, {})
-        # winners (NAA, UE, both still active) first, sorted by SC/MPC among themselves; GPC (eliminated)
+        # winners (NAA, EU, both still active) first, sorted by SC/MPC among themselves; GPC (eliminated)
         # after them; AAC (Neutral) not listed.
         self.assertEqual([r['faction'] for r in rows][-1], 'GPC')
         self.assertNotIn('AAC', [r['faction'] for r in rows])
         winners = [r for r in rows if r['victory_status'] == 'Winner']
-        self.assertEqual([r['faction'] for r in winners], ['NAA', 'UE'])  # NAA has more SC-weighted territory
+        self.assertEqual([r['faction'] for r in winners], ['NAA', 'EU'])  # NAA has more SC-weighted territory
 
 
 if __name__ == '__main__':

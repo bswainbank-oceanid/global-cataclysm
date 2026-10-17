@@ -57,6 +57,29 @@ class TestCreating(unittest.TestCase):
         self.assertEqual(store._db.execute('PRAGMA user_version').fetchone()[0], SCHEMA_VERSION)
         store.close()
 
+    def test_the_upgrade_renames_united_europe_everywhere_but_chat(self):
+        from server.feed_log import _pack, _unpack
+        store = Store(self.path)
+        self.add_user_to(store, 'U_000001', 'a@x', 'A')
+        game = {'seats': [{'faction': 'UE'}, {'faction': 'UER'}], 'progress': {'waiting_for': ['UE']},
+                'names': {'UE': 'United Europe'}, 'note': 'R3: UE left (UER); TRUE QUEUE'}
+        store.insert('games', game, id='G_000001', code='ABCDEF', host_id='U_000001', status='live')
+        store.insert('game_feed', _pack({'type': 'phase_result', 'faction': 'UE', 'seq': 1, 'epoch': 'e'}),
+                     game_id='G_000001', epoch='e', seq=1, kind='phase_result')
+        store.insert('chat', {'text': 'UE is coming'}, room='lobby')
+        store._db.execute('PRAGMA user_version = 5')
+        store.close()
+        store = Store(self.path)
+        self.assertEqual(store.fetch('games', id='G_000001'),
+                         {'seats': [{'faction': 'EU'}, {'faction': 'UER'}], 'progress': {'waiting_for': ['EU']},
+                          'names': {'EU': 'Europe United'}, 'note': 'R3: EU left (UER); TRUE QUEUE'})
+        [row] = store.query('SELECT doc FROM game_feed', ())
+        self.assertEqual(_unpack(row['doc'])['faction'], 'EU')
+        [chat] = store.query('SELECT doc FROM chat', ())
+        self.assertEqual(chat['doc']['text'], 'UE is coming')  # (what a player wrote stays as written)
+        self.assertEqual(store._db.execute('PRAGMA user_version').fetchone()[0], SCHEMA_VERSION)
+        store.close()
+
     @staticmethod
     def add_user_to(store, uid, email, name):
         store.insert('users', {'id': uid}, id=uid, email=email, player_name=name)

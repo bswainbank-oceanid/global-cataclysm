@@ -269,7 +269,7 @@ func _start_view() -> void:
 				else:
 					Stepper.purchase_add(parts[0], int(parts[1]))
 				await get_tree().create_timer(0.25).timeout
-		if Dbg.args.has("alliance"):  # --alliance=none | withdraw | invite:UE | surrender:UE   (a scripted player's Diplomacy action)
+		if Dbg.args.has("alliance"):  # --alliance=none | withdraw | invite:EU | surrender:EU   (a scripted player's Diplomacy action)
 			await Stepper.wait_ready()
 			var a := str(Dbg.args["alliance"]).split(":")
 			if a[0] != "none":
@@ -321,7 +321,7 @@ func _start_view() -> void:
 				await get_tree().create_timer(0.3).timeout
 	if Dbg.args.has("announce_test"):  # --announce_test: show one of each announcement (for screenshots)
 		Stepper.announced.emit([
-			{"title": "UE eliminated", "color": GameData.factions["UE"].color, "body": "[b]United Europe[/b] (UE) has been eliminated. It held one Strategic Center or fewer, so it is out of the game and all of its units are removed from the board."},
+			{"title": "EU eliminated", "color": GameData.factions["EU"].color, "body": "[b]Europe United[/b] (EU) has been eliminated. It held one Strategic Center or fewer, so it is out of the game and all of its units are removed from the board."},
 			{"title": "New alliance", "color": GameData.factions["NAA"].color, "body": "[b]North Atlantic Alliance[/b] (NAA) and [b]Greater Pacific Commonwealth[/b] (GPC) have formed an alliance."},
 			{"title": "Game over", "color": GameData.factions["NAA"].color, "body": "[b]North Atlantic Alliance[/b] (NAA) is the last faction standing, and wins the game."}])
 

@@ -45,7 +45,7 @@ func _initialize() -> void:
 
 	store.set_state(_state({
 		"NAA": {"code": "NAA", "mode": "HUMAN", "treasury_mpc": 0, "alliance": null, "eliminated": false},
-		"UE": {"code": "UE", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+		"EU": {"code": "EU", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
 	}))
 	_check(store.human_faction() == "NAA", "the one HUMAN seat is found")
 
@@ -64,7 +64,7 @@ func _initialize() -> void:
 
 	# armistice_pending: only the human this proposal AWAITS is asked to answer.
 	_check(not store.armistice_pending(), "nothing pending at first")
-	store.set_armistice({"from": "UE", "awaiting": ["NAA"]})
+	store.set_armistice({"from": "EU", "awaiting": ["NAA"]})
 	_check(store.armistice_pending(), "NAA is awaited, so it's pending for them")
 	store.set_armistice({"from": "NAA", "awaiting": ["GPC"]})
 	_check(not store.armistice_pending(), "NAA proposed it themselves: never asked to answer their own")
@@ -83,8 +83,8 @@ func _initialize() -> void:
 	root.add_child(armistice_window)
 	await process_frame
 	_check(not armistice_window.visible, "hidden with nothing pending")
-	store.set_armistice({"from": "UE", "awaiting": ["NAA"]})
-	_check(armistice_window.visible and str(armistice_window._title.text).contains("UE"), "shows and names the proposer once NAA is awaited")
+	store.set_armistice({"from": "EU", "awaiting": ["NAA"]})
+	_check(armistice_window.visible and str(armistice_window._title.text).contains("EU"), "shows and names the proposer once NAA is awaited")
 	store.set_armistice({})
 	_check(not armistice_window.visible, "hides once resolved")
 
@@ -96,20 +96,20 @@ func _initialize() -> void:
 		{"kind": "self_surrender", "turn": 1, "faction": "NAA"}, {"kind": "faction_eliminated", "faction": "NAA"}]})
 	_check(announced_items.size() == 1 and str(announced_items[0]["title"]) == "NAA surrenders", "a self-surrender is announced once, not twice over")
 
-	stepper._on_message({"type": "armistice_proposed", "from": "NAA", "awaiting": ["UE"]})
-	_check(store.armistice.get("from") == "NAA" and store.armistice.get("awaiting") == ["UE"], "a proposal in flight is tracked")
+	stepper._on_message({"type": "armistice_proposed", "from": "NAA", "awaiting": ["EU"]})
+	_check(store.armistice.get("from") == "NAA" and store.armistice.get("awaiting") == ["EU"], "a proposal in flight is tracked")
 
-	stepper._on_message({"type": "armistice_resolved", "from": "NAA", "accepted": false, "declined_by": "UE", "events": []})
+	stepper._on_message({"type": "armistice_resolved", "from": "NAA", "accepted": false, "declined_by": "EU", "events": []})
 	_check(store.armistice.is_empty(), "resolving clears the pending proposal")
 
 	announced_items.clear()
-	stepper._on_message({"type": "armistice_resolved", "from": "NAA", "accepted": false, "declined_by": "UE", "events": []})
+	stepper._on_message({"type": "armistice_resolved", "from": "NAA", "accepted": false, "declined_by": "EU", "events": []})
 	_check(announced_items.size() == 1 and str(announced_items[0]["title"]).contains("declined"), "a decline is announced, and the game isn't over")
 	_check(not stepper.game_over, "...it really isn't")
 
 	announced_items.clear()
 	stepper._on_message({"type": "armistice_resolved", "from": "NAA", "accepted": true, "declined_by": null,
-		"events": [{"kind": "armistice", "turn": 2, "faction": "NAA", "participants": ["NAA", "UE"]}]})
+		"events": [{"kind": "armistice", "turn": 2, "faction": "NAA", "participants": ["NAA", "EU"]}]})
 	_check(announced_items.size() == 1 and str(announced_items[0]["title"]) == "Armistice agreed", "acceptance is announced from its 'armistice' event")
 
 	announced_items.clear()
@@ -117,9 +117,9 @@ func _initialize() -> void:
 	stepper._on_message({"type": "game_over", "report": [{
 		"faction": "NAA", "seat_type": "HUMAN", "victory_status": "Winner", "by_armistice": true, "elimination_reason": null,
 		"strategic_centers": 3, "territory_mpc": 20, "units_produced": 5, "units_destroyed": 2,
-		"alliance_history": ["R4: joined with UE"], "bot_type": null, "bot_strategy": null, "alliance_strategy": null, "alliance_behavior": null,
+		"alliance_history": ["R4: joined with EU"], "bot_type": null, "bot_strategy": null, "alliance_strategy": null, "alliance_behavior": null,
 		"rounds_in_game": 6, "round_eliminated": null, "eliminated_by": null}, {
-		"faction": "UE", "seat_type": "BOT", "victory_status": "Forced to Surrender", "elimination_reason": ["Economic"],
+		"faction": "EU", "seat_type": "BOT", "victory_status": "Forced to Surrender", "elimination_reason": ["Economic"],
 		"strategic_centers": 0, "territory_mpc": 0, "units_produced": 2, "units_destroyed": 1,
 		"alliance_history": [], "bot_type": "Random", "bot_strategy": null, "alliance_strategy": null, "alliance_behavior": null,
 		"rounds_in_game": 6, "round_eliminated": 3, "eliminated_by": "NAA"}]})
@@ -148,11 +148,11 @@ func _initialize() -> void:
 		"the alliance history column shows its factions as boxes")
 	_check(cell_texts.has("3") and cell_texts.has("NAA"), "round eliminated and who eliminated them show up as cells: %s" % str(cell_texts))
 	# The alliance record: each faction it names shows as that faction's box, between the words.
-	var line: Control = report_panel._history_line("R7: left (UE, NAA)")
+	var line: Control = report_panel._history_line("R7: left (EU, NAA)")
 	var bits := []
 	for c in line.get_children():
 		bits.append(("[%s]" % c.get_child(0).text) if c is PanelContainer else str(c.text))
-	_check(bits == ["R7: left (", "[UE]", ",", "[NAA]", ")"], "faction boxes in the alliance record: %s" % str(bits))
+	_check(bits == ["R7: left (", "[EU]", ",", "[NAA]", ")"], "faction boxes in the alliance record: %s" % str(bits))
 	line.free()
 	store.toggle_game_over_report_minimized()
 	await process_frame
@@ -167,7 +167,7 @@ func _initialize() -> void:
 	var announcement_window2 = load("res://scripts/announcement_window.gd").new()
 	root.add_child(announcement_window2)
 	await process_frame
-	announcement_window2.add([{"title": "UE eliminated", "body": "...", "color": Color.WHITE}, {"title": "Game over", "body": "...", "color": Color.WHITE}])
+	announcement_window2.add([{"title": "EU eliminated", "body": "...", "color": Color.WHITE}, {"title": "Game over", "body": "...", "color": Color.WHITE}])
 	await process_frame
 	_check(announcement_window2.visible, "a popup can come up over the open report")
 	_check(report_panel.visible and report_panel._panel.visible, "...and the report stays open underneath it")
@@ -237,13 +237,13 @@ func _initialize() -> void:
 	settings.opp_pause = settings.OppPause.PHASE
 	store.set_state(_state({
 		"NAA": {"code": "NAA", "mode": "HUMAN", "treasury_mpc": 0, "alliance": null, "eliminated": false},
-		"UE": {"code": "UE", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+		"EU": {"code": "EU", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
 	}))
 	stepper._check_auto_spectate()
 	_check(settings.opp_pause == settings.OppPause.PHASE, "not eliminated yet: no change")
 	store.set_state(_state({
 		"NAA": {"code": "NAA", "mode": "HUMAN", "treasury_mpc": 0, "alliance": null, "eliminated": true},
-		"UE": {"code": "UE", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+		"EU": {"code": "EU", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
 	}))
 	stepper._check_auto_spectate()
 	_check(settings.opp_pause == settings.OppPause.NEVER, "eliminated: defaults to spectating unpaused")
@@ -260,19 +260,19 @@ func _initialize() -> void:
 		"both are a genuinely long hold, well past the ordinary 0.8s Diplomacy one")
 	store.set_state(_state({
 		"NAA": {"code": "NAA", "mode": "HUMAN", "treasury_mpc": 0, "alliance": null, "eliminated": false},
-		"UE": {"code": "UE", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+		"EU": {"code": "EU", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
 	}))
 	_check(not panel._surrender_btn.disabled, "surrender is available to a live human player")
 	_check(not panel._armistice_btn.disabled, "so is proposing an armistice")
 	store.set_state(_state({
 		"NAA": {"code": "NAA", "mode": "HUMAN", "treasury_mpc": 0, "alliance": null, "eliminated": true},
-		"UE": {"code": "UE", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+		"EU": {"code": "EU", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
 	}))
 	_check(panel._surrender_btn.disabled, "an already-eliminated human has nothing left to surrender")
 	_check(not panel._armistice_btn.disabled, "but can still propose an armistice, exactly as required")
 	store.set_state(_state({
 		"NAA": {"code": "NAA", "mode": "HUMAN", "treasury_mpc": 0, "alliance": null, "eliminated": true},
-		"UE": {"code": "UE", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+		"EU": {"code": "EU", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
 	}, true))
 	_check(panel._armistice_btn.disabled, "the game is over: nothing left to propose")
 
@@ -280,14 +280,14 @@ func _initialize() -> void:
 	# Armistice is still available; Surrender is not (nothing of their own to give up).
 	store.set_state(_state({
 		"NAA": {"code": "NAA", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
-		"UE": {"code": "UE", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+		"EU": {"code": "EU", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
 	}))
 	_check(store.human_faction() == "", "no HUMAN seat: a pure spectator")
 	_check(panel._surrender_btn.disabled, "a spectator has no faction of their own to surrender")
 	_check(not panel._armistice_btn.disabled, "but can still propose an armistice")
 	store.set_state(_state({
 		"NAA": {"code": "NAA", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
-		"UE": {"code": "UE", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+		"EU": {"code": "EU", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
 	}, true))
 	_check(panel._armistice_btn.disabled, "...except once the game is over")
 	store.set_state({})
@@ -308,20 +308,20 @@ func _initialize() -> void:
 	_check(announced_items.size() == 1 and str(announced_items[0]["body"]).contains("spectator"), "declining a spectator's proposal is announced, naming them as such")
 	announced_items.clear()
 	stepper._on_message({"type": "armistice_resolved", "from": null, "accepted": true, "declined_by": null,
-		"events": [{"kind": "armistice", "turn": 3, "faction": null, "participants": ["NAA", "UE"]}]})
+		"events": [{"kind": "armistice", "turn": 3, "faction": null, "participants": ["NAA", "EU"]}]})
 	_check(announced_items.size() == 1 and str(announced_items[0]["body"]).contains("spectator"), "and accepting one names them too, from the 'armistice' event's null faction")
 
 	# Armistice cooldown (server/session.py's ARMISTICE_COOLDOWN_ROUNDS): a decline of THIS client's own
 	# proposal starts one; someone else's decline (a different proposer identity) never does.
 	store.set_state(_state({
 		"NAA": {"code": "NAA", "mode": "HUMAN", "treasury_mpc": 0, "alliance": null, "eliminated": false},
-		"UE": {"code": "UE", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
+		"EU": {"code": "EU", "mode": "BOT", "treasury_mpc": 0, "alliance": null, "eliminated": false},
 	}))
 	var st: Dictionary = store.state.duplicate(true)
 	st["round_number"] = 3
 	store.set_state(st)
 	_check(store.armistice_cooldown_remaining() == 0, "no cooldown in effect yet")
-	stepper._on_message({"type": "armistice_resolved", "from": "NAA", "accepted": false, "declined_by": "UE",
+	stepper._on_message({"type": "armistice_resolved", "from": "NAA", "accepted": false, "declined_by": "EU",
 		"events": [], "cooldown_until_round": 8})
 	_check(store.armistice_cooldown_until_round == 8, "a decline of MY OWN proposal (from == human_faction()) records the cooldown")
 	_check(store.armistice_cooldown_remaining() == 5, "5 rounds left (round 3 of a cooldown until round 8): %d" % store.armistice_cooldown_remaining())
@@ -334,9 +334,9 @@ func _initialize() -> void:
 	_check(not panel._armistice_btn.disabled, "...and the button is enabled again")
 
 	store.set_armistice_cooldown_until_round(-1)  # reset before the next check
-	stepper._on_message({"type": "armistice_resolved", "from": "UE", "accepted": false, "declined_by": "NAA",
+	stepper._on_message({"type": "armistice_resolved", "from": "EU", "accepted": false, "declined_by": "NAA",
 		"events": [], "cooldown_until_round": 99})
-	_check(store.armistice_cooldown_until_round == -1, "a decline of SOMEONE ELSE's proposal (UE, not me) never sets my own cooldown")
+	_check(store.armistice_cooldown_until_round == -1, "a decline of SOMEONE ELSE's proposal (EU, not me) never sets my own cooldown")
 
 	print("settings actions test: failures=%d" % _failures)
 	quit(1 if _failures > 0 else 0)

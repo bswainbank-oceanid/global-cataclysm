@@ -135,11 +135,11 @@ class TestLaunchAndCancel(GameTest):
 
     def test_a_live_game_records_factions_progress_and_its_end(self):
         game = games.create(self.store, self.ann, DUEL, humans(1))
-        games.record_factions(self.store, game['id'], {1: 'UER', 2: 'UE'})
-        games.update_progress(self.store, game['id'], {'round': 3, 'turn': 2, 'active_faction': 'UE',
+        games.record_factions(self.store, game['id'], {1: 'UER', 2: 'EU'})
+        games.update_progress(self.store, game['id'], {'round': 3, 'turn': 2, 'active_faction': 'EU',
                                                        'waiting_for': []})
         game = games.finish(self.store, game['id'])
-        self.assertEqual(game['factions'], {'1': 'UER', '2': 'UE'})
+        self.assertEqual(game['factions'], {'1': 'UER', '2': 'EU'})
         self.assertEqual(game['progress']['round'], 3)
         self.assertEqual(game['status'], 'finished')
         self.assertTrue(self.refused(games.update_progress, self.store, game['id'], {}))  # over

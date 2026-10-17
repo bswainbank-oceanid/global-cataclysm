@@ -18,12 +18,12 @@ def _by_type(messages, msg_type):
     return [m for m in messages if m['type'] == msg_type]
 
 
-def _session(humans=('NAA',), bots=('UE', 'GPC'), seed=1):
+def _session(humans=('NAA',), bots=('EU', 'GPC'), seed=1):
     def seat(mode, faction):
         return {'mode': mode, 'faction': faction, 'alliance': 0, 'strategy': 'independent', 'behavior': 'loyal'}
     seated = {f for f in humans} | {f for f in bots}
     seats = [seat('HUMAN', f) for f in humans] + [seat('BOT', f) for f in bots] + \
-        [seat('NONCOMBATANT', f) for f in ('NAA', 'UE', 'GPC', 'AAC', 'PAF', 'UER') if f not in seated]
+        [seat('NONCOMBATANT', f) for f in ('NAA', 'EU', 'GPC', 'AAC', 'PAF', 'UER') if f not in seated]
     session, _ = build_session({'seats': seats, 'randomize_order': False, 'max_alliance_size': 1}, random.Random(seed))
     return session
 
@@ -55,10 +55,10 @@ class TestSelfSurrender(unittest.TestCase):
         self.assertEqual([m['type'] for m in reply], ['self_surrender_result', 'state'])
         self.assertEqual([e['kind'] for e in reply[0]['events']], ['self_surrender', 'faction_eliminated'])
         self.assertTrue(gs.factions['NAA'].eliminated)
-        self.assertFalse(gs.game_over)  # UE and GPC are both still around, unallied
+        self.assertFalse(gs.game_over)  # EU and GPC are both still around, unallied
 
     def test_the_game_ends_at_once_if_it_was_the_last_one_standing(self):
-        session = _session(humans=('NAA',), bots=('UE',))
+        session = _session(humans=('NAA',), bots=('EU',))
         reply = session.handle_message({'type': 'surrender', 'faction': 'NAA'})
         self.assertIn('game_over', [m['type'] for m in reply])
         self.assertEqual(reply[-1]['type'], 'game_over')
@@ -80,23 +80,23 @@ class TestSelfSurrender(unittest.TestCase):
             self.assertNotIn('error', [m['type'] for m in messages])
             for q in _by_type(messages, 'phase_queue'):
                 seen.add(q['faction'])
-            if 'UE' in seen or 'GPC' in seen:
+            if 'EU' in seen or 'GPC' in seen:
                 break
-        self.assertTrue({'UE', 'GPC'} & seen)
+        self.assertTrue({'EU', 'GPC'} & seen)
 
     def test_cannot_surrender_twice(self):
-        session = _session(humans=('NAA',), bots=('UE', 'GPC'))
+        session = _session(humans=('NAA',), bots=('EU', 'GPC'))
         session.handle_message({'type': 'surrender', 'faction': 'NAA'})
         reply = session.handle_message({'type': 'surrender', 'faction': 'NAA'})
         self.assertEqual(reply[0]['type'], 'error')
 
     def test_cannot_surrender_a_non_human_faction_or_an_unknown_one(self):
         session = _session()
-        self.assertEqual(session.handle_message({'type': 'surrender', 'faction': 'UE'})[0]['type'], 'error')
+        self.assertEqual(session.handle_message({'type': 'surrender', 'faction': 'EU'})[0]['type'], 'error')
         self.assertEqual(session.handle_message({'type': 'surrender', 'faction': 'ZZZ'})[0]['type'], 'error')
 
     def test_next_still_works_normally_after_a_surrender_that_does_not_end_the_game(self):
-        session = _session(humans=('NAA',), bots=('UE', 'GPC'))
+        session = _session(humans=('NAA',), bots=('EU', 'GPC'))
         session.handle_message({'type': 'watch'})
         session.handle_message({'type': 'surrender', 'faction': 'NAA'})
         reply = session.handle_message({'type': 'next'})
@@ -105,7 +105,7 @@ class TestSelfSurrender(unittest.TestCase):
 
 class TestProposeArmistice(unittest.TestCase):
     def test_bots_accept_at_once_and_the_game_ends(self):
-        session = _session(humans=('NAA',), bots=('UE', 'GPC'))
+        session = _session(humans=('NAA',), bots=('EU', 'GPC'))
         reply = session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
         self.assertIn('game_over', [m['type'] for m in reply])
         resolved = _by_type(reply, 'armistice_resolved')[0]
@@ -114,40 +114,40 @@ class TestProposeArmistice(unittest.TestCase):
         report = _by_type(reply, 'game_over')[0]['report']
         by_fac = {r['faction']: r for r in report}
         # the faction ahead wins; the others agreed to the armistice
-        self.assertEqual(sorted(by_fac[c]['victory_status'] for c in ('NAA', 'UE', 'GPC')), ['Armistice', 'Armistice', 'Winner'])
+        self.assertEqual(sorted(by_fac[c]['victory_status'] for c in ('NAA', 'EU', 'GPC')), ['Armistice', 'Armistice', 'Winner'])
         self.assertEqual(report[0]['victory_status'], 'Winner')
 
     def test_a_second_human_is_asked_and_next_is_refused_until_they_answer(self):
-        session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
+        session = _multi_human_session(humans=('NAA', 'EU'), bots=('GPC',))
         reply = session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
         self.assertEqual([m['type'] for m in reply], ['armistice_proposed'])
-        self.assertEqual(reply[0]['awaiting'], ['UE'])
+        self.assertEqual(reply[0]['awaiting'], ['EU'])
         blocked = session.handle_message({'type': 'next'})
         self.assertEqual(blocked[0]['type'], 'error')
 
     def test_the_asked_human_accepting_ends_the_game(self):
-        session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
+        session = _multi_human_session(humans=('NAA', 'EU'), bots=('GPC',))
         session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
-        reply = session.handle_message({'type': 'respond_armistice', 'faction': 'UE', 'accept': True})
+        reply = session.handle_message({'type': 'respond_armistice', 'faction': 'EU', 'accept': True})
         self.assertIn('game_over', [m['type'] for m in reply])
         self.assertTrue(_by_type(reply, 'armistice_resolved')[0]['accepted'])
 
     def test_the_asked_human_declining_ends_the_proposal_not_the_game(self):
-        session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
+        session = _multi_human_session(humans=('NAA', 'EU'), bots=('GPC',))
         session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
-        reply = session.handle_message({'type': 'respond_armistice', 'faction': 'UE', 'accept': False})
+        reply = session.handle_message({'type': 'respond_armistice', 'faction': 'EU', 'accept': False})
         self.assertNotIn('game_over', [m['type'] for m in reply])
         resolved = _by_type(reply, 'armistice_resolved')[0]
         self.assertFalse(resolved['accepted'])
-        self.assertEqual(resolved['declined_by'], 'UE')
+        self.assertEqual(resolved['declined_by'], 'EU')
         self.assertFalse(session.engine.game_state.game_over)
         # and next() works again immediately
         self.assertNotIn('error', [m['type'] for m in session.handle_message({'type': 'next'})])
 
     def test_only_one_proposal_may_be_pending_at_a_time(self):
-        session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
+        session = _multi_human_session(humans=('NAA', 'EU'), bots=('GPC',))
         session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
-        reply = session.handle_message({'type': 'propose_armistice', 'faction': 'UE'})
+        reply = session.handle_message({'type': 'propose_armistice', 'faction': 'EU'})
         self.assertEqual(reply[0]['type'], 'error')
 
     def test_answering_with_nothing_pending_is_an_error(self):
@@ -156,30 +156,30 @@ class TestProposeArmistice(unittest.TestCase):
         self.assertEqual(reply[0]['type'], 'error')
 
     def test_an_already_eliminated_human_may_still_propose(self):
-        session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
+        session = _multi_human_session(humans=('NAA', 'EU'), bots=('GPC',))
         session.engine.surrender('NAA')
         self.assertTrue(session.engine.game_state.factions['NAA'].eliminated)
         self.assertFalse(session.engine.game_state.game_over)
         reply = session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
         self.assertEqual([m['type'] for m in reply], ['armistice_proposed'])
-        self.assertEqual(reply[0]['awaiting'], ['UE'])  # GPC is a bot, not asked; NAA itself isn't asked either
+        self.assertEqual(reply[0]['awaiting'], ['EU'])  # GPC is a bot, not asked; NAA itself isn't asked either
 
     def test_a_bot_cannot_propose_and_neither_can_an_unknown_faction(self):
-        session = _session(humans=('NAA',), bots=('UE', 'GPC'))
-        self.assertEqual(session.handle_message({'type': 'propose_armistice', 'faction': 'UE'})[0]['type'], 'error')
+        session = _session(humans=('NAA',), bots=('EU', 'GPC'))
+        self.assertEqual(session.handle_message({'type': 'propose_armistice', 'faction': 'EU'})[0]['type'], 'error')
         self.assertEqual(session.handle_message({'type': 'propose_armistice', 'faction': 'ZZZ'})[0]['type'], 'error')
 
     def test_cannot_propose_once_the_game_is_over(self):
-        session = _session(humans=('NAA',), bots=('UE',))
+        session = _session(humans=('NAA',), bots=('EU',))
         session.engine.surrender('NAA')
         self.assertTrue(session.engine.game_state.game_over)
         reply = session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
         self.assertEqual(reply[0]['type'], 'error')
 
     def test_three_humans_all_must_agree(self):
-        session = _multi_human_session(humans=('NAA', 'UE', 'GPC'), bots=())
+        session = _multi_human_session(humans=('NAA', 'EU', 'GPC'), bots=())
         session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
-        r1 = session.handle_message({'type': 'respond_armistice', 'faction': 'UE', 'accept': True})
+        r1 = session.handle_message({'type': 'respond_armistice', 'faction': 'EU', 'accept': True})
         self.assertNotIn('game_over', [m['type'] for m in r1])
         self.assertEqual(_by_type(r1, 'armistice_proposed')[0]['awaiting'], ['GPC'])
         r2 = session.handle_message({'type': 'respond_armistice', 'faction': 'GPC', 'accept': True})
@@ -191,9 +191,9 @@ class TestArmisticeCooldown(unittest.TestCase):
     GameSession.ARMISTICE_COOLDOWN_ROUNDS rounds (server/session.py)."""
 
     def test_a_declined_proposer_must_wait_before_proposing_again(self):
-        session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
+        session = _multi_human_session(humans=('NAA', 'EU'), bots=('GPC',))
         session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
-        resolved = session.handle_message({'type': 'respond_armistice', 'faction': 'UE', 'accept': False})
+        resolved = session.handle_message({'type': 'respond_armistice', 'faction': 'EU', 'accept': False})
         declined = _by_type(resolved, 'armistice_resolved')[0]
         self.assertFalse(declined['accepted'])
         self.assertEqual(declined['cooldown_until_round'], session.engine.game_state.round_number + 5)
@@ -202,26 +202,26 @@ class TestArmisticeCooldown(unittest.TestCase):
         self.assertIn('wait', reply[0]['message'])
 
     def test_the_cooldown_lifts_once_enough_rounds_have_passed(self):
-        session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
+        session = _multi_human_session(humans=('NAA', 'EU'), bots=('GPC',))
         session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
-        session.handle_message({'type': 'respond_armistice', 'faction': 'UE', 'accept': False})
+        session.handle_message({'type': 'respond_armistice', 'faction': 'EU', 'accept': False})
         session.engine.game_state.round_number += 5
         reply = session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
         self.assertNotEqual(reply[0]['type'], 'error')
 
     def test_the_cooldown_does_not_lift_early(self):
-        session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
+        session = _multi_human_session(humans=('NAA', 'EU'), bots=('GPC',))
         session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
-        session.handle_message({'type': 'respond_armistice', 'faction': 'UE', 'accept': False})
+        session.handle_message({'type': 'respond_armistice', 'faction': 'EU', 'accept': False})
         session.engine.game_state.round_number += 4
         reply = session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
         self.assertEqual(reply[0]['type'], 'error')
 
     def test_only_the_declined_proposer_is_cooled_down_not_anyone_else(self):
-        session = _multi_human_session(humans=('NAA', 'UE'), bots=('GPC',))
+        session = _multi_human_session(humans=('NAA', 'EU'), bots=('GPC',))
         session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
-        session.handle_message({'type': 'respond_armistice', 'faction': 'UE', 'accept': False})
-        reply = session.handle_message({'type': 'propose_armistice', 'faction': 'UE'})
+        session.handle_message({'type': 'respond_armistice', 'faction': 'EU', 'accept': False})
+        reply = session.handle_message({'type': 'propose_armistice', 'faction': 'EU'})
         self.assertNotEqual(reply[0]['type'], 'error')
 
 
@@ -230,7 +230,7 @@ class TestSpectatorArmistice(unittest.TestCase):
     (what a watch-mode connection to a game with no HUMAN seat IS, in this client)."""
 
     def test_a_spectator_can_propose_in_an_all_bot_game_and_the_bots_all_accept_at_once(self):
-        session = _session(humans=(), bots=('NAA', 'UE', 'GPC'))
+        session = _session(humans=(), bots=('NAA', 'EU', 'GPC'))
         reply = session.handle_message({'type': 'propose_armistice'})
         self.assertIn('game_over', [m['type'] for m in reply])
         resolved = _by_type(reply, 'armistice_resolved')[0]
@@ -238,10 +238,10 @@ class TestSpectatorArmistice(unittest.TestCase):
         self.assertIsNone(resolved['from'])
         report = _by_type(reply, 'game_over')[0]['report']
         by_fac = {r['faction']: r for r in report}
-        self.assertEqual(sorted(by_fac[c]['victory_status'] for c in ('NAA', 'UE', 'GPC')), ['Armistice', 'Armistice', 'Winner'])
+        self.assertEqual(sorted(by_fac[c]['victory_status'] for c in ('NAA', 'EU', 'GPC')), ['Armistice', 'Armistice', 'Winner'])
 
     def test_a_spectator_alongside_a_seated_human_still_asks_the_human(self):
-        session = _session(humans=('NAA',), bots=('UE', 'GPC'))
+        session = _session(humans=('NAA',), bots=('EU', 'GPC'))
         reply = session.handle_message({'type': 'propose_armistice'})
         self.assertEqual([m['type'] for m in reply], ['armistice_proposed'])
         self.assertEqual(reply[0]['awaiting'], ['NAA'])
@@ -250,7 +250,7 @@ class TestSpectatorArmistice(unittest.TestCase):
         self.assertIn('game_over', [m['type'] for m in accept])
 
     def test_the_asked_human_can_decline_a_spectators_proposal_and_the_game_goes_on(self):
-        session = _session(humans=('NAA',), bots=('UE', 'GPC'))
+        session = _session(humans=('NAA',), bots=('EU', 'GPC'))
         session.handle_message({'type': 'propose_armistice'})
         reply = session.handle_message({'type': 'respond_armistice', 'faction': 'NAA', 'accept': False})
         self.assertNotIn('game_over', [m['type'] for m in reply])
@@ -258,20 +258,20 @@ class TestSpectatorArmistice(unittest.TestCase):
         self.assertNotIn('error', [m['type'] for m in session.handle_message({'type': 'next'})])
 
     def test_a_spectator_cannot_propose_while_one_is_already_pending(self):
-        session = _session(humans=('NAA',), bots=('UE', 'GPC'))
+        session = _session(humans=('NAA',), bots=('EU', 'GPC'))
         session.handle_message({'type': 'propose_armistice', 'faction': 'NAA'})
         reply = session.handle_message({'type': 'propose_armistice'})
         self.assertEqual(reply[0]['type'], 'error')
 
     def test_a_spectator_cannot_propose_once_the_game_is_over(self):
-        session = _session(humans=(), bots=('NAA', 'UE'))
+        session = _session(humans=(), bots=('NAA', 'EU'))
         session.engine.surrender('NAA')
         self.assertTrue(session.engine.game_state.game_over)
         reply = session.handle_message({'type': 'propose_armistice'})
         self.assertEqual(reply[0]['type'], 'error')
 
     def test_a_declined_spectator_proposal_is_cooled_down_too_but_a_seated_human_is_unaffected(self):
-        session = _session(humans=('NAA',), bots=('UE', 'GPC'))
+        session = _session(humans=('NAA',), bots=('EU', 'GPC'))
         session.handle_message({'type': 'propose_armistice'})
         session.handle_message({'type': 'respond_armistice', 'faction': 'NAA', 'accept': False})
         reply = session.handle_message({'type': 'propose_armistice'})

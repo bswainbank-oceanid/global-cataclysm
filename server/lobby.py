@@ -9,7 +9,7 @@ Settings (the "new_game" message's "settings"):
                   "neutral": {"territory_value", "units_mpc", "promotions", "scs"}},   # new: the Neutral row (omitted: defaults)
      "seats": [ {"mode": "HUMAN" | "BOT" | "NEUTRAL" | "NONCOMBATANT",   # a fixed scenario
                         | "HUMAN" | "BOT" | "NOT_PLAYING",               # a new one
-                 "faction": "random" | "NAA" | "UE" | "UER" | "GPC" | "PAF" | "AAC",
+                 "faction": "random" | "NAA" | "EU" | "UER" | "GPC" | "PAF" | "AAC",
                  "alliance": 0 | 1 | 2 | 3,             # 0 = none; players only
                  "strategy": "random" | aggressive | passive | counterweight | independent | variable,   # bots only
                  "ai": "strategy" | "strategy_alt" | "random" | "claude",                                 # bots only: the heuristic bot (default; strategy_alt: on the alternate strategy profiles), the random baseline, or Claude itself

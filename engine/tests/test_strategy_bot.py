@@ -13,7 +13,7 @@ from engine.setup import build_game_state
 from engine.state import FactionMode, Phase, UnitInstance
 from engine.tests.test_engine import FakeData, make_state, make_unit
 
-FACTIONS = ('NAA', 'AAC', 'UE', 'GPC', 'PAF', 'UER')
+FACTIONS = ('NAA', 'AAC', 'EU', 'GPC', 'PAF', 'UER')
 UNITS = ('Infantry', 'Mechanized Infantry', 'Armor', 'Aircraft Carrier', 'Cruiser', 'Submarine', 'Bomber', 'Fighter')
 STYLES = ('Strategic', 'Defensive', 'Expansive', 'Controlling')
 ALL_STYLES = STYLES + ('Variable',)

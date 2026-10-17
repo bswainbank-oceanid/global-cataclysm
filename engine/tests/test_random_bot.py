@@ -402,7 +402,7 @@ class TestPlayToCompletion(unittest.TestCase):
         # the SAME fully-seeded setup twice and requires byte-identical
         # results -- turn count, every capture, and final unit stats.
         def play_once():
-            modes = {code: FactionMode.BOT for code in ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')}
+            modes = {code: FactionMode.BOT for code in ('NAA', 'EU', 'UER', 'GPC', 'PAF', 'AAC')}
             gs = build_game_state(
                 modes, max_alliance_size=3,
                 alliance_strategies={c: 'random' for c in modes},

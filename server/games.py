@@ -6,7 +6,7 @@ where, what state a game is in, its saved state; the server builds and runs the 
     game = create(store, host_id, {'kind': 'shared', 'id': 'Setup_002', 'name': 'Duel'}, settings)
     take_seat(store, game['id'], user_id, 2)
     launch(store, game['id'], host_id)          # once every HUMAN seat is taken
-    record_factions(store, game['id'], {1: 'UER', 2: 'UE', ...})
+    record_factions(store, game['id'], {1: 'UER', 2: 'EU', ...})
 
 A game with exactly one HUMAN seat skips the lobby (the host takes the seat and it is live at once);
 so does one with none (all bots: the host owns it and watches). Every refusal is a StoreError.

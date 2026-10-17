@@ -18,7 +18,7 @@ func _initialize() -> void:
 	var store = root.get_node("GameStore")
 	var tracks: Dictionary = music._tracks
 	_check((tracks.get("base", []) as Array).size() == 2, "two base tracks (the Main themes): %s" % [tracks.get("base")])
-	for code in ["NAA", "UE", "UER", "GPC", "PAF", "AAC"]:
+	for code in ["NAA", "EU", "UER", "GPC", "PAF", "AAC"]:
 		_check((tracks.get("factions", {}).get(code, []) as Array).size() == 2, "%s has two tracks" % code)
 
 	# The menus: the base tracks, in turns (in order), from any one.

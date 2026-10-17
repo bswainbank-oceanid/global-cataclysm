@@ -227,12 +227,12 @@ class TestTurnLogEngineIntegration(unittest.TestCase):
     def test_invite_and_withdraw_are_logged(self):
         data = FakeData(territories={}, adjacency={})
         gs = make_state(
-            data, {}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
+            data, {}, {'NAA': FactionMode.HUMAN, 'EU': FactionMode.HUMAN, 'PAF': FactionMode.HUMAN},
             phase=Phase.DIPLOMACY,
         )
         log = TurnLog()
         engine = GameEngine(gs, data, turn_log=log)
-        engine.invite_to_alliance('NAA', 'UE', target_accepts=True)
+        engine.invite_to_alliance('NAA', 'EU', target_accepts=True)
         self.assertEqual(log.events[-1]['kind'], 'alliance_joined')
         self.assertTrue(log.events[-1]['new_alliance'])
 
@@ -240,7 +240,7 @@ class TestTurnLogEngineIntegration(unittest.TestCase):
         engine._alliance_action_taken.discard('NAA')
         engine.withdraw_from_alliance('NAA')
         self.assertEqual(log.events[-1]['kind'], 'alliance_withdrawal')
-        self.assertEqual(log.events[-1]['former_members'], ['UE'])
+        self.assertEqual(log.events[-1]['former_members'], ['EU'])
 
 
 if __name__ == '__main__':

@@ -84,7 +84,7 @@ KEEP_IMPORT = '[remap]\n\nimporter="keep"\n'
 MUSIC_DIR = ROOT / 'assets' / 'sounds' / 'music' / 'music1'
 # A soundtrack file's name: a label -- "Main" (the base themes, played on the menus; "Main Theme" will do) or a
 # faction's code -- and the track's number (none: 1), around the game's tag (GC_1972, GC72), which is ignored:
-# "AAC - GC_1972.mp3", "AAC - 2 - GC_1972.mp3", "UE - 2 GC_1972.mp3", "GC_1972 - Main Theme - 2.mp3",
+# "AAC - GC_1972.mp3", "AAC - 2 - GC_1972.mp3", "EU - 2 GC_1972.mp3", "GC_1972 - Main Theme - 2.mp3",
 # "Main - 1 - GC72.mp3", "GPC- 2 - GC72.mp3".
 MUSIC_TAG = re.compile(r'GC_?(19)?72', re.I)
 MUSIC_WORD = re.compile(r'[A-Za-z]+|\d+')

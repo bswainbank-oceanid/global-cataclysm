@@ -14,8 +14,11 @@ database can be swapped later without the rest of the server noticing.
     store.insert('users', {...doc...}, id=uid, email=..., player_name=...)
     doc = store.fetch('users', id=uid)
 """
+import base64
 import json
+import re
 import sqlite3
+import zlib
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,7 +26,7 @@ from pathlib import Path
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / 'server_data' / 'global_cataclysm.sqlite3'
 
 # Bump when the tables change, with an upgrade step in Store._upgrade.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # Server-assigned ids: a prefix per kind of record, then a running number.
 ID_PREFIXES = {'user': 'U_', 'scenario': 'S_', 'game': 'G_'}
@@ -105,7 +108,41 @@ CREATE TABLE counters (
 );
 """
 
-# What each schema version added, for a database an older server made: [(version, [statements])].
+def _renamed(value, words):
+    """`value` (parsed JSON) with each of `words` ({old: new}) renamed wherever it stands as a whole word -- in
+    keys and strings alike."""
+    if isinstance(value, dict):
+        return {_renamed(k, words): _renamed(v, words) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_renamed(v, words) for v in value]
+    if isinstance(value, str):
+        for old, new in words.items():
+            value = re.sub(r'\b' + re.escape(old) + r'\b', new, value)
+    return value
+
+
+def _rename_faction(db, words, skip=('logins', 'counters', 'chat')):
+    """A faction renamed in every record kept (players' chat aside, as they wrote it): each document parsed and
+    rewritten -- the kept playback's packed ones ({'z': ...}, server/feed_log.py) unpacked first, so nothing
+    encoded is ever touched as text."""
+    tables = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
+    for table in tables:
+        if table in skip or 'doc' not in [c[1] for c in db.execute(f'PRAGMA table_info({table})')]:
+            continue
+        for rowid, doc in db.execute(f'SELECT rowid, doc FROM {table}').fetchall():
+            value = json.loads(doc)
+            packed = isinstance(value, dict) and set(value) == {'z'}
+            inner = json.loads(zlib.decompress(base64.b64decode(value['z']))) if packed else value
+            new = _renamed(inner, words)
+            if new == inner:
+                continue
+            if packed:
+                new = {'z': base64.b64encode(zlib.compress(json.dumps(new).encode('utf-8'))).decode('ascii')}
+            db.execute(f'UPDATE {table} SET doc = ? WHERE rowid = ?', (json.dumps(new), rowid))
+
+
+# What each schema version added, for a database an older server made: [(version, [statements])] -- an SQL
+# statement, or a function given the database connection.
 UPGRADES = [
     (2, ['CREATE TABLE server_settings (key TEXT PRIMARY KEY, doc TEXT NOT NULL)']),
     # the shared scenarios, out of the code's data/modules (server/shared_setups.py)
@@ -119,6 +156,8 @@ UPGRADES = [
          'CREATE INDEX game_feed_by_game ON game_feed(game_id, epoch, seq)',
          'CREATE TABLE game_viewers (game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE, user_id TEXT NOT NULL '
          'REFERENCES users(id) ON DELETE CASCADE, doc TEXT NOT NULL, PRIMARY KEY (game_id, user_id))']),
+    # United Europe (UE) is now Europe United (EU): its games, scenarios and settings follow
+    (6, [lambda db: _rename_faction(db, {'UE': 'EU', 'United Europe': 'Europe United'})]),
 ]
 
 # A unique column that is already taken, as the player should read it.
@@ -177,7 +216,10 @@ class Store:
             if version < to:
                 with self.transaction():
                     for statement in statements:
-                        self._db.execute(statement)
+                        if callable(statement):
+                            statement(self._db)
+                        else:
+                            self._db.execute(statement)
                     self._db.execute(f'PRAGMA user_version = {to}')
                 version = to
 

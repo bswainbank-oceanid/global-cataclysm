@@ -42,7 +42,7 @@
   {
    "location_id": 15,
    "units": [
-    {"id": "UE-001", "unit_type_id": "Infantry", "faction_id": "UE"}
+    {"id": "EU-001", "unit_type_id": "Infantry", "faction_id": "EU"}
    ]
   },
   {
@@ -77,42 +77,42 @@
   {
    "location_id": 22,
    "units": [
-    {"id": "UE-002", "unit_type_id": "Fighter", "faction_id": "UE"},
-    {"id": "UE-003", "unit_type_id": "Infantry", "faction_id": "UE"}
+    {"id": "EU-002", "unit_type_id": "Fighter", "faction_id": "EU"},
+    {"id": "EU-003", "unit_type_id": "Infantry", "faction_id": "EU"}
    ]
   },
   {
    "location_id": 23,
    "units": [
-    {"id": "UE-004", "unit_type_id": "Armor", "faction_id": "UE"},
-    {"id": "UE-005", "unit_type_id": "Fighter", "faction_id": "UE"},
-    {"id": "UE-006", "unit_type_id": "Infantry", "faction_id": "UE"}
+    {"id": "EU-004", "unit_type_id": "Armor", "faction_id": "EU"},
+    {"id": "EU-005", "unit_type_id": "Fighter", "faction_id": "EU"},
+    {"id": "EU-006", "unit_type_id": "Infantry", "faction_id": "EU"}
    ]
   },
   {
    "location_id": 24,
    "units": [
-    {"id": "UE-007", "unit_type_id": "Infantry", "faction_id": "UE"}
+    {"id": "EU-007", "unit_type_id": "Infantry", "faction_id": "EU"}
    ]
   },
   {
    "location_id": 28,
    "units": [
-    {"id": "UE-008", "unit_type_id": "Armor", "faction_id": "UE"},
-    {"id": "UE-009", "unit_type_id": "Bomber", "faction_id": "UE"}
+    {"id": "EU-008", "unit_type_id": "Armor", "faction_id": "EU"},
+    {"id": "EU-009", "unit_type_id": "Bomber", "faction_id": "EU"}
    ]
   },
   {
    "location_id": 29,
    "units": [
-    {"id": "UE-011", "unit_type_id": "Mechanized Infantry", "faction_id": "UE"},
-    {"id": "UE-012", "unit_type_id": "Mechanized Infantry", "faction_id": "UE"}
+    {"id": "EU-011", "unit_type_id": "Mechanized Infantry", "faction_id": "EU"},
+    {"id": "EU-012", "unit_type_id": "Mechanized Infantry", "faction_id": "EU"}
    ]
   },
   {
    "location_id": 30,
    "units": [
-    {"id": "UE-013", "unit_type_id": "Infantry", "faction_id": "UE"}
+    {"id": "EU-013", "unit_type_id": "Infantry", "faction_id": "EU"}
    ]
   },
   {
@@ -156,7 +156,7 @@
   {
    "location_id": 39,
    "units": [
-    {"id": "UE-010", "unit_type_id": "Infantry", "faction_id": "UE"}
+    {"id": "EU-010", "unit_type_id": "Infantry", "faction_id": "EU"}
    ]
   },
   {
@@ -275,9 +275,9 @@
   {
    "location_id": 72,
    "units": [
-    {"id": "UE-014", "unit_type_id": "Armor", "faction_id": "UE"},
-    {"id": "UE-015", "unit_type_id": "Bomber", "faction_id": "UE"},
-    {"id": "UE-016", "unit_type_id": "Infantry", "faction_id": "UE"}
+    {"id": "EU-014", "unit_type_id": "Armor", "faction_id": "EU"},
+    {"id": "EU-015", "unit_type_id": "Bomber", "faction_id": "EU"},
+    {"id": "EU-016", "unit_type_id": "Infantry", "faction_id": "EU"}
    ]
   },
   {
@@ -445,7 +445,7 @@
   {
    "location_id": 133,
    "units": [
-    {"id": "UE-017", "unit_type_id": "Infantry", "faction_id": "UE"}
+    {"id": "EU-017", "unit_type_id": "Infantry", "faction_id": "EU"}
    ]
   },
   {

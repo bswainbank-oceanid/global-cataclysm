@@ -50,7 +50,7 @@ class TestCombatFollowsTheData(unittest.TestCase):
 
     def test_a_submerging_unit_under_another_name_is_invisible_to_aircraft(self):
         defs = units_with({'Submarine': {'abilities': {}}, 'Cruiser': {'abilities': {'submerge': {}}}})
-        cruiser = unit(1, 'Cruiser', 'UE', defs)
+        cruiser = unit(1, 'Cruiser', 'EU', defs)
         fighters = [unit(10 + i, 'Fighter', 'NAA', defs) for i in range(4)]
         for seed in range(5):
             cruiser.current_hp = defs['Cruiser']['hp']
@@ -61,9 +61,9 @@ class TestCombatFollowsTheData(unittest.TestCase):
     def test_without_a_trigger_there_is_no_air_superiority_round(self):
         defs = units_with({'Fighter': {'abilities': {'air_superiority': {'attack_die': 'D10', 'damage': 3,
                                                                         'triggers_round': False}}}})
-        events = self.fight([unit(1, 'Fighter', 'NAA', defs)], [unit(2, 'Fighter', 'UE', defs)], 'land', defs)
+        events = self.fight([unit(1, 'Fighter', 'NAA', defs)], [unit(2, 'Fighter', 'EU', defs)], 'land', defs)
         self.assertFalse(any(e.kind.name == 'AIR_SUPERIORITY_START' for e in events))
-        events = self.fight([unit(3, 'Fighter', 'NAA', data.units())], [unit(4, 'Fighter', 'UE', data.units())],
+        events = self.fight([unit(3, 'Fighter', 'NAA', data.units())], [unit(4, 'Fighter', 'EU', data.units())],
                             'land', data.units())
         self.assertTrue(any(e.kind.name == 'AIR_SUPERIORITY_START' for e in events))
 
@@ -77,14 +77,14 @@ class TestCombatFollowsTheData(unittest.TestCase):
 
 class TestMovementFollowsTheData(unittest.TestCase):
     def setUp(self):
-        # 1 (NAA land) -- 2 (empty UE land) -- 3 (UE land with a defender)
+        # 1 (NAA land) -- 2 (empty EU land) -- 3 (EU land with a defender)
         self.territories = {1: {'type': 'land'}, 2: {'type': 'land'}, 3: {'type': 'land'}}
         self.adjacency = {1: [2], 2: [1, 3], 3: [2]}
 
     def reachable(self, defs, unit_type):
         fake = MoveData(self.territories, self.adjacency, unit_defs=defs)
-        gs = make_state(fake, {1: 'NAA', 2: 'UE', 3: 'UE'}, {'NAA': FactionMode.HUMAN, 'UE': FactionMode.HUMAN},
-                        units_by_territory={1: [unit(1, unit_type, 'NAA', defs)], 3: [unit(2, 'Infantry', 'UE', defs)]})
+        gs = make_state(fake, {1: 'NAA', 2: 'EU', 3: 'EU'}, {'NAA': FactionMode.HUMAN, 'EU': FactionMode.HUMAN},
+                        units_by_territory={1: [unit(1, unit_type, 'NAA', defs)], 3: [unit(2, 'Infantry', 'EU', defs)]})
         return legal_combat_move_destinations(unit_type, 'NAA', 1, gs, fake)
 
     def test_only_a_blitzing_unit_passes_through_empty_enemy_land(self):

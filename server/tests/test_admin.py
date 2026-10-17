@@ -109,7 +109,7 @@ class TestUpgrading(unittest.TestCase):
             store._db.execute('PRAGMA user_version = 1')
             store.close()
             store = Store(path)
-            self.assertEqual(store._db.execute('PRAGMA user_version').fetchone()[0], 5)
+            self.assertEqual(store._db.execute('PRAGMA user_version').fetchone()[0], 6)
             self.assertEqual(store.fetch_all('shared_scenarios'), [])
             self.assertEqual(store.fetch_all('user_preferences'), [])
             admin.set_max_users(store, 50)

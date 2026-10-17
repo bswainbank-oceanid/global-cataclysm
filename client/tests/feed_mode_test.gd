@@ -28,8 +28,8 @@ func _initialize() -> void:
 	store.set_multi_game({"id": "G_000001"}, ["AAC"])
 	stepper._on_raw(data["feed"])
 	_check(not store.state.is_empty(), "entering applies the state")
-	_check(stepper._queued_phase == "START_OF_TURN" and stepper._queued_faction == "UE", "...and the step waiting now")
-	_check(store.is_player("AAC") and not store.is_player("UE"), "my factions are the ones I hold")
+	_check(stepper._queued_phase == "START_OF_TURN" and stepper._queued_faction == "EU", "...and the step waiting now")
+	_check(store.is_player("AAC") and not store.is_player("EU"), "my factions are the ones I hold")
 	_check(store.human_faction() == "AAC", "my faction")
 
 	# The server runs ahead: three steps arrive at once, and none is shown until Next.
@@ -51,18 +51,18 @@ func _initialize() -> void:
 	# Nothing more has arrived: Next waits for it, and it plays at once when it comes.
 	stepper._do_advance()
 	_check(stepper._awaiting and stepper._queued_phase == "NONCOMBAT_MOVE", "Next with nothing arrived waits")
-	var later := {"type": "phase_result", "faction": "UE", "phase": "NONCOMBAT_MOVE", "events": [], "seq": 10, "epoch": steps[0]["epoch"]}
-	var queue := {"type": "phase_queue", "faction": "UE", "phase": "CAPTURE", "events": [], "skipped": [], "seq": 11, "epoch": steps[0]["epoch"]}
+	var later := {"type": "phase_result", "faction": "EU", "phase": "NONCOMBAT_MOVE", "events": [], "seq": 10, "epoch": steps[0]["epoch"]}
+	var queue := {"type": "phase_queue", "faction": "EU", "phase": "CAPTURE", "events": [], "skipped": [], "seq": 11, "epoch": steps[0]["epoch"]}
 	stepper._on_raw(later)
 	stepper._on_raw(queue)
 	_check(stepper._queued_phase == "CAPTURE" and not stepper._awaiting, "a step arriving while Next waits is played at once")
 
 	# Another player's decision: the game says it is waiting for them.
-	stepper._on_raw({"type": "waiting", "for": ["UE"], "seq": 12, "epoch": steps[0]["epoch"]})
-	_check(store.waiting_for == ["UE"], "waiting is recorded")
+	stepper._on_raw({"type": "waiting", "for": ["EU"], "seq": 12, "epoch": steps[0]["epoch"]})
+	_check(store.waiting_for == ["EU"], "waiting is recorded")
 
 	# A reply meant for this client alone (no seq) goes straight through, inbox or not.
-	stepper._on_raw({"type": "phase_result", "faction": "UE", "phase": "CAPTURE", "events": [], "seq": 13, "epoch": steps[0]["epoch"]})
+	stepper._on_raw({"type": "phase_result", "faction": "EU", "phase": "CAPTURE", "events": [], "seq": 13, "epoch": steps[0]["epoch"]})
 	var errors := []
 	stepper.log_line.connect(func(t): errors.append(t))
 	stepper._on_raw({"type": "error", "message": "nope", "to_sender": true})
@@ -105,15 +105,15 @@ func _initialize() -> void:
 	# a player who isn't asked sees whose answer it is waiting for.
 	var with_armistice: Dictionary = data["feed"].duplicate(true)
 	with_armistice["epoch"] = "a later run"
-	with_armistice["armistice"] = {"from": "UE", "awaiting": ["AAC"], "automatic_after": null}
+	with_armistice["armistice"] = {"from": "EU", "awaiting": ["AAC"], "automatic_after": null}
 	stepper._on_raw(with_armistice)
 	_check(store.armistice_pending() and store.armistice_faction() == "AAC", "the proposal is put to the player entering")
 	_check(stepper.button_text == "Answer the armistice proposal" and not stepper.button_enabled, "Next waits for the answer")
-	store.my_factions = ["UE"]
+	store.my_factions = ["EU"]
 	stepper._refresh()
 	_check(stepper.button_text.begins_with("Armistice proposed") and not stepper.button_enabled, "the proposer's game holds still")
 	store.my_factions = ["AAC"]
-	stepper._on_raw({"type": "armistice_resolved", "accepted": false, "from": "UE", "declined_by": "AAC", "seq": 99, "epoch": "a later run"})
+	stepper._on_raw({"type": "armistice_resolved", "accepted": false, "from": "EU", "declined_by": "AAC", "seq": 99, "epoch": "a later run"})
 	_check(store.armistice.is_empty() and not stepper.button_text.begins_with("Armistice"), "resolved: the game goes on")
 
 	# Leaving for the main menu and coming back: playback goes on from where the player left it -- the steps

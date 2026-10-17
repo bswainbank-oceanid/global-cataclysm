@@ -12,7 +12,7 @@ from engine.repository import default_repository
 from server.lobby import build_session, check_settings
 
 PLAYERS_3 = ['NAA', 'GPC', 'PAF']
-PLAYERS_6 = ['NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC']
+PLAYERS_6 = ['NAA', 'EU', 'UER', 'GPC', 'PAF', 'AAC']
 
 
 def base():
@@ -226,7 +226,7 @@ class TestLobby(unittest.TestCase):
         return {'scenario': {'kind': 'new', 'options': options, 'neutral': neutral or {}}, 'seats': seats, 'seed': 21}
 
     def test_a_new_scenario_game_leaves_out_the_factions_not_playing(self):
-        session, seats = build_session(self.settings([bot('NAA'), bot('UE'), bot(), NOT_PLAYING, NOT_PLAYING, NOT_PLAYING],
+        session, seats = build_session(self.settings([bot('NAA'), bot('EU'), bot(), NOT_PLAYING, NOT_PLAYING, NOT_PLAYING],
                                                      neutral={'territory_value': 30}))
         gs = session.engine.game_state
         playing = [s['faction'] for s in seats if s['mode'] == 'BOT']

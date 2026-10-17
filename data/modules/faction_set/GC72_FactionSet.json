@@ -7,7 +7,7 @@
  "noncombatant": {"id": "NCB", "name": "Noncombatant", "color": "#EDDEAD", "icon": "faction/neutral.svg"},
  "factions": [
   {"id": "NAA", "name": "North Atlantic Alliance", "color": "#173F78", "icon": "faction/naa.svg"},
-  {"id": "UE", "name": "United Europe", "color": "#B68A20", "icon": "faction/ue.svg"},
+  {"id": "EU", "name": "Europe United", "color": "#B68A20", "icon": "faction/eu.svg"},
   {"id": "UER", "name": "Union of Eurasian Republics", "color": "#A92B29", "icon": "faction/uer.svg"},
   {"id": "GPC", "name": "Greater Pacific Commonwealth", "color": "#6A3788", "icon": "faction/gpc.svg"},
   {"id": "PAF", "name": "Pan-African Federation", "color": "#3C7A35", "icon": "faction/paf.svg"},

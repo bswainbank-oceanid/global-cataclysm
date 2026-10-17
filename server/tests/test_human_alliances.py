@@ -10,10 +10,10 @@ def _by_type(messages, msg_type):
 
 
 def _session(strategies, seed=1):
-    """A human NAA, bots UE and GPC with the given alliance strategies, fixed turn order."""
+    """A human NAA, bots EU and GPC with the given alliance strategies, fixed turn order."""
     def seat(mode, faction, strategy='random'):
         return {'mode': mode, 'faction': faction, 'alliance': 0, 'strategy': strategy, 'behavior': 'loyal'}
-    seats = [seat('HUMAN', 'NAA'), seat('BOT', 'UE', strategies[0]), seat('BOT', 'GPC', strategies[1])] + \
+    seats = [seat('HUMAN', 'NAA'), seat('BOT', 'EU', strategies[0]), seat('BOT', 'GPC', strategies[1])] + \
         [seat('NONCOMBATANT', f) for f in ('UER', 'PAF', 'AAC')]
     session, _ = build_session({'seats': seats, 'randomize_order': False}, random.Random(seed))
     return session
@@ -54,7 +54,7 @@ class TestHumanAlliancePhase(unittest.TestCase):
         human = queue['human']
         self.assertEqual(human['kind'], 'diplomacy')
         self.assertEqual(human['members'], ['NAA'])
-        self.assertEqual(human['options']['eligible_invite_targets'], ['GPC', 'UE'])
+        self.assertEqual(human['options']['eligible_invite_targets'], ['EU', 'GPC'])
         self.assertFalse(human['options']['can_withdraw'])
         self.assertFalse(human['options']['alliance_action_used'])
         self.assertEqual(human['surrender'], [])
@@ -65,7 +65,7 @@ class TestHumanAlliancePhase(unittest.TestCase):
         for strategy, joins in (('aggressive', True), ('independent', False)):
             session = _session((strategy, 'independent'))
             _advance_to(session, 'NAA', 'DIPLOMACY')
-            reply = session.handle_message({'type': 'diplomacy_action', 'faction': 'NAA', 'action': 'invite', 'target': 'UE'})
+            reply = session.handle_message({'type': 'diplomacy_action', 'faction': 'NAA', 'action': 'invite', 'target': 'EU'})
             self.assertEqual([m['type'] for m in reply], ['diplomacy_result', 'phase_queue', 'state'])
             kinds = [e['kind'] for e in reply[0]['events']]
             self.assertEqual('alliance_joined' in kinds, joins, strategy)
@@ -79,7 +79,7 @@ class TestHumanAlliancePhase(unittest.TestCase):
     def test_illegal_actions_are_rejected_with_the_queue_unchanged(self):
         session = _session(('independent', 'independent'))
         _advance_to(session, 'NAA', 'DIPLOMACY')
-        for action, target in (('withdraw', None), ('invite', 'NAA'), ('invite', 'PAF'), ('invite', None), ('surrender', 'UE'),
+        for action, target in (('withdraw', None), ('invite', 'NAA'), ('invite', 'PAF'), ('invite', None), ('surrender', 'EU'),
                                ('surrender', None), ('teleport', None)):
             reply = session.handle_message({'type': 'diplomacy_action', 'faction': 'NAA', 'action': action, 'target': target})
             self.assertEqual([m['type'] for m in reply], ['error', 'phase_queue'], (action, target))
@@ -89,12 +89,12 @@ class TestHumanAlliancePhase(unittest.TestCase):
         session = _session(('independent', 'independent'))
         session.handle_message({'type': 'watch'})  # NAA's Purchase phase
         self.assertEqual(session.handle_message({'type': 'diplomacy_action', 'faction': 'NAA', 'action': 'withdraw'})[0]['type'], 'error')
-        self.assertEqual(session.handle_message({'type': 'diplomacy_action', 'faction': 'UE', 'action': 'withdraw'})[0]['type'], 'error')
+        self.assertEqual(session.handle_message({'type': 'diplomacy_action', 'faction': 'EU', 'action': 'withdraw'})[0]['type'], 'error')
 
     def test_a_human_can_withdraw_once_allied_and_it_takes_effect(self):
         session = _session(('aggressive', 'independent'))
         _advance_to(session, 'NAA', 'DIPLOMACY')
-        session.handle_message({'type': 'diplomacy_action', 'faction': 'NAA', 'action': 'invite', 'target': 'UE'})
+        session.handle_message({'type': 'diplomacy_action', 'faction': 'NAA', 'action': 'invite', 'target': 'EU'})
         session.handle_message({'type': 'next'})
         gs = session.engine.game_state
         self.assertIsNotNone(gs.factions['NAA'].alliance)
@@ -106,7 +106,7 @@ class TestHumanAlliancePhase(unittest.TestCase):
             if (queue['faction'], queue['phase']) == ('NAA', 'DIPLOMACY'):
                 break
             messages = session.handle_message({'type': 'next'})
-        self.assertEqual(queue['human']['members'], ['NAA', 'UE'])
+        self.assertEqual(queue['human']['members'], ['EU', 'NAA'])
         self.assertTrue(queue['human']['options']['can_withdraw'])
         reply = session.handle_message({'type': 'diplomacy_action', 'faction': 'NAA', 'action': 'withdraw'})
         self.assertIn('alliance_withdrawal', [e['kind'] for e in reply[0]['events']])
@@ -155,10 +155,10 @@ if __name__ == '__main__':
 
 
 def _allied_session(can_withdraw=True, can_rejoin=False, seed=1):
-    """A human NAA starting allied with the (independent) bot UE, and a third bot GPC."""
+    """A human NAA starting allied with the (independent) bot EU, and a third bot GPC."""
     def seat(mode, faction, alliance=0):
         return {'mode': mode, 'faction': faction, 'alliance': alliance, 'strategy': 'independent', 'behavior': 'loyal'}
-    seats = [seat('HUMAN', 'NAA', 1), seat('BOT', 'UE', 1), seat('BOT', 'GPC')] + \
+    seats = [seat('HUMAN', 'NAA', 1), seat('BOT', 'EU', 1), seat('BOT', 'GPC')] + \
         [seat('NONCOMBATANT', f) for f in ('UER', 'PAF', 'AAC')]
     session, _ = build_session({'seats': seats, 'randomize_order': False,
                                 'can_withdraw': can_withdraw, 'can_rejoin': can_rejoin}, random.Random(seed))
@@ -169,7 +169,7 @@ class TestAllianceRuleSettingsAreEnforced(unittest.TestCase):
     def test_with_withdrawing_off_the_human_is_offered_no_withdrawal_and_the_server_refuses_it(self):
         session = _allied_session(can_withdraw=False)
         queue = _advance_to(session, 'NAA', 'DIPLOMACY')
-        self.assertEqual(queue['human']['members'], ['NAA', 'UE'])
+        self.assertEqual(queue['human']['members'], ['EU', 'NAA'])
         self.assertFalse(queue['human']['options']['can_withdraw'])
         reply = session.handle_message({'type': 'diplomacy_action', 'faction': 'NAA', 'action': 'withdraw'})
         self.assertEqual([m['type'] for m in reply], ['error', 'phase_queue'])
@@ -188,7 +188,7 @@ class TestAllianceRuleSettingsAreEnforced(unittest.TestCase):
         def seat(mode, faction, alliance=0, behavior='treacherous'):
             return {'mode': mode, 'faction': faction, 'alliance': alliance, 'strategy': 'aggressive', 'behavior': behavior}
         for seed in range(6):
-            seats = [seat('BOT', 'NAA', 1), seat('BOT', 'UE', 1), seat('BOT', 'GPC'), seat('BOT', 'AAC')] + \
+            seats = [seat('BOT', 'NAA', 1), seat('BOT', 'EU', 1), seat('BOT', 'GPC'), seat('BOT', 'AAC')] + \
                 [seat('NONCOMBATANT', f) for f in ('UER', 'PAF')]
             session, _ = build_session({'seats': seats, 'randomize_order': False, 'can_withdraw': False}, random.Random(seed))
             messages = session.handle_message({'type': 'watch'})
@@ -214,13 +214,13 @@ class TestAllianceRuleSettingsAreEnforced(unittest.TestCase):
 
     def test_with_rejoining_off_a_former_ally_cannot_be_invited_again(self):
         session, queue = self._after_withdrawing(can_rejoin=False)
-        self.assertNotIn('UE', queue['human']['options']['eligible_invite_targets'])
+        self.assertNotIn('EU', queue['human']['options']['eligible_invite_targets'])
         self.assertIn('GPC', queue['human']['options']['eligible_invite_targets'])
-        reply = session.handle_message({'type': 'diplomacy_action', 'faction': 'NAA', 'action': 'invite', 'target': 'UE'})
+        reply = session.handle_message({'type': 'diplomacy_action', 'faction': 'NAA', 'action': 'invite', 'target': 'EU'})
         self.assertEqual([m['type'] for m in reply], ['error', 'phase_queue'])
 
     def test_with_rejoining_on_a_former_ally_can_be_invited_again(self):
         session, queue = self._after_withdrawing(can_rejoin=True)
-        self.assertIn('UE', queue['human']['options']['eligible_invite_targets'])
-        reply = session.handle_message({'type': 'diplomacy_action', 'faction': 'NAA', 'action': 'invite', 'target': 'UE'})
+        self.assertIn('EU', queue['human']['options']['eligible_invite_targets'])
+        reply = session.handle_message({'type': 'diplomacy_action', 'faction': 'NAA', 'action': 'invite', 'target': 'EU'})
         self.assertEqual([m['type'] for m in reply], ['diplomacy_result', 'phase_queue', 'state'])

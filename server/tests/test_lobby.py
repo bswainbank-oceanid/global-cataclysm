@@ -5,7 +5,7 @@ from engine.state import FactionMode
 from server.host import GameHost
 from server.lobby import LobbyError, build_session, check_settings, resolve_settings
 
-FACTIONS = ('NAA', 'UE', 'UER', 'GPC', 'PAF', 'AAC')
+FACTIONS = ('NAA', 'EU', 'UER', 'GPC', 'PAF', 'AAC')
 
 
 def seat(mode='NONCOMBATANT', faction='random', alliance=0, strategy='random', behavior='random'):
@@ -75,30 +75,30 @@ class TestResolveAndBuild(unittest.TestCase):
 
     def test_alliance_numbers_become_faction_groups(self):
         _, groups, _ = resolve_settings(settings(
-            seat('HUMAN', 'NAA', alliance=2), seat('BOT', 'UE', alliance=2), seat('BOT', 'GPC', alliance=1),
+            seat('HUMAN', 'NAA', alliance=2), seat('BOT', 'EU', alliance=2), seat('BOT', 'GPC', alliance=1),
             seat('BOT', 'AAC', alliance=1), seat('BOT', 'PAF')), random.Random(1))
-        self.assertEqual(sorted(sorted(g) for g in groups), [['AAC', 'GPC'], ['NAA', 'UE']])
+        self.assertEqual(sorted(sorted(g) for g in groups), [['AAC', 'GPC'], ['EU', 'NAA']])
 
     def test_the_built_game_matches_the_settings(self):
         session, seats = build_session(settings(
-            seat('HUMAN', 'NAA', alliance=1), seat('BOT', 'UE', alliance=1, strategy='aggressive', behavior='loyal'),
+            seat('HUMAN', 'NAA', alliance=1), seat('BOT', 'EU', alliance=1, strategy='aggressive', behavior='loyal'),
             seat('BOT', 'GPC'), seat('NEUTRAL', 'UER'), seat('NONCOMBATANT', 'PAF'), seat('NONCOMBATANT', 'AAC'),
             randomize_order=False), random.Random(3))
         gs = session.engine.game_state
         self.assertEqual(gs.factions['NAA'].mode, FactionMode.HUMAN)
         self.assertEqual(gs.factions['UER'].mode, FactionMode.NEUTRAL)
         self.assertEqual(gs.factions['PAF'].mode, FactionMode.NONCOMBATANT)
-        self.assertEqual(gs.factions['NAA'].alliance, gs.factions['UE'].alliance)
+        self.assertEqual(gs.factions['NAA'].alliance, gs.factions['EU'].alliance)
         self.assertIsNone(gs.factions['GPC'].alliance)
-        self.assertEqual(gs.factions['UE'].alliance_strategy, 'aggressive')
-        self.assertEqual(gs.factions['UE'].alliance_behavior, 'loyal')
+        self.assertEqual(gs.factions['EU'].alliance_strategy, 'aggressive')
+        self.assertEqual(gs.factions['EU'].alliance_behavior, 'loyal')
         self.assertIn(gs.factions['GPC'].alliance_strategy, ('aggressive', 'passive', 'counterweight', 'independent', 'variable'))
-        self.assertEqual(set(session.bots), {'UE', 'GPC'})
+        self.assertEqual(set(session.bots), {'EU', 'GPC'})
         self.assertEqual([s['seat'] for s in seats], [1, 2, 3, 4, 5, 6])
 
     def test_a_three_member_alliance_fits_the_default_size_limit(self):
         session, _ = build_session(settings(
-            seat('BOT', 'NAA', alliance=1), seat('BOT', 'UE', alliance=1), seat('BOT', 'GPC', alliance=1),
+            seat('BOT', 'NAA', alliance=1), seat('BOT', 'EU', alliance=1), seat('BOT', 'GPC', alliance=1),
             seat('BOT', 'AAC')), random.Random(1))
         self.assertEqual(session.engine.game_state.max_alliance_size, 3)
 
@@ -115,7 +115,7 @@ class TestResolveAndBuild(unittest.TestCase):
         self.assertEqual(len(firsts), 1)  # the same first faction every time
 
     def test_a_fixed_turn_order_is_the_seat_order(self):
-        session, _ = build_session(settings(seat('BOT', 'PAF'), seat('BOT', 'NAA'), seat('NEUTRAL', 'UE'),
+        session, _ = build_session(settings(seat('BOT', 'PAF'), seat('BOT', 'NAA'), seat('NEUTRAL', 'EU'),
                                             seat('BOT', 'GPC'), randomize_order=False), random.Random(5))
         gs = session.engine.game_state
         self.assertEqual(gs.active_factions(), ['PAF', 'NAA', 'GPC'])  # Seat 1, 2 and 4 (Seat 3 has no turns)

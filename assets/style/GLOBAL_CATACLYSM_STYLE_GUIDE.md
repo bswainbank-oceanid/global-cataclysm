@@ -61,7 +61,7 @@ Faction color is the **only color system used for military units**.
 | Faction | Color |
 |---|---|
 | NAA | `#173F78` |
-| UE | `#B68A20` |
+| EU | `#B68A20` |
 | UER | `#A92B29` |
 | PAF | `#3C7A35` |
 | GPC | `#6A3788` |

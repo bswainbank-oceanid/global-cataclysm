@@ -100,45 +100,45 @@ class TestEffectiveAllianceSettings(unittest.TestCase):
 class TestChooseInviteTarget(unittest.TestCase):
     def test_passive_never_invites(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
             strategies={'NAA': 'passive'},
         )
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
 
     def test_independent_never_invites(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
             strategies={'NAA': 'independent'},
         )
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
 
     def test_aggressive_picks_an_eligible_target(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
             strategies={'NAA': 'aggressive'},
         )
         target = alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1))
-        self.assertIn(target, ('UE', 'AAC'))
+        self.assertIn(target, ('EU', 'AAC'))
 
     def test_aggressive_does_nothing_at_max_alliance_size(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             strategies={'NAA': 'aggressive'},
             max_alliance_size=2,
         )
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
 
     def test_aggressive_has_no_eligible_targets(self):
-        # UE and AAC are both already allied elsewhere (single-member
+        # EU and AAC are both already allied elsewhere (single-member
         # alliance tags -- not naturally reachable via invite, but valid
         # hand-built state for isolating this check). A 3rd bystander
         # (AAC) keeps active_count at 3 (effective cap 2, not the
         # binding constraint here) so it's really the "everyone else is
         # ineligible" branch being exercised, not the size cap.
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
-            alliances={'UE': 'other', 'AAC': 'other2'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            alliances={'EU': 'other', 'AAC': 'other2'},
             strategies={'NAA': 'aggressive'},
         )
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
@@ -149,15 +149,15 @@ class TestChooseInviteTarget(unittest.TestCase):
         # the cap alone would already force None before ever reaching
         # the "no other alliance" branch.
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
             strategies={'NAA': 'counterweight'},
         )
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
 
     def test_counterweight_invites_to_match_the_largest_other_alliance(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT, 'GPC': FactionMode.BOT},
-            alliances={'UE': 'rival', 'AAC': 'rival'},  # rival alliance of size 2
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT, 'GPC': FactionMode.BOT},
+            alliances={'EU': 'rival', 'AAC': 'rival'},  # rival alliance of size 2
             strategies={'NAA': 'counterweight'},
         )
         target = alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1))
@@ -165,8 +165,8 @@ class TestChooseInviteTarget(unittest.TestCase):
 
     def test_counterweight_stops_once_matched(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT, 'GPC': FactionMode.BOT},
-            alliances={'UE': 'rival', 'AAC': 'rival', 'NAA': 'mine', 'GPC': 'mine'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT, 'GPC': FactionMode.BOT},
+            alliances={'EU': 'rival', 'AAC': 'rival', 'NAA': 'mine', 'GPC': 'mine'},
             strategies={'NAA': 'counterweight'},
         )
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
@@ -176,12 +176,12 @@ class TestChooseInviteTarget(unittest.TestCase):
         # current_alliance_strategy (the latest re-roll) actually drives
         # the decision, via effective_alliance_strategy.
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
             strategies={'NAA': 'variable'},
         )
         gs.factions['NAA'].current_alliance_strategy = 'aggressive'
         target = alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1))
-        self.assertIn(target, ('UE', 'AAC'))
+        self.assertIn(target, ('EU', 'AAC'))
 
     def test_variable_with_no_reroll_yet_does_nothing(self):
         # current_alliance_strategy is None until the first reroll (see
@@ -190,7 +190,7 @@ class TestChooseInviteTarget(unittest.TestCase):
         # which isn't 'aggressive'/'counterweight', so this is simply the
         # same as any other non-inviting strategy for now.
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
             strategies={'NAA': 'variable'},
         )
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
@@ -214,14 +214,14 @@ class TestInvitationRotationAndGivingUp(unittest.TestCase):
 
     def four(self, **kw):
         return make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT, 'AAC': FactionMode.BOT},
             strategies={'NAA': 'aggressive'}, **kw)
 
     def test_everyone_else_is_asked_before_a_decliner_is_asked_again(self):
         for seed in range(10):
             engine, gs = self.four()
             asked = self.ask_and_get_declined(engine, random.Random(seed), 9)
-            self.assertEqual(set(asked[:3]), {'UE', 'GPC', 'AAC'}, asked)
+            self.assertEqual(set(asked[:3]), {'EU', 'GPC', 'AAC'}, asked)
             self.assertEqual(asked[3:6], asked[:3], asked)  # the same round again, in the same order
             self.assertEqual(asked[6:9], asked[:3], asked)
 
@@ -229,30 +229,30 @@ class TestInvitationRotationAndGivingUp(unittest.TestCase):
         engine, gs = self.four()
         f = gs.factions['NAA']
         f.invites_sent = 2
-        f.last_invited = {'UE': 1, 'GPC': 2}  # AAC never asked
+        f.last_invited = {'EU': 1, 'GPC': 2}  # AAC never asked
         self.assertEqual(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)), 'AAC')
         f.last_invited['AAC'] = 3
-        self.assertEqual(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)), 'UE')
+        self.assertEqual(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)), 'EU')
 
     def test_five_declines_and_the_bot_stops_asking_that_faction(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT},
             strategies={'NAA': 'aggressive'})
-        gs.factions['NAA'].invites_declined = {'UE': 4}
-        gs.factions['NAA'].last_invited = {'UE': 1, 'GPC': 2}
+        gs.factions['NAA'].invites_declined = {'EU': 4}
+        gs.factions['NAA'].last_invited = {'EU': 1, 'GPC': 2}
         engine._alliance_action_taken.clear()
-        self.assertEqual(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)), 'UE')
-        engine.invite_to_alliance('NAA', 'UE', False)  # its fifth refusal
-        self.assertEqual(gs.factions['NAA'].invites_declined['UE'], 5)
+        self.assertEqual(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)), 'EU')
+        engine.invite_to_alliance('NAA', 'EU', False)  # its fifth refusal
+        self.assertEqual(gs.factions['NAA'].invites_declined['EU'], 5)
         for seed in range(20):
             engine._alliance_action_taken.clear()
             self.assertEqual(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(seed)), 'GPC')
 
     def test_with_nobody_left_to_ask_it_does_nothing(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'GPC': FactionMode.BOT},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'GPC': FactionMode.BOT},
             strategies={'NAA': 'aggressive'})
-        gs.factions['NAA'].invites_declined = {'UE': 5, 'GPC': 5}
+        gs.factions['NAA'].invites_declined = {'EU': 5, 'GPC': 5}
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
 
     def test_only_declines_are_counted_and_the_history_survives_a_save(self):
@@ -265,7 +265,7 @@ class TestInvitationRotationAndGivingUp(unittest.TestCase):
         self.assertEqual((again.invites_sent, again.last_invited, again.invites_declined),
                          (f.invites_sent, f.last_invited, f.invites_declined))
         engine._alliance_action_taken.clear()
-        target = next(c for c in ('UE', 'GPC', 'AAC') if c not in f.invites_declined or f.invites_declined[c] < 2)
+        target = next(c for c in ('EU', 'GPC', 'AAC') if c not in f.invites_declined or f.invites_declined[c] < 2)
         engine.invite_to_alliance('NAA', target, True)  # accepted: not a decline
         self.assertEqual(sum(f.invites_declined.values()), 4)
 
@@ -273,76 +273,76 @@ class TestInvitationRotationAndGivingUp(unittest.TestCase):
 class TestAcceptsInvite(unittest.TestCase):
     def test_independent_never_accepts(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            strategies={'UE': 'independent'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            strategies={'EU': 'independent'},
         )
-        self.assertFalse(alliance_policy.accepts_invite(engine, 'UE', 'NAA'))
+        self.assertFalse(alliance_policy.accepts_invite(engine, 'EU', 'NAA'))
 
     def test_aggressive_always_accepts(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            strategies={'UE': 'aggressive'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            strategies={'EU': 'aggressive'},
         )
-        self.assertTrue(alliance_policy.accepts_invite(engine, 'UE', 'NAA'))
+        self.assertTrue(alliance_policy.accepts_invite(engine, 'EU', 'NAA'))
 
     def test_passive_always_accepts(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            strategies={'UE': 'passive'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            strategies={'EU': 'passive'},
         )
-        self.assertTrue(alliance_policy.accepts_invite(engine, 'UE', 'NAA'))
+        self.assertTrue(alliance_policy.accepts_invite(engine, 'EU', 'NAA'))
 
     def test_counterweight_accepts_when_no_other_alliance_exists(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            strategies={'UE': 'counterweight'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            strategies={'EU': 'counterweight'},
         )
-        self.assertTrue(alliance_policy.accepts_invite(engine, 'UE', 'NAA'))
+        self.assertTrue(alliance_policy.accepts_invite(engine, 'EU', 'NAA'))
 
     def test_counterweight_accepts_when_it_would_only_match_not_exceed(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT, 'GPC': FactionMode.BOT},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT, 'GPC': FactionMode.BOT},
             alliances={'AAC': 'rival', 'GPC': 'rival'},  # size 2
-            strategies={'UE': 'counterweight'},
+            strategies={'EU': 'counterweight'},
         )
-        # NAA is solo; UE joining makes a size-2 alliance -- matches, doesn't exceed.
-        self.assertTrue(alliance_policy.accepts_invite(engine, 'UE', 'NAA'))
+        # NAA is solo; EU joining makes a size-2 alliance -- matches, doesn't exceed.
+        self.assertTrue(alliance_policy.accepts_invite(engine, 'EU', 'NAA'))
 
     def test_counterweight_declines_if_joining_would_exceed_the_largest_other_alliance(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'PAF': FactionMode.BOT,
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'PAF': FactionMode.BOT,
              'AAC': FactionMode.BOT, 'GPC': FactionMode.BOT},
             alliances={'NAA': 'mine', 'PAF': 'mine', 'AAC': 'rival', 'GPC': 'rival'},
-            strategies={'UE': 'counterweight'},
+            strategies={'EU': 'counterweight'},
         )
-        # NAA's alliance already has 2 members; UE joining makes 3,
+        # NAA's alliance already has 2 members; EU joining makes 3,
         # exceeding rival's size of 2.
-        self.assertFalse(alliance_policy.accepts_invite(engine, 'UE', 'NAA'))
+        self.assertFalse(alliance_policy.accepts_invite(engine, 'EU', 'NAA'))
 
     def test_variable_uses_the_current_rerolled_strategy(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            strategies={'UE': 'variable'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            strategies={'EU': 'variable'},
         )
-        gs.factions['UE'].current_alliance_strategy = 'passive'
-        self.assertTrue(alliance_policy.accepts_invite(engine, 'UE', 'NAA'))
+        gs.factions['EU'].current_alliance_strategy = 'passive'
+        self.assertTrue(alliance_policy.accepts_invite(engine, 'EU', 'NAA'))
 
     def test_variable_with_no_reroll_yet_declines(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            strategies={'UE': 'variable'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            strategies={'EU': 'variable'},
         )
-        self.assertFalse(alliance_policy.accepts_invite(engine, 'UE', 'NAA'))
+        self.assertFalse(alliance_policy.accepts_invite(engine, 'EU', 'NAA'))
 
 
 class TestAdversarial(unittest.TestCase):
     """Adversarial: never allies with a human; accepts every bot; invites bots by the counterweight rule."""
-    MODES = {'NAA': FactionMode.BOT, 'UE': FactionMode.HUMAN, 'GPC': FactionMode.BOT, 'PAF': FactionMode.BOT,
+    MODES = {'NAA': FactionMode.BOT, 'EU': FactionMode.HUMAN, 'GPC': FactionMode.BOT, 'PAF': FactionMode.BOT,
              'AAC': FactionMode.BOT}
 
     def test_never_accepts_a_human_or_an_alliance_holding_one(self):
-        engine, gs = make_engine(self.MODES, alliances={'GPC': 'A', 'UE': 'A'}, strategies={'NAA': 'adversarial'})
-        self.assertFalse(alliance_policy.accepts_invite(engine, 'NAA', 'UE'))   # the human
+        engine, gs = make_engine(self.MODES, alliances={'GPC': 'A', 'EU': 'A'}, strategies={'NAA': 'adversarial'})
+        self.assertFalse(alliance_policy.accepts_invite(engine, 'NAA', 'EU'))   # the human
         self.assertFalse(alliance_policy.accepts_invite(engine, 'NAA', 'GPC'))  # a bot allied with the human
         self.assertTrue(alliance_policy.accepts_invite(engine, 'NAA', 'PAF'))   # a bot on its own
 
@@ -359,16 +359,16 @@ class TestAdversarial(unittest.TestCase):
         engine, gs = make_engine(self.MODES, alliances={'GPC': 'A', 'PAF': 'A'}, strategies={'NAA': 'adversarial'})
         picks = {alliance_policy.choose_invite_target(engine, 'NAA', random.Random(seed)) for seed in range(30)}
         self.assertEqual(picks, {'AAC'})
-        self.assertFalse(alliance_policy.may_invite(engine, 'NAA', 'UE'))
+        self.assertFalse(alliance_policy.may_invite(engine, 'NAA', 'EU'))
 
     def test_never_invites_while_its_own_alliance_holds_a_human(self):
-        engine, gs = make_engine(self.MODES, alliances={'NAA': 'B', 'UE': 'B', 'GPC': 'A', 'PAF': 'A', 'AAC': 'A'},
+        engine, gs = make_engine(self.MODES, alliances={'NAA': 'B', 'EU': 'B', 'GPC': 'A', 'PAF': 'A', 'AAC': 'A'},
                                  strategies={'NAA': 'adversarial'})
         self.assertFalse(alliance_policy.may_invite(engine, 'NAA', 'GPC'))
 
     def test_other_strategies_may_invite_anyone(self):
         engine, gs = make_engine(self.MODES, strategies={'NAA': 'aggressive'})
-        self.assertTrue(alliance_policy.may_invite(engine, 'NAA', 'UE'))
+        self.assertTrue(alliance_policy.may_invite(engine, 'NAA', 'EU'))
 
 
 class TestTotalUnitValue(unittest.TestCase):
@@ -381,17 +381,17 @@ class TestTotalUnitValue(unittest.TestCase):
 class TestShouldWithdraw(unittest.TestCase):
     def test_loyal_never_withdraws_despite_a_strength_mismatch(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             behaviors={'NAA': 'loyal'},
-            treasuries={'NAA': 10000, 'UE': 1},
+            treasuries={'NAA': 10000, 'EU': 1},
         )
         self.assertFalse(alliance_policy.should_withdraw(engine, 'NAA'))
 
     def test_loyal_ignores_the_game_end_override(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},  # only 2 active factions, both allied -> game would end
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},  # only 2 active factions, both allied -> game would end
             behaviors={'NAA': 'loyal'},
         )
         self.assertTrue(engine.would_game_end())  # sanity
@@ -399,48 +399,48 @@ class TestShouldWithdraw(unittest.TestCase):
 
     def test_opportunistic_withdraws_when_much_stronger_than_the_weakest_ally(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},  # AAC stays unallied, a bystander so would_game_end() is False
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},  # AAC stays unallied, a bystander so would_game_end() is False
             behaviors={'NAA': 'opportunistic'},
-            treasuries={'NAA': 1000, 'UE': 100, 'AAC': 500},
+            treasuries={'NAA': 1000, 'EU': 100, 'AAC': 500},
         )
         self.assertFalse(engine.would_game_end())  # sanity: isolating the strength check, not the override
         self.assertTrue(alliance_policy.should_withdraw(engine, 'NAA'))  # 1000 > 1.5 * 100
 
     def test_opportunistic_withdraws_when_much_weaker_than_the_strongest_ally(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             behaviors={'NAA': 'opportunistic'},
-            treasuries={'NAA': 40, 'UE': 100, 'AAC': 500},
+            treasuries={'NAA': 40, 'EU': 100, 'AAC': 500},
         )
         self.assertFalse(engine.would_game_end())
         self.assertTrue(alliance_policy.should_withdraw(engine, 'NAA'))  # 40 < 0.5 * 100
 
     def test_opportunistic_stays_within_bounds(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             behaviors={'NAA': 'opportunistic'},
-            treasuries={'NAA': 100, 'UE': 100, 'AAC': 500},
+            treasuries={'NAA': 100, 'EU': 100, 'AAC': 500},
         )
         self.assertFalse(engine.would_game_end())
         self.assertFalse(alliance_policy.should_withdraw(engine, 'NAA'))
 
     def test_opportunistic_always_withdraws_to_avoid_game_end(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},  # only 2 active factions, both allied
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},  # only 2 active factions, both allied
             behaviors={'NAA': 'opportunistic'},
-            treasuries={'NAA': 100, 'UE': 100},  # within bounds -- would NOT otherwise trigger
+            treasuries={'NAA': 100, 'EU': 100},  # within bounds -- would NOT otherwise trigger
         )
         self.assertTrue(engine.would_game_end())
         self.assertTrue(alliance_policy.should_withdraw(engine, 'NAA'))
 
     def test_treacherous_honors_the_pending_flag_and_consumes_it(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},  # AAC bystander keeps would_game_end() False
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},  # AAC bystander keeps would_game_end() False
             behaviors={'NAA': 'treacherous'},
         )
         gs.factions['NAA'].pending_treacherous_withdrawal = True
@@ -450,16 +450,16 @@ class TestShouldWithdraw(unittest.TestCase):
 
     def test_treacherous_without_the_pending_flag_does_not_withdraw(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             behaviors={'NAA': 'treacherous'},
         )
         self.assertFalse(alliance_policy.should_withdraw(engine, 'NAA'))
 
     def test_treacherous_also_always_withdraws_to_avoid_game_end(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             behaviors={'NAA': 'treacherous'},
         )
         self.assertTrue(engine.would_game_end())
@@ -467,10 +467,10 @@ class TestShouldWithdraw(unittest.TestCase):
 
     def test_variable_uses_the_current_rerolled_behavior(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             behaviors={'NAA': 'variable'},
-            treasuries={'NAA': 1000, 'UE': 100, 'AAC': 500},
+            treasuries={'NAA': 1000, 'EU': 100, 'AAC': 500},
         )
         gs.factions['NAA'].current_alliance_behavior = 'opportunistic'
         self.assertFalse(engine.would_game_end())
@@ -478,8 +478,8 @@ class TestShouldWithdraw(unittest.TestCase):
 
     def test_variable_with_no_reroll_yet_does_not_withdraw(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             behaviors={'NAA': 'variable'},
         )
         self.assertFalse(alliance_policy.should_withdraw(engine, 'NAA'))
@@ -496,8 +496,8 @@ class TestRandomBotAllianceIntegration(unittest.TestCase):
 
     def test_treacherous_intent_rolled_while_allied(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             behaviors={'NAA': 'treacherous'},
             phase=Phase.PURCHASE,
         )
@@ -509,8 +509,8 @@ class TestRandomBotAllianceIntegration(unittest.TestCase):
 
     def test_take_alliance_phase_independent_does_nothing(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            strategies={'NAA': 'independent', 'UE': 'independent'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            strategies={'NAA': 'independent', 'EU': 'independent'},
         )
         bot = RandomBot(engine, 'NAA', rng=random.Random(1))
         bot.take_alliance_phase()
@@ -523,19 +523,19 @@ class TestRandomBotAllianceIntegration(unittest.TestCase):
         # already (nominally) allied elsewhere so it can't itself be
         # picked as the random invite target, keeping this deterministic.
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
             alliances={'AAC': 'other'},
-            strategies={'NAA': 'aggressive', 'UE': 'passive'},  # UE always accepts
+            strategies={'NAA': 'aggressive', 'EU': 'passive'},  # EU always accepts
         )
         bot = RandomBot(engine, 'NAA', rng=random.Random(1))
         bot.take_alliance_phase()
         self.assertIsNotNone(gs.factions['NAA'].alliance)
-        self.assertEqual(gs.factions['NAA'].alliance, gs.factions['UE'].alliance)
+        self.assertEqual(gs.factions['NAA'].alliance, gs.factions['EU'].alliance)
 
     def test_take_alliance_phase_withdraws_instead_of_inviting_when_behavior_says_so(self):
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT, 'AAC': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             strategies={'NAA': 'aggressive'},  # would otherwise want to grow the alliance
             behaviors={'NAA': 'treacherous'},
         )
@@ -574,8 +574,8 @@ class TestRandomBotAllianceIntegration(unittest.TestCase):
         # turn rolls the 15% chance too, exactly as if it had been fixed
         # that way from the start.
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             behaviors={'NAA': 'variable'},
             phase=Phase.PURCHASE,
         )
@@ -592,8 +592,8 @@ class TestRandomBotAllianceIntegration(unittest.TestCase):
         # behavior (i.e. only this call's own reroll could have set it to
         # 'treacherous' in time for the check right after).
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             behaviors={'NAA': 'variable'},
             phase=Phase.PURCHASE,
         )
@@ -611,8 +611,8 @@ class TestRandomBotAllianceIntegration(unittest.TestCase):
         # never even attempted -- but strategy is passive, so no invite
         # happens either; the faction just stays put this turn.
         engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'UE': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'UE': 'pact'},
+            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             strategies={'NAA': 'passive'},
             behaviors={'NAA': 'treacherous'},
             can_withdraw_from_alliances=False,

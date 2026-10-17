@@ -13,7 +13,7 @@ from engine.engine import GameEngine
 from engine.state import FactionMode
 from engine.tests.test_engine import FakeData, make_state
 
-FACTIONS = ('NAA', 'UE', 'GPC', 'PAF')
+FACTIONS = ('NAA', 'EU', 'GPC', 'PAF')
 
 
 def game(strength, humans=(), alliances=None):
@@ -51,67 +51,67 @@ class UnderdogTest(unittest.TestCase):
 
 class TestJoining(UnderdogTest):
     def test_with_bots_it_joins_under_130_percent_of_the_strongest_other(self):
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (17, 17), 'PAF': (5, 5)})
-        self.assertTrue(policy.accepts_invite(engine, 'NAA', 'UE'))   # 20 < 1.3 x 17
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)})
-        self.assertFalse(policy.accepts_invite(engine, 'NAA', 'UE'))  # 20 >= 1.3 x 15
+        engine, _ = self.game({'NAA': (10, 10), 'EU': (10, 10), 'GPC': (17, 17), 'PAF': (5, 5)})
+        self.assertTrue(policy.accepts_invite(engine, 'NAA', 'EU'))   # 20 < 1.3 x 17
+        engine, _ = self.game({'NAA': (10, 10), 'EU': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)})
+        self.assertFalse(policy.accepts_invite(engine, 'NAA', 'EU'))  # 20 >= 1.3 x 15
 
     def test_with_a_human_the_same_130_percent(self):
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (17, 17), 'PAF': (5, 5)}, humans=('UE',))
-        self.assertTrue(policy.accepts_invite(engine, 'NAA', 'UE'))   # 20 < 1.3 x 17
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)}, humans=('UE',))
-        self.assertFalse(policy.accepts_invite(engine, 'NAA', 'UE'))  # 20 >= 1.3 x 15
+        engine, _ = self.game({'NAA': (10, 10), 'EU': (10, 10), 'GPC': (17, 17), 'PAF': (5, 5)}, humans=('EU',))
+        self.assertTrue(policy.accepts_invite(engine, 'NAA', 'EU'))   # 20 < 1.3 x 17
+        engine, _ = self.game({'NAA': (10, 10), 'EU': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)}, humans=('EU',))
+        self.assertFalse(policy.accepts_invite(engine, 'NAA', 'EU'))  # 20 >= 1.3 x 15
 
     def test_both_measures_must_be_under(self):
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (25, 10), 'PAF': (5, 5)})
-        self.assertFalse(policy.accepts_invite(engine, 'NAA', 'UE'))  # income fine, unit value 20 >= 13
+        engine, _ = self.game({'NAA': (10, 10), 'EU': (10, 10), 'GPC': (25, 10), 'PAF': (5, 5)})
+        self.assertFalse(policy.accepts_invite(engine, 'NAA', 'EU'))  # income fine, unit value 20 >= 13
 
     def test_an_alliance_counts_as_one_group(self):
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (9, 9), 'PAF': (9, 9)},
+        engine, _ = self.game({'NAA': (10, 10), 'EU': (10, 10), 'GPC': (9, 9), 'PAF': (9, 9)},
                               alliances={'GPC': 'A1', 'PAF': 'A1'})
-        self.assertTrue(policy.accepts_invite(engine, 'NAA', 'UE'))   # 20 < 1.3 x 18 (GPC + PAF together)
+        self.assertTrue(policy.accepts_invite(engine, 'NAA', 'EU'))   # 20 < 1.3 x 18 (GPC + PAF together)
 
 
 class TestInviting(UnderdogTest):
     def test_it_invites_only_factions_that_keep_the_alliance_under_100_percent(self):
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (30, 30), 'PAF': (12, 12)}, humans=('PAF',))
+        engine, _ = self.game({'NAA': (10, 10), 'EU': (10, 10), 'GPC': (30, 30), 'PAF': (12, 12)}, humans=('PAF',))
         picks = {policy.choose_invite_target(engine, 'NAA', random.Random(s)) for s in range(20)}
-        self.assertEqual(picks, {'UE', 'PAF'})  # GPC would make the favourite; a human may be asked
+        self.assertEqual(picks, {'EU', 'PAF'})  # GPC would make the favourite; a human may be asked
         self.assertFalse(policy.may_invite(engine, 'NAA', 'GPC'))
 
     def test_nobody_when_every_partner_would_make_it_the_favourite(self):
-        engine, _ = self.game({'NAA': (20, 20), 'UE': (20, 20), 'GPC': (21, 21), 'PAF': (20, 20)})
+        engine, _ = self.game({'NAA': (20, 20), 'EU': (20, 20), 'GPC': (21, 21), 'PAF': (20, 20)})
         self.assertIsNone(policy.choose_invite_target(engine, 'NAA', random.Random(1)))
 
 
 class TestWithdrawing(UnderdogTest):
     def test_with_bots_it_leaves_above_130_percent_on_either_count(self):
-        allied = {'NAA': 'A1', 'UE': 'A1'}
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (16, 16), 'PAF': (5, 5)}, alliances=allied)
+        allied = {'NAA': 'A1', 'EU': 'A1'}
+        engine, _ = self.game({'NAA': (10, 10), 'EU': (10, 10), 'GPC': (16, 16), 'PAF': (5, 5)}, alliances=allied)
         self.assertFalse(policy.underdog_wants_out(engine, 'NAA'))  # 20 <= 1.3 x 16
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)}, alliances=allied)
+        engine, _ = self.game({'NAA': (10, 10), 'EU': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)}, alliances=allied)
         self.assertTrue(policy.underdog_wants_out(engine, 'NAA'))   # 20 > 19.5
-        engine, _ = self.game({'NAA': (10, 5), 'UE': (10, 5), 'GPC': (15, 30), 'PAF': (5, 5)}, alliances=allied)
+        engine, _ = self.game({'NAA': (10, 5), 'EU': (10, 5), 'GPC': (15, 30), 'PAF': (5, 5)}, alliances=allied)
         self.assertTrue(policy.underdog_wants_out(engine, 'NAA'))   # income alone is enough
 
     def test_with_a_human_it_leaves_above_the_same_130_percent(self):
-        allied = {'NAA': 'A1', 'UE': 'A1'}
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (16, 16), 'PAF': (5, 5)}, humans=('UE',), alliances=allied)
+        allied = {'NAA': 'A1', 'EU': 'A1'}
+        engine, _ = self.game({'NAA': (10, 10), 'EU': (10, 10), 'GPC': (16, 16), 'PAF': (5, 5)}, humans=('EU',), alliances=allied)
         self.assertFalse(policy.underdog_wants_out(engine, 'NAA'))  # 20 <= 1.3 x 16: stays, human or not
-        engine, _ = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)}, humans=('UE',), alliances=allied)
+        engine, _ = self.game({'NAA': (10, 10), 'EU': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)}, humans=('EU',), alliances=allied)
         self.assertTrue(policy.underdog_wants_out(engine, 'NAA'))
 
     def test_it_plans_at_turn_start_and_withdraws_at_diplomacy(self):
-        engine, gs = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)},
-                               alliances={'NAA': 'A1', 'UE': 'A1'})
+        engine, gs = self.game({'NAA': (10, 10), 'EU': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)},
+                               alliances={'NAA': 'A1', 'EU': 'A1'})
         bot = RandomBot(engine, 'NAA', rng=random.Random(1))
         bot._maybe_roll_treacherous_intent()
         self.assertTrue(gs.factions['NAA'].pending_treacherous_withdrawal)  # what drives the treasonous moves
         self.assertTrue(policy.should_withdraw(engine, 'NAA'))
 
     def test_no_plan_to_leave_when_the_game_does_not_allow_withdrawing(self):
-        engine, gs = self.game({'NAA': (10, 10), 'UE': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)},
-                               alliances={'NAA': 'A1', 'UE': 'A1'})
+        engine, gs = self.game({'NAA': (10, 10), 'EU': (10, 10), 'GPC': (15, 15), 'PAF': (5, 5)},
+                               alliances={'NAA': 'A1', 'EU': 'A1'})
         gs.can_withdraw_from_alliances = False
         gs.factions['NAA'].pending_treacherous_withdrawal = True  # (left over from earlier)
         bot = RandomBot(engine, 'NAA', rng=random.Random(1))

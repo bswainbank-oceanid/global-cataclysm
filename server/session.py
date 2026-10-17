@@ -108,7 +108,7 @@ Client -> server (each a dict with at least "type" and "faction"):
         phase's confirm reaches once nothing is left to decide: a
         broadcast "state"; game over, or advance_turn() and however many
         bot turns follow before the next human's turn.
-    {"type": "alliance_invite_response", "faction": "UE", "accept": true}
+    {"type": "alliance_invite_response", "faction": "EU", "accept": true}
         `faction` answering a pending out-of-turn "alliance_invite" (see
         below) -- the ONE message in this whole protocol a client sends
         on a faction that is NOT GameState.active_faction; it's still
@@ -166,13 +166,13 @@ connection on this game -- everyone sees the same board, no fog of war):
         are plain ids, not {destination: path}, since NonCombatMoveOrder
         only needs the endpoint; legal_alliance_options is a per-faction
         decision, not per-unit, so it has no per-unit map at all).
-    {"type": "alliance_invite_sent", "to": "NAA", "target": "UE"}
+    {"type": "alliance_invite_sent", "to": "NAA", "target": "EU"}
         Acknowledges `faction`'s own "invite" against a HUMAN target was
         received and is now the pending out-of-turn exchange -- NOT a
         fresh ALLIANCES "your_turn" (nothing else can be decided until
         this resolves). Also what a reconnecting inviter gets instead of
         a "your_turn" (see connect()/_pending_invite_message).
-    {"type": "alliance_invite", "to": "UE", "from": "NAA"}
+    {"type": "alliance_invite", "to": "EU", "from": "NAA"}
         The out-of-turn prompt itself, sent to the invited HUMAN target
         -- answer with "alliance_invite_response". Also what a
         reconnecting target gets if it hasn't answered yet.

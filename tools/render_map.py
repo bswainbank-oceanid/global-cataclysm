@@ -105,7 +105,7 @@ def draw_star(img, cx, cy, r_out, r_in, fill_color, outline_color=(0, 0, 0)):
 # ---------------------------------------------------------------------
 # Faction icons, drawn at small size (~18px) directly onto the map next
 # to each controlled territory's dot. Same glyph language as the faction
-# reference card: NAA compass star, UE gear+rings, UER star+depth-rings,
+# reference card: NAA compass star, EU gear+rings, UER star+depth-rings,
 # GPC rising sun + waves, PAF baobab, AAC condor -- simplified further
 # for legibility at map scale.
 # ---------------------------------------------------------------------

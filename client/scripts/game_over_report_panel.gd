@@ -202,7 +202,7 @@ func _int_or_dash(v) -> String:
 	return "-" if v == null else str(int(v))
 
 
-## One line of the alliance record ("R5: joined with UE", "R7: left (UE, NAA)", "R9: UE left"), each faction
+## One line of the alliance record ("R5: joined with EU", "R7: left (EU, NAA)", "R9: EU left"), each faction
 ## named in it shown as its faction box, so who joined or left whom reads at a glance.
 func _history_line(line: String) -> Control:
 	var h := HFlowContainer.new()

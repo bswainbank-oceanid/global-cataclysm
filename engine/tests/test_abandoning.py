@@ -18,7 +18,7 @@ def board(phase, extra=None):
     mine = make_unit('Infantry', 'NAA')
     units = {1: [mine, make_unit('Infantry', 'AAC')] + (extra or [])}
     gs = make_state(data, {1: 'NAA', 2: 'NAA', 3: 'AAC'},
-                    {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.BOT, 'UE': FactionMode.BOT},
+                    {'NAA': FactionMode.HUMAN, 'AAC': FactionMode.BOT, 'EU': FactionMode.BOT},
                     units_by_territory=units, contested={1: {'NAA', 'AAC'}}, phase=phase)
     gs.active_faction = 'NAA'
     engine = GameEngine(gs, data)
@@ -43,8 +43,8 @@ class TestAbandoningAContestedTerritory(unittest.TestCase):
         self.assertEqual(len([e for e in engine.turn_log.events if e['kind'] == 'territory_captured']), 1)
 
     def test_an_ally_still_there_keeps_it(self):
-        engine, gs, mine = board(Phase.NONCOMBAT_MOVE, extra=[make_unit('Infantry', 'UE')])
-        gs.factions['NAA'].alliance = gs.factions['UE'].alliance = 'pact'
+        engine, gs, mine = board(Phase.NONCOMBAT_MOVE, extra=[make_unit('Infantry', 'EU')])
+        gs.factions['NAA'].alliance = gs.factions['EU'].alliance = 'pact'
         engine._execute_noncombat_moves([NonCombatMoveOrder(mine.unit_id, 2)], 'NAA', gs)
         self.assertEqual(gs.territories[1].owner, 'NAA')
 
