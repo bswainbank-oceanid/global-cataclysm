@@ -51,6 +51,21 @@ class TestTerritory(unittest.TestCase):
         self.assertEqual(value_held(b, report['owner'], 'NAA'), 40)
         self.assertEqual(value_held(b, report['owner'], 'GPC'), 10)
 
+    def test_territory_dealt_next_to_a_factions_own_is_likelier(self):
+        from unittest import mock
+
+        def together(share):
+            """Pairs of neighbouring land territories dealt to the same player, over several deals."""
+            adjacency, n = base().adjacency(), 0
+            with mock.patch.object(gen, 'ADJACENT_WEIGHT_SHARE', share):
+                for seed in range(1, 9):
+                    _, _, _, _, report = deal(PLAYERS_6, seed=seed, faction_weight=100)
+                    owner = report['owner']
+                    n += sum(1 for t, f in owner.items() if f in PLAYERS_6
+                             for m in adjacency.get(t, []) if m > t and owner.get(m) == f)
+            return n
+        self.assertGreater(together(0.25), together(0.0) * 1.1)
+
     def test_the_default_split_and_the_scale_down(self):
         b, g = base(), generator()
         seats, notes = gen.resolve_seats(b, g['seat_defaults'], g['neutral_defaults'], PLAYERS_3, {}, None)

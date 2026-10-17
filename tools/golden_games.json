@@ -30,9 +30,9 @@
     "events": 3329
   },
   "new_scenario_3bot": {
-    "setup": "500738b63f20b5560c73608c4c3f5098f6502d8d",
-    "log": "82028c5d064350204d377795212adfb698a77ada",
-    "final": "dc6266db7f4f1748d1d0e1bb8777494245c63122",
-    "events": 963
+    "setup": "904d31e34ee9eaf6c6ef74d47bf5e85834ab59cd",
+    "log": "cc13d4d6286c5b6a79d6be9a28f6ba41bb34460a",
+    "final": "1ace5b265224078fd17250231b732caa2cabbcb5",
+    "events": 1914
   }
 }

@@ -18,9 +18,11 @@ Strategic Centers. The territory values together may be at most the map's total 
 The deal:
   1. Territory. In a random order fixed for the deal, the factions take turns drawing one
      unallocated land territory each -- weighted value + 1, + faction_weight if the territory is
-     that faction's on the base map -- skipping any that would take it over its territory value,
-     until every faction is full or nothing is left. The Neutral pool then draws the same way
-     (value + 1) up to its territory value; whatever remains is Noncombatant.
+     that faction's on the base map, + a quarter of faction_weight for each territory it has already
+     drawn next to it (ADJACENT_WEIGHT_SHARE) -- skipping any that would take it over its territory
+     value, until every faction is full or nothing is left. Only then does the Neutral pool draw, the
+     same way (value + 1, + the same quarter for each Neutral territory next to it) up to its territory
+     value; whatever remains is Noncombatant.
   2. Strategic Centers. Round by round, each faction draws one of its territories -- weighted
      value + 1, + faction_weight if it is one of that faction's Strategic Centers on the base map, or
      + half of it if it is one of the faction's other territories there -- at least sc_min_distance steps (the adjacency graph, land and sea) from every Strategic
@@ -55,7 +57,8 @@ OPTIONS = {
     'faction_weight': ('Base map assignment weight', 'int', 0, 250,
                        "Extra draw weight a faction gets for territory that is its own on the base map; for its "
                        "Strategic Centers, the full weight at its own base-map Strategic Centers and half at its "
-                       "other base-map territory."),
+                       "other base-map territory. Each territory dealt to a faction also adds a quarter of it to "
+                       "that faction's weight for the territories next to it."),
     'sc_bonus': ('MPC bonus', 'int', 0, 10, "What a Strategic Center adds to its territory's value."),
     'sc_min_distance': ('Minimum distance', 'int', 0, 12,
                         'Fewest steps between any two Strategic Centers (relaxed if they cannot all fit).'),
@@ -224,9 +227,21 @@ def _distances(adjacency):
     return out
 
 
+# Each territory a faction draws adds this share of the base map assignment weight to the draw weight, for that
+# faction, of every territory next to it.
+ADJACENT_WEIGHT_SHARE = 0.25
+
+
 def allocate_territory(base, seats, options, rng):
     """{land id: owner} -- a player faction, the Neutral faction's id, or the Noncombatant's."""
     terrs = base.territories()
+    adjacency = base.adjacency()
+    near = {}  # faction -> {land id: the draw weight it has gained from the faction's territory next to it}
+
+    def drawn(f, t):
+        for n in adjacency.get(t, []):
+            mine = near.setdefault(f, {})
+            mine[n] = mine.get(n, 0.0) + ADJACENT_WEIGHT_SHARE * options['faction_weight']
     land = sorted(t for t, info in terrs.items() if info['type'] == 'land')
     players = list(seats['players'])
     limit = {f: seats['players'][f]['territory_value'] for f in players}
@@ -246,8 +261,10 @@ def allocate_territory(base, seats, options, rng):
                 full.add(f)
                 continue
             pick = _weighted(rng, fits, lambda t: terrs[t]['value'] + 1
-                             + (options['faction_weight'] if terrs[t].get('faction') == f else 0))
+                             + (options['faction_weight'] if terrs[t].get('faction') == f else 0)
+                             + near.get(f, {}).get(t, 0.0))
             owner[pick] = f
+            drawn(f, pick)
             held[f] += terrs[pick]['value']
             remaining.remove(pick)
     neutral_id = base.neutral_faction()['id']
@@ -263,8 +280,9 @@ def allocate_territory(base, seats, options, rng):
             fits = [t for t in remaining if terrs[t]['value'] <= room]
             if not fits:
                 break
-            pick = _weighted(rng, fits, lambda t: terrs[t]['value'] + 1)
+            pick = _weighted(rng, fits, lambda t: terrs[t]['value'] + 1 + near.get(neutral_id, {}).get(t, 0.0))
             owner[pick] = neutral_id
+            drawn(neutral_id, pick)
             room -= terrs[pick]['value']
             remaining.remove(pick)
     for t in remaining:
