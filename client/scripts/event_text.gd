@@ -191,13 +191,29 @@ static func describe(e: Dictionary) -> String:
 			return "%s collects %d MCP" % [_fac(e["faction"]), int(e["amount"])]
 		"faction_eliminated":
 			return "[b]%s is out of the game![/b]" % _fac(e["faction"])
+		# Alliance requests -- every faction's, bot or human -- and their answers, highlighted (ALLIANCE_HIGHLIGHT).
+		"alliance_invite_sent":
+			return alliance_request(e, "awaiting %s's answer" % _fac(str(e["target"])))
 		"alliance_joined":
-			return "%s and %s form an alliance" % [_fac(e["faction"]), _fac(e["target"])]
+			return alliance_request(e, "%s accepts: %s and %s are now allied" % [
+				_fac(str(e["target"])), _fac(e["faction"]), _fac(str(e["target"]))])
 		"alliance_declined":
-			return "%s declines %s's invitation" % [_fac(str(e["target"])), _fac(e["faction"])]
+			return alliance_request(e, "%s declines" % _fac(str(e["target"])))
 		"alliance_withdrawal":
 			return "%s withdraws from its alliance" % _fac(e["faction"])
 	return ""
+
+
+## The band an alliance request's line stands out in, in the Game Log.
+const ALLIANCE_HIGHLIGHT := "#4a3a12"
+const ALLIANCE_MARK := "#f2c14e"
+
+
+## An alliance request and its answer (or that it awaits one): "Alliance request: NAA invites EU -- EU accepts:
+## NAA and EU are now allied", on a gold band.
+static func alliance_request(e: Dictionary, answer: String) -> String:
+	return "[bgcolor=%s][b][color=%s]Alliance request:[/color] %s invites %s -- %s[/b][/bgcolor]" % [
+		ALLIANCE_HIGHLIGHT, ALLIANCE_MARK, _fac(str(e["faction"])), _fac(str(e["target"])), answer]
 
 
 ## A deploy_redirected / deploy_lost event (purchased units that could not deploy where they were bought
