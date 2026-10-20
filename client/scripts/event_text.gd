@@ -143,17 +143,7 @@ static func describe(e: Dictionary) -> String:
 			return "[b]Bombardment at %s[/b]\n  %s\n  Defenders: %s" % [
 				_terr(e["territory_id"]), _fac(str(e["cruiser"]["owner"])) + "'s Cruiser", _by_owner(e["defenders"])]
 		"bombardment":
-			var target_type = e.get("target_unit_type")
-			var outcome: String
-			if target_type == null:
-				outcome = "finds nothing left to bombard"
-			elif not bool(e["hit"]):
-				outcome = "misses the %s" % str(target_type)
-			elif bool(e["eliminated"]):
-				outcome = "destroys the %s" % str(target_type)
-			else:
-				outcome = "hits the %s for %d damage" % [str(target_type), int(e["damage"])]
-			return "%s's Cruiser bombards %s: %s" % [_fac(e["faction"]), _terr(e["territory_id"]), outcome]
+			return bombardment(e)
 		"surrender_plan":
 			var who := _fac(e["faction"])
 			if bool(e.get("win", false)):
@@ -202,6 +192,33 @@ static func describe(e: Dictionary) -> String:
 		"alliance_withdrawal":
 			return "%s withdraws from its alliance" % _fac(e["faction"])
 	return ""
+
+
+## A Cruiser's bombardment, in the Game Log: who fired on where, the roll, HIT or MISS and the unit it was aimed
+## at -- "Bombardment: EU's Cruiser fires on Ruhr -- rolls 7 (D10): HIT the Infantry, 1 damage (1 HP left)" --
+## on a band of its own (BOMBARD_HIGHLIGHT).
+const BOMBARD_HIGHLIGHT := "#3a2a2a"
+const BOMBARD_MARK := "#ff9b7a"
+
+
+static func bombardment(e: Dictionary) -> String:
+	var target_type = e.get("target_unit_type")
+	var outcome: String
+	if target_type == null:
+		outcome = "no target left to fire on"
+	else:
+		var roll := "rolls %d (%s): " % [int(e.get("roll", 0)), str(e.get("die", ""))]
+		var target := "the %s" % str(target_type)
+		if not bool(e["hit"]):
+			outcome = roll + "[color=#a9b4b8]MISS[/color] -- aimed at %s" % target
+		elif bool(e["eliminated"]):
+			outcome = roll + "[color=#e3483f]HIT[/color] -- %s is destroyed" % target
+		else:
+			var left = e.get("target_hp_after")
+			outcome = roll + "[color=#e3483f]HIT[/color] -- %s takes %d damage%s" % [
+				target, int(e["damage"]), (" (%d HP left)" % int(left)) if left != null else ""]
+	return "[bgcolor=%s][b][color=%s]Bombardment:[/color] %s's Cruiser fires on %s -- %s[/b][/bgcolor]" % [
+		BOMBARD_HIGHLIGHT, BOMBARD_MARK, _fac(e["faction"]), _terr(e["territory_id"]), outcome]
 
 
 ## The band an alliance request's line stands out in, in the Game Log.
