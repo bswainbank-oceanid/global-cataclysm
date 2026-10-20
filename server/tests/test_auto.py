@@ -36,6 +36,9 @@ def human_of(game):
 
 
 ONE_HUMAN = {'seats': [seat('HUMAN'), bot(), bot(), seat('NONCOMBATANT'), seat('NONCOMBATANT'), seat('NONCOMBATANT')]}
+# (bots that never invite: no alliance question to answer holds up a human who only ends phases)
+QUIET_BOTS = {'seats': [seat('HUMAN'), dict(bot(), strategy='passive'), dict(bot(), strategy='passive'),
+                        seat('NONCOMBATANT'), seat('NONCOMBATANT'), seat('NONCOMBATANT')]}
 
 
 class TestAllBotGamesKeepPaceWithTheirViewers(unittest.TestCase):
@@ -90,7 +93,7 @@ class TestRunningItself(unittest.TestCase):
         self.assertIsNone(game.step())  # still waiting
 
     def test_a_human_finishes_a_phase_with_end_phase_and_the_game_goes_on(self):
-        game = auto_game(dict(ONE_HUMAN, seed=33))
+        game = auto_game(dict(QUIET_BOTS, seed=33))
         run(game)
         human = human_of(game)
         phase = game.stepper._queue['phase']
@@ -106,7 +109,7 @@ class TestRunningItself(unittest.TestCase):
         self.assertEqual(game.waiting_for(), [human])  # its next decision, after whatever ran in between
 
     def test_a_whole_game_with_a_human_who_only_ends_phases(self):
-        game = auto_game(dict(ONE_HUMAN, seed=34, armistice_rounds=0))
+        game = auto_game(dict(QUIET_BOTS, seed=34, armistice_rounds=0))
         human = human_of(game)
         for _ in range(200):
             run(game)
@@ -189,6 +192,9 @@ class TestSavingAnAutoGame(unittest.TestCase):
                 game = persist.load(json.loads(json.dumps(game.doc())))
             if game.engine.game_state.game_over:
                 break
+            # (as if watched: should the human be knocked out, the all-bot game keeps pace with its viewer --
+            # and a reload starts its playback count afresh, so without a viewer the two runs would part ways)
+            game.session.viewer_seq = game.session.seq
             if game.step() is not None:
                 continue
             queue = game.stepper._queue

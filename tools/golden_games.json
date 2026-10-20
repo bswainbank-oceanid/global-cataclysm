@@ -1,38 +1,38 @@
 {
   "random_6bot": {
-    "setup": "177575457f36556b573fe75475f53483bdafe31f",
-    "log": "28a69eb4cf55721d57c49c061e969e5893b8cf22",
-    "final": "748810678d958435d12d7446f353d861e68fd65b",
-    "events": 5809
+    "setup": "19ab1d55d8c07a7f31ff42024f75a26eef8ab5e3",
+    "log": "8226015c8b7a809316807ad205152ae5a099701b",
+    "final": "7a75445353ced10260fb17a5866f30a12684c4c4",
+    "events": 5897
   },
   "strategy_6bot": {
-    "setup": "d0bf47c505a967472d914c9f17b0a92b8d14e8e2",
-    "log": "d542c1684c8aa638ff1b892464669e9878abad50",
-    "final": "9bea6fb4ff1d0972de55d205fbdf2e244326e902",
-    "events": 1340
+    "setup": "12d22c1f9a30444c0d621a6d09f881e438f8e555",
+    "log": "6ea2c696ec41d9ff09e9e115eb6feb528484a3f4",
+    "final": "42cecdf04469afb6470a734384189b58c1388bf2",
+    "events": 1292
   },
   "strategy_3bot_neutral": {
-    "setup": "3d678ae50ffb1f458abd7ada73ad72eb4625c69e",
-    "log": "edc00e58a2ad69bfc924b675a4d9d0a79a2f2de4",
-    "final": "d580da5df3b06ddc6b7e6494fc010f831d2b968d",
-    "events": 2498
+    "setup": "e79e82364d8e764d473e2e46c2bbae8a50b544c4",
+    "log": "31fc77113ec12d11ed3de2b3bb4c905038954b12",
+    "final": "e7d67de0ea83a90fe620f496458af705f67eed77",
+    "events": 2499
   },
   "mixed_alliances": {
-    "setup": "395e71530221154d0b4b6a42e8ed45f8fa069b25",
-    "log": "180221917e5a593dd91af2ebd0642a1f73c2c8c4",
-    "final": "b2b7d91c16c901e959ae8dd76b7bb02972918b13",
-    "events": 2262
+    "setup": "5ed6b069bf9dc1ecaa98dd4c920373d91bb33633",
+    "log": "954e5d6350125beeacc00f8f2f19542cd824b7a6",
+    "final": "8cfc7de29783b3422704178ec8245fcedf14e9a3",
+    "events": 2398
   },
   "fixed_order_2bot": {
-    "setup": "e9d650681e11e6d0b36f7b4f85058384152549e6",
-    "log": "780714d147519ca139cb890b4d813c1e37692bee",
-    "final": "d9bce9b38754d14247234c64e1c8f51901ab8845",
-    "events": 3329
+    "setup": "301f65b37432c80cc99000a58541cd0653dea870",
+    "log": "3f2d6edfa402a0f7fa250fbb80a1061e1ca9355b",
+    "final": "60d2e4ee757e26febad2363685630b3f3a4224fa",
+    "events": 1443
   },
   "new_scenario_3bot": {
-    "setup": "904d31e34ee9eaf6c6ef74d47bf5e85834ab59cd",
-    "log": "cc13d4d6286c5b6a79d6be9a28f6ba41bb34460a",
-    "final": "1ace5b265224078fd17250231b732caa2cabbcb5",
-    "events": 1914
+    "setup": "a746357b77424ff261a733a502b956184476a979",
+    "log": "a8034904a49e9d75b240c8c85e34c50c8802cb12",
+    "final": "f3bae88cfd2073bae05413395fb2b50610f4ceee",
+    "events": 1874
   }
 }

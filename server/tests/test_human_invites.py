@@ -10,8 +10,9 @@ from server.lobby import build_session
 from server.store import Store
 from server.tests.test_persist import bot, fingerprint, seat
 
-TWO_HUMANS = {'seats': [seat('HUMAN'), seat('HUMAN'), bot(), seat('NONCOMBATANT'), seat('NONCOMBATANT'),
-                        seat('NONCOMBATANT')], 'max_alliance_size': 2, 'armistice_rounds': 0}
+# (the bot never invites: only the humans' own invitations are in play here)
+TWO_HUMANS = {'seats': [seat('HUMAN'), seat('HUMAN'), dict(bot(), strategy='passive'), seat('NONCOMBATANT'),
+                        seat('NONCOMBATANT'), seat('NONCOMBATANT')], 'max_alliance_size': 2, 'armistice_rounds': 0}
 
 
 def auto_game(seed):

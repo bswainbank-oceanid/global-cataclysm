@@ -112,11 +112,15 @@ class TestTheLastHumanChooses(unittest.TestCase):
         self.assertEqual(again.session.waiting_for(), [human])
 
 
+# (bots that never ally: the surrender must leave a game to go on with, not an alliance that has won)
+LONERS = [dict(bot(), strategy='independent'), dict(bot(), strategy='independent')]
+
+
 class TestInAMultiPlayerGame(SeatTest):
     def test_the_player_is_asked_through_the_hub_and_then_watches(self):
         # (one human, the host: the game starts at once, Ann in its seat)
         reply = self.send('ann', {'type': 'create_game', 'scenario': {'kind': 'fixed', 'id': 'fixed'},
-                                  'settings': settings(seat('HUMAN'), bot(), bot(), seed=61, armistice_rounds=2)})
+                                  'settings': settings(seat('HUMAN'), *LONERS, seed=61, armistice_rounds=2)})
         gid = next(m['game']['id'] for m in self.got(reply, 'ann') if m['type'] == 'entered_game')
         self.run_game(gid)
         mine = self.faction(gid, self.ann)
@@ -144,7 +148,7 @@ class TestInAMultiPlayerGame(SeatTest):
 class TestOnYourOwnTurnInAMultiPlayerGame(SeatTest):
     def test_choosing_to_play_on_the_bots_do(self):
         reply = self.send('ann', {'type': 'create_game', 'scenario': {'kind': 'fixed', 'id': 'fixed'},
-                                  'settings': settings(seat('HUMAN'), bot(), bot(), seed=61, armistice_rounds=0)})
+                                  'settings': settings(seat('HUMAN'), *LONERS, seed=61, armistice_rounds=0)})
         gid = next(m['game']['id'] for m in self.got(reply, 'ann') if m['type'] == 'entered_game')
         self.run_game(gid)  # (to Ann's first decision: her own turn)
         mine = self.faction(gid, self.ann)

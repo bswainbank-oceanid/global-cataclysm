@@ -16,8 +16,11 @@ ANY invited faction, not just the one instance currently taking its turn --
 the accepting decision belongs to the TARGET's own strategy, not the
 inviter's.
 
+The rules follow reference/GC Bot Alliance Strategy.odt, its weights included: 'random' (once, at game
+start) and 'variable' (at the start of each of the bot's turns) draw by STRATEGY_WEIGHTS/BEHAVIOR_WEIGHTS.
+
 Six strategies (game_start setting, per bot):
-- Invitations (aggressive and counterweight) rotate through the legal targets: a
+- Invitations (aggressive, counterweight, adversarial, underdog) rotate through the legal targets: a
   bot asks whoever it asked least recently (never-asked first), so a faction that
   declines waits until every other legal target has been asked, and one that has
   declined MAX_INVITE_DECLINES (5) times is never asked again (see _pick_target;
@@ -33,22 +36,21 @@ Six strategies (game_start setting, per bot):
   on the board, never inviting past that size, and does nothing at all
   while no other alliance yet exists (confirmed: it doesn't found the
   first alliance). Applies that same "never end up bigger than the
-  largest other alliance" cap to ACCEPTING an invitation too, confirmed
-  this session -- not just to its own inviting.
+  largest other alliance" cap to ACCEPTING an invitation too -- so with no
+  other alliance on the board yet it declines.
 - independent: never invites, never accepts.
-- adversarial: never allies with a human. It never invites a human player or a
-  faction in an alliance with one, and never invites anyone while its own
-  alliance holds a human (which only a starting alliance can arrange); it never
-  accepts an invitation from a human or from an alliance with one. It accepts
-  every other bot's invitation, whatever its size, and invites other bots by
-  the counterweight rule. Before forcing a faction to surrender it offers an
-  alliance only where it would propose one anyway -- never to a human.
+- adversarial: never invites a human player and never accepts a human player's
+  invitation. Otherwise like aggressive among the bots: it invites a bot every
+  turn and accepts every bot's invitation (a bot allied with a human included).
+  Before forcing a faction to surrender it offers an alliance only where it would
+  propose one anyway -- never to a human.
 - underdog: allies only to stay the underdog -- by strength, a group's total income
   (territory MPC) and total unit value (UV), compared with the strongest other group on
   the board (each alliance one group, each unallied active player its own). It accepts an
-  invitation only if the alliance it would form is under 130% of the strongest other
+  invitation only if the alliance it would form is under 130% (UNDERDOG_MARGIN) of the strongest other
   group on BOTH counts, humans or bots. It invites (rotating, as above) only a faction whose joining keeps
-  the alliance under 100% of the strongest other group on both counts, a human included.
+  the alliance under 110% (UNDERDOG_INVITE_MARGIN) of the strongest other group on both counts, a human
+  included.
   See _underdog_fits.
 - variable (added this session): re-rolls to one of the four CONCRETE
   strategies above -- never variable or random themselves -- once at game
@@ -65,11 +67,9 @@ game_start_settings.can_withdraw_from_alliances is False, since
 withdrawing is simply never possible then):
 - loyal: never withdraws, no exceptions.
 - opportunistic: withdraws if it's now MUCH stronger than its weakest ally
-  (>150% of either current treasury or total unit value) or MUCH weaker
-  than its strongest ally (<50% of either metric) -- confirmed this
-  session: "MPC" means FactionState.treasury_mpc (current balance, not
-  cumulative), and unit value only ever needs counting deployed units
-  since the Diplomacy phase runs after Deploy + Income. ALSO always
+  (>150% of either its income -- MCP, its uncontested territory's value --
+  or its total unit value) or MUCH weaker than its strongest ally (<70% of
+  either) -- OPPORTUNISTIC_BAND. ALSO always
   withdraws if the game would otherwise end on this faction's own turn
   (victory.game_end_rule via GameEngine.would_game_end()) -- confirmed
   this session, and confirmed to apply to treacherous too.
@@ -82,10 +82,14 @@ withdrawing is simply never possible then):
 - underdog: plans at the START of its own turn (like treacherous: the
   turn's Non-Combat Move then makes its treasonous captures) to withdraw at
   Diplomacy if its alliance has become the favourite -- its income OR unit
-  value above 130% of the strongest other group's, humans or bots. Also always withdraws if the game would
+  value above 110% (UNDERDOG_WITHDRAW_MARGIN) of every other group's, humans or bots. Also always withdraws if the game would
   otherwise end on its own turn. See underdog_wants_out.
+- every behavior's withdraw decision is made as its turn begins
+  (RandomBot._maybe_roll_treacherous_intent, then should_withdraw), so the
+  whole turn is planned around it -- the allies it is leaving treated as
+  enemies -- and Diplomacy carries it out.
 - variable (added this session): same re-roll-every-turn idea as the
-  variable strategy above, over the three concrete behaviors -- a turn
+  variable strategy above, over the concrete behaviors -- a turn
   where its re-rolled pick happens to land on 'treacherous' rolls that
   behavior's own 15% chance too (see RandomBot._maybe_reroll_variable_
   alliance_settings/_maybe_roll_treacherous_intent ordering).
@@ -106,10 +110,21 @@ MAX_INVITE_DECLINES = 5
 STRATEGIES = ('aggressive', 'passive', 'counterweight', 'independent', 'adversarial', 'underdog', 'variable')
 BEHAVIORS = ('loyal', 'opportunistic', 'treacherous', 'underdog', 'variable')
 
-# Underdog: an alliance may be up to this much of the strongest other group's strength (income and unit
-# value) when joining, and becomes the favourite -- time to leave -- above it, whether it holds a human or
-# not. An invitation keeps the alliance under 1.0 of it.
+# How likely each is to be drawn -- for 'random' (once, at game start) and a 'variable' bot's pick at the start
+# of each of its turns (without 'variable' itself) -- per reference/GC Bot Alliance Strategy.odt.
+STRATEGY_WEIGHTS = {'aggressive': 5, 'passive': 4, 'counterweight': 3, 'independent': 2, 'adversarial': 3,
+                    'underdog': 3, 'variable': 5}
+BEHAVIOR_WEIGHTS = {'loyal': 3, 'opportunistic': 5, 'treacherous': 4, 'underdog': 6, 'variable': 4}
+
+# Underdog, by strength (income and unit value) against the strongest other group: the strategy joins an alliance
+# under UNDERDOG_MARGIN of it and invites while the alliance would stay under UNDERDOG_INVITE_MARGIN; the behaviour
+# withdraws once its alliance is over UNDERDOG_WITHDRAW_MARGIN of it -- whether it holds a human or not.
 UNDERDOG_MARGIN = 1.3
+UNDERDOG_INVITE_MARGIN = 1.1
+UNDERDOG_WITHDRAW_MARGIN = 1.1
+
+# Opportunistic: withdraws once its income or unit value is under the first or over the second share of an ally's.
+OPPORTUNISTIC_BAND = (0.7, 1.5)
 
 # What a 'variable' bot's own per-turn re-roll picks from (reroll_alliance_
 # strategy/reroll_alliance_behavior) -- everything in STRATEGIES/BEHAVIORS
@@ -120,6 +135,12 @@ UNDERDOG_MARGIN = 1.3
 # somehow-still-literally-'variable' value both correctly fail the check.
 _CONCRETE_STRATEGIES = tuple(s for s in STRATEGIES if s != 'variable')
 _CONCRETE_BEHAVIORS = tuple(b for b in BEHAVIORS if b != 'variable')
+
+
+def _weighted_choice(rng, options, weights):
+    """One of `options`, drawn by `weights` (an option without a weight, or weighted 0, is never drawn)."""
+    options = [o for o in options if weights.get(o, 0) > 0]
+    return rng.choices(options, weights=[weights[o] for o in options])[0]
 
 
 def resolve_alliance_strategy(value, rng):
@@ -135,13 +156,13 @@ def resolve_alliance_strategy(value, rng):
     keeps changing turn to turn, via reroll_alliance_strategy, not this
     resolution happening again."""
     value = (value or 'random').lower()
-    return rng.choice(STRATEGIES) if value == 'random' else value
+    return _weighted_choice(rng, STRATEGIES, STRATEGY_WEIGHTS) if value == 'random' else value
 
 
 def resolve_alliance_behavior(value, rng):
     """Same resolution as resolve_alliance_strategy, for BEHAVIORS."""
     value = (value or 'random').lower()
-    return rng.choice(BEHAVIORS) if value == 'random' else value
+    return _weighted_choice(rng, BEHAVIORS, BEHAVIOR_WEIGHTS) if value == 'random' else value
 
 
 def reroll_alliance_strategy(rng):
@@ -152,14 +173,14 @@ def reroll_alliance_strategy(rng):
     FactionState.current_alliance_strategy, never on alliance_strategy
     itself (which stays 'variable' all game, same as any other resolved
     choice stays fixed). Never re-rolls to 'variable' or 'random'
-    themselves."""
-    return rng.choice(_CONCRETE_STRATEGIES)
+    themselves. Drawn by STRATEGY_WEIGHTS."""
+    return _weighted_choice(rng, _CONCRETE_STRATEGIES, STRATEGY_WEIGHTS)
 
 
 def reroll_alliance_behavior(rng):
     """Same re-roll as reroll_alliance_strategy, for BEHAVIORS -- stored
-    on FactionState.current_alliance_behavior."""
-    return rng.choice(_CONCRETE_BEHAVIORS)
+    on FactionState.current_alliance_behavior. Drawn by BEHAVIOR_WEIGHTS."""
+    return _weighted_choice(rng, _CONCRETE_BEHAVIORS, BEHAVIOR_WEIGHTS)
 
 
 def effective_alliance_strategy(gs, faction):
@@ -219,16 +240,17 @@ def _alliance_has_human(engine, faction):
 
 def may_invite(engine, faction, target):
     """Whether `faction`'s (effective) alliance strategy lets it propose an alliance to `target` at all --
-    the adversarial strategy never to a human or a faction allied with one, and never while its own
-    alliance holds a human; the underdog strategy only when the alliance with `target` in it would still be
-    weaker than the strongest other group (_underdog_fits, at 100%). (Used for the invitation a bot offers
-    before forcing a surrender, as well as by choose_invite_target.)"""
-    strategy = effective_alliance_strategy(engine.game_state, faction)
+    the adversarial strategy never to a human player; the underdog strategy only when the alliance with
+    `target` in it would stay under UNDERDOG_INVITE_MARGIN of the strongest other group (_underdog_fits).
+    (Used for the invitation a bot offers before forcing a surrender, as well as by choose_invite_target.)"""
+    gs = engine.game_state
+    strategy = effective_alliance_strategy(gs, faction)
     if strategy == 'underdog':
-        return _underdog_fits(engine, engine._alliance_members(faction) | engine._alliance_members(target), 1.0)
-    if strategy != 'adversarial':
-        return True
-    return not _alliance_has_human(engine, faction) and not _alliance_has_human(engine, target)
+        return _underdog_fits(engine, engine._alliance_members(faction) | engine._alliance_members(target),
+                              UNDERDOG_INVITE_MARGIN)
+    if strategy == 'adversarial':
+        return gs.factions[target].mode != FactionMode.HUMAN
+    return True
 
 
 # ---- underdog: strength by groups -------------------------------------------------------------------
@@ -266,11 +288,11 @@ def _underdog_fits(engine, members, margin):
 
 def underdog_wants_out(engine, faction):
     """The underdog behaviour's withdrawal plan, made at the start of `faction`'s turn: its alliance has
-    become the favourite -- income OR unit value above 130% of the strongest other group's."""
+    become the favourite -- income OR unit value above UNDERDOG_WITHDRAW_MARGIN (110%) of every other group's."""
     members = engine._alliance_members(faction)
     if len(members) < 2:
         return False
-    margin = UNDERDOG_MARGIN
+    margin = UNDERDOG_WITHDRAW_MARGIN
     income, units = _group_strength(engine, members)
     top_income, top_units = _strongest_other(engine, members)
     return income > margin * top_income or units > margin * top_units
@@ -291,7 +313,7 @@ def choose_invite_target(engine, faction, rng):
     if own_size + 1 > engine._effective_max_alliance_size():
         return None
 
-    if strategy in ('counterweight', 'adversarial'):
+    if strategy == 'counterweight':
         others = _other_alliance_sizes(engine, gs.factions[faction].alliance)
         if not others or own_size >= max(others):
             return None
@@ -328,7 +350,7 @@ def accepts_invite(engine, faction, inviter):
     if strategy == 'independent':
         return False
     if strategy == 'adversarial':
-        return not _alliance_has_human(engine, inviter)
+        return gs.factions[inviter].mode != FactionMode.HUMAN  # (every bot's: never a human player's)
     if strategy == 'underdog':
         joined = engine._alliance_members(inviter) | engine._alliance_members(faction)
         return _underdog_fits(engine, joined, UNDERDOG_MARGIN)
@@ -338,7 +360,7 @@ def accepts_invite(engine, faction, inviter):
     prospective_size = len(engine._alliance_members(inviter)) + 1
     others = _other_alliance_sizes(engine, gs.factions[inviter].alliance)
     if not others:
-        return True
+        return False  # (no other alliance to match: the resulting one would be bigger than any other)
     return prospective_size <= max(others)
 
 
@@ -353,20 +375,24 @@ def _total_unit_value(engine, faction):
 
 
 def _opportunistic_strength_mismatch(engine, faction):
+    """Its income (MCP: its uncontested territory's value) or unit value is under OPPORTUNISTIC_BAND's low share
+    (70%) or over its high share (150%) of an ally's."""
+    from ..economy import compute_income
     gs = engine.game_state
     members = engine._alliance_members(faction) - {faction}
     if not members:
         return False
-    my_treasury = gs.factions[faction].treasury_mpc
+    low, high = OPPORTUNISTIC_BAND
+    my_income = compute_income(faction, gs, engine.data)
     my_units = _total_unit_value(engine, faction)
-    ally_treasuries = [gs.factions[m].treasury_mpc for m in members]
+    ally_incomes = [compute_income(m, gs, engine.data) for m in members]
     ally_units = [_total_unit_value(engine, m) for m in members]
 
     return (
-        my_treasury > 1.5 * min(ally_treasuries)
-        or my_units > 1.5 * min(ally_units)
-        or my_treasury < 0.5 * max(ally_treasuries)
-        or my_units < 0.5 * max(ally_units)
+        my_income > high * min(ally_incomes)
+        or my_units > high * min(ally_units)
+        or my_income < low * max(ally_incomes)
+        or my_units < low * max(ally_units)
     )
 
 

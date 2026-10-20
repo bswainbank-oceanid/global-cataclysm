@@ -1,5 +1,6 @@
 import random
 import unittest
+from unittest import mock
 
 from engine.bots import alliance_policy
 from engine.bots.random_bot import RandomBot
@@ -24,6 +25,36 @@ def make_engine(modes, alliances=None, strategies=None, behaviors=None,
     for code, beh in (behaviors or {}).items():
         gs.factions[code].alliance_behavior = beh
     return GameEngine(gs, data), gs
+
+
+class TestWeights(unittest.TestCase):
+    """Random and Variable draw by the weights in reference/GC Bot Alliance Strategy.odt."""
+    N = 20000
+
+    def _shares(self, draw):
+        rng, counts = random.Random(7), {}
+        for _ in range(self.N):
+            got = draw(rng)
+            counts[got] = counts.get(got, 0) + 1
+        return {k: v / self.N for k, v in counts.items()}
+
+    def _check(self, shares, weights):
+        total = sum(weights.values())
+        self.assertEqual(set(shares), {k for k, w in weights.items() if w})
+        for k, w in weights.items():
+            self.assertAlmostEqual(shares.get(k, 0.0), w / total, delta=0.015, msg=k)
+
+    def test_random_strategy_and_behavior(self):
+        self._check(self._shares(lambda rng: alliance_policy.resolve_alliance_strategy('random', rng)),
+                    alliance_policy.STRATEGY_WEIGHTS)
+        self._check(self._shares(lambda rng: alliance_policy.resolve_alliance_behavior('random', rng)),
+                    alliance_policy.BEHAVIOR_WEIGHTS)
+        self.assertEqual(alliance_policy.STRATEGY_WEIGHTS['variable'], 5)  # (random may land on variable)
+
+    def test_variable_redraws_by_the_same_weights_without_itself(self):
+        no_variable = lambda w: {k: v for k, v in w.items() if k != 'variable'}  # noqa: E731
+        self._check(self._shares(alliance_policy.reroll_alliance_strategy), no_variable(alliance_policy.STRATEGY_WEIGHTS))
+        self._check(self._shares(alliance_policy.reroll_alliance_behavior), no_variable(alliance_policy.BEHAVIOR_WEIGHTS))
 
 
 class TestResolveSettings(unittest.TestCase):
@@ -292,12 +323,13 @@ class TestAcceptsInvite(unittest.TestCase):
         )
         self.assertTrue(alliance_policy.accepts_invite(engine, 'EU', 'NAA'))
 
-    def test_counterweight_accepts_when_no_other_alliance_exists(self):
+    def test_counterweight_declines_when_no_other_alliance_exists(self):
+        # (nothing to match: the alliance it would make would be bigger than any other)
         engine, gs = make_engine(
             {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT},
             strategies={'EU': 'counterweight'},
         )
-        self.assertTrue(alliance_policy.accepts_invite(engine, 'EU', 'NAA'))
+        self.assertFalse(alliance_policy.accepts_invite(engine, 'EU', 'NAA'))
 
     def test_counterweight_accepts_when_it_would_only_match_not_exceed(self):
         engine, gs = make_engine(
@@ -336,14 +368,15 @@ class TestAcceptsInvite(unittest.TestCase):
 
 
 class TestAdversarial(unittest.TestCase):
-    """Adversarial: never allies with a human; accepts every bot; invites bots by the counterweight rule."""
+    """Adversarial: never invites a human player, never accepts one's invitation; invites a bot every turn and
+    accepts every bot's invitation."""
     MODES = {'NAA': FactionMode.BOT, 'EU': FactionMode.HUMAN, 'GPC': FactionMode.BOT, 'PAF': FactionMode.BOT,
              'AAC': FactionMode.BOT}
 
-    def test_never_accepts_a_human_or_an_alliance_holding_one(self):
+    def test_never_accepts_a_human_but_every_bot(self):
         engine, gs = make_engine(self.MODES, alliances={'GPC': 'A', 'EU': 'A'}, strategies={'NAA': 'adversarial'})
         self.assertFalse(alliance_policy.accepts_invite(engine, 'NAA', 'EU'))   # the human
-        self.assertFalse(alliance_policy.accepts_invite(engine, 'NAA', 'GPC'))  # a bot allied with the human
+        self.assertTrue(alliance_policy.accepts_invite(engine, 'NAA', 'GPC'))   # a bot, allied with the human or not
         self.assertTrue(alliance_policy.accepts_invite(engine, 'NAA', 'PAF'))   # a bot on its own
 
     def test_accepts_bots_whatever_the_size(self):
@@ -351,20 +384,17 @@ class TestAdversarial(unittest.TestCase):
                                  strategies={'NAA': 'adversarial'})
         self.assertTrue(alliance_policy.accepts_invite(engine, 'NAA', 'GPC'))  # past any counterweight cap
 
-    def test_invites_bots_by_the_counterweight_rule_and_never_a_human(self):
-        # no other alliance yet: like counterweight, it does not found the first
+    def test_invites_a_bot_every_turn_and_never_a_human(self):
+        # no other alliance yet: it founds one all the same (unlike counterweight) -- with a bot
         engine, gs = make_engine(self.MODES, strategies={'NAA': 'adversarial'})
-        self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
-        # a two-member alliance of bots on the board: it asks a bot to match, never the human
-        engine, gs = make_engine(self.MODES, alliances={'GPC': 'A', 'PAF': 'A'}, strategies={'NAA': 'adversarial'})
         picks = {alliance_policy.choose_invite_target(engine, 'NAA', random.Random(seed)) for seed in range(30)}
-        self.assertEqual(picks, {'AAC'})
+        self.assertEqual(picks, {'GPC', 'PAF', 'AAC'})
         self.assertFalse(alliance_policy.may_invite(engine, 'NAA', 'EU'))
 
-    def test_never_invites_while_its_own_alliance_holds_a_human(self):
+    def test_a_human_in_its_own_alliance_does_not_stop_it_inviting_bots(self):
         engine, gs = make_engine(self.MODES, alliances={'NAA': 'B', 'EU': 'B', 'GPC': 'A', 'PAF': 'A', 'AAC': 'A'},
                                  strategies={'NAA': 'adversarial'})
-        self.assertFalse(alliance_policy.may_invite(engine, 'NAA', 'GPC'))
+        self.assertTrue(alliance_policy.may_invite(engine, 'NAA', 'GPC'))
 
     def test_other_strategies_may_invite_anyone(self):
         engine, gs = make_engine(self.MODES, strategies={'NAA': 'aggressive'})
@@ -397,35 +427,29 @@ class TestShouldWithdraw(unittest.TestCase):
         self.assertTrue(engine.would_game_end())  # sanity
         self.assertFalse(alliance_policy.should_withdraw(engine, 'NAA'))
 
-    def test_opportunistic_withdraws_when_much_stronger_than_the_weakest_ally(self):
+    def _opportunist(self, incomes):
+        """NAA (opportunistic) allied with EU, AAC an unallied bystander (so would_game_end() is False), each
+        with the income (MCP) given and no units."""
         engine, gs = make_engine(
             {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'EU': 'pact'},  # AAC stays unallied, a bystander so would_game_end() is False
+            alliances={'NAA': 'pact', 'EU': 'pact'},
             behaviors={'NAA': 'opportunistic'},
-            treasuries={'NAA': 1000, 'EU': 100, 'AAC': 500},
+            treasuries={'NAA': 100, 'EU': 100, 'AAC': 100},  # (treasury plays no part: income does)
         )
         self.assertFalse(engine.would_game_end())  # sanity: isolating the strength check, not the override
-        self.assertTrue(alliance_policy.should_withdraw(engine, 'NAA'))  # 1000 > 1.5 * 100
+        with mock.patch('engine.economy.compute_income', side_effect=lambda f, gs, data: incomes[f]):
+            return alliance_policy.should_withdraw(engine, 'NAA')
+
+    def test_opportunistic_withdraws_when_much_stronger_than_the_weakest_ally(self):
+        self.assertTrue(self._opportunist({'NAA': 160, 'EU': 100, 'AAC': 50}))  # 160 > 150% of 100
 
     def test_opportunistic_withdraws_when_much_weaker_than_the_strongest_ally(self):
-        engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'EU': 'pact'},
-            behaviors={'NAA': 'opportunistic'},
-            treasuries={'NAA': 40, 'EU': 100, 'AAC': 500},
-        )
-        self.assertFalse(engine.would_game_end())
-        self.assertTrue(alliance_policy.should_withdraw(engine, 'NAA'))  # 40 < 0.5 * 100
+        self.assertTrue(self._opportunist({'NAA': 65, 'EU': 100, 'AAC': 50}))  # 65 < 70% of 100
 
     def test_opportunistic_stays_within_bounds(self):
-        engine, gs = make_engine(
-            {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
-            alliances={'NAA': 'pact', 'EU': 'pact'},
-            behaviors={'NAA': 'opportunistic'},
-            treasuries={'NAA': 100, 'EU': 100, 'AAC': 500},
-        )
-        self.assertFalse(engine.would_game_end())
-        self.assertFalse(alliance_policy.should_withdraw(engine, 'NAA'))
+        self.assertFalse(self._opportunist({'NAA': 100, 'EU': 100, 'AAC': 50}))
+        self.assertFalse(self._opportunist({'NAA': 75, 'EU': 100, 'AAC': 50}))   # (75 >= 70%)
+        self.assertFalse(self._opportunist({'NAA': 145, 'EU': 100, 'AAC': 50}))  # (145 <= 150%)
 
     def test_opportunistic_always_withdraws_to_avoid_game_end(self):
         engine, gs = make_engine(

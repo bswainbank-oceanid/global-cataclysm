@@ -10,7 +10,7 @@ from server.tests.test_hub import TWO_HUMANS, settings
 from server.tests.test_hub_lobby import LobbyTest
 from server.tests.test_persist import bot, seat
 
-TIMED = settings(seat('HUMAN'), seat('HUMAN'), bot(), seed=62, turn_hours=2)
+TIMED = settings(seat('HUMAN'), seat('HUMAN'), dict(bot(), strategy='passive'), seed=62, turn_hours=2)  # (a bot that never invites: no alliance question holds a turn up)
 LONG_AGO = '2020-01-01T00:00:00Z'
 
 
