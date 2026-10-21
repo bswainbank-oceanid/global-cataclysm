@@ -140,8 +140,8 @@ static func describe(e: Dictionary) -> String:
 			return "[b]Battle at %s[/b] (%s)\n  Attackers: %s\n  Defenders: %s" % [
 				_terr(e["territory_id"]), e["battle_type"], _by_owner(e["attackers"]), _by_owner(e["defenders"])]
 		"bombardment_preview":
-			return "[b]Bombardment at %s[/b]\n  %s\n  Defenders: %s" % [
-				_terr(e["territory_id"]), _fac(str(e["cruiser"]["owner"])) + "'s Cruiser", _by_owner(e["defenders"])]
+			return "[bgcolor=%s][b][color=%s]Bombardment:[/color] %s's Cruiser will fire on %s[/b][/bgcolor]\n  Defenders: %s" % [
+				BOMBARD_HIGHLIGHT, BOMBARD_MARK, _fac(str(e["cruiser"]["owner"])), _terr(e["territory_id"]), _by_owner(e["defenders"])]
 		"bombardment":
 			return bombardment(e)
 		"surrender_plan":
@@ -163,10 +163,10 @@ static func describe(e: Dictionary) -> String:
 		"alliance_plan":
 			match str(e["action"]):
 				"invite":
+					var to := _fac(str(e["target"]))
 					if e.get("accepts") == null:
-						return "%s invites %s" % [_fac(e["faction"]), _fac(str(e["target"]))]
-					return "%s invites %s (%s)" % [_fac(e["faction"]), _fac(str(e["target"])),
-						"they would accept" if e["accepts"] else "they would decline"]
+						return alliance_request(e, "awaiting %s's answer" % to)
+					return alliance_request(e, ("%s will accept" if e["accepts"] else "%s will decline") % to)
 				"withdraw":
 					return "%s withdraws from its alliance" % _fac(e["faction"])
 			return "%s takes no alliance action" % _fac(e["faction"])

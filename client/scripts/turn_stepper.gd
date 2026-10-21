@@ -131,6 +131,19 @@ func _apply_feed(msg: Dictionary) -> void:
 	_refresh()
 
 
+## The queued step's events, plus -- for an invitation awaiting a human's answer that the step's own events don't
+## already tell (one human inviting another) -- its alliance request line, so the queue box shows it too.
+static func _with_invitation(msg: Dictionary) -> Array:
+	var events: Array = msg.get("events", [])
+	var inv = msg.get("invitation")
+	if not (inv is Dictionary) or bool(inv.get("answered", false)):
+		return events
+	for e in events:
+		if str(e.get("kind", "")) == "alliance_plan":
+			return events
+	return events + [{"kind": "alliance_invite_sent", "faction": str(inv["from"]), "target": str(inv["to"])}]
+
+
 ## A pending armistice proposal, as the game stands (a player entering after it was proposed is asked too).
 func _apply_feed_armistice(msg: Dictionary) -> void:
 	var a = msg.get("armistice")
@@ -233,7 +246,7 @@ func _on_message(msg: Dictionary) -> void:
 				header += " (battle %d of %d)" % [int(msg["battle"]["index"]) + 1, int(msg["battle"]["count"])]
 			elif msg.has("bombardment"):
 				header += " (bombardment %d of %d)" % [int(msg["bombardment"]["index"]) + 1, int(msg["bombardment"]["count"])]
-			queue_shown.emit(header, msg.get("skipped", []), msg["events"])
+			queue_shown.emit(header, msg.get("skipped", []), _with_invitation(msg))
 		"phase_result":
 			if feed_mode and msg.has("seq"):
 				# (playback has reached this step: an all-bot game runs only a little ahead of its viewers)

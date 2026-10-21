@@ -43,4 +43,23 @@ func _initialize() -> void:
 	_check(_plain(kill) == "Bombardment: EU's Cruiser fires on -1 -- rolls 10 (D10): HIT -- the Infantry is destroyed", "a kill: %s" % _plain(kill))
 	for line in [miss, hit, kill]:
 		_check(line.begins_with("[bgcolor=%s]" % event_text.BOMBARD_HIGHLIGHT), "highlighted: %s" % line)
+
+	# The queue box too: a queued invitation and a queued bombardment, highlighted the same way.
+	var plan := {"kind": "alliance_plan", "faction": "NAA", "action": "invite", "target": "EU"}
+	var will: String = event_text.describe(plan.merged({"accepts": true}))
+	var wont: String = event_text.describe(plan.merged({"accepts": false}))
+	var ask: String = event_text.describe(plan.merged({"accepts": null}))
+	_check(_plain(will) == "Alliance request: NAA invites EU -- EU will accept", "queued, a yes: %s" % _plain(will))
+	_check(_plain(wont) == "Alliance request: NAA invites EU -- EU will decline", "queued, a no: %s" % _plain(wont))
+	_check(_plain(ask) == "Alliance request: NAA invites EU -- awaiting EU's answer", "queued, a human to answer: %s" % _plain(ask))
+	var queued_fire: String = event_text.describe({"kind": "bombardment_preview", "territory_id": -1,
+		"cruiser": {"owner": "EU", "unit_id": 9, "unit_type": "Cruiser"}, "defenders": []})
+	_check(queued_fire.begins_with("[bgcolor=%s]" % event_text.BOMBARD_HIGHLIGHT)
+		and _plain(queued_fire).begins_with("Bombardment: EU's Cruiser will fire on -1"), "a queued bombardment: %s" % _plain(queued_fire))
+	# one human's invitation to another, awaiting its answer: its request line is added to the queued step
+	var stepper_script = load("res://scripts/turn_stepper.gd")
+	var shown: Array = stepper_script._with_invitation({"events": [], "invitation": {"from": "NAA", "to": "EU", "answered": false}})
+	_check(shown.size() == 1 and str(shown[0]["kind"]) == "alliance_invite_sent", "a pending human invitation shows in the queue")
+	_check(stepper_script._with_invitation({"events": [], "invitation": {"from": "NAA", "to": "EU", "answered": true}}).is_empty(),
+		"...not once answered")
 	quit(1 if _failures > 0 else 0)
