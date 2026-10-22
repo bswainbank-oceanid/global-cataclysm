@@ -2896,6 +2896,7 @@ class TestSurrender(unittest.TestCase):
         data, gs, engine = self.rich_and_poor(
             units_by_territory={4: [make_unit('Infantry', 'AAC')], 1: [make_unit('Infantry', 'NAA')]},
             pending_by_territory={5: [make_unit('Infantry', 'AAC')]})
+        gs.remove_units_on_surrender = True  # (the scenario rule on: the board is cleared)
         log = TurnLog()
         engine.turn_log = log
         reasons = engine.demand_surrender('NAA', 'AAC')

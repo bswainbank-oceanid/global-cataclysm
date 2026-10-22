@@ -16,6 +16,7 @@ def world(modes, phase=Phase.COMBAT_MOVE):
     )
     gs = make_state(data, {1: 'NAA', 2: 'EU', 3: 'GPC'}, modes, phase=phase)
     gs.active_faction = 'EU'  # deliberately NOT the faction under test, below
+    gs.remove_units_on_surrender = True  # (the scenario rule on: a surrendering faction's units leave the board)
     return GameEngine(gs, data), gs
 
 
@@ -119,6 +120,7 @@ class TestEliminationSettlesContests(unittest.TestCase):
         gs = make_state(data, owners or {1: 'NAA', 2: 'EU', 3: 'GPC'}, modes, units_by_territory=units,
                         contested=contested)
         gs.active_faction = 'GPC'
+        gs.remove_units_on_surrender = True  # (the scenario rule on: settling the contests of a faction gone from them)
         engine = GameEngine(gs, data)
         engine.turn_log = TurnLog()
         return engine, gs

@@ -87,7 +87,7 @@ def build_game_state(faction_modes, randomize_play_order=True, allow_combat_move
                       can_withdraw_from_alliances=True, can_rejoin_alliances=False,
                       alliance_strategies=None, alliance_behaviors=None, rng=None,
                       starting_alliances=None, data_module=None, armistice_after_rounds=0, play_order=None,
-                      remove_units_on_surrender=True):
+                      remove_units_on_surrender=False):
     """faction_modes: {faction_code: FactionMode}, one entry per faction in the game -- every
     faction of the scenario, or (a generated scenario) only those playing: a faction left out has no
     place in the game at all, so it may own no land. data_module: the game's configuration

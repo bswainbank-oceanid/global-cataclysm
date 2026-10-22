@@ -19,8 +19,8 @@ Settings (the "new_game" message's "settings"):
      "randomize_order": true,                            # default true
      "can_withdraw": true,                               # players may leave an alliance (default true)
      "can_rejoin": false,                                # ...and may re-ally with those they left (default false)
-     "remove_units_on_surrender": true,                  # a surrendering faction's units leave the board (default true);
-                                                         #   false: they stay, defending where they stand
+     "remove_units_on_surrender": false,                 # a surrendering faction's units leave the board (default false:
+                                                         #   they stay, defending where they stand)
      "max_alliance_size": 3,                             # most factions in one alliance (default 3; 1 .. players-1; 1 = no alliances and no Alliances phase)
      "allow_combat_first_turn": false,                   # may a faction make Combat Moves on its first turn (default false)
      "allow_noncombat_first_turn": true,                 # ...and Non-Combat Moves (default true)
@@ -290,7 +290,7 @@ def build_session(settings, rng=None, auto=False, max_humans=1):
         starting_alliances=groups,
         can_withdraw_from_alliances=bool(settings.get('can_withdraw', True)),
         can_rejoin_alliances=bool(settings.get('can_rejoin', False)),
-        remove_units_on_surrender=bool(settings.get('remove_units_on_surrender', True)),
+        remove_units_on_surrender=bool(settings.get('remove_units_on_surrender', False)),
         allow_combat_moves_first_turn=bool(settings.get('allow_combat_first_turn', False) or settings.get('dev', {}).get('combat_first_turn', False)),
         allow_noncombat_moves_first_turn=bool(settings.get('allow_noncombat_first_turn', True)),
         data_module=config,

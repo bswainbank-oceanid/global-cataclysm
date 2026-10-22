@@ -25,9 +25,12 @@ def world(remove=False, units=None, phase=Phase.COMBAT_MOVE):
 
 
 class TestUnitsStay(unittest.TestCase):
-    def test_the_rule_is_on_unless_set_off(self):
-        self.assertTrue(GameState().remove_units_on_surrender)
-        self.assertFalse(GameState.from_dict(dict(world()[1].to_dict())).remove_units_on_surrender)  # (kept in a save)
+    def test_the_rule_is_off_unless_set_on(self):
+        self.assertFalse(GameState().remove_units_on_surrender)
+        self.assertTrue(GameState.from_dict(dict(world(remove=True)[1].to_dict())).remove_units_on_surrender)  # (kept in a save)
+        old = world()[1].to_dict()
+        del old['remove_units_on_surrender']
+        self.assertTrue(GameState.from_dict(old).remove_units_on_surrender)  # (a save from before the rule: units went)
 
     def test_with_it_on_the_units_go_as_ever(self):
         engine, gs = world(remove=True, units={2: [make_unit('Infantry', 'EU')]})

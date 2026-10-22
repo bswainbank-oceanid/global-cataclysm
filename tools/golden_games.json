@@ -1,38 +1,38 @@
 {
   "random_6bot": {
-    "setup": "ae65e610d0629510e44a20bb4bff538ae3902a6b",
-    "log": "bf8a2c1094616f8383eab59abc8ca449fd5092d7",
-    "final": "2ca2de036927cbfd8146cf8cc0cd03d38e885e40",
-    "events": 5837
+    "setup": "48db4aea33a0bda1e990b0d6f75992ac6399b665",
+    "log": "c8f98e2c17795d6b3c49befacd1f790ef5c33212",
+    "final": "300ec1bd3538125b5cfc0eca8b4b63a30938370f",
+    "events": 6270
   },
   "strategy_6bot": {
-    "setup": "6a551a13f1082fa52d764046c0c96470333836e5",
+    "setup": "21dad360e77be417a904b179ead5399e5ceeeff2",
     "log": "1712f6ef61be3383b8e05a9dda8d23030b1dbd6c",
-    "final": "bcb803040424b74a7654210a8da5c2cb0084bcf6",
+    "final": "da434eec50ad88c12cfa149c4df4b4efc417a8ac",
     "events": 1265
   },
   "strategy_3bot_neutral": {
-    "setup": "dd53b295ac3febd89138925cce047e4565b67da1",
-    "log": "418a6f51d923075cbc36c71400e218cba788f540",
-    "final": "768413562200fbac0cb0fd2c07123bf5c78c6b63",
-    "events": 2424
+    "setup": "6a8885bfa74463ef89678bb0fde0f83cd7441daf",
+    "log": "2445bb351a10f2aca483086e237cd156e30ed576",
+    "final": "a455919f64b3e8d0c0237d86aafac222eb42c6a5",
+    "events": 2912
   },
   "mixed_alliances": {
-    "setup": "2c187c98c9386e2609350accd299e7c0ce09aded",
+    "setup": "6c045ca53259f301ae84deb1a52144477738b5d3",
     "log": "1bc9968c3733bf6f3d181a1c0a81494ea78ad6e7",
-    "final": "7c513caa93fa82b2f4dd7e08db47a670911848f9",
+    "final": "4a34e4f9dd956476c584f008d157044b0355415f",
     "events": 2446
   },
   "fixed_order_2bot": {
-    "setup": "48cd205df0479f6bbe42c131aaed3633153cb264",
+    "setup": "44612cdc96de5605b822a4cba0729f581a169b6f",
     "log": "8fb868b809055975e522670281b0cc882d961339",
-    "final": "17cc4b4692833e98b5cb789626561af672e3ddc5",
+    "final": "00cafeb91e48d1a78823ccdeb56aa850529a3b28",
     "events": 901
   },
   "new_scenario_3bot": {
-    "setup": "bd91b55d4b394b3c564bc6e951a3452a66c0c1b5",
-    "log": "bebf6c9e08f8d76c874f3f520f9f6a0aaaf958a0",
-    "final": "c76f43a6be80e8789990e78d1ffbfe6298b9959e",
-    "events": 2071
+    "setup": "09bb241ebd93920f011ce9561a278a8c2c546f55",
+    "log": "1e9fc5a0103002238399353db85507d959307108",
+    "final": "6210c6b2338014ef17c6ed1aca1355722e59f1d0",
+    "events": 2084
   }
 }

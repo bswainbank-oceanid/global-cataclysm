@@ -335,7 +335,7 @@ func _build_sections(parent: VBoxContainer) -> void:
 	_section_row("rules", "First turn non-combat moves:", _noncombat_first, "Non-Combat Moves allowed on a faction's first turn.")
 	_combat_first = _checkbox(false)
 	_section_row("rules", "First turn combat moves:", _combat_first, "Combat Moves allowed on a faction's first turn.")
-	_remove_on_surrender = _checkbox(true)
+	_remove_on_surrender = _checkbox(false)
 	_section_row("rules", "Remove units on surrender:", _remove_on_surrender,
 		"A faction that surrenders has its units removed from the board. Off: they stay where they are -- it takes no more turns, but its units go on defending their territory.")
 	_armistice_rounds = SpinBox.new()
@@ -1083,7 +1083,7 @@ func apply_settings(s: Dictionary) -> void:
 	_can_rejoin.button_pressed = bool(s.get("can_rejoin", false))
 	_combat_first.button_pressed = bool(s.get("allow_combat_first_turn", false))
 	_noncombat_first.button_pressed = bool(s.get("allow_noncombat_first_turn", true))
-	_remove_on_surrender.button_pressed = bool(s.get("remove_units_on_surrender", true))
+	_remove_on_surrender.button_pressed = bool(s.get("remove_units_on_surrender", false))
 	_armistice_rounds.set_value_no_signal(float(s.get("armistice_rounds", DEFAULT_ARMISTICE_ROUNDS)))
 	_turn_hours.set_value_no_signal(float(s.get("turn_hours", 0)))
 	_max_pref = maxi(1, int(s.get("max_alliance_size", 3)))

@@ -494,10 +494,10 @@ class GameState:
     max_alliance_size: int = 2
     can_withdraw_from_alliances: bool = True
     can_rejoin_alliances: bool = False
-    # The scenario rule "Remove units on surrender": a faction that surrenders (forced to, or of its own accord) has
-    # its units taken off the board -- or, when False, leaves them there: no more turns of its own, but they go on
-    # defending where they stand (GameEngine._eliminate).
-    remove_units_on_surrender: bool = True
+    # The scenario rule "Remove units on surrender" (default off): a faction that surrenders (forced to, or of its
+    # own accord) has its units taken off the board -- or, when False, leaves them there: no more turns of its own,
+    # but they go on defending where they stand (GameEngine._eliminate).
+    remove_units_on_surrender: bool = False
     # The automatic armistice proposal (server/session.py): once this many rounds have been played, the
     # game itself proposes an armistice (again every ARMISTICE_REPEAT_ROUNDS rounds after a decline).
     # 0: never.
@@ -577,7 +577,7 @@ class GameState:
             max_alliance_size=d.get('max_alliance_size', 2),
             can_withdraw_from_alliances=d.get('can_withdraw_from_alliances', True),
             can_rejoin_alliances=d.get('can_rejoin_alliances', False),
-            remove_units_on_surrender=d.get('remove_units_on_surrender', True),
+            remove_units_on_surrender=d.get('remove_units_on_surrender', True),  # (a save from before the rule: removed)
             armistice_after_rounds=d.get('armistice_after_rounds', 0),
             _next_alliance_id=d.get('next_alliance_id', 1),
         )
