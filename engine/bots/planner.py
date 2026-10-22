@@ -172,10 +172,12 @@ class Planner:
         return other is not None and _is_ally_or_self(self.gs, self.me, other)
 
     def hostile(self, other):
+        """Whose units are enemies to fight: a faction still playing, the Neutral one -- or one that surrendered
+        but left its units on the board ("Remove units on surrender" off), which still defend."""
         if other is None or self.allied(other):
             return False
         f = self.gs.factions[other]
-        return f.mode in (FactionMode.HUMAN, FactionMode.BOT, FactionMode.NEUTRAL) and not f.eliminated
+        return f.mode in (FactionMode.HUMAN, FactionMode.BOT, FactionMode.NEUTRAL)
 
     def capturable(self, other):
         """Whose land an attack can take: an enemy's, or that of a faction that has been eliminated -- its
@@ -189,7 +191,9 @@ class Planner:
         return f.eliminated or f.mode in (FactionMode.HUMAN, FactionMode.BOT, FactionMode.NEUTRAL)
 
     def mobile_hostile(self, other):
-        return self.hostile(other) and self.gs.factions[other].mode in (FactionMode.HUMAN, FactionMode.BOT)
+        """An enemy that takes turns -- one that can come at me (a surrendered faction's units never move)."""
+        f = self.gs.factions[other] if other is not None else None
+        return self.hostile(other) and f.mode in (FactionMode.HUMAN, FactionMode.BOT) and not f.eliminated
 
     def turning_on(self, other):
         """An ally I plan to leave this turn (self.leaving): a threat to me from then on, so the defensive

@@ -205,6 +205,14 @@ class TestAllianceRuleSettings(unittest.TestCase):
     def test_non_boolean_values_are_rejected(self):
         self.assertTrue(check_settings(settings(seat('HUMAN'), seat('BOT'), can_withdraw='yes')))
         self.assertTrue(check_settings(settings(seat('HUMAN'), seat('BOT'), can_rejoin=1)))
+        self.assertTrue(check_settings(settings(seat('HUMAN'), seat('BOT'), remove_units_on_surrender='no')))
+
+    def test_remove_units_on_surrender_is_on_unless_set_off(self):
+        self.assertTrue(self._game().remove_units_on_surrender)
+        gs = self._game(remove_units_on_surrender=False)
+        self.assertFalse(gs.remove_units_on_surrender)
+        session, _ = build_session(settings(seat('HUMAN'), seat('BOT'), remove_units_on_surrender=False), random.Random(1))
+        self.assertFalse(session.handle_message({'type': 'watch'})[0]['game_state']['remove_units_on_surrender'])
 
 
 class TestBotAi(unittest.TestCase):

@@ -214,6 +214,8 @@ static func _settings_text(s: Dictionary) -> String:
 	lines.append("[b]First turn:[/b] combat moves %s, non-combat moves %s" % [
 		"allowed" if bool(s.get("allow_combat_first_turn", false)) else "not allowed",
 		"allowed" if bool(s.get("allow_noncombat_first_turn", true)) else "not allowed"])
+	lines.append("[b]On surrender:[/b] %s" % ("units removed" if bool(s.get("remove_units_on_surrender", true))
+		else "units stay on the board and defend"))
 	var rounds := int(s.get("armistice_rounds", 10))
 	lines.append("[b]Armistice:[/b] %s" % ("never proposed by the game" if rounds == 0 else "proposed after %d rounds" % rounds))
 	var hours := int(s.get("turn_hours", 0))

@@ -201,7 +201,7 @@ class TestPlanner(unittest.TestCase):
         gs.factions['GPC'].eliminated = True   # surrendered: its land stays, empty
         p = planner_for(engine)
         self.assertTrue(p.capturable('GPC'))
-        self.assertFalse(p.hostile('GPC'))
+        self.assertFalse(p.mobile_hostile('GPC'))  # (no threat: it takes no turns -- any units it left would still defend)
         self.assertIn(gpc_sc, [t[1] for t in p.sc_targets()])
         p.objective_capture_scs()
         self.assertEqual([path[-1] for path in p.moves_combat.values()], [gpc_sc])

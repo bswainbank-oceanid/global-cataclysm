@@ -144,6 +144,13 @@ static func _with_invitation(msg: Dictionary) -> Array:
 	return events + [{"kind": "alliance_invite_sent", "faction": str(inv["from"]), "target": str(inv["to"])}]
 
 
+## What becomes of a surrendering faction's units, by the scenario rule "Remove units on surrender".
+static func _units_on_surrender() -> String:
+	if bool(GameStore.state.get("remove_units_on_surrender", true)):
+		return "and all of its units are removed from the board"
+	return "-- it takes no more turns, but its units stay on the board and go on defending where they stand"
+
+
 ## A pending armistice proposal, as the game stands (a player entering after it was proposed is asked too).
 func _apply_feed_armistice(msg: Dictionary) -> void:
 	var a = msg.get("armistice")
@@ -377,8 +384,8 @@ func _announce(events: Array) -> void:
 			"surrender":
 				var t := str(e["target"])
 				items.append({"title": "%s surrenders" % t, "color": _color(t),
-					"body": "%s has forced %s to surrender: %s.\n\n%s is out of the game and all of its units are removed from the board; its territory stays where it is." % [
-						_name(str(e["faction"])), _name(t), EventText.surrender_reasons(e.get("reasons", [])), _name(t)]})
+					"body": "%s has forced %s to surrender: %s.\n\n%s is out of the game %s; its territory stays where it is." % [
+						_name(str(e["faction"])), _name(t), EventText.surrender_reasons(e.get("reasons", [])), _name(t), _units_on_surrender()]})
 			"seat_to_bot":
 				var b := str(e["faction"])
 				items.append({"title": "A bot takes over %s" % b, "color": _color(b),
@@ -386,7 +393,7 @@ func _announce(events: Array) -> void:
 			"self_surrender":
 				var f := str(e["faction"])
 				items.append({"title": "%s surrenders" % f, "color": _color(f),
-					"body": "%s has surrendered.\n\n%s is out of the game and all of its units are removed from the board; its territory stays where it is." % [_name(f), _name(f)]})
+					"body": "%s has surrendered.\n\n%s is out of the game %s; its territory stays where it is." % [_name(f), _name(f), _units_on_surrender()]})
 			"armistice":
 				var names := []
 				for p in e.get("participants", []):
@@ -404,7 +411,7 @@ func _announce(events: Array) -> void:
 				var f := str(e["faction"])
 				if not surrendered.has(f):
 					items.append({"title": "%s eliminated" % f, "color": _color(f),
-						"body": "%s is out of the game and all of its units are removed from the board." % _name(f)})
+						"body": "%s is out of the game %s." % [_name(f), _units_on_surrender()]})
 			"alliance_joined":
 				var f := str(e["faction"])
 				var t := str(e["target"])

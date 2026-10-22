@@ -2088,12 +2088,20 @@ class GameEngine:
         """Takes `code` out of the game: eliminated, its units (and purchases waiting to deploy)
         gone from the board, and its alliance ties cut -- an alliance left with one member is no
         alliance at all. Its territory stays as it is. active_factions() excludes it from now on,
-        which is what actually ends its turns."""
+        which is what actually ends its turns.
+
+        The scenario rule "Remove units on surrender" off (GameState.remove_units_on_surrender False): its
+        deployed units stay where they are -- no more turns of its own, but they go on defending -- and only
+        its purchases still waiting to deploy go. Where they share a territory or sea zone with a former
+        ally's units, the two are enemies now: it is contested, as a withdrawal would leave it."""
         gs = self.game_state
         fstate = gs.factions[code]
         fstate.eliminated = True
+        keep = not gs.remove_units_on_surrender
+        former_allies = self._alliance_members(code) - {code} if fstate.alliance is not None else set()
         for t in gs.territories.values():
-            t.units = [u for u in t.units if u.owner != code]
+            if not keep:
+                t.units = [u for u in t.units if u.owner != code]
             t.pending_deployment = [u for u in t.pending_deployment if u.owner != code]
         tag, fstate.alliance = fstate.alliance, None
         if tag is not None:
@@ -2101,6 +2109,11 @@ class GameEngine:
             if len(left) <= 1:
                 for f in left:
                     f.alliance = None
+        if keep and former_allies:
+            for t in gs.territories.values():
+                owners = {u.owner for u in t.units}
+                if code in owners and owners & former_allies:
+                    t.contested_by = (t.contested_by or set()) | {code} | (owners & former_allies)
         if self.turn_log is not None:
             self.turn_log.record_elimination(code)
         self._settle_contests_of(code)
@@ -2117,6 +2130,8 @@ class GameEngine:
         for tid, t in gs.territories.items():
             if not t.contested_by or code not in t.contested_by:
                 continue
+            if any(u.owner == code for u in t.units):
+                continue  # (its units stayed -- "Remove units on surrender" off: they fight on there)
             t.contested_by = set(t.contested_by) - {code}
             if terrs[tid]['type'] == 'sea':
                 owners = sorted({u.owner for u in t.units})
