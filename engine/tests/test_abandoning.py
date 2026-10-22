@@ -63,3 +63,39 @@ class TestAbandoningAContestedTerritory(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestTheEnemyWithdrawing(unittest.TestCase):
+    """The other way round: the faction contesting someone else's territory pulls out in its Non-Combat Move. With
+    the owner's units still there, the territory is no longer contested -- the owner keeps it, at once."""
+
+    def enemy_turn(self, extra=None, owner_units=True):
+        engine, gs, mine = board(Phase.NONCOMBAT_MOVE, extra)
+        if not owner_units:
+            gs.territories[1].units.remove(mine)
+        gs.active_faction = 'AAC'
+        [theirs] = [u for u in gs.territories[1].units if u.owner == 'AAC' and u.unit_type == 'Infantry']
+        return engine, gs, theirs
+
+    def test_it_is_no_longer_contested_and_the_owner_keeps_it(self):
+        engine, gs, theirs = self.enemy_turn()
+        engine.process_return_to_base('AAC')
+        engine.submit_noncombat_moves('AAC', [NonCombatMoveOrder(theirs.unit_id, 3)])
+        engine.confirm_noncombat_moves('AAC')
+        self.assertEqual((gs.territories[1].owner, gs.territories[1].contested_by), ('NAA', None))
+
+    def test_not_while_another_enemy_is_still_there(self):
+        engine, gs, theirs = self.enemy_turn(extra=[make_unit('Infantry', 'EU')])
+        gs.territories[1].contested_by = {'NAA', 'AAC', 'EU'}
+        engine.process_return_to_base('AAC')
+        engine.submit_noncombat_moves('AAC', [NonCombatMoveOrder(theirs.unit_id, 3)])
+        engine.confirm_noncombat_moves('AAC')
+        self.assertEqual(gs.territories[1].contested_by, {'NAA', 'EU'})  # (AAC is out of it; EU fights on)
+
+    def test_not_when_the_owner_has_nobody_there(self):
+        engine, gs, theirs = self.enemy_turn(owner_units=False)
+        engine.process_return_to_base('AAC')
+        engine.submit_noncombat_moves('AAC', [NonCombatMoveOrder(theirs.unit_id, 3)])
+        engine.confirm_noncombat_moves('AAC')
+        self.assertEqual(gs.territories[1].owner, 'NAA')
+        self.assertIsNone(gs.territories[1].contested_by)  # (nobody contests it any more either)

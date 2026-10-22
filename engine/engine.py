@@ -1800,6 +1800,25 @@ class GameEngine:
         if self.turn_log is not None:
             self.turn_log.record_noncombat_move(faction, orders, unit_info)
         self._apply_stranded_aircraft_check(faction)
+        self._end_contests_withdrawn_from(faction)
+
+    def _end_contests_withdrawn_from(self, faction):
+        """An enemy that has withdrawn: once `faction`'s Non-Combat Move is over, it leaves every land contest it
+        has no units left in -- and a territory left with no enemy unit in it and nobody else contesting the owner
+        is no longer contested: the owner keeps it, there and then."""
+        gs = self.game_state
+        terrs = self.data.territories()
+        for tid, t in gs.territories.items():
+            if terrs[tid]['type'] != 'land' or not t.contested_by or faction not in t.contested_by or t.owner == faction:
+                continue
+            if any(u.owner == faction for u in t.units):
+                continue  # (still there)
+            t.contested_by = set(t.contested_by) - {faction}
+            hostile = [u for u in t.units if not _is_ally_or_self(gs, t.owner, u.owner)]
+            rivals = {f for f in t.contested_by if not _is_ally_or_self(gs, t.owner, f)}
+            if not hostile and not rivals:  # (nobody left to contest it: the owner keeps it, whoever holds it)
+                t.contested_by = None
+                t.reclaim_bonus_for = None
 
     def aircraft_that_must_land(self, faction, game_state=None):
         """{unit_id: reason} -- `faction`'s aircraft that would crash if the Non-Combat Move phase ended now
