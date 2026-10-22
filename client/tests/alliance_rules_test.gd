@@ -42,7 +42,8 @@ func _initialize() -> void:
 	for pair in out:
 		by[pair[0]] = pair[1]
 	_check(by.has("EU") and str(by["EU"]).contains("rejoining is off"), "a former ally is explained (rejoining off): %s" % str(by))
-	_check(by.has("GPC") and str(by["GPC"]).contains("already in an alliance"), "an allied faction is explained")
+	# (one in an alliance could be asked to let NAA join -- the server leaves GPC out here: its alliance is full)
+	_check(by.has("GPC") and str(by["GPC"]).contains("its alliance is full"), "an allied faction is explained: %s" % str(by))
 	_check(not by.has("NAA"), "the player is never listed")
 
 	# With rejoining on, the former ally is eligible (the server lists it), so nothing to explain.
@@ -53,6 +54,15 @@ func _initialize() -> void:
 		codes.append(pair[0])
 	_check(not codes.has("EU"), "an eligible faction is not listed")
 	_check(codes.has("GPC") and codes.has("AAC"), "the allied pair is still explained")
+
+	# NAA in an alliance of its own: it can't ask to join another
+	f["NAA"]["alliance"] = "ALLIANCE_2"
+	f["EU"]["alliance"] = "ALLIANCE_2"
+	out = store.uninvitable_reasons("NAA", ["NAA", "EU"], [])
+	by = {}
+	for pair in out:
+		by[pair[0]] = pair[1]
+	_check(str(by.get("GPC", "")).contains("and so are you"), "allied on both sides: %s" % str(by))
 
 	print("alliance rules test: failures=%d" % _failures)
 	quit(1 if _failures > 0 else 0)

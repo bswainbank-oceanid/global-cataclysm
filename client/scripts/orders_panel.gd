@@ -130,6 +130,12 @@ func _add_alliance_options() -> void:
 	var targets: Array = ha["options"]["eligible_invite_targets"]
 	for code in targets:
 		var c := str(code)
+		if GameStore.faction_state(c).get("alliance") != null:
+			# (in an alliance already: asking them is asking to join theirs -- their allies have no say)
+			_content.add_child(_choice("Join %s's alliance" % GameData.factions[c].name, c, false, not used,
+				"Hold to ask them. They answer at once; if they accept, you join their alliance, allied with every member.",
+				func(): Stepper.diplomacy_action("invite", c), true))
+			continue
 		_content.add_child(_choice("Invite %s" % GameData.factions[c].name, c, false, not used,
 			"Hold to invite them. They answer at once.", func(): Stepper.diplomacy_action("invite", c), true))
 	if targets.is_empty() and members.size() <= 1:

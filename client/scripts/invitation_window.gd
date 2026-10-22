@@ -76,9 +76,19 @@ func _sync() -> void:
 	var others := []
 	for m in members:
 		others.append("[color=#%s]%s[/color]" % [GameData.factions[str(m)].color.to_html(false), GameData.factions[str(m)].name])
+	var mine := []  # (already in an alliance: they're asking to join it)
+	var my_tag = GameStore.faction_state(me).get("alliance")
+	if my_tag != null:
+		for code in GameStore.state.get("factions", {}):
+			if code != me and GameStore.faction_state(str(code)).get("alliance") == my_tag:
+				mine.append("[color=#%s]%s[/color]" % [GameData.factions[str(code)].color.to_html(false), GameData.factions[str(code)].name])
 	_title.text = "%s invites you to an alliance" % from
 	var text := "[b]%s[/b] asks you to join [b]%s[/b]." % [GameData.factions[from].name, "their alliance" if members.size() > 1 else "an alliance with them"]
 	text += "\n\nIf you accept, the alliance is: %s and [b]you[/b]." % ", ".join(others)
+	if my_tag != null:
+		_title.text = "%s asks to join your alliance" % from
+		text = "[b]%s[/b] asks to join your alliance. Yours is the only answer: your allies have no say." % GameData.factions[from].name
+		text += "\n\nIf you accept, the alliance is: [b]you[/b], %s and %s." % [", ".join(mine), others[0] if not others.is_empty() else from]
 	text += "\n\nAllies don't fight each other and defend together. The game ends when every remaining faction is allied."
 	if GameStore.can_withdraw_from_alliances():
 		text += " You can withdraw later, on your own Alliances phase"

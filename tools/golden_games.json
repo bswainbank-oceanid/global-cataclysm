@@ -7,9 +7,9 @@
   },
   "strategy_6bot": {
     "setup": "6a551a13f1082fa52d764046c0c96470333836e5",
-    "log": "6ea2c696ec41d9ff09e9e115eb6feb528484a3f4",
-    "final": "71af03a70045ef98a78c7d155cc3f69d344b032a",
-    "events": 1292
+    "log": "1712f6ef61be3383b8e05a9dda8d23030b1dbd6c",
+    "final": "bcb803040424b74a7654210a8da5c2cb0084bcf6",
+    "events": 1265
   },
   "strategy_3bot_neutral": {
     "setup": "dd53b295ac3febd89138925cce047e4565b67da1",

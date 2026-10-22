@@ -313,13 +313,27 @@ def choose_invite_target(engine, faction, rng):
     if own_size + 1 > engine._effective_max_alliance_size():
         return None
 
-    if strategy == 'counterweight':
-        others = _other_alliance_sizes(engine, gs.factions[faction].alliance)
-        if not others or own_size >= max(others):
-            return None
-
     candidates = [t for t in _eligible_invite_targets(engine, faction) if may_invite(engine, faction, t)]
+    if strategy == 'counterweight':
+        # (never ending up bigger than the largest other alliance -- whichever way it would form: the target
+        # joining ours, or ours -- one faction -- joining the target's)
+        candidates = [t for t in candidates if _counterweight_fits(engine, faction, t)]
     return _pick_target(gs.factions[faction], candidates, rng)
+
+
+def _resulting_alliance(engine, faction, other):
+    """The alliance `faction` and `other` would make: the one joining the other's (or both, if neither has one)."""
+    return engine._alliance_members(faction) | engine._alliance_members(other)
+
+
+def _counterweight_fits(engine, faction, other):
+    """The alliance `faction` and `other` would make is no bigger than the largest alliance outside it -- and
+    there is one: counterweight never founds the first, nor accepts one that would be the biggest."""
+    gs = engine.game_state
+    together = _resulting_alliance(engine, faction, other)
+    tags = {gs.factions[f].alliance for f in together}
+    others = [size for tag, size in _alliance_tag_sizes(engine).items() if tag not in tags]
+    return bool(others) and len(together) <= max(others)
 
 
 def _pick_target(fstate, candidates, rng):
@@ -356,12 +370,7 @@ def accepts_invite(engine, faction, inviter):
         return _underdog_fits(engine, joined, UNDERDOG_MARGIN)
     if strategy in ('aggressive', 'passive'):
         return True
-
-    prospective_size = len(engine._alliance_members(inviter)) + 1
-    others = _other_alliance_sizes(engine, gs.factions[inviter].alliance)
-    if not others:
-        return False  # (no other alliance to match: the resulting one would be bigger than any other)
-    return prospective_size <= max(others)
+    return _counterweight_fits(engine, faction, inviter)
 
 
 def _total_unit_value(engine, faction):

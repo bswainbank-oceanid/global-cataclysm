@@ -169,7 +169,7 @@ class TestChooseInviteTarget(unittest.TestCase):
         # ineligible" branch being exercised, not the size cap.
         engine, gs = make_engine(
             {'NAA': FactionMode.BOT, 'EU': FactionMode.BOT, 'AAC': FactionMode.BOT},
-            alliances={'EU': 'other', 'AAC': 'other2'},
+            alliances={'NAA': 'mine', 'EU': 'other', 'AAC': 'other2'},  # (NAA in one too: it can't ask to join theirs)
             strategies={'NAA': 'aggressive'},
         )
         self.assertIsNone(alliance_policy.choose_invite_target(engine, 'NAA', random.Random(1)))
@@ -551,6 +551,7 @@ class TestRandomBotAllianceIntegration(unittest.TestCase):
             alliances={'AAC': 'other'},
             strategies={'NAA': 'aggressive', 'EU': 'passive'},  # EU always accepts
         )
+        gs.factions['NAA'].former_allies.add('AAC')  # (and NAA may not rejoin AAC: EU is its only pick)
         bot = RandomBot(engine, 'NAA', rng=random.Random(1))
         bot.take_alliance_phase()
         self.assertIsNotNone(gs.factions['NAA'].alliance)

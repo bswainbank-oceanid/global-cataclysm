@@ -125,7 +125,23 @@ func uninvitable_reasons(me: String, members: Array, eligible: Array) -> Array:
 			continue
 		var f := faction_state(c)
 		if f.get("alliance") != null:
-			out.append([c, "already in an alliance"])
+			# (one in an alliance can be asked -- to let you join theirs -- unless one of these stands in the way)
+			if mine.size() > 1:
+				out.append([c, "it is in an alliance, and so are you"])
+				continue
+			var theirs := []
+			for o in active_factions():
+				if faction_state(str(o)).get("alliance") == f.get("alliance"):
+					theirs.append(str(o))
+			var left := []
+			if not can_rejoin_alliances():
+				for m in faction_state(me).get("former_allies", []):
+					if theirs.has(str(m)):
+						left.append(str(m))
+			if not left.is_empty():
+				out.append([c, "its alliance holds %s, whom you left (rejoining is off)" % ", ".join(left)])
+			else:
+				out.append([c, "its alliance is full"])
 		elif not can_rejoin_alliances():
 			var banned := []
 			for m in f.get("former_allies", []):

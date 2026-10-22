@@ -2206,6 +2206,13 @@ class GameEngine:
             if code in members:
                 continue
             if gs.factions[code].alliance is not None:
+                # asking to join its alliance: only from outside any alliance, and only while there's room
+                theirs = self._alliance_members(code)
+                if gs.factions[faction].alliance is not None or len(theirs) + 1 > self._effective_max_alliance_size():
+                    continue
+                if not gs.can_rejoin_alliances and gs.factions[faction].former_allies & theirs:
+                    continue
+                targets.append(code)
                 continue
             if not gs.can_rejoin_alliances and gs.factions[code].former_allies & members:
                 continue
@@ -2264,10 +2271,15 @@ class GameEngine:
             raise ValueError('a faction cannot invite itself')
         if target not in self.game_state.active_factions():
             raise ValueError(f'{target} is not an active faction and cannot be invited')
-        if self.game_state.factions[target].alliance is not None:
-            raise ValueError(f'{target} is already in an alliance -- it must withdraw first')
+        joining = self.game_state.factions[target].alliance is not None
+        if joining and self.game_state.factions[faction].alliance is not None:
+            raise ValueError(f'{target} is already in an alliance, and so is {faction} -- one of them must withdraw first')
+        if joining and target in self._alliance_members(faction):
+            raise ValueError(f'{target} is already {faction}\'s ally')
 
-        prospective_members = self._alliance_members(faction) | {target}
+        # (inviting a faction in an alliance asks to JOIN it: the inviter becomes a member of the target's)
+        newcomer, group = (faction, self._alliance_members(target)) if joining else (target, self._alliance_members(faction))
+        prospective_members = group | {newcomer}
         effective_max = self._effective_max_alliance_size()
         if len(prospective_members) > effective_max:
             raise ValueError(
@@ -2276,10 +2288,10 @@ class GameEngine:
                 f'capped by {len(self.game_state.active_factions())} currently active factions)'
             )
         if not self.game_state.can_rejoin_alliances:
-            banned = self.game_state.factions[target].former_allies & prospective_members
+            banned = self.game_state.factions[newcomer].former_allies & prospective_members
             if banned:
                 raise ValueError(
-                    f"{target} can no longer ally with {sorted(banned)} (can_rejoin_alliances is False)"
+                    f"{newcomer} can no longer ally with {sorted(banned)} (can_rejoin_alliances is False)"
                 )
 
 
@@ -2326,7 +2338,9 @@ class GameEngine:
                 self.turn_log.record_alliance_declined(self.game_state.global_turn, faction, target)
             return False
 
-        existing_tag = self.game_state.factions[faction].alliance
+        # The invited faction's alliance, if it has one -- the inviter joins it, allied with every member (theirs
+        # had no say) -- else the inviter's, else a new one.
+        existing_tag = self.game_state.factions[target].alliance or self.game_state.factions[faction].alliance
         tag = existing_tag or self._new_alliance_tag()
         self.game_state.factions[faction].alliance = tag
         self.game_state.factions[target].alliance = tag

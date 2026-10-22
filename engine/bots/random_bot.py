@@ -506,7 +506,9 @@ class RandomBot:
         if not wanted:
             return plan
         # (an adversarial bot never offers a human -- or an alliance with one -- a way out)
-        invitable = {t for t in wanted if engine.can_invite_to_alliance(self.faction, t)
+        # (an offer instead of a surrender is to an unallied faction: never the bot joining the alliance of the
+        # one it is about to beat)
+        invitable = {t for t in wanted if gs.factions[t].alliance is None and engine.can_invite_to_alliance(self.faction, t)
                      and alliance_policy.may_invite(engine, self.faction, t)}
         askable = sorted(invitable)
         if askable and plan['action'] != 'withdraw':
