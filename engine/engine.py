@@ -2427,13 +2427,22 @@ class GameEngine:
         if self.turn_log is not None:
             self.turn_log.record_alliance_withdrawal(self.game_state.global_turn, faction, former_tag, former_members)
 
+        # Land where the two sides' units now stand together is contested, each way round -- a former ally's
+        # where the withdrawing faction stands, and the withdrawing faction's own (its Strategic Centers too)
+        # where a former ally stands -- and the owner has the first-round bonus there (reclaim_bonus_for:
+        # attacking to clear it, or defending it). The other side claims it only at its own Capture Territory.
         terrs = self.data.territories()
         for tid, t in self.game_state.territories.items():
-            if terrs[tid]['type'] != 'land' or t.owner not in former_members:
+            if terrs[tid]['type'] != 'land':
                 continue
-            if any(u.owner == faction for u in t.units):
+            if t.owner in former_members and any(u.owner == faction for u in t.units):
                 t.contested_by = (t.contested_by or set()) | {faction, t.owner}
                 t.reclaim_bonus_for = t.owner
+            elif t.owner == faction:
+                there = {u.owner for u in t.units if u.owner in former_members}
+                if there:
+                    t.contested_by = (t.contested_by or set()) | {faction} | there
+                    t.reclaim_bonus_for = faction
 
     def would_game_end(self):
         """Pure query, no mutation: victory.game_end_rule -- would the

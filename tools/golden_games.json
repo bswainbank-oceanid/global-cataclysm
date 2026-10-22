@@ -19,9 +19,9 @@
   },
   "mixed_alliances": {
     "setup": "2c187c98c9386e2609350accd299e7c0ce09aded",
-    "log": "954e5d6350125beeacc00f8f2f19542cd824b7a6",
-    "final": "c881d2fb4042bc5e50925f9638f2ce3fbe101d79",
-    "events": 2398
+    "log": "a917a68b8700791e766bb587c2344053ba7c3418",
+    "final": "359e882839bae444ca517d9839dd02f87b74897b",
+    "events": 2471
   },
   "fixed_order_2bot": {
     "setup": "48cd205df0479f6bbe42c131aaed3633153cb264",
@@ -31,8 +31,8 @@
   },
   "new_scenario_3bot": {
     "setup": "bd91b55d4b394b3c564bc6e951a3452a66c0c1b5",
-    "log": "a8034904a49e9d75b240c8c85e34c50c8802cb12",
-    "final": "90bea3bedb3e557b909e32fe1961ea54d3a9536f",
-    "events": 1874
+    "log": "036d4fdd118db261383cf99083d1c0395ec59d2c",
+    "final": "a211ded475449daa1830ddc543c57fe678be1972",
+    "events": 2054
   }
 }
